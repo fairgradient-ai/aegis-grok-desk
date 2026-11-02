@@ -233,5 +233,85 @@ class ParserTest(unittest.TestCase):
         self.assertIn("must pass it explicitly", help_text)
 
 
+class NowFlagTest(unittest.TestCase):
+    """``--now ISO-8601-UTC``: an aware UTC datetime in ``args.now``, ``None`` when absent."""
+
+    def test_absent_is_none(self) -> None:
+        self.assertIsNone(parser().parse_args([]).now)
+        self.assertIsNone(parser().parse_args(["--json"]).now)
+
+    def test_z_and_plus_zero_offset_are_the_same_instant(self) -> None:
+        expected = datetime.datetime(2026, 11, 3, 19, 50, 0, tzinfo=UTC)
+        for text in ("2026-11-03T19:50:00Z", "2026-11-03T19:50:00+00:00"):
+            moment = parser().parse_args(["--now", text]).now
+            self.assertEqual(expected, moment, text)
+            self.assertEqual(datetime.timedelta(0), moment.utcoffset(), text)
+            self.assertIs(UTC, moment.tzinfo, text)
+        with tempfile.TemporaryDirectory() as directory:
+            args = parser().parse_args(["--offline", "--desk-root", directory, "--now", "2026-11-03T19:50:00Z", "--json"])
+            self.assertEqual(expected, args.now)
+            self.assertTrue(args.offline and args.json)
+
+    def test_fractional_seconds(self) -> None:
+        self.assertEqual(500000, parser().parse_args(["--now", "2026-11-03T19:50:00.5Z"]).now.microsecond)
+        self.assertEqual(123456, parser().parse_args(["--now", "2026-11-03T19:50:00.123456+00:00"]).now.microsecond)
+        self.assertEqual(120000, parser().parse_args(["--now", "2026-11-03T19:50:00.12Z"]).now.microsecond)
+
+    def test_anything_else_is_a_usage_error(self) -> None:
+        bad = (
+            "2026-11-03T19:50:00",        # naive
+            "2026-11-03T19:50:00+01:00",  # another zone
+            "2026-11-03T19:50:00-00:00",  # not the accepted spelling
+            "2026-11-03T19:50:00z",       # lowercase
+            "2026-11-03 19:50:00Z",       # space separator
+            "2026-11-03T19:50Z",          # seconds required
+            "2026-11-03",                 # a date
+            "2026-13-03T19:50:00Z",       # month 13
+            "2026-11-03T24:00:00Z",       # hour 24
+            "2026-11-03T19:50:60Z",       # second 60
+            "2026-11-03T19:50:00.1234567Z",
+            "1793735400",                 # epoch seconds
+            "now",
+            "",
+        )
+        for text in bad:
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.assertRaises(SystemExit, msg=text) as ctx:
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    parser().parse_args(["--json", "--now", text])
+            self.assertEqual(contract.EXIT_USAGE, ctx.exception.code, text)
+            body = json.loads(stdout.getvalue())
+            self.assertEqual("invalid_arguments", body["error"]["code"], text)
+            self.assertEqual("usage", body["status"], text)
+            self.assertIn("--now", body["error"]["message"], text)
+            self.assertEqual("", stderr.getvalue(), text)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with self.assertRaises(SystemExit) as ctx:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                parser().parse_args(["--now", "2026-11-03T19:50:00"])
+        self.assertEqual(contract.EXIT_USAGE, ctx.exception.code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("--now", stderr.getvalue())
+
+    def test_parse_utc_instant_helper(self) -> None:
+        moment = contract.parse_utc_instant("2026-11-03T19:50:00Z")
+        self.assertEqual(datetime.datetime(2026, 11, 3, 19, 50, tzinfo=UTC), moment)
+        self.assertEqual(moment, contract.parse_utc_instant(" 2026-11-03T19:50:00+00:00 "))
+        for text in ("2026-11-03T19:50:00", "2026-11-03T19:50:00+01:00", "2026-02-30T00:00:00Z", 1793735400, None):
+            with self.assertRaises(ValueError, msg=repr(text)):
+                contract.parse_utc_instant(text, "--at")  # type: ignore[arg-type]
+        with self.assertRaises(ValueError) as ctx:
+            contract.parse_utc_instant("2026-11-03", "--at")
+        self.assertIn("--at", str(ctx.exception))
+        self.assertIn("2026-11-03T19:50:00Z", str(ctx.exception))
+
+    def test_now_is_in_the_help_and_the_flag_list(self) -> None:
+        help_text = parser().format_help()
+        self.assertIn("--now", help_text)
+        self.assertIn("ISO-8601-UTC", help_text)
+        self.assertIn("testing and replay", help_text)
+        self.assertIn("parse_utc_instant", contract.__all__)
+
+
 if __name__ == "__main__":
     unittest.main()

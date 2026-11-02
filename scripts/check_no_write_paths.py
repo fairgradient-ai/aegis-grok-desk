@@ -64,7 +64,8 @@ Closed lists
   ``os.startfile``, ``platform.popen`` and ``pty.spawn`` fail everywhere, also when reached
   through ``getattr`` or a module alias.
 * Third-party HTTP clients (``requests``, ``httpx``, ``aiohttp``, ``urllib3``, ``pycurl``,
-  ``websocket``/``websockets``, ``httplib2``) fail everywhere; the repository is stdlib-only.
+  ``websocket``/``websockets``, ``httplib2``) fail everywhere, imported or reached through a
+  resolved reflection (``sys.modules["requests"].post(...)``); the repository is stdlib-only.
 * Every ``urllib.request.Request(...)`` call must pass ``method="GET"`` as a string literal, or
   no ``method`` at all (urllib then defaults to GET because no body is allowed), and must not
   pass ``data`` (positionally or by keyword) other than the literal ``None``. ``*args`` and
@@ -77,9 +78,13 @@ Closed lists
   fail. The private write path ``._send_request()``/``._send_output()``/``._output()`` and the
   raw socket writes ``.sendall()``, ``.sendto()``, ``.sendmsg()``, ``.sendfile()`` and
   ``.makefile()`` fail everywhere; ``.send()`` fails in a module that imports ``socket``.
-* In a network module, assigning ``.method``/``.data`` on an object (or ``setattr`` with those
-  literal names), calling ``.add_data(...)`` or defining ``get_method`` fails: each can turn a
-  GET into a write after construction. There, ``vars()``, ``getattr``/``setattr``/``delattr``
+* In a network module, assigning ``.method``/``.data``/``._data`` on an object (or ``setattr``
+  with those literal names), calling ``.add_data(...)`` or defining ``get_method`` fails: each
+  can turn a GET into a write after construction (``_data`` is the field behind the ``data``
+  property that ``get_method`` reads). Assigning a request's parsed-target fields
+  (``full_url``, ``selector``, ``host``, ``type``, ...) or calling ``.set_proxy(...)`` fails
+  there too: each re-points a built GET at another scheme, host or path. There, ``vars()``,
+  ``getattr``/``setattr``/``delattr``
   with a non-literal name, ``functools.partial``/``partialmethod`` and
   ``operator.methodcaller``/``attrgetter`` in any form, and a call whose callee is itself a call
   (``type(req)(url, data=...)``) fail too (rule ``indirect-call``): a GET-only client names what
@@ -87,6 +92,12 @@ Closed lists
   fails, ``methodcaller``/``attrgetter`` may not name a write-capable attribute, and a call
   whose callee the gate cannot name fails when it passes ``data=``, ``method=`` or a bytes
   literal.
+* Subclassing ``urllib.request.Request`` fails everywhere (rule ``request-subclass``): a class
+  body or an ``__init__`` can predefine the verb or the body where the call-site rules cannot
+  see them (``class P(Request): method = "POST"``, ``super().__init__(url, body)``). A subclass
+  found this way, through an alias or through another such class, is also treated as
+  ``Request`` wherever it is instantiated, so those calls are held to the literal ``"GET"``,
+  no-body rule as well.
 
 Part (b): prose scanner over ``skills/**``, ``agents/**``, ``docs/**``, ``rules/**``,
 ``template/**``, ``routines/**``, ``SETUP.md``, ``README.md``, ``AGENTS.md``, ``GEMINI.md``,
@@ -182,11 +193,15 @@ WRITE_ATTRS = {
     "sendall": "socket-write", "sendto": "socket-write", "sendmsg": "socket-write",
     "sendfile": "socket-write", "makefile": "socket-write",
     "_send_request": "http-send", "_send_output": "http-send", "_output": "http-send",
-    "add_data": "request-mutation",
+    "add_data": "request-mutation", "set_proxy": "request-mutation",
 }
 HTTP_CLIENT_ATTRS = ("request", "putrequest", "endheaders", "send")
-# Attributes whose assignment (or setattr) can change a request's verb or body after construction.
-MUTATION_ATTRS = ("method", "data", "get_method", "__class__")
+# Attributes whose assignment (or setattr) can change a request's verb or body after construction;
+# ``_data`` is the field behind urllib.request.Request's ``data`` property, which get_method reads.
+MUTATION_ATTRS = ("method", "data", "_data", "get_method", "__class__")
+# urllib.request.Request's parsed-target fields: assigning one re-points a built GET at another
+# scheme, host or path, so none may be assigned (or set through setattr) in the network module.
+TARGET_ATTRS = ("full_url", "_full_url", "selector", "host", "type", "origin_req_host", "_tunnel_host")
 # Attribute names operator.methodcaller/attrgetter may not name: each reaches a write or an escape.
 SENSITIVE_ATTRS = frozenset({
     "open", "request", "putrequest", "endheaders", "send", "urlopen", "Request", "system", "popen",
@@ -514,11 +529,34 @@ class ModuleGate:
             if not changed:
                 break
 
+    def visit_classes(self, tree: ast.AST) -> None:
+        """A class deriving from ``urllib.request.Request`` (directly, through an alias or through
+        another such class) is a finding: a class body or an ``__init__`` can predefine the verb
+        or the body where the call-site rules cannot see them. The class name is also bound to
+        ``Request`` so that instantiating it is checked by the ``Request()`` rules."""
+        classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+        for _ in range(8):
+            changed = False
+            for node in classes:
+                if self.names.get(node.name) == REQUEST:
+                    continue
+                if any(self.qualname(base) == REQUEST for base in node.bases):
+                    self.fail(node, "request-subclass",
+                              f"class {node.name} subclasses urllib.request.Request; a class body or __init__ can "
+                              "predefine a verb or body behind the gate's back, so a GET-only client constructs "
+                              "Request directly")
+                    self.bind(node.name, REQUEST)
+                    changed = True
+            if not changed:
+                break
+
     # -- calls -----------------------------------------------------------------------------
     def is_sensitive_callee(self, name: str) -> bool:
         """A callable that reaches the network, a shell, code execution or reflection."""
         plain = strip_builtins(name) or name
         if name in (REQUEST, URLOPEN) or plain in DYNAMIC_IMPORTERS or plain in DYNAMIC_EXEC_CALLS:
+            return True
+        if name.split(".")[0] in THIRD_PARTY_HTTP:
             return True
         if plain in TRACKED_BUILTINS or name in SHELL_ESCAPE_EXACT or name.startswith(SHELL_ESCAPE_PREFIXES):
             return True
@@ -568,6 +606,11 @@ class ModuleGate:
     def check_reference(self, node: ast.AST, name: str) -> None:
         """A resolved name that is called, or merely obtained through ``getattr``."""
         plain = strip_builtins(name) or name
+        if name.split(".")[0] in THIRD_PARTY_HTTP:
+            self.fail(node, "third-party-http",
+                      f"{name} reaches a third-party HTTP client; the repository is stdlib-only and "
+                      f"GET-only through {NETWORK_CLIENT}")
+            return
         if name in SHELL_ESCAPE_EXACT or name.startswith(SHELL_ESCAPE_PREFIXES):
             self.fail(node, "shell-escape", f"{name}() can run an arbitrary command; not allowed")
         if plain in DYNAMIC_EXEC_CALLS:
@@ -662,8 +705,9 @@ class ModuleGate:
             if self.network_module or rooted:
                 self.fail(call, "reflection", "setattr() with a non-literal attribute name cannot be checked by the gate")
             return
-        if self.network_module and attr in MUTATION_ATTRS:
-            self.fail(call, "request-mutation", f"setattr of .{attr} can turn a GET into a write")
+        if self.network_module and (attr in MUTATION_ATTRS or attr in TARGET_ATTRS):
+            self.fail(call, "request-mutation",
+                      f"setattr of .{attr} can turn a GET into a write or re-point it; not allowed in the network module")
         elif rooted:
             self.fail(call, "reflection",
                       f"setattr() on {target} rebinds a module or imported object; later calls would "
@@ -780,13 +824,17 @@ class ModuleGate:
                 if target.attr in ("get_method", "__class__"):
                     self.fail(node, "request-mutation",
                               f"assigning .{target.attr} swaps the method that decides a request's verb; not allowed")
-                elif target.attr in ("method", "data") and self.network_module:
+                elif target.attr in ("method", "data", "_data") and self.network_module:
                     ok = (target.attr == "method" and is_literal(value, "GET")) or (
-                        target.attr == "data" and is_none(value)
+                        target.attr in ("data", "_data") and is_none(value)
                     )
                     if not ok:
                         self.fail(node, "request-mutation",
                                   f"assigning .{target.attr} after construction can turn a GET into a write")
+                elif target.attr in TARGET_ATTRS and self.network_module:
+                    self.fail(node, "request-mutation",
+                              f"assigning .{target.attr} re-points a built request at another scheme, host or "
+                              "path; a GET-only client builds the URL once and leaves the request alone")
             elif isinstance(target, ast.Subscript):
                 inner = target.value
                 if isinstance(inner, ast.Call) and strip_builtins(self.resolve(inner.func)[0]) in ("vars", "globals", "locals"):
@@ -817,6 +865,8 @@ class ModuleGate:
                                          f"cannot parse: {exc.msg}", exc.text or ""))
             return self.findings
         self.visit_imports(tree)
+        self.visit_aliases(tree)
+        self.visit_classes(tree)
         self.visit_aliases(tree)
         self.visit_nodes(tree)
         return self.findings

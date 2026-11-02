@@ -16,6 +16,11 @@ Flags (every tool, added by :class:`ReadOnlyParser`)
                  fixture run (tests, ``cli_journeys.py``) MUST pass it explicitly, so that a
                  tool can never read a fixture as the live desk or the live desk as a fixture.
 ``--offline``    never open a network connection; read only what ``--desk-root`` holds
+``--now``        override the current instant for testing and replay: an ISO-8601 UTC
+                 instant, ``2026-11-03T19:50:00Z`` or ``2026-11-03T19:50:00+00:00`` (seconds
+                 required, up to six fractional digits), parsed to an aware UTC ``datetime`` in
+                 ``args.now`` (``None`` when absent); any other spelling, zone or shape is a
+                 usage error through the same machine-readable path as every other flag
 
 Exit codes (one table for every tool; the Bot and ``routine.py`` branch on them)
 --------------------------------------------------------------------------------
@@ -62,9 +67,11 @@ envelope. Python 3.6 and older fail on the future import with the interpreter's 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import math
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -75,6 +82,12 @@ SCHEMA_VERSION: int = 1
 MODE: str = "read-only"
 PYTHON_FLOOR = (3, 9)
 DEFAULT_TIMEOUT_S: float = 10.0
+UTC_INSTANT_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|\+00:00)$"
+)
+"""The one accepted spelling of ``--now``: ``YYYY-MM-DDTHH:MM:SS``, up to six fractional digits,
+then ``Z`` or ``+00:00``. Parsed by hand so every interpreter from 3.9 reads exactly the same
+strings (``datetime.fromisoformat`` accepts ``Z`` only from 3.11 and odd fraction lengths differ)."""
 
 EXIT_QUIET: int = 0
 EXIT_ERROR: int = 1
@@ -241,6 +254,34 @@ def python_floor_check(minimum: Sequence[int] = PYTHON_FLOOR, version: Optional[
 
 
 # --------------------------------------------------------------------------------------------
+# Instants
+# --------------------------------------------------------------------------------------------
+
+
+def parse_utc_instant(text: Any, what: str = "instant") -> datetime.datetime:
+    """An aware UTC ``datetime`` from the one accepted ISO-8601 UTC spelling (:data:`UTC_INSTANT_RE`).
+
+    ``what`` names the flag in the error (``--now``, ``--at``, ``--started-utc``). Surrounding
+    whitespace is ignored; a naive string, another offset (``+01:00``, ``-00:00``), a lowercase
+    ``z``, a space separator, a missing seconds field, a bare date or an out-of-range component
+    (month 13, hour 24, second 60) raise ``ValueError`` with a message that shows the expected form.
+    """
+    if not isinstance(text, str):
+        raise ValueError("%s must be a string, got %s" % (what, type(text).__name__))
+    match = UTC_INSTANT_RE.match(text.strip())
+    if match is None:
+        raise ValueError("%s must be an ISO-8601 UTC instant such as 2026-11-03T19:50:00Z (seconds required; "
+                         "Z or +00:00 only), got %r" % (what, text))
+    year, month, day, hour, minute, second, fraction, _zone = match.groups()
+    microsecond = int((fraction or "0").ljust(6, "0"))
+    try:
+        return datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second),
+                                 microsecond, tzinfo=datetime.timezone.utc)
+    except ValueError as exc:
+        raise ValueError("%s %r is not a valid instant: %s" % (what, text, exc)) from None
+
+
+# --------------------------------------------------------------------------------------------
 # Parser
 # --------------------------------------------------------------------------------------------
 
@@ -253,7 +294,9 @@ class ReadOnlyParser(argparse.ArgumentParser):
     default; ``desk_init.py`` passes ``False`` because it creates the desk). After parsing,
     ``args.desk_root`` is absolute (the current directory when the flag is absent),
     ``args.desk_root_explicit`` records whether the flag was given, ``args.timeout`` is a
-    finite positive float, and ``--offline`` without ``--desk-root`` is a usage error.
+    finite positive float, ``args.now`` is an aware UTC ``datetime`` (``None`` when ``--now`` was
+    not given; see :func:`parse_utc_instant`), and ``--offline`` without ``--desk-root`` is a
+    usage error.
 
     When ``--json`` (or ``--schema``) is among the arguments, :meth:`error` prints an error
     envelope with code ``invalid_arguments`` and status ``usage`` on stdout and exits
@@ -286,6 +329,9 @@ class ReadOnlyParser(argparse.ArgumentParser):
                                "--offline runs and fixture runs must pass it explicitly")
         self.add_argument("--offline", action="store_true",
                           help="never open a network connection; use only what --desk-root holds (requires --desk-root)")
+        self.add_argument("--now", default=None, metavar="ISO-8601-UTC",
+                          help="override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); "
+                               "testing and replay")
 
     # argparse calls this for every usage problem, including unknown flags and bad types.
     def error(self, message: str) -> Any:
@@ -302,6 +348,11 @@ class ReadOnlyParser(argparse.ArgumentParser):
         parsed = super().parse_args(argv, namespace)
         if not math.isfinite(parsed.timeout) or parsed.timeout <= 0:
             self.error("--timeout must be a finite positive number of seconds")
+        if parsed.now is not None:
+            try:
+                parsed.now = parse_utc_instant(parsed.now, "--now")
+            except ValueError as exc:
+                self.error(str(exc))
         parsed.desk_root_explicit = parsed.desk_root is not None
         if parsed.offline and not parsed.desk_root_explicit:
             self.error("--offline runs must pass an explicit --desk-root")
@@ -339,11 +390,13 @@ __all__ = [
     "STATUS_QUIET",
     "STATUS_UNAVAILABLE",
     "STATUS_USAGE",
+    "UTC_INSTANT_RE",
     "envelope",
     "error_envelope",
     "exit_code_for",
     "format_utc",
     "json_dumps",
+    "parse_utc_instant",
     "python_floor_check",
     "schema_envelope",
     "state",

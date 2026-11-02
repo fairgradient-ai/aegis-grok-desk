@@ -73,6 +73,18 @@ class NoWritePathsFixtureTests(unittest.TestCase):
     def test_second_module_importing_urllib_request_fails(self) -> None:
         self.assert_case("network_import", OTHER, "network-import")
 
+    def test_body_through_the_data_backing_field_fails(self) -> None:
+        # ``request._data = b"..."`` bypasses the ``data`` property the mutation rule used to watch;
+        # ``get_method`` reads ``_data`` and would send a POST with that body.
+        result = self.assert_case("request_data_attribute", CLIENT, "request-mutation")
+        self.assertEqual([CLIENT], sorted(rules_by_file(result)))
+
+    def test_request_subclass_with_a_class_body_verb_fails(self) -> None:
+        # ``class _PostRequest(Request): method = "POST"`` instantiated instead of Request: the
+        # class body is never a call, so only the subclass rule can see the verb.
+        result = self.assert_case("request_subclass", CLIENT, "request-subclass")
+        self.assertEqual([CLIENT], sorted(rules_by_file(result)))
+
     def test_subprocess_curl_fails_twice(self) -> None:
         self.assert_case("subprocess_curl", OTHER, "subprocess-import", "subprocess-curl")
 
@@ -163,7 +175,42 @@ class AstRuleTests(unittest.TestCase):
         source = FUTURE + ("import urllib.request\n"
                            "class Sneaky(urllib.request.Request):\n"
                            "    def get_method(self):\n        return \"POST\"\n")
-        self.assertEqual(["get-method-override"], self.rules_for(CLIENT, source))
+        self.assertEqual(["get-method-override", "request-subclass"], self.rules_for(CLIENT, source))
+
+    def test_data_backing_field_and_set_proxy_fail(self) -> None:
+        source = FUTURE + ("import urllib.request\n"
+                           "def a(u):\n    r = urllib.request.Request(u, headers={})\n"
+                           "    r._data = b\"symbols=SPY\"\n    setattr(r, \"_data\", b\"x\")\n"
+                           "    r.set_proxy(\"127.0.0.1:9\", \"http\")\n    return r\n")
+        self.assertEqual(["request-mutation"] * 3, self.rules_for(CLIENT, source))
+        self.assertEqual([], self.rules_for(CLIENT, FUTURE + "import urllib.request\ndef a(r):\n    r._data = None\n"))
+
+    def test_target_fields_may_not_be_reassigned_in_the_network_module(self) -> None:
+        for attr in ("full_url", "_full_url", "selector", "host", "type", "origin_req_host", "_tunnel_host"):
+            source = FUTURE + f"import urllib.request\ndef a(r, v):\n    r.{attr} = v\n"
+            self.assertEqual(["request-mutation"], self.rules_for(CLIENT, source), attr)
+        self.assertEqual(["request-mutation"], self.rules_for(CLIENT, (
+            FUTURE + "import urllib.request\ndef a(r, v):\n    setattr(r, \"host\", v)\n")))
+        # Outside the network module the same names are ordinary attributes (a Quote has a type).
+        self.assertEqual([], self.rules_for(OTHER, FUTURE + "def a(q, v):\n    q.type = v\n    q.host = v\n"))
+
+    def test_request_subclass_fails_and_is_checked_as_a_request(self) -> None:
+        source = FUTURE + ("import urllib.request\n"
+                           "class P(urllib.request.Request):\n    method = \"POST\"\n"
+                           "def a(u):\n    return P(u, headers={})\n")
+        self.assertEqual(["request-subclass"], self.rules_for(CLIENT, source))
+        source = FUTURE + ("import urllib.request\n"
+                           "class S(urllib.request.Request):\n"
+                           "    def __init__(self, url, body):\n        super().__init__(url, body)\n")
+        self.assertEqual(["request-subclass"], self.rules_for(CLIENT, source))
+        source = FUTURE + ("import urllib.request\nR = urllib.request.Request\n"
+                           "class A(R):\n    pass\n"
+                           "class B(A):\n    pass\n"
+                           "def a(u):\n    return B(u, data=b\"x\")\n")
+        self.assertEqual(["request-data", "request-subclass", "request-subclass"], self.rules_for(CLIENT, source))
+        # The redirect handler the real client subclasses is not a Request.
+        source = FUTURE + "import urllib.request\nclass H(urllib.request.HTTPRedirectHandler):\n    pass\n"
+        self.assertEqual([], self.rules_for(CLIENT, source))
 
     def test_http_client_rules(self) -> None:
         source = FUTURE + ("import http.client\n"
@@ -288,7 +335,7 @@ class AliasAndIndirectionTests(unittest.TestCase):
             "import urllib.request\ndef a(req):\n    req.__dict__[\"method\"] = \"DELETE\"\n")))
 
     def test_class_swap_fails(self) -> None:
-        self.assertEqual(["reflection", "request-mutation"], gate_rules(CLIENT, (
+        self.assertEqual(["reflection", "request-mutation", "request-subclass"], gate_rules(CLIENT, (
             "import urllib.request\nclass S(urllib.request.Request):\n    pass\n"
             "def a(req):\n    req.__class__ = S\n")))
 
@@ -425,6 +472,16 @@ class ReflectionTests(unittest.TestCase):
         self.assertEqual(["shell-escape"], gate_rules(OTHER, "import importlib\ndef a():\n    return importlib.import_module(\"os\").system(\"ls\")\n"))
         self.assertEqual(["shell-escape"], gate_rules(OTHER, "m = __import__(\"os\")\ndef a():\n    return m.system(\"ls\")\n"))
         self.assertEqual([], gate_rules(OTHER, "import importlib\ndef t():\n    return importlib.import_module(\"tomllib\")\n"))
+
+    def test_third_party_clients_reached_by_reflection_fail(self) -> None:
+        self.assertEqual(["third-party-http"], gate_rules(OTHER, (
+            "import sys\ndef a(u):\n    return sys.modules[\"requests\"].post(u)\n")))
+        self.assertEqual(["third-party-http"], gate_rules(OTHER, (
+            "import sys\ndef a(u):\n    return sys.modules.get(\"httpx\").post(u)\n")))
+        self.assertEqual(["third-party-http"], gate_rules(OTHER, (
+            "import importlib\ndef a(u):\n    return importlib.import_module(\"urllib3\").request(\"POST\", u)\n")))
+        self.assertEqual(["indirect-call", "third-party-http"], gate_rules(OTHER, (
+            "import functools\nimport requests\nsend = functools.partial(requests.post, \"https://x\")\n")))
 
     def test_getattr_on_modules(self) -> None:
         self.assertEqual(["shell-escape"], gate_rules(OTHER, "import os\ndef a():\n    return getattr(os, \"system\")(\"ls\")\n"))

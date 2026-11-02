@@ -106,15 +106,14 @@ class CheckShTests(unittest.TestCase):
 
     def test_python_310_syntax_fails_the_floor(self) -> None:
         # The 3.9-grammar parser reports the match statement at the block's last line; the
-        # file-qualified prefix and the message are the contract, not the line number. The reason
-        # text depends on the interpreter running the gate: CPython 3.10 and later know the
-        # statement and say so, CPython 3.9 has no concept of it and reports a plain syntax error.
+        # file-qualified prefix and the gate's own wording are the contract, not the line number
+        # and not the parser's detail, which differs by interpreter: a 3.10+ interpreter parsing
+        # with feature_version=(3, 9) says "Pattern matching is only supported in Python 3.10",
+        # a real Python 3.9 (the floor interpreter) says "invalid syntax".
         output = self.assert_fails("py310_syntax", "scripts/aegis_desk/floor_violation.py:",
                                    "not valid Python 3.9 syntax")
-        self.assertTrue(
-            "Pattern matching is only supported in Python 3.10" in output or "invalid syntax" in output,
-            output,
-        )
+        self.assertTrue("Pattern matching is only supported in Python 3.10" in output or "invalid syntax" in output,
+                        output)
 
     def test_missing_future_import_fails_the_floor(self) -> None:
         self.assert_fails("missing_future_import",
@@ -128,6 +127,8 @@ class CheckShTests(unittest.TestCase):
                              ("grok_skills_key", ".grok-plugin/plugin.json: must not declare 'skills'"),
                              ("paragraph_drift", "AGENTS.md: must repeat the desk-rule paragraph"),
                              ("request_post", "tradier_client.py:8: [request-method]"),
+                             ("request_data_attribute", "tradier_client.py:9: [request-mutation]"),
+                             ("request_subclass", "tradier_client.py:7: [request-subclass]"),
                              ("xmlrpc_import", "quote_cache.py:4: [network-import] 'xmlrpc'"),
                              ("prose_curl", "docs/FAQ.md:3: [curl-write]"),
                              ("prose_agents_md", "AGENTS.md:5: [curl-write]")):

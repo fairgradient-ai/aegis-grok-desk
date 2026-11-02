@@ -1,0 +1,2 @@
+instrument_type,symbol,occ_symbol,quantity,expiration,option_right,strike,account,trade_id,opened,cost_basis_total,cost_basis_per_unit,open_price_per_share,status,closed,closed_quantity,close_price_per_unit,underlying_stop,note
+# Fixture book of record: header only until the CSV parser lands with PR 2b; comment lines are skipped by the parser.
