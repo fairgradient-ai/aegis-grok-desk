@@ -1,0 +1,10 @@
+# Allow-list for scripts/check_no_write_paths.py (prose scanner, part b).
+#
+# One entry per line:  <repository-relative path or fnmatch glob>: <regular expression>
+# A prose line that matches a write-snippet rule is accepted only when an entry's path matches
+# the file and its regular expression matches that line. Every entry must match at least one
+# line, or the check fails as stale. Entries exist only for documented counter-examples, such as
+# the exact command the deny hook is shown refusing; they never cover a real write path.
+#
+# Example (not active):
+# docs/aegis-grok-build.md: curl -X POST https://127\.0\.0\.1:9/v1/accounts

@@ -1,0 +1,6 @@
+# expect: cannot extend table a.b, which a header defined
+# expect-line: 6
+[a.b]
+c = 1
+[a]
+b.d = 2

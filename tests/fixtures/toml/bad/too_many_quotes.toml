@@ -1,0 +1,3 @@
+# expect: at most two
+# expect-line: 3
+a = """x""""""

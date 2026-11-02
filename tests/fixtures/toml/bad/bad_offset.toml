@@ -1,0 +1,3 @@
+# expect: invalid UTC offset +24:00
+# expect-line: 3
+a = 2020-01-01T10:00:00+24:00

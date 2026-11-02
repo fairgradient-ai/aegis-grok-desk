@@ -1,0 +1,3 @@
+# expect: expected a newline or the end of the document after the statement, found 'b'
+# expect-line: 3
+a = 1 b = 2

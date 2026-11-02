@@ -1,0 +1,63 @@
+# Example rulebook (plan section 8). Each rule is adopted individually by the owner; the
+# version token never looks like a release tag.
+version = "1.0.0"
+dte_unit_default = "calendar"
+
+[[rule]]
+id = "TP50"
+applies_to = "short_premium"
+input_class = "M"
+mark_basis = "liq"
+plan = "close"
+when = "pct_captured_liq >= thresholds.pct and dte_trading > thresholds.dte_min"
+required_inputs = ["credit", "cost_to_close_liq", "dte_trading"]
+
+[rule.thresholds]
+pct = 50
+dte_min = 21
+dte_unit = "trading"
+
+[rule.confirmation]
+observations = 2
+min_gap_min = 10
+window_min = 90
+
+[rule.rearm]
+cooldown_min = 1440
+
+[[rule]]
+id = "LOSSX"
+applies_to = "short_premium"
+input_class = "M"
+mark_basis = "liq"
+plan = "roll_review"
+when = "cost_to_close_liq >= thresholds.multiple * credit"
+required_inputs = ["credit", "cost_to_close_liq"]
+owner_optional = true
+
+[rule.thresholds]
+multiple = 3.0                      # cost-to-close = 3x credit, i.e. a loss of 2x credit
+
+[rule.confirmation]
+observations = 2
+min_gap_min = 10
+window_min = 90
+
+[rule.rearm]
+cooldown_min = 240
+
+[[rule]]
+id = "DTE21"
+applies_to = "short_premium"
+input_class = "E"
+mark_basis = "liq"
+plan = "roll_review"
+when = "dte_trading <= thresholds.dte"
+required_inputs = ["dte_trading"]
+
+[rule.thresholds]
+dte = 21
+dte_unit = "trading"
+
+[rule.rearm]
+cooldown_min = 1440

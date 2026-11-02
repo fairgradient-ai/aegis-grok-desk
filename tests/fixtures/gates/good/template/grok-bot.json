@@ -1,0 +1,17 @@
+{
+  "status": "unpublished",
+  "name": "Aegis Desk Lead",
+  "title": "Head of the options desk",
+  "description": "Aegis Desk Lead (release 0.1.0): gate fixture. The desk never places, modifies or cancels orders.",
+  "source": {
+    "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",
+    "release": "0.1.0"
+  },
+  "templateSkillNames": [
+    "aegis-desk-charter"
+  ],
+  "skills": {
+    "aegis-desk-charter": "7561c8cc9fa93204ec2bfe008b2c4e066bd9831a1c66bd5095d65778f5f4d9fd"
+  },
+  "roleSkills": {}
+}

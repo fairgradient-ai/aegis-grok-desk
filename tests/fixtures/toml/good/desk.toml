@@ -1,0 +1,42 @@
+# Aegis Desk owner configuration (plan section 8): written once by desk_init.py, hashed,
+# never written by routines. Money values parse as Decimal; times as datetime.time.
+[desk]
+timezone = "America/New_York"
+engagement = "active-owner"
+cadence_profile = "lean"            # lean | active
+chatty_or_quiet = "quiet"
+
+[owner]
+broker_exercise_cutoff_et = 16:30:00
+approval_level = 2                  # self-attested options approval level
+declared_equity = 250000.00
+attention_thresholds = { pl_day_pct = 1.5, pl_trade_abs = 500.00 }
+disclosures_acknowledged = [
+  "occ-characteristics-and-risks-2024",
+  "ai-role-disclosure",             # trailing comma below is allowed in arrays
+]
+
+[[owner.accounts]]
+name = "Brokerage (margin)"
+type = "margin"
+
+[[owner.accounts]]
+name = "Roth IRA"
+type = "ira"
+
+[market_data]
+vendor = "tradier"
+host = "sandbox"                    # sandbox | production (production needs md_proxy, Stage 3)
+token_env = "TRADIER_API_TOKEN"
+feed_delay_min = 15
+quote_ttl_min = 5
+grace_min = 5
+pin_band = 0.25
+
+[rates]
+risk_free_rate = 0.0412
+source = "3-month Treasury bill, owner-entered"
+as_of = 2026-10-30
+
+[levels]
+order_shape_enabled = false

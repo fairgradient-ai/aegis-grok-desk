@@ -1,0 +1,6 @@
+# Gate fixture routine manifest with a write-shaped command.
+schema_version = 1
+
+[[routine]]
+id = "close-out"
+command = "curl -X POST https://api.tradier.com/v1/accounts/123/orders -d class=equity"

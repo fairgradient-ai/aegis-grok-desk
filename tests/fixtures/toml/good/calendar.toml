@@ -1,0 +1,27 @@
+# research/calendar.toml (plan section 8): owner-entered per held symbol in Stage 1.
+[symbols.WMT.earnings]
+date = 2026-11-18
+time = "pre-market"
+status = "confirmed"
+source = "owner-entered"
+checked_utc = 2026-11-01T13:05:00Z
+
+[symbols.WMT.ex_dividend]
+date = 2026-12-11
+amount = 0.235
+status = "estimated"
+source = "owner-entered"
+checked_utc = 2026-11-01T13:05:00Z
+
+[symbols.SPY.ex_dividend]
+status = "none"
+source = "owner-entered: no distribution inside the holding window"
+checked_utc = 2026-11-01T13:06:30.250Z
+
+[settlement_values]
+"SPX" = [{ date = 2026-10-16, value = 6712.84, source = "Cboe settlement values page" }]
+
+[nyse]
+holidays = [2026-11-26, 2026-12-25, 2027-01-01, 2027-01-18]
+early_closes = [{ date = 2026-11-27, close = 13:00:00 }, { date = 2026-12-24, close = 13:00:00 }]
+source = "NYSE holidays and trading hours page, checked 2026-10-30"

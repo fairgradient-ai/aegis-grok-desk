@@ -1,0 +1,4 @@
+# expect: expected a value, found end of line
+# expect-line: 3
+a =
+b = 1

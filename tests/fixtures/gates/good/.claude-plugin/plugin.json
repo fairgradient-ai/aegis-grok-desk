@@ -1,0 +1,8 @@
+{
+  "name": "aegis-desk",
+  "description": "Gate fixture.",
+  "version": "0.1.0",
+  "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
+  "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",
+  "license": "MIT"
+}

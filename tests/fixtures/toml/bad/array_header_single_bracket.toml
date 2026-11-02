@@ -1,0 +1,3 @@
+# expect: expected ']]' to close the table header
+# expect-line: 3
+[[a]

@@ -1,0 +1,12 @@
+# Book & Risk limits, owner-adopted (plan section 8).
+[limits]
+per_trade_loss = 1500.00
+daily_loss = 3000.00
+concentration_pct = 20.0
+net_delta_per_name = 300
+undefined_risk = "RED"
+
+[limits.hysteresis]
+watch_pct = 80
+breach_pct = 100
+rearm_pct = 70

@@ -1,0 +1,4 @@
+# expect: table a is defined twice
+# expect-line: 4
+[[a]]
+[a]

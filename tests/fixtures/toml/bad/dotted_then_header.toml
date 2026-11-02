@@ -1,0 +1,4 @@
+# expect: already created by dotted keys
+# expect-line: 4
+a.b = 1
+[a]

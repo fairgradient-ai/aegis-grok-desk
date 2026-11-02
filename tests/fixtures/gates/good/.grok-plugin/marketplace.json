@@ -1,0 +1,20 @@
+{
+  "name": "aegis-desk",
+  "description": "Gate fixture marketplace",
+  "owner": {
+    "name": "FairGradient"
+  },
+  "plugins": [
+    {
+      "name": "aegis-desk",
+      "description": "Gate fixture.",
+      "category": "development",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/fairgradient-ai/aegis-grok-desk.git",
+        "ref": "v0.1.0"
+      },
+      "version": "0.1.0"
+    }
+  ]
+}

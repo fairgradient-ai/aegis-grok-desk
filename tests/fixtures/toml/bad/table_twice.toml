@@ -1,0 +1,5 @@
+# expect: table t is defined twice
+# expect-line: 5
+[t]
+x = 1
+[t]

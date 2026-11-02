@@ -1,0 +1,3 @@
+# expect: unterminated literal string
+# expect-line: 3
+a = 'abc

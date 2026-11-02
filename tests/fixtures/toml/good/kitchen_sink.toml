@@ -1,0 +1,99 @@
+# Every supported construct at once (see the reader's module notes).
+title = "Desk \u00e9 \U0001F4C8 tab\t quote\" backslash\\ bell\b ff\f cr\r nl\n"
+literal = 'C:\path\no "escape" here'
+empty_basic = ""
+empty_literal = ''
+multi_basic = """
+Roses are red
+  Violets are blue"""
+multi_backslash = """\
+    The quick brown \
+    fox jumps."""
+multi_quotes = """has ""two"" quotes and ends with two"""""
+multi_literal = '''
+raw \n stays, 'single' quotes too
+'''
+multi_literal_quotes = '''ends with two'''''
+int_dec = 1_000_000
+int_neg = -17
+int_plus = +42
+int_zero = 0
+int_hex = 0xDEAD_beef
+int_oct = 0o755
+int_bin = 0b1010_1010
+flt_plain = 3.42
+flt_neg = -0.5
+flt_exp = 6.626e-34
+flt_cap_exp = 1E5
+flt_both = 6.02e+23
+flt_under = 224_617.445_991
+bool_t = true
+bool_f = false
+odt_z = 1979-05-27T07:32:00Z
+odt_lower = 1979-05-27t07:32:00z
+odt_offset = 1979-05-27T00:32:00.999999-07:00
+odt_space = 1979-05-27 07:32:00.1234567+05:30
+ldt = 1979-05-27T07:32:00
+ldt_frac = 1979-05-27T07:32:00.5
+ld = 1979-05-27
+lt = 07:32:00
+lt_frac = 00:32:00.999999
+arr_ints = [1, 2, 3]
+arr_multi = [
+  "a",   # first
+  "b",
+  "c",
+]
+arr_nested = [[1, 2], ["x", "y"], [[true], [false]]]
+arr_mixed = [1, "two", 3.0, 1979-05-27, { k = "v" }]
+arr_empty = []
+inline_empty = {}
+inline = { name = "x", dims = { w = 1, h = 2 }, dot.ted.key = 3, list = [1, 2] }
+"quoted key" = 1
+'literal key' = 2
+"" = "empty quoted key"
+"with \"escape\"" = 3
+a . b . c = 4
+site."google.com" = true
+1234 = "numeric bare key"
+dashed-key_name = 5
+
+[table]
+k = "v"
+
+[table.sub]
+k = "sub"
+
+[table.sub.deeper]
+k = "deeper"
+
+[[aot]]
+name = "first"
+[aot.detail]
+n = 1
+[[aot]]
+[[aot]]
+name = "third"
+[aot.detail]
+n = 3
+[[aot.items]]
+sku = 1
+[[aot.items]]
+sku = 2
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+[fruit.apple.texture]
+smooth = true
+
+[x.y.z.w]
+deep = true
+[x]
+q = 1
+
+["quoted table".'literal part']
+v = 1
+
+[ spaced . header ]
+v = 2

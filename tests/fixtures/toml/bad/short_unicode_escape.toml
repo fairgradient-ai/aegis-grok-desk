@@ -1,0 +1,3 @@
+# expect: needs exactly 4 hexadecimal digits
+# expect-line: 3
+a = "\u12"

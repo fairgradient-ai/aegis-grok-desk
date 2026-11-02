@@ -1,0 +1,15 @@
+# Formatter configuration for contributors' editors and hooks. ruff is optional and never part of
+# the gate (bash scripts/check.sh is standard-library Python only). This file exists so that any
+# formatter that does run respects the Python 3.9 syntax floor and the import layout the tests
+# need (import tests._path before the aegis_desk imports).
+target-version = "py39"
+line-length = 100
+src = ["scripts", "."]
+extend-exclude = ["tests/fixtures"]
+
+[lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["aegis_desk", "tests"]

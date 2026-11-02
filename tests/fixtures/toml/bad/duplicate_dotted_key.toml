@@ -1,0 +1,5 @@
+# expect: duplicate key owner.name
+# expect-line: 5
+[owner]
+name = "x"
+name = "y"
