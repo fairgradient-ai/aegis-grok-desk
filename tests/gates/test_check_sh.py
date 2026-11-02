@@ -106,9 +106,15 @@ class CheckShTests(unittest.TestCase):
 
     def test_python_310_syntax_fails_the_floor(self) -> None:
         # The 3.9-grammar parser reports the match statement at the block's last line; the
-        # file-qualified prefix and the message are the contract, not the line number.
-        self.assert_fails("py310_syntax", "scripts/aegis_desk/floor_violation.py:", "not valid Python 3.9 syntax",
-                          "Pattern matching is only supported in Python 3.10")
+        # file-qualified prefix and the message are the contract, not the line number. The reason
+        # text depends on the interpreter running the gate: CPython 3.10 and later know the
+        # statement and say so, CPython 3.9 has no concept of it and reports a plain syntax error.
+        output = self.assert_fails("py310_syntax", "scripts/aegis_desk/floor_violation.py:",
+                                   "not valid Python 3.9 syntax")
+        self.assertTrue(
+            "Pattern matching is only supported in Python 3.10" in output or "invalid syntax" in output,
+            output,
+        )
 
     def test_missing_future_import_fails_the_floor(self) -> None:
         self.assert_fails("missing_future_import",
