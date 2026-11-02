@@ -1,0 +1,9 @@
+name: Bug
+description: Something is wrong in a tool, skill or runbook
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: Runtime, release, exact command and sanitized output. Keep credentials and account details out.
+    validations:
+      required: true

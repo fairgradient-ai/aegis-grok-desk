@@ -1,0 +1,4 @@
+{
+  "description": "Aegis Desk: deny any shell command or MCP tool call that looks like a broker order write (gate ships in release 0.1.0)",
+  "hooks": {}
+}

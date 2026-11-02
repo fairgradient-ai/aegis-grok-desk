@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aegis-desk",
+  "description": "Aegis Desk: a read-only options position-monitoring and exit-alert desk for Grok Bot and Grok Build. Eight roles and twenty-one skills; stdlib tools compute every number; the desk never places, modifies or cancels an order.",
+  "version": "0.1.0",
+  "author": {"name": "FairGradient", "url": "https://github.com/fairgradient-ai"},
+  "license": "MIT",
+  "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",
+  "keywords": ["grok-bot", "grok-build", "options", "position-monitoring", "exit-alerts", "agent-skills"]
+}

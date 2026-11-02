@@ -1,0 +1,10 @@
+{
+  "name": "aegis-desk",
+  "description": "Turn your agent into a read-only options desk: eight roles with full system prompts and twenty-one skills for position monitoring, P/L and rule-driven exit alerts.",
+  "version": "0.1.0",
+  "author": {"name": "FairGradient", "url": "https://github.com/fairgradient-ai"},
+  "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
+  "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",
+  "license": "MIT",
+  "keywords": ["options", "position-monitoring", "exit-alerts", "agents", "grok-bot", "agent-skills"]
+}

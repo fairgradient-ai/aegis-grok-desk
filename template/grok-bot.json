@@ -1,0 +1,10 @@
+{
+  "status": "unpublished",
+  "name": "Aegis Desk Lead",
+  "title": "Head of the options desk",
+  "description": "Aegis Desk Lead (release 0.1.0): a read-only options position-monitoring and exit-alert desk. Say 'Start the desk.' to begin. The desk never places, modifies or cancels orders.",
+  "source": {"repository": "https://github.com/fairgradient-ai/aegis-grok-desk", "release": "0.1.0"},
+  "templateSkillNames": [],
+  "skills": {},
+  "roleSkills": {}
+}
