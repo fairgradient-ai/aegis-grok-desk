@@ -157,6 +157,11 @@ class LoadTokenTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def write_file(self, text: str, mode: int = 0o600) -> str:
+        # A previous step may have left the file read-only (0400). Only root may reopen such a file for
+        # writing, and the CI runners are not root, so the file is replaced rather than rewritten in place
+        # (removing it needs write access to the test's own directory, not to the file).
+        if os.path.lexists(self.file):
+            os.remove(self.file)
         with open(self.file, "w", encoding="utf-8") as handle:
             handle.write(text)
         os.chmod(self.file, mode)
