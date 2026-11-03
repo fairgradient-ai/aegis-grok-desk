@@ -1,0 +1,14 @@
+instrument_type,symbol,occ_symbol,quantity,expiration,option_right,strike,account,trade_id,opened,cost_basis_total,cost_basis_per_unit,open_price_per_share,status,closed,closed_quantity,close_price_per_unit,underlying_stop,note
+# Reconciliation fixture: every settlement branch of csv_recon at --now 2026-11-24T12:00:00Z (Tuesday 07:00 ET).
+option,WMT,WMT261120P00095000,-1,,,,,AG-20261015-01,2026-10-15,-165.00,,1.65,open,,,,,cash-secured put
+equity,WMT,,200,,,,,AG-20261020-02,2026-10-20,19700.00,,,open,,,,,
+option,WMT,WMT261120C00105000,-2,,,,,AG-20261020-02,2026-10-20,-684.00,,3.42,open,,,,,covered call
+equity,NVDA,,200,,,,,AG-20261022-03,2026-10-22,28240.00,,,open,,,,,
+option,NVDA,NVDA261120C00150000,-2,,,,,AG-20261022-03,2026-10-22,-610.00,,3.05,open,,,,,covered call
+option,AMD,AMD261120C00230000,-1,,,,,AG-20261023-04,2026-10-23,-520.00,,5.20,open,,,,,short call #assign-ok
+option,SPX,SPX261120C06500000,1,,,,,AG-20261101-05,2026-11-01,2450.00,,24.50,open,,,,,AM-settled index call
+option,RUT,RUT261120P02200000,-1,,,,,AG-20261101-06,2026-11-01,-1850.00,,18.50,open,,,,,AM-settled index put
+option,AAPL,AAPL261120P00230000,2,,,,,AG-20261105-07,2026-11-05,1240.00,,6.20,open,,,,,long put
+etf,SPY,,100,,,,,AG-20261110-08,2026-11-10,63240.00,,,open,,,,,
+option,SPY,SPY261218P00620000,1,,,,,AG-20261110-08,2026-11-10,1130.00,,11.30,open,,,,,protective put
+option,SPY,SPY261016P00600000,-1,,,,,AG-20261001-09,2026-10-01,-480.00,,,closed,2026-10-14,1,0.55,,closed early

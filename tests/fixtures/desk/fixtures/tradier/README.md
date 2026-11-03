@@ -63,6 +63,9 @@ the clock's `timestamp` (the vendor's clock is read at the fetch).
 | `after_close` | 2026-11-03 | 2026-11-03 15:59:40 | 2026-11-03T20:59:40Z | 2026-11-03T21:25:00Z | 16:25:00 | `postmarket` | after the close (16:00 ET = 2026-11-03T21:00:00Z): "as of close 16:00 ET"; the stamp is 20 s before the close |
 | `pre_open` | 2026-11-02 | 2026-11-02 15:59:55 | 2026-11-02T20:59:55Z | 2026-11-03T13:00:00Z | 08:00:00 | `premarket` | before the open; judged against the prior close 2026-11-02 16:00 ET = 2026-11-02T21:00:00Z (5 s after the stamp) |
 | `holiday` | 2026-11-25 | 2026-11-25 15:59:50 | 2026-11-25T20:59:50Z | 2026-11-26T15:00:00Z | 10:00:00 | `closed` | Thanksgiving Day: "NYSE closed"; no quote fetch is expected (the files exist so a fetch that does happen is graded, not crashed) |
+| `t1` | 2026-11-19 | 2026-11-19 14:31:12 | 2026-11-19T19:31:12Z | 2026-11-19T19:50:00Z | 14:50:00 (Thursday) | `open` | T-1 of the 2026-11-20 expiration (DTE 1 trading day): the T-1 preview, the assignment watch (the WMT ex-dividend 2026-11-24 falls after the call's last trading day, so no dividend tier is listed; the NVDA pin fires) and the pin tiers; quotes 18 min 48 s old |
+| `expiry_day` | 2026-11-20 | 2026-11-20 14:31:12 | 2026-11-20T19:31:12Z | 2026-11-20T19:50:00Z | 14:50:00 (Friday) | `open` | expiration day of the two November contracts (DTE 0, last trading day 2026-11-20): the Final Call; act-by is the broker cutoff 16:30 ET = 21:30 UTC; quotes 18 min 48 s old |
+| `post_expiry` | 2026-11-20 (closing quotes) | 2026-11-20 15:59:50 | 2026-11-20T20:59:50Z | 2026-11-21T14:30:00Z | 09:30:00 (Saturday) | `closed` | the Saturday post-expiry routine: weekend, "NYSE closed", no quote fetch; the quotes are Friday's closing quotes, 10 s before the 16:00 ET close (2026-11-20T21:00:00Z); the history files carry the expiration-day bars the reconciliation reads |
 
 ### Every epoch value, computed with Python
 
@@ -77,12 +80,19 @@ readings are `aegis_desk.market_clock.to_et` of the same instants.
 | 1793739580000 | 2026-11-03T20:59:40Z | 2026-11-03 15:59:40 EST | `after_close`: every `*_date` |
 | 1793653195000 | 2026-11-02T20:59:55Z | 2026-11-02 15:59:55 EST | `pre_open`: every `*_date` |
 | 1795640390000 | 2026-11-25T20:59:50Z | 2026-11-25 15:59:50 EST | `holiday`: every `*_date` |
+| 1795116672000 | 2026-11-19T19:31:12Z | 2026-11-19 14:31:12 EST | `t1`: every `*_date` |
+| 1795203072000 | 2026-11-20T19:31:12Z | 2026-11-20 14:31:12 EST | `expiry_day`: every `*_date` |
+| 1795208390000 | 2026-11-20T20:59:50Z | 2026-11-20 15:59:50 EST | `post_expiry`: every `*_date` |
 | 1793735400 | 2026-11-03T19:50:00Z | 2026-11-03 14:50:00 EST | `regular` and `stale`: `clock.json` timestamp (= `--now`) |
 | 1793741100 | 2026-11-03T21:25:00Z | 2026-11-03 16:25:00 EST | `after_close`: `clock.json` timestamp (= `--now`) |
 | 1793710800 | 2026-11-03T13:00:00Z | 2026-11-03 08:00:00 EST | `pre_open`: `clock.json` timestamp (= `--now`) |
 | 1795705200 | 2026-11-26T15:00:00Z | 2026-11-26 10:00:00 EST | `holiday`: `clock.json` timestamp (= `--now`) |
+| 1795117800 | 2026-11-19T19:50:00Z | 2026-11-19 14:50:00 EST | `t1`: `clock.json` timestamp (= `--now`) |
+| 1795204200 | 2026-11-20T19:50:00Z | 2026-11-20 14:50:00 EST | `expiry_day`: `clock.json` timestamp (= `--now`) |
+| 1795271400 | 2026-11-21T14:30:00Z | 2026-11-21 09:30:00 EST | `post_expiry`: `clock.json` timestamp (= `--now`) |
 | 1793739600 | 2026-11-03T21:00:00Z | 2026-11-03 16:00:00 EST | the 2026-11-03 close the `after_close` set is graded against (not in a file) |
 | 1793653200 | 2026-11-02T21:00:00Z | 2026-11-02 16:00:00 EST | the prior close the `pre_open` set is graded against (not in a file) |
+| 1795208400 | 2026-11-20T21:00:00Z | 2026-11-20 16:00:00 EST | the 2026-11-20 close: the exercise cutoff of the November contracts, 10 s after the `post_expiry` stamp, the prior close the `post_expiry` set is graded against (not in a file) |
 
 ## Symbols and prices
 
@@ -92,8 +102,8 @@ are the standard monthly expirations (third Fridays). Prices of one trading day 
 every set of that day; only the stamps and the volumes differ (`stale` < `regular` < `after_close`
 volume, the day's activity accumulating). `change` is `last - prevclose` exactly and
 `change_percentage` is that change over `prevclose` in percent, rounded half-even to two decimals.
-`close` is null while the session is open (`regular`, `stale`) and equals `last` after a close
-(`after_close`, `pre_open`, `holiday`).
+`close` is null while the session is open (`regular`, `stale`, `t1`, `expiry_day`) and equals
+`last` after a close (`after_close`, `pre_open`, `holiday`, `post_expiry`).
 
 | Day (sets) | Symbol | bid / ask | last | prevclose | open / high / low |
 | --- | --- | --- | --- | --- | --- |
@@ -113,17 +123,67 @@ volume, the day's activity accumulating). `change` is `last - prevclose` exactly
 | | WMT | 105.92 / 105.98 | 105.95 | 105.60 | 105.70 / 106.20 / 105.35 |
 | | NVDA | 152.27 / 152.33 | 152.30 | 151.80 | 152.00 / 153.10 / 151.20 |
 | | SPY261218P00620000 | 6.00 / 6.20 | 6.10 | 6.45 | 6.40 / 6.55 / 5.95 |
+| 2026-11-19 (`t1`) | SPY | 652.10 / 652.14 | 652.12 | 650.80 | 651.00 / 652.60 / 650.50 |
+| | WMT | 106.40 / 106.46 | 106.43 | 105.90 | 106.00 / 106.70 / 105.80 |
+| | NVDA | 149.20 / 149.25 | 149.22 | 150.10 | 149.90 / 150.40 / 148.80 |
+| | WMT261120C00105000 | 1.52 / 1.60 | 1.56 | 1.25 | 1.30 / 1.70 / 1.20 |
+| | NVDA261120C00150000 | 1.00 / 1.10 | 1.05 | 1.60 | 1.45 / 1.55 / 0.95 |
+| | SPY261218P00620000 | 3.80 / 4.00 | 3.90 | 4.35 | 4.25 / 4.40 / 3.75 |
+| 2026-11-20 at 14:31 ET (`expiry_day`) | SPY | 650.00 / 650.04 | 650.02 | 652.12 | 651.80 / 652.40 / 649.60 |
+| | WMT | 104.90 / 104.96 | 104.93 | 106.43 | 105.10 / 105.60 / 104.70 |
+| | NVDA | 153.30 / 153.36 | 153.33 | 149.22 | 150.20 / 153.80 / 149.90 |
+| | WMT261120C00105000 | 0.12 / 0.16 | 0.14 | 1.56 | 0.55 / 0.65 / 0.10 |
+| | NVDA261120C00150000 | 3.30 / 3.42 | 3.36 | 1.05 | 0.95 / 3.60 / 0.55 |
+| | SPY261218P00620000 | 4.10 / 4.30 | 4.20 | 3.90 | 3.95 / 4.35 / 3.85 |
+| 2026-11-20 closing quotes (`post_expiry`) | SPY | 650.00 / 650.04 | 650.02 | 652.12 | 651.80 / 652.40 / 649.60 |
+| | WMT | 104.38 / 104.42 | 104.40 | 106.43 | 105.10 / 105.60 / 104.20 |
+| | NVDA | 153.38 / 153.42 | 153.40 | 149.22 | 150.20 / 153.80 / 149.90 |
+| | WMT261120C00105000 | 0.01 / 0.05 | 0.03 | 1.56 | 0.55 / 0.65 / 0.01 |
+| | NVDA261120C00150000 | 3.30 / 3.45 | 3.38 | 1.05 | 0.95 / 3.60 / 0.55 |
+| | SPY261218P00620000 | 4.10 / 4.30 | 4.20 | 3.90 | 3.95 / 4.35 / 3.85 |
 
 The days link up: the 2026-11-03 `prevclose` values are the 2026-11-02 closes of the `pre_open`
 set, which are the last bars of `history__<SYMBOL>__2026-10-27__2026-11-02.json` (five daily
 bars, identical in every set; the 2026-11-02 bar's open/high/low/close/volume equal the
-`pre_open` quote's). In the `holiday` set the two November-20 options have expired: they are
-reported in `unmatched_symbols` (a string for one symbol, a list for two), their chains are
+`pre_open` quote's). In the expiry week the `expiry_day` and `post_expiry` `prevclose` values are
+the `t1` lasts (the option `prevclose` values of `t1` itself, 1.25 / 1.60 / 4.35, are the
+fixture's own 2026-11-18 closes: the addendum fixes bid/ask/last only). The `post_expiry` closing
+quotes of WMT and NVDA equal the 2026-11-20 bars of `history__WMT__2026-11-20__2026-11-20.json`
+(o 105.10 h 105.60 l 104.20 c 104.40 v 9100000: the 105 call expired 0.60 out of the money,
+outside the 0.25 pin band) and `history__NVDA__2026-11-20__2026-11-20.json` (o 150.20 h 153.80
+l 149.90 c 153.40 v 41000000: the 150 call finished 3.40 in the money); the intraday
+`expiry_day` quotes share the day's open and never exceed the day's range or volume. Monday
+2026-11-23's closing quotes live in the reconciliation root `tests/fixtures/desk_recon` (set
+`recon`, SPY `prevclose` 650.02 = the `post_expiry` last).
+
+In the `holiday` set the two November-20 options have expired: they are reported in
+`unmatched_symbols` (a string for one symbol, a list for two), their chains are
 `{"options": null}` and their strike lists `{"strikes": null}`; the December put is still alive.
-The `holiday` set also carries the expiration-day bars `history__WMT__2026-11-20__2026-11-20.json`
-(close 104.86, within the 0.25 pin band of the 105 strike) and
-`history__NVDA__2026-11-20__2026-11-20.json` (close 153.40, the 150 call 3.40 in the money);
-a single day comes back as an object under `day`, not a list.
+In `t1`, `expiry_day` and `post_expiry` the November contracts are still quoted and listed:
+`expirations__<SYMBOL>.json` of those sets starts at 2026-11-20 (a contract stays listed through
+its last session), and the `expiry_day` / `post_expiry` option quotes carry an `expiration_date`
+equal to the quote day.
+
+### History files: the `{"history": {"day": ...}}` shape
+
+`day` is an OBJECT when the range holds one bar and a LIST when it holds several (Tradier's
+object-or-list convention, the same as `quote`). Every bar is `date, open, high, low, close,
+volume`. The five-bar `2026-10-27..2026-11-02` files are identical in every set. The expiration
+bars PR 2b's reconciliation reads:
+
+| File (sets) | Bars (date o / h / l / c / v) | Reads as |
+| --- | --- | --- |
+| `history__WMT__2026-11-20__2026-11-20.json` (`holiday`) | 2026-11-20 104.60 / 105.30 / 104.20 / 104.86 / 18700000 (object) | the PR 2a single-day file, unchanged: close 0.14 inside the 0.25 pin band |
+| `history__NVDA__2026-11-20__2026-11-20.json` (`holiday`) | 2026-11-20 151.20 / 153.90 / 150.80 / 153.40 / 260000000 (object) | the PR 2a single-day file, unchanged: the 150 call 3.40 in the money |
+| `history__WMT__2026-11-20__2026-11-23.json` (`holiday`, and `recon` in the reconciliation root) | 2026-11-20 104.60 / 105.20 / 104.30 / 104.86 / 9100000; 2026-11-23 105.30 / 105.90 / 104.95 / 105.62 / 8400000 (list) | PIN_UNCERTAIN: 104.86 is 0.14 inside the band and Monday opened at 105.30, across the strike (the after-hours-crossing proxy) |
+| `history__NVDA__2026-11-20__2026-11-23.json` (`holiday`, `recon`) | 2026-11-20 150.20 / 153.80 / 149.90 / 153.40 / 41000000; 2026-11-23 152.90 / 154.40 / 152.10 / 154.10 / 38000000 (list) | PROBABLE_ASSIGNED: 3.40 in the money and Monday opened on the same side |
+| `history__WMT__2026-11-20__2026-11-20.json` (`post_expiry`) | 2026-11-20 105.10 / 105.60 / 104.20 / 104.40 / 9100000 (object) | EXPIRED_OTM: the 105 call expired 0.60 out of the money |
+| `history__NVDA__2026-11-20__2026-11-20.json` (`post_expiry`) | 2026-11-20 150.20 / 153.80 / 149.90 / 153.40 / 41000000 (object) | PROBABLE_ASSIGNED: the 150 call finished 3.40 in the money |
+
+The single-day `holiday` files keep their PR 2a open/high/low/volume (the addendum keeps them
+unchanged) while the two-bar files carry the addendum's values; only the closes are shared
+(104.86 and 153.40). The `post_expiry` WMT world closes at 104.40, not 104.86: the Saturday
+routine sees a clean EXPIRED_OTM, the Thanksgiving-week sets a pin.
 
 ## Chains: Black-Scholes-Merton consistent with the anchor quote
 
@@ -150,20 +210,42 @@ spot one day earlier, `open` at the day's opening spot. Because tau differs betw
 | `pre_open` | NVDA 2026-11-20 | 147.605 | 2.85 | 1555205 / 0.049315 | 0.2889 |
 | `pre_open` | SPY 2026-12-18 | 645.90 | 10.45 | 3974405 / 0.126028 | 0.2463 |
 | `holiday` | SPY 2026-12-18 | 651.41 | 6.10 | 1987210 / 0.063014 | 0.2831 |
+| `t1` | WMT 2026-11-20 | 106.43 | 1.56 | 91728 / 0.002909 | 0.2510 |
+| `t1` | NVDA 2026-11-20 | 149.225 | 1.05 | 91728 / 0.002909 | 0.4337 |
+| `t1` | SPY 2026-12-18 | 652.12 | 3.90 | 2510928 / 0.079621 | 0.2137 |
+| `expiry_day` | WMT 2026-11-20 | 104.93 | 0.14 | 5328 / 0.000169 | 0.3168 |
+| `expiry_day` | NVDA 2026-11-20 | 153.33 | 3.36 | 5328 / 0.000169 | 0.9547 |
+| `expiry_day` | SPY 2026-12-18 | 650.02 | 4.20 | 2424528 / 0.076881 | 0.2154 |
+| `post_expiry` | WMT 2026-11-20 | 104.40 | 0.03 | 10 / 0.000000 | none: fallback chain (below) |
+| `post_expiry` | NVDA 2026-11-20 | 153.40 | 3.375 | 10 / 0.000000 | none: fallback chain (the mid is even below the 3.40 intrinsic) |
+| `post_expiry` | SPY 2026-12-18 | 650.02 | 4.20 | 2419210 / 0.076713 | 0.2156 |
+
+Fallback chains: when the anchor is under one hour from its exercise cutoff (the `post_expiry`
+set, 10 s before the close) no implied volatility is solved, mirroring the book's `expiring`
+rule (under one hour tau gives no IV and no Greeks), and every neighbour is written at
+`max(intrinsic, 0.01) + 0.05` per share at the closing spot (bid = mid - 0.05 floored at 0.00,
+ask = 2 x mid - bid, `last` = mid, `prevclose` and `open` by the same rule at the prior close and
+the open), with one no-arbitrage cap: a contract further out of the money than the anchor is
+never worth more than the anchor, so the WMT 107.5 and 110 calls are 0.00 / 0.06 (mid 0.03, the
+anchor's mid) rather than 0.06, and the chains stay monotone in strike. Nothing in PR 2b fetches
+chains; the files exist so a chain request on these sets is served, not crashed.
 
 ## Expirations, strikes, history, clock, calendar
 
 * `expirations__<SYMBOL>.json`: `{"expirations": {"date": [...]}}`, ascending ISO dates, all NYSE
   trading days after the set's quote day (2027-06-17 is a Thursday because 2027-06-18, the
   observed Juneteenth, is a holiday). The 2026-11-03 and 2026-11-02 lists are identical; the
-  `holiday` lists start at 2026-11-27.
+  `holiday` lists start at 2026-11-27; the `t1`, `expiry_day` and `post_expiry` lists start at
+  2026-11-20 (the expiring contracts are listed through their last session, so on 2026-11-20
+  the first expiration equals the quote day).
 * `strikes__<SYMBOL>__<YYYY-MM-DD>.json`: `{"strikes": {"strike": [JSON numbers]}}`, ascending,
   a superset of the chain's strikes.
-* `history__...`: `{"history": {"day": [...]}}` with `date, open, high, low, close, volume`.
+* `history__...`: `{"history": {"day": ...}}` with `date, open, high, low, close, volume`; `day`
+  is an object for one bar and a list for several (the table above).
 * `clock.json`: `{"clock": {"date", "description", "state", "timestamp", "next_change", "next_state"}}`
   with `timestamp` in epoch SECONDS (the only endpoint that uses seconds) equal to the set's `--now`;
   `state` is `open`, `postmarket`, `premarket` or `closed`, and `aegis_desk.market_clock.reconcile_vendor_state`
-  agrees with the local session at every set's `--now`.
+  agrees with the local session at every set's `--now` (`post_expiry`: Saturday, `closed`).
 * `calendar__2026-11.json`: `{"calendar": {"month": 11, "year": 2026, "days": {"day": [...]}}}`, one
   entry per calendar day; open days carry `premarket` 07:00-09:24, `open` 09:30-16:00 and
   `postmarket` 16:00-20:00 (13:00 and 13:00-17:00 on 2026-11-27, the early close); closed days
@@ -176,3 +258,5 @@ set's stamps: `python3 tests/fixtures/desk/fixtures/tradier/_generate.py` from t
 root (it imports `aegis_desk` from `scripts/`). It is data tooling for this fixture tree, not a
 desk tool, and it is excluded from the repository gates like the rest of `tests/fixtures/`.
 `tests/engine/test_desk_fixtures.py` checks the generated tree against the facts in this README.
+The reconciliation root's generator (`tests/fixtures/desk_recon/fixtures/tradier/_generate.py`)
+imports this one by path, so both roots share one set of shapes.

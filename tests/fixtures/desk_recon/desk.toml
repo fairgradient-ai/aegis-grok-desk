@@ -1,0 +1,44 @@
+# Fixture desk root (tests/fixtures/desk): the owner configuration the offline tool tests and
+# the command journeys load. Sandbox host; freshness bound = 15 + 5 + 5 = 25 minutes (plan
+# section 8). Tools copy this tree to a temporary directory before anything writes.
+# Money values parse as Decimal; the cutoff as datetime.time; as_of as datetime.date.
+[desk]
+timezone = "America/New_York"
+engagement = "active-owner"
+cadence_profile = "lean"            # lean | active
+chatty_or_quiet = "quiet"           # chatty | quiet
+
+[owner]
+broker_exercise_cutoff_et = 16:30:00
+approval_level = 2                  # self-attested options approval level (0-5)
+declared_equity = 250000.00
+attention_thresholds = { pl_day_pct = 1.5, pl_trade_abs = 500.00 }
+disclosures_acknowledged = [
+  "occ-characteristics-and-risks-2024",
+  "ai-role-disclosure",
+]
+
+[[owner.accounts]]
+name = "Brokerage (margin)"
+type = "margin"
+
+[[owner.accounts]]
+name = "Roth IRA"
+type = "ira"
+
+[market_data]
+vendor = "tradier"
+host = "sandbox"                    # the reader also accepts "production"; the tools refuse it (Stage 3)
+token_env = "TRADIER_API_TOKEN"     # token_file is left at its default; offline runs load no credential
+feed_delay_min = 15                 # the sandbox feed is delayed 15 minutes (>= 15 required here)
+quote_ttl_min = 5
+grace_min = 5
+pin_band = 0.25
+
+[rates]
+risk_free_rate = 0.0412
+source = "3-month Treasury bill, owner-entered"
+as_of = 2026-10-30
+
+[levels]
+order_shape_enabled = false

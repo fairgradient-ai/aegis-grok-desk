@@ -1,0 +1,40 @@
+{
+  "quotes": {
+    "quote": {
+      "symbol": "NVDA261120C00150000",
+      "description": "NVDA Nov 20 2026 $150.00 Call",
+      "exch": "Z",
+      "type": "option",
+      "last": 1.05,
+      "change": -0.55,
+      "volume": 31500,
+      "open": 1.45,
+      "high": 1.55,
+      "low": 0.95,
+      "close": null,
+      "bid": 1.0,
+      "ask": 1.1,
+      "underlying": "NVDA",
+      "strike": 150.0,
+      "change_percentage": -34.38,
+      "average_volume": 0,
+      "last_volume": 5,
+      "trade_date": 1795116672000,
+      "prevclose": 1.6,
+      "week_52_high": 0.0,
+      "week_52_low": 0.0,
+      "bidsize": 240,
+      "bidexch": "Z",
+      "bid_date": 1795116672000,
+      "asksize": 210,
+      "askexch": "Z",
+      "ask_date": 1795116672000,
+      "open_interest": 64200,
+      "contract_size": 100,
+      "expiration_date": "2026-11-20",
+      "expiration_type": "standard",
+      "option_type": "call",
+      "root_symbol": "NVDA"
+    }
+  }
+}

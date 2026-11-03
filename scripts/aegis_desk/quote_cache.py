@@ -21,6 +21,12 @@ Files (under ``paths.cache_dir``, written through :mod:`aegis_desk.state`)
 * ``chains/<SYMBOL>__<YYYY-MM-DD>.json``: ``{"schema": 1, "symbol", "expiration", "fetched_utc",
   "options": [<raw vendor dict>, ...]}``; chains are fetched on demand only (``--chain``) and
   capped per run.
+* ``history/<SYMBOL>__<START>__<END>.json``: ``{"schema": 1, "symbol", "start", "end", "fetched_utc",
+  "bars": [<raw vendor dict>, ...]}`` (PR 2b): the daily bars ``csv_recon`` settles expired legs
+  against. A cached answer with bars that was fetched on a later ET date than ``end`` is final
+  (closed days never change) and served without any TTL; otherwise the quote TTL applies, an
+  empty answer included. History is fetched on non-trading days too (the post-expiry Saturday
+  routine), and a history request counts against ``per_run_max_requests`` like a chain.
 
 Rules
 -----
@@ -89,7 +95,7 @@ from . import desk_config, desk_paths, market_clock, state
 from .desk_config import DeskConfig
 from .desk_paths import DeskPaths
 from .market_clock import SessionInfo
-from .market_types import MarketTypesError, Quote, RequestReceipt
+from .market_types import Bar, MarketTypesError, Quote, RequestReceipt
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
 
@@ -97,6 +103,7 @@ SCHEMA: int = 1
 QUOTES_FILE: str = "quotes.json"
 LEDGER_FILE: str = "ledger.jsonl"
 CHAINS_SUBDIR: str = "chains"
+HISTORY_SUBDIR: str = "history"
 MAX_BATCH: int = 50
 """Symbols per quotes request (equals ``tradier_client.MAX_BATCH``; asserted by the tool tests)."""
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9.$^:_-]{1,32}$")
@@ -115,6 +122,8 @@ REASON_UNMATCHED: str = "unmatched"
 REASON_QUOTA_GUARD: str = "quota_guard"
 REASON_PER_RUN_CAP: str = "per_run_cap"
 REASON_MARKET_CLOSED: str = "market_closed"
+REASON_NO_BARS: str = "no_bars"
+"""A history answer without bars (the vendor's ``{"history": null}``): served, cached under the TTL."""
 FETCH_FAILED_PREFIX: str = "fetch_failed:"
 REASON_NOT_RETURNED: str = FETCH_FAILED_PREFIX + "not_returned"
 REASON_BAD_SYMBOL: str = FETCH_FAILED_PREFIX + "bad_symbol"
@@ -809,6 +818,155 @@ def age_minutes(now: datetime.datetime, stamp: Optional[datetime.datetime]) -> O
     return max(0, int((now - stamp).total_seconds() // 60))
 
 
+# --------------------------------------------------------------------------------------------
+# History (PR 2b): daily bars for the settlement inference of csv_recon
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HistoryCacheResult:
+    """What :func:`get_history` served; ``missing_reason`` is set when the bars could not be served
+    (``no_bars`` means the vendor answered without bars, served and cached under the TTL)."""
+
+    symbol: str
+    start: datetime.date
+    end: datetime.date
+    bars: List[Bar]
+    served_from: Optional[str]
+    missing_reason: Optional[str]
+    requests_made: int
+    receipt_utc: Optional[datetime.datetime]
+    warnings: List[str]
+    fetched_utc: Optional[datetime.datetime] = None
+
+
+def history_path(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date) -> str:
+    return os.path.join(paths.cache_dir, HISTORY_SUBDIR,
+                        "%s__%s__%s.json" % (symbol.strip().upper(), start.isoformat(), end.isoformat()))
+
+
+def _require_date(value: Any, what: str) -> datetime.date:
+    if not isinstance(value, datetime.date) or isinstance(value, datetime.datetime):
+        raise ValueError("%s must be a datetime.date, got %r" % (what, value))
+    return value
+
+
+def _load_history(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date,
+                  warnings: List[str]) -> Optional[Tuple[List[Bar], datetime.datetime]]:
+    label = "history cache %s %s..%s" % (symbol, start.isoformat(), end.isoformat())
+    document = _load_document(history_path(paths, symbol, start, end), warnings, label)
+    if document is None:
+        return None
+    stamp = _parse_utc(document.get("fetched_utc"))
+    raws = document.get("bars")
+    if (document.get("symbol") != symbol or document.get("start") != start.isoformat()
+            or document.get("end") != end.isoformat() or stamp is None or not isinstance(raws, list)):
+        warnings.append("%s ignored: unexpected contents; refetching" % label)
+        return None
+    bars: List[Bar] = []
+    for raw in raws:
+        try:
+            bars.append(Bar.from_vendor(raw))
+        except MarketTypesError as exc:
+            warnings.append("%s ignored (%s); refetching" % (label, _one_line(exc)))
+            return None
+    return bars, stamp
+
+
+def _store_history(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date, now: datetime.datetime,
+                   bars: List[Bar], warnings: List[str]) -> None:
+    raws = [bar.raw for bar in bars if isinstance(bar.raw, dict) and bar.raw]
+    if len(raws) != len(bars):
+        warnings.append("history %s %s..%s not cached: %d bar(s) carry no vendor record"
+                        % (symbol, start.isoformat(), end.isoformat(), len(bars) - len(raws)))
+        return
+    document = {"schema": SCHEMA, "symbol": symbol, "start": start.isoformat(), "end": end.isoformat(),
+                "fetched_utc": state.format_utc(now), "bars": raws}
+    try:
+        with state.locked(paths.lock_path, timeout_s=LOCK_TIMEOUT_S):
+            state.atomic_write_json(history_path(paths, symbol, start, end), document)
+    except state.LockBusy as exc:
+        warnings.append("history cache not written: %s" % _one_line(exc))
+
+
+def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: datetime.datetime, cfg: CacheConfig,
+                client: Any, paths: DeskPaths, run: Optional[RunCounters] = None) -> HistoryCacheResult:
+    """Serve the daily bars of ``symbol`` from ``start`` to ``end`` (inclusive) from ``history/``
+    or the client (module notes).
+
+    A cached answer with bars is final when it was fetched on a later ET date than ``end``
+    (every session of the range had closed: closed days never change) and is served without any
+    TTL; any other cached answer (a range that reaches today, or an empty answer) follows the
+    quote TTL and an expired copy is refetched, never served. There is no ``allow_fetch``: history
+    is fetched on non-trading days too. The budget guard, the per-run request cap (a history
+    request counts against ``per_run_max_requests``; it is not a chain), the run's stop reason,
+    the ``quota`` / credential stop rules and the no-send statuses are those of :func:`get_chain`
+    and :func:`get_quotes`. An empty answer is ``bars == []`` with ``missing_reason``
+    ``no_bars`` and is cached. ``OSError`` from the cache directory propagates.
+    """
+    now = _require_utc(now)
+    start = _require_date(start, "start")
+    end = _require_date(end, "end")
+    if end < start:
+        raise ValueError("end %s is before start %s" % (end.isoformat(), start.isoformat()))
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non-blank string, got %r" % (symbol,))
+    symbol = symbol.strip().upper()
+    run = RunCounters() if run is None else run
+    warnings: List[str] = []
+    label = "history %s %s..%s" % (symbol, start.isoformat(), end.isoformat())
+    if not SYMBOL_RE.fullmatch(symbol):
+        warnings.append("%s is not a valid symbol (%s): nothing sent" % (symbol, SYMBOL_RE.pattern))
+        return HistoryCacheResult(symbol, start, end, [], None, REASON_BAD_SYMBOL, 0, None, warnings)
+    ttl = datetime.timedelta(minutes=cfg.ttl_min)
+    cached = _load_history(paths, symbol, start, end, warnings)
+    if cached is not None:
+        bars, stamp = cached
+        final = bool(bars) and end < market_clock.to_et(stamp).date()
+        within_ttl = datetime.timedelta(0) <= now - stamp <= ttl
+        if final or within_ttl:
+            if not bars:
+                warnings.append("%s: the cached answer holds no bars" % label)
+            return HistoryCacheResult(symbol, start, end, bars, SERVED_CACHE, None if bars else REASON_NO_BARS,
+                                      0, None, warnings, stamp)
+
+    def not_fetched(reason: str, requests_made: int = 0) -> HistoryCacheResult:
+        return HistoryCacheResult(symbol, start, end, [], None, reason, requests_made, None, warnings)
+
+    if run.stop_reason is not None:
+        warnings.append("%s not fetched: fetching stopped for this run (%s)" % (label, run.stop_reason))
+        return not_fetched(run.stop_reason)
+    if run.requests >= cfg.per_run_max_requests:
+        warnings.append("per-run request cap reached (%d): %s not fetched" % (cfg.per_run_max_requests, label))
+        return not_fetched(REASON_PER_RUN_CAP)
+    if budget_left(paths, now, cfg, run) <= 0:
+        warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): history not fetched"
+                        % (cfg.minute_budget, cfg.minute_headroom))
+        return not_fetched(REASON_QUOTA_GUARD)
+    try:
+        result = client.history(symbol, start, end)
+    except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
+        status = _client_error_status(exc)
+        if status is None:
+            raise
+        sent = status not in NO_SEND_STATUSES  # a refusal before sending is not a request made
+        if sent:
+            run.requests += 1
+        reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
+        if status == STATUS_QUOTA or status in STOP_STATUSES:
+            run.stop_reason = reason
+        warnings.append("history fetch failed for %s: %s" % (label, _one_line(exc)))
+        return not_fetched(reason, 1 if sent else 0)
+    run.requests += 1
+    receipt = getattr(result, "receipt", None)
+    receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
+    bars = list(result.bars)
+    if not bars:
+        warnings.append("%s is empty: the vendor returned no bars" % label)
+    _store_history(paths, symbol, start, end, now, bars, warnings)
+    return HistoryCacheResult(symbol, start, end, bars, SERVED_FETCH, None if bars else REASON_NO_BARS, 1, receipt_utc,
+                              warnings, now)
+
 __all__ = [
     "CHAINS_SUBDIR",
     "CacheConfig",
@@ -816,6 +974,8 @@ __all__ = [
     "ChainCacheResult",
     "DEFAULT_FIXTURE_SET",
     "FETCH_FAILED_PREFIX",
+    "HISTORY_SUBDIR",
+    "HistoryCacheResult",
     "LEDGER_FILE",
     "LEDGER_TAIL_BYTES",
     "LOCK_TIMEOUT_S",
@@ -828,6 +988,7 @@ __all__ = [
     "QUOTES_FILE",
     "REASON_BAD_SYMBOL",
     "REASON_MARKET_CLOSED",
+    "REASON_NO_BARS",
     "REASON_NOT_RETURNED",
     "REASON_PER_RUN_CAP",
     "REASON_QUOTA_GUARD",
@@ -848,7 +1009,9 @@ __all__ = [
     "footer_line",
     "format_money",
     "get_chain",
+    "get_history",
     "get_quotes",
+    "history_path",
     "ledger_hook",
     "ledger_path",
     "ledger_record",

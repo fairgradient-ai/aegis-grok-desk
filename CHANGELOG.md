@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Book of record: the hand-edited `positions.csv` parser with the desk's money conventions
+  (`scripts/aegis_desk/positions_csv.py`), strategy grouping, the `Decimal` payoff and P/L kernels, the
+  book (`book.py`: one quotes request, quality grades, IV and Greeks, group metrics, portfolio totals that
+  name every excluded group, the end-of-day snapshot and report; the session classified with the
+  calendar's full closures), the reconciliation engine with every settlement branch (`recon.py`), the
+  owner-sourced research calendar reader with its freshness lint (`calendar_events.py`), the expiry
+  sheet with dividend and pin tiers (`expiry.py`: a dividend tier only while the contract is alive on
+  the last cum-dividend day; the act-by instant is the earlier of the broker cutoff and an early close),
+  daily-bar history in the quote cache; the tools `positions_check.py`, `csv_recon.py`, `book.py`,
+  `calendar_check.py`, `assignment_watch.py` and `expiry_checklist.py`; a second fixture root
+  `tests/fixtures/desk_recon/` covering every settlement branch and three more fixture sets (T-1, expiry
+  day, post-expiry); seventeen more tool journeys, including multi-step chains on one fixture copy.
 - Data plane: the GET-only Tradier market-data client (`scripts/aegis_desk/tradier_client.py`:
   pinned hosts, allow-listed paths, literal `GET` and no body on every request, no redirects, no
   proxy, TLS 1.2 or later, one receipt per request, credential redaction, refusal of a `200` that
