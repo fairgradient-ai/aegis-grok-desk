@@ -16,8 +16,9 @@ the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``.
 
 The session the book is graded in (``session``, ``as_of_label``, the fetch decision, the session line and the
 snapshot's date) is ``--now`` classified with the calendar's full closures (``[[closures]] kind = "full"`` in
-``research/calendar.toml``), the rule every market tool of the desk follows (``aegis_desk.book`` module notes,
-"Session"): an owner-injected closure on today's ET date is a closed day for the book: no quote fetch,
+``research/calendar.toml``), the rule every desk tool that classifies the session from a desk root follows
+(``aegis_desk.book`` module notes, "Session"; ``market_clock.py`` reads no desk file and uses the embedded NYSE
+table alone): an owner-injected closure on today's ET date is a closed day for the book: no quote fetch,
 ``NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today``, every open group
 unavailable, exit 20, while the ET date (the snapshot's name, ``positions.csv``'s ``today``) and the request
 batch are unchanged.
@@ -31,7 +32,12 @@ with ``data_quality`` ``ok``; ``day_pl`` also leaves out, as a whole, any ok gro
 day P/L (not in the previous snapshot, or its previous mark was display-only), named in ``warnings`` as
 ``<group> excluded from the day P/L total: ...``, and is ``null`` when no open group has one: a group's day P/L
 is never partially summed. Every leg carries ``open_quantity`` and ``remaining_cost_basis`` beside the row's
-``quantity`` and ``cost_basis_total``: the marks and P/L apply to the open part.
+``quantity`` and ``cost_basis_total``: the marks and P/L apply to the open part. Every leg also carries
+``fresh_bid`` and ``fresh_ask``, the quote's fresh sides for any grade A-E (a grade-E leg keeps them although its
+``mark_liq`` is null; a fresh ask of 0 stays 0, which is no offer and not a price to close at; only ``mark_source``
+``mid`` marks a leg), and its ``extrinsic_bid`` is the assignment watch's geometry (the fresh bid less the
+intrinsic value at the underlying's usable mid stamped within 60 s of the option), so the two tools print one
+number for one leg.
 
 Exit 0 when every open group is ``ok``, 20 when any group is unavailable or quarantined or the market data
 is refused (production host, no token, expired holiday table), 1 on a configuration or file error
@@ -81,13 +87,22 @@ OUTPUT: Dict[str, Any] = {
               "undated | closed_day | missing | expired | closed", "bid": "decimal string | null",
               "ask": "decimal string | null", "bid_date": "ISO-8601 UTC | null", "ask_date": "ISO-8601 UTC | null",
               "as_of": "ISO-8601 UTC | null", "spread_pct": "decimal string | null", "mark_mid": "decimal string | null",
-              "mark_liq": "decimal string | null", "mark_source": "mid | unavailable", "tau_years": "float | null",
+              "mark_liq": "decimal string | null",
+              "mark_source": "mid | unavailable (mid exactly for grade A-D with both sides fresh: the only P/L basis)",
+              "fresh_bid": "decimal string | null (QuoteQC.mark_liq_long: the bid when it is fresh, any grade A-E, kept "
+                           "for grade E although mark_liq is null; null for F, closed, expired or unquoted legs)",
+              "fresh_ask": "decimal string | null (QuoteQC.mark_liq_short: the ask when it is fresh, any grade A-E, kept "
+                           "for grade E although mark_liq is null; a 0 ask stays 0: no offer, not a price to close at; "
+                           "null for F, closed, expired or unquoted legs)",
+              "tau_years": "float | null",
               "iv": "float | null", "iv_status": "ok | expiring | spot_unaligned | spot_unavailable | unavailable | "
               "expired | closed | not_option | below_intrinsic | above_bound | no_root",
               "greeks": dict(GREEKS_SHAPE), "position_greeks": dict(GREEKS_SHAPE),
               "unrealized_pl_mid": "decimal string | null", "unrealized_pl_liq": "decimal string | null",
               "day_pl": "decimal string | null", "realized_day_pl": "decimal string | null",
-              "extrinsic_bid": "decimal string | null", "itm": "boolean | null", "warnings": ["string"]}],
+              "extrinsic_bid": "decimal string | null (fresh_bid - intrinsic at the underlying's usable mid stamped "
+                               "within 60 s of the option: the assignment watch's geometry)",
+              "itm": "boolean | null", "warnings": ["string"]}],
     "groups": [{"group_id": "string", "trade_id": "string | null", "account": "string", "underlying": "string",
                 "structure": " | ".join(("long_stock", "short_stock", "long_call", "long_put", "short_call",
                                          "cash_secured_put", "covered_call", "protective_put", "collar",

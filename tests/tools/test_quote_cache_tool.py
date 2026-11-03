@@ -35,6 +35,10 @@ AFTER_CLOSE_NOW = "2026-11-03T21:25:00Z"
 PRE_OPEN_NOW = "2026-11-03T13:00:00Z"
 HOLIDAY_NOW = "2026-11-26T15:00:00Z"
 TOKEN_RE = re.compile(r"(?i)bearer|authorization")
+CLOSURE_ENTRY = '\n[[closures]]\ndate = %s\nkind = "%s"\nsource = "owner-entered (test)"\n'
+CLOSED_TODAY_SESSION = {"session": "holiday", "trading_day": False, "close_utc": None, "minutes_to_close": None,
+                        "holiday_name": "calendar closure", "as_of_utc": "2026-11-03T19:50:00+00:00",
+                        "et_date": "2026-11-03", "open_utc": None, "product": "equity", "table_status": "ok"}
 
 
 def now_flag_present() -> bool:
@@ -393,6 +397,94 @@ class OtherSetsTest(DeskCopy):
         self.assertEqual("no market-data token: add the Tradier sandbox token through the secret card "
                          "(or the acknowledged token file)", body["error"]["message"])
         self.assertEqual([], self.ledger(), "no request is attempted without a credential")
+
+
+class CalendarClosureTest(DeskCopy):
+    """The session follows research/calendar.toml's full closures, as in the six book-of-record tools: an
+    owner-injected closure on today's ET date is a closed day (nothing fetched, every uncached symbol and the
+    chain ``market_closed``, exit 20; a cached copy is served whatever its age); a closure on another date, an
+    early close (never injected) or no calendar file leave the regular run unchanged; a calendar that cannot be
+    read is exit 1 ``calendar_invalid`` and nothing is fetched."""
+
+    def add_to_calendar(self, text: str, root: str = "") -> None:
+        with open(os.path.join(root or self.root, "research", "calendar.toml"), "a", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def copy_desk(self, label: str) -> str:
+        root = os.path.join(os.path.realpath(self._tmp.name), label)
+        shutil.copytree(FIXTURE_DESK, root)
+        return root
+
+    def run_regular(self, root: str) -> Tuple[int, Dict[str, Any]]:
+        return run_json(["SPY", "WMT", "WMT261120C00105000", "--chain", "WMT", "--expiration", "2026-11-20",
+                         "--offline", "--desk-root", root, "--now", REGULAR_NOW, "--fixture-set", "regular", "--json"])
+
+    def test_a_full_closure_today_is_a_closed_day_without_a_fetch(self) -> None:
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-03", "full"))
+        code, body = self.run_regular(self.root)
+        self.assertEqual((20, "unavailable", "tradier:sandbox", 15, "2026-11-03T19:50:00+00:00"),
+                         (code, body["status"], body["source"], body["delay_min"], body["generated_at"]))
+        self.assertEqual({
+            "quotes": [], "stale": [],
+            "missing": {"SPY": "market_closed", "WMT": "market_closed", "WMT261120C00105000": "market_closed"},
+            "requests_made": 0, "budget": {"window_60s_used": 0, "left": 55}, "session": CLOSED_TODAY_SESSION,
+            "warnings": [], "fixture_set": "regular",
+            "chain": {"symbol": "WMT", "expiration": "2026-11-20", "served_from": None, "missing_reason": "market_closed",
+                      "count": 0, "fetched_utc": None, "options": []},
+        }, body["payload"])
+        self.assertEqual([], self.ledger(), "nothing is fetched on a closed day")
+        code, text = run_tool(self.argv("SPY", "WMT", fixture_set="regular", json_mode=False))
+        self.assertEqual(20, code, text)
+        self.assertEqual(["SPY UNAVAILABLE: market_closed", "WMT UNAVAILABLE: market_closed",
+                          "NYSE closed (calendar closure, 2026-11-03 14:50:00 ET): no quote fetch; cached copies only; "
+                          "requests 0; 60-s window used 0, left 55",
+                          "Tradier sandbox, delayed 15 min, as of 19:50 UTC"], text.splitlines())
+        self.assertEqual([], self.ledger())
+
+    def test_a_cached_copy_is_served_on_a_closure_day_whatever_its_age(self) -> None:
+        code, _body = run_json(self.argv("SPY", fixture_set="regular"))
+        self.assertEqual((0, 1), (code, len(self.ledger())))
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-03", "full"))
+        code, body = run_json(self.argv("SPY", fixture_set="regular", now="2026-11-03T20:30:00Z"))
+        self.assertEqual(0, code, body)
+        payload = body["payload"]
+        self.assertEqual((["cache"], 0, {}, "holiday"), ([q["source"] for q in payload["quotes"]], payload["requests_made"],
+                                                      payload["missing"], payload["session"]["session"]))
+        self.assertEqual(["SPY served from a cache copy 40 min old (TTL 5 min): no fetch on a non-trading day"],
+                         payload["warnings"])
+        self.assertEqual(1, len(self.ledger()), "the expired copy is not refetched on a closed day")
+
+    def test_a_closure_elsewhere_an_early_close_or_no_calendar_leave_the_regular_run_unchanged(self) -> None:
+        code, baseline = self.run_regular(self.root)
+        self.assertEqual((0, "open", 2), (code, baseline["payload"]["session"]["session"],
+                                          baseline["payload"]["requests_made"]))
+        for label, entry in (("closure-on-2026-11-10", CLOSURE_ENTRY % ("2026-11-10", "full")),
+                             ("early-close-today", CLOSURE_ENTRY % ("2026-11-03", "early_close")),
+                             ("no-calendar-file", None)):
+            with self.subTest(variant=label):
+                root = self.copy_desk(label)
+                if entry is None:
+                    os.remove(os.path.join(root, "research", "calendar.toml"))
+                else:
+                    self.add_to_calendar(entry, root)
+                self.assertEqual((0, baseline), self.run_regular(root))
+
+    def test_a_calendar_that_cannot_be_read_is_exit_1_calendar_invalid(self) -> None:
+        for label, text, reason in (("toml-syntax", "\nnot = [toml\n", "invalid TOML"),
+                                    ("unknown-key", "\nunknown_key = 1\n", "unknown key 'unknown_key'")):
+            with self.subTest(calendar=label):
+                root = self.copy_desk(label)
+                self.add_to_calendar(text, root)
+                code, body = self.run_regular(root)
+                self.assertEqual((1, "error"), (code, body["status"]), body)
+                self.assertEqual("calendar_invalid", body["error"]["code"])
+                message = body["error"]["message"]
+                self.assertTrue(message.startswith(os.path.join(root, "research", "calendar.toml") + ": "), message)
+                self.assertIn(reason, message)
+                self.assertNotIn("payload", body)
+                code, text_out = run_tool(["SPY", "--offline", "--desk-root", root, "--now", REGULAR_NOW])
+                self.assertEqual((1, "error: " + message), (code, text_out.strip()))
+                self.assertFalse(os.path.exists(os.path.join(root, "data", "cache", "ledger.jsonl")), "nothing is fetched")
 
 
 if __name__ == "__main__":

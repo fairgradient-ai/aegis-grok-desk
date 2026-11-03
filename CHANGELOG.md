@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Book follow-up: every book leg carries `fresh_bid` and `fresh_ask` (the liquidation sides of a grade
+  A-E quote; a zero ask stays 0, no offer), and `extrinsic_bid` now uses the assignment watch's geometry
+  (any grade A-E fresh bid, the usable underlying mid stamped within 60 s, the strike as a plain decimal),
+  so the book and the expiry sheet agree on every quote state; `mark_source` is `mid` only with both sides
+  fresh. `quote_cache.py` and `quote_qc.py` classify the session with the research calendar's full
+  closures like the book tools (`quote_qc.py` also takes its prior close from it; an unparsable calendar
+  is exit 1 `calendar_invalid`). The command-journey step test lists its temporary directories under a
+  private root, so concurrent local runs cannot collide.
 - Book of record: the hand-edited `positions.csv` parser with the desk's money conventions
   (`scripts/aegis_desk/positions_csv.py`), strategy grouping, the `Decimal` payoff and P/L kernels, the
   book (`book.py`: one quotes request, quality grades, IV and Greeks, group metrics, portfolio totals that

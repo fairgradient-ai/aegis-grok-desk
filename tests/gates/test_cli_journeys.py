@@ -8,7 +8,9 @@ three gate journeys stay exactly three (``tests/gates/test_check_sh.py`` expects
 journeys passed`` on a fixture tree), the PR 2b journeys of the addendum are listed with their
 expectations, and ``steps`` run in order on one copy (proved with two ``heartbeat.py`` commands, which
 cost nothing: the second sees the first's record), stop at the first failing step and leave no copy
-behind. No order-shaped word appears in a journey's name or command line.
+behind. Each ``StepsTest`` test points ``tempfile.tempdir`` at a private root of its own, so the harness's
+copies land there and a suite or ``cli_journeys.py`` run sharing the machine's temp directory cannot
+change the listings it compares. No order-shaped word appears in a journey's name or command line.
 """
 
 from __future__ import annotations
@@ -19,9 +21,11 @@ import tests._path  # noqa: F401
 
 import os
 import re
+import shutil
 import tempfile
 import unittest
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
+from unittest import mock
 
 from aegis_desk import contract
 
@@ -44,9 +48,9 @@ def commands(journey: harness.Journey) -> List[Tuple[Tuple[str, ...], int]]:
     return [(step.argv, step.expected_exit) for step in journey.steps] + [(journey.argv, journey.expected_exit)]
 
 
-def journey_copies() -> List[str]:
-    directory = tempfile.gettempdir()
-    return sorted(name for name in os.listdir(directory) if name.startswith("aegis-journey-"))
+def journey_copies(root: str) -> List[str]:
+    """The harness's ``aegis-journey-*`` copies directly under ``root`` (a test's private temp root)."""
+    return sorted(name for name in os.listdir(root) if name.startswith("aegis-journey-"))
 
 
 class CatalogueTest(unittest.TestCase):
@@ -161,17 +165,49 @@ class CatalogueTest(unittest.TestCase):
 
 
 class StepsTest(unittest.TestCase):
+    """``setUp`` points ``tempfile.tempdir`` at a private root (``harness.run_journey`` makes its copy with
+    ``tempfile.mkdtemp`` at call time, so the copy lands there); ``tearDown`` removes the root."""
+
+    def setUp(self) -> None:
+        self.private = tempfile.mkdtemp(prefix="aegis-steps-root-")
+        patcher = mock.patch.object(tempfile, "tempdir", self.private)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.private, ignore_errors=True)
+
+    def run_recording_copies(self, journey: harness.Journey) -> Tuple[Dict[str, Any], List[str]]:
+        """``harness.run_journey`` with every directory it makes through ``tempfile.mkdtemp`` recorded."""
+        made: List[str] = []
+        real_mkdtemp = tempfile.mkdtemp
+
+        def recording_mkdtemp(*args: Any, **kwargs: Any) -> str:
+            path = real_mkdtemp(*args, **kwargs)
+            made.append(path)
+            return path
+
+        with mock.patch.object(tempfile, "mkdtemp", recording_mkdtemp):
+            result = harness.run_journey(journey, ROOT)
+        return result, made
+
+    def assert_one_copy_in_the_private_root_and_removed(self, made: List[str]) -> None:
+        self.assertEqual([self.private], [os.path.dirname(path) for path in made], "the chain's one copy, made here")
+        self.assertTrue(os.path.basename(made[0]).startswith("aegis-journey-"), made)
+        self.assertFalse(os.path.exists(made[0]), "the copy is removed after the chain")
+
     def test_steps_run_in_order_on_one_copy_before_the_journey_command(self) -> None:
         step = harness.tool_step(HEARTBEAT_WRITE, 0, {"status": "ok", "payload.heartbeat.routine_id": "book-check"})
         journey = harness.tool_journey("heartbeat twice on one copy", HEARTBEAT_LIST, 0,
                                        {"status": "ok", "payload.count": 1}, steps=(step,))
-        before = journey_copies()
-        result = harness.run_journey(journey, ROOT)
+        before = journey_copies(self.private)
+        result, made = self.run_recording_copies(journey)
         self.assertTrue(result["ok"], result)
         self.assertEqual(0, result["exit"])
         self.assertEqual([0], [item["exit"] for item in result["steps"]])
         self.assertEqual([[]], [item["problems"] for item in result["steps"]])
-        self.assertEqual(before, journey_copies(), "the copy is removed after the chain")
+        self.assert_one_copy_in_the_private_root_and_removed(made)
+        self.assertEqual(before, journey_copies(self.private), "the copy is removed after the chain")
 
     def test_separate_journeys_do_not_share_a_copy(self) -> None:
         # The catalogue's own ``heartbeat --list`` expects count 0 on a fresh copy: a record written by
@@ -184,15 +220,16 @@ class StepsTest(unittest.TestCase):
     def test_a_failing_step_fails_the_journey_and_the_later_commands_are_not_run(self) -> None:
         wrong = harness.tool_step(HEARTBEAT_LIST, 20)  # the list command exits 0: the expectation is wrong on purpose
         journey = harness.tool_journey("a chain whose first step fails", HEARTBEAT_LIST, 0, {"status": "ok"}, steps=(wrong,))
-        before = journey_copies()
-        result = harness.run_journey(journey, ROOT)
+        before = journey_copies(self.private)
+        result, made = self.run_recording_copies(journey)
         self.assertFalse(result["ok"])
         self.assertIsNone(result["exit"], "the journey's own command was not run")
         self.assertEqual(1, len(result["steps"]))
         self.assertEqual(0, result["steps"][0]["exit"])
         self.assertTrue(any(problem.startswith("step 1 of 2") for problem in result["problems"]), result["problems"])
         self.assertTrue(any("not run" in problem for problem in result["problems"]), result["problems"])
-        self.assertEqual(before, journey_copies())
+        self.assert_one_copy_in_the_private_root_and_removed(made)
+        self.assertEqual(before, journey_copies(self.private))
 
     def test_a_step_missing_json_key_is_reported_with_the_step(self) -> None:
         step = harness.tool_step(HEARTBEAT_LIST, 0, {"payload.no_such_key": 1})

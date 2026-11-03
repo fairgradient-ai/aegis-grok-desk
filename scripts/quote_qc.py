@@ -10,15 +10,23 @@ Reads the quotes through ``aegis_desk.quote_cache.get_quotes`` (so a quote is ne
 in one run across the tools) and grades each with ``aegis_desk.quote_qc.assess`` against the desk's
 freshness bound (``feed_delay_min + quote_ttl_min + grace_min``) and the session at ``now``:
 regular hours per side against ``now``, after the close against the close ("as of close HH:MM
-ET"), before the open against the prior close, and one "NYSE closed" verdict on weekends and
-holidays. Prints one line per symbol::
+ET"), before the open against the prior close, and one "NYSE closed" verdict on weekends, holidays
+and the calendar's full closures. The session and the prior close are ``--now`` classified with the
+full closures of ``research/calendar.toml`` (``[[closures]] kind = "full"``, read when the file is
+present; without the file, the embedded NYSE table alone), the rule every desk tool that classifies the
+session from a desk root follows (``market_clock.py`` reads no desk file: the embedded table alone): an
+owner-injected closure on today's ET date is a closed day (nothing fetched, every symbol
+grade F ``NYSE closed``, exit 20), and a closure on the previous trading day moves the prior close
+(the reference and the label before the open) back to the last session that was held. An
+``early_close`` entry is never injected. Prints one line per symbol::
 
     SYMBOL grade status bid/ask spread% mid liq(long) liq(short) label
 
 and the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. Exit 0 when every symbol graded
 A-D (usable for rules), 20 otherwise (E, F, missing: UNAVAILABLE, never HOLD), 1 on a configuration
-or file error (``desk_root``, ``config_invalid``, ``io_error``: a file where a runtime directory
-belongs), 2 on usage (a symbol that fails the client's pattern included). ``--json`` payload: ``{"symbols": [QuoteQC as dict + served_from ...],
+or file error (``desk_root``, ``config_invalid``, ``calendar_invalid``: a calendar file that cannot be used,
+``io_error``: a file where a runtime directory belongs), 2 on usage (a symbol that fails the
+client's pattern included). ``--json`` payload: ``{"symbols": [QuoteQC as dict + served_from ...],
 "bound_min", "session", "missing", "warnings", "fixture_set"}``. The same production-host and
 missing-token refusals as ``quote_cache.py`` (exit 20).
 """
@@ -33,7 +41,7 @@ import datetime  # noqa: E402
 import sys  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence  # noqa: E402
 
-from aegis_desk import desk_config, desk_paths, market_clock, quote_cache, quote_qc, state  # noqa: E402
+from aegis_desk import calendar_events, desk_config, desk_paths, market_clock, quote_cache, quote_qc, state  # noqa: E402
 from aegis_desk.market_types import Quote  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
@@ -52,7 +60,8 @@ OUTPUT: Dict[str, Any] = {
                  "reasons": ["string"], "bid": "decimal string | null", "ask": "decimal string | null",
                  "as_of": "ISO-8601 UTC | null", "served_from": "fetch | cache | null"}],
     "bound_min": "integer minutes (feed_delay_min + quote_ttl_min + grace_min)",
-    "session": "market_clock.SessionInfo.as_dict()",
+    "session": ("market_clock.SessionInfo.as_dict() (--now classified with the calendar's full closures: an "
+                "injected closure is session holiday)"),
     "missing": {"SYMBOL": "the cache's reason"},
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
@@ -139,7 +148,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return fail(args, version, now, "io_error", "cannot prepare the desk runtime directories: %s" % exc,
                     contract.EXIT_ERROR)
 
-    session = market.session
+    try:
+        cal = calendar_events.load_calendar_if_present(market.paths.calendar_toml)
+    except calendar_events.CalendarError as exc:
+        return fail(args, version, now, "calendar_invalid", str(exc), contract.EXIT_ERROR)
+    # --now classified with the calendar's full closures, as in every desk tool that classifies the session
+    # from a desk root: a closure is a closed day, and the prior close (the reference before the open) skips it.
+    extra = calendar_events.extra_closures(cal)
+    session = market_clock.session_at(now, extra_holidays=extra)
+    prior_close = market_clock.previous_close_utc(now, extra_holidays=extra)
     try:
         result = quote_cache.get_quotes(args.symbols, now=now, cfg=market.cache, client=market.client,
                                         paths=market.paths, force=args.force, allow_fetch=session.trading_day,
@@ -152,11 +169,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         quote = result.quotes.get(symbol)
         if quote is not None:
             verdicts.append(quote_qc.assess(quote, now=now, session=session, bound_min=market.bound_min,
-                                            prior_close_utc=market.prior_close_utc))
+                                            prior_close_utc=prior_close))
         else:
             copy = result.stale.get(symbol)
             verdicts.append(quote_qc.unavailable(symbol, "cache: %s" % result.missing.get(symbol, "not served"),
-                                                 label=missing_label(session, market.prior_close_utc, copy), quote=copy))
+                                                 label=missing_label(session, prior_close, copy), quote=copy))
     exit_code = contract.EXIT_QUIET if all(qc.usable_for_rules for qc in verdicts) else contract.EXIT_UNAVAILABLE
     shown = [qc.as_of for qc in verdicts if qc.as_of is not None]
     footer_as_of = max(shown) if shown else now

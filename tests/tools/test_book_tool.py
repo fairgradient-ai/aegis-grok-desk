@@ -98,6 +98,8 @@ class AlwaysOnTest(DeskCopy):
         self.assertEqual(set(library.LEG_KEYS), set(described["legs"][0]))
         self.assertIn("open_quantity", described["legs"][0])
         self.assertIn("remaining_cost_basis", described["legs"][0])
+        self.assertIn("fresh_bid", described["legs"][0])
+        self.assertIn("fresh_ask", described["legs"][0])
         self.assertEqual(set(library.GROUP_KEYS), set(described["groups"][0]))
         self.assertEqual(set(library.UNDERLYING_KEYS), set(described["underlyings"]["SYMBOL"]))
         self.assertEqual(set(library.PORTFOLIO_KEYS), set(described["portfolio"]))
@@ -113,6 +115,7 @@ class AlwaysOnTest(DeskCopy):
         self.assertEqual(set(described["portfolio"]), set(payload["portfolio"]))
         call = [leg for leg in payload["legs"] if leg["occ"] == "WMT261120C00105000"][0]
         self.assertEqual(("-2", "-684.00"), (call["open_quantity"], call["remaining_cost_basis"]), "decimal strings")
+        self.assertEqual(("3.35", "3.5"), (call["fresh_bid"], call["fresh_ask"]), "decimal strings")
 
     def test_usage_errors(self) -> None:
         for argv in (["--json", "--offline"],
@@ -223,6 +226,38 @@ class JourneysTest(DeskCopy):
         self.assertEqual([], [w for w in payload["warnings"] if "day P/L" in w])
         self.assertFalse(os.path.exists(os.path.join(self.root, "data", "book", "2026-11-03.json")),
                          "no --snapshot on the second run")
+
+    def test_regular_legs_carry_their_fresh_sides_and_the_extrinsic_goldens(self) -> None:
+        code, body = run_json(self.argv())
+        self.assertEqual(0, code, body)
+        legs = body["payload"]["legs"]
+        self.assertEqual([("104.2", "104.26"), ("3.35", "3.5"), ("148.9", "148.95"), ("3.1", "3.3"), ("648.1", "648.14"),
+                          ("9.8", "10.1"), (None, None)], [(leg["fresh_bid"], leg["fresh_ask"]) for leg in legs],
+                         "every open leg's fresh sides, the stock and ETF legs included; the closed row has none")
+        self.assertEqual([None, "3.35", None, "3.1", None, "9.8", None], [leg["extrinsic_bid"] for leg in legs],
+                         "every regular leg is A-D and aligned: the extrinsic goldens keep their values")
+
+    def test_a_snapshot_without_the_fresh_sides_still_gives_the_day_pl(self) -> None:
+        # A snapshot of record written before the book kept fresh_bid / fresh_ask is still read: the next day's
+        # day P/L is the same golden as from a snapshot of today's shape.
+        code, body = run_json(self.argv(fixture_set="pre_open", now=PREV_EOD_NOW, extra=["--snapshot"]))
+        self.assertEqual(0, code, body)
+        path = os.path.join(self.root, "data", "book", "2026-11-02.json")
+        with open(path, encoding="utf-8") as handle:
+            snapshot = json.load(handle)
+        self.assertTrue(all({"fresh_bid", "fresh_ask"} <= set(leg) for leg in snapshot["legs"]))
+        for leg in snapshot["legs"]:
+            del leg["fresh_bid"]
+            del leg["fresh_ask"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(snapshot, handle)
+        code, body = run_json(self.argv())
+        self.assertEqual(0, code, body)
+        payload = body["payload"]
+        self.assertEqual("400.00", payload["portfolio"]["day_pl"])
+        self.assertEqual(["84.00", "-50.00", "264.00", "-70.00", "222.00", "-50.00", None],
+                         [leg["day_pl"] for leg in payload["legs"]])
+        self.assertEqual([], [w for w in payload["warnings"] if "day P/L" in w])
 
     def test_snapshot_is_written_even_when_the_book_is_unavailable(self) -> None:
         code, _ = run_json(self.argv(fixture_set="stale", extra=["--snapshot"]))
