@@ -1,0 +1,3 @@
+# expect: trailing comma in an inline table
+# expect-line: 3
+a = { x = 1, }

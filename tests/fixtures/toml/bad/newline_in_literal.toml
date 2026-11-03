@@ -1,0 +1,4 @@
+# expect: newline inside a single-line literal string
+# expect-line: 3
+a = 'x
+y'

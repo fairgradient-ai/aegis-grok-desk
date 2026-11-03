@@ -1,0 +1,38 @@
+# Aegis Desk CI: the whole repository gate on every supported interpreter. Standard-library
+# Python only; the job installs nothing and reaches no network beyond the checkout.
+#
+# Adapted from HyperGrok Trading Desk (Galleon Labs, MIT), release 1.7.0 plus unreleased
+# changes, commit 75a4c79 (.github/workflows/ci.yml); the matrix and the gate are Aegis Desk's.
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    name: check.sh (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is the syntax floor the Grok Bot computer may run; 3.13 is the newest CPython.
+        python: ["3.9", "3.10", "3.12", "3.13"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags so check_grok_template.py can compare claimed bytes with the
+          # release tag once it exists; before the tag it skips out loud.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Repository gate
+        run: bash scripts/check.sh

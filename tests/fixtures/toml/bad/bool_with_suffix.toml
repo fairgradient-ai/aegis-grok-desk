@@ -1,0 +1,3 @@
+# expect: expected a newline or the end of the document
+# expect-line: 3
+a = true_

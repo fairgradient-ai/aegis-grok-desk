@@ -1,0 +1,43 @@
+{
+  "quotes": {
+    "quote": {
+      "symbol": "NVDA",
+      "description": "NVIDIA Corp",
+      "exch": "Q",
+      "type": "stock",
+      "last": 152.3,
+      "change": 0.5,
+      "volume": 148000000,
+      "open": 152.0,
+      "high": 153.1,
+      "low": 151.2,
+      "close": 152.3,
+      "bid": 152.27,
+      "ask": 152.33,
+      "change_percentage": 0.33,
+      "average_volume": 220000000,
+      "last_volume": 100,
+      "trade_date": 1795640390000,
+      "prevclose": 151.8,
+      "week_52_high": 155.4,
+      "week_52_low": 86.6,
+      "bidsize": 500,
+      "bidexch": "Q",
+      "bid_date": 1795640390000,
+      "asksize": 400,
+      "askexch": "Q",
+      "ask_date": 1795640390000,
+      "root_symbols": "NVDA",
+      "open_interest": 0,
+      "underlying": null,
+      "strike": null,
+      "contract_size": null,
+      "expiration_date": null,
+      "expiration_type": null,
+      "option_type": null
+    },
+    "unmatched_symbols": {
+      "symbol": "NVDA261120C00150000"
+    }
+  }
+}

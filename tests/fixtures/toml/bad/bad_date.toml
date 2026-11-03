@@ -1,0 +1,3 @@
+# expect: month must be in 1..12
+# expect-line: 3
+a = 1979-13-01

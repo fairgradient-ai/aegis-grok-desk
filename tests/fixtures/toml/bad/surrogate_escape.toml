@@ -1,0 +1,3 @@
+# expect: is not a Unicode scalar value
+# expect-line: 3
+a = "\uD800"

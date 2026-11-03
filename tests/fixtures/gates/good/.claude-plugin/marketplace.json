@@ -1,0 +1,25 @@
+{
+  "name": "aegis-desk",
+  "owner": {
+    "name": "FairGradient"
+  },
+  "metadata": {
+    "description": "Gate fixture",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "aegis-desk",
+      "source": {
+        "source": "github",
+        "repo": "fairgradient-ai/aegis-grok-desk",
+        "ref": "v0.1.0"
+      },
+      "description": "Gate fixture.",
+      "version": "0.1.0",
+      "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
+      "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",
+      "license": "MIT"
+    }
+  ]
+}

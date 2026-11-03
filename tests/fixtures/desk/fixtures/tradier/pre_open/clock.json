@@ -1,0 +1,10 @@
+{
+  "clock": {
+    "date": "2026-11-03",
+    "description": "Market is in premarket hours from 07:00 to 09:24",
+    "state": "premarket",
+    "timestamp": 1793710800,
+    "next_change": "09:30",
+    "next_state": "open"
+  }
+}

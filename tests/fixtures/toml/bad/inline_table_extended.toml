@@ -1,0 +1,4 @@
+# expect: inline table or an array and cannot be extended
+# expect-line: 4
+a = { x = 1 }
+[a.y]

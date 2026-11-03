@@ -1,0 +1,35 @@
+# Aegis Desk oracle: the one job allowed a third-party package. QuantLib cross-checks the
+# stdlib pricing engine (European and, later, American goldens). The desk itself never
+# imports it; tests/oracle/test_quantlib_oracle.py skips when QuantLib is absent, so this job is
+# where the cross-check actually runs.
+name: QuantLib oracle
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install QuantLib
+        # Pinned. QuantLib 1.43 publishes a cp39-abi3 manylinux_2_28 x86_64 wheel (checked on
+        # PyPI on 2026-11-02), which installs on CPython 3.12 without compiling; --only-binary
+        # makes a missing wheel fail fast instead of building QuantLib from source.
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --only-binary=:all: "QuantLib==1.43"
+      - name: Oracle cross-check
+        run: python3 -m unittest tests.oracle.test_quantlib_oracle -v

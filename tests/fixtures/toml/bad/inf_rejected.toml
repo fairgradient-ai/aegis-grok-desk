@@ -1,0 +1,4 @@
+# expect: non-finite number 'inf' is not supported
+# expect-line: 3
+a = inf
+# tomllib: accepts

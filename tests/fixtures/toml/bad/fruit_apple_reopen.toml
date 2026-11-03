@@ -1,0 +1,6 @@
+# expect: already created by dotted keys
+# expect-line: 6
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+[fruit.apple]

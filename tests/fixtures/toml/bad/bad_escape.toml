@@ -1,0 +1,3 @@
+# expect: invalid escape sequence '\q'
+# expect-line: 3
+a = "bad \q"

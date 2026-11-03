@@ -1,0 +1,23 @@
+# routines/manifest.toml shape (plan section 11): one entry per routine id.
+schema_version = 1
+
+[profiles]
+lean = { runs_per_week = 41 }
+active = { runs_per_week = 61, additive = true }
+
+[[routine]]
+id = "preopen"
+owner = "desk-lead"
+et = "07:30"
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+chain = ["desk_doctor --quick", "csv_recon", "eod_summary --brief"]
+posts = "always"
+
+[[routine]]
+id = "book-check"
+owner = "exit-sentinel"
+et = "10:05"
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+chain = ["market_clock", "quote_cache", "book", "exit_check", "heartbeat"]
+depends_on = { routine = "preopen", min_gap_min = 20 }
+posts = "transitions"

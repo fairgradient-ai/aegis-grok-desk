@@ -1,0 +1,40 @@
+{
+  "quotes": {
+    "quote": {
+      "symbol": "WMT",
+      "description": "Walmart Inc",
+      "exch": "N",
+      "type": "stock",
+      "last": 104.93,
+      "change": -1.5,
+      "volume": 6600000,
+      "open": 105.1,
+      "high": 105.6,
+      "low": 104.7,
+      "close": null,
+      "bid": 104.9,
+      "ask": 104.96,
+      "change_percentage": -1.41,
+      "average_volume": 17500000,
+      "last_volume": 100,
+      "trade_date": 1795203072000,
+      "prevclose": 106.43,
+      "week_52_high": 109.9,
+      "week_52_low": 78.4,
+      "bidsize": 400,
+      "bidexch": "N",
+      "bid_date": 1795203072000,
+      "asksize": 300,
+      "askexch": "N",
+      "ask_date": 1795203072000,
+      "root_symbols": "WMT",
+      "open_interest": 0,
+      "underlying": null,
+      "strike": null,
+      "contract_size": null,
+      "expiration_date": null,
+      "expiration_type": null,
+      "option_type": null
+    }
+  }
+}

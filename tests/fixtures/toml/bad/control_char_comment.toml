@@ -1,0 +1,3 @@
+# expect: control character U+0001 in a comment
+# expect-line: 3
+a = 1 # badhere

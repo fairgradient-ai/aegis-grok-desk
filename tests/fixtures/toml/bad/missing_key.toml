@@ -1,0 +1,3 @@
+# expect: expected a key
+# expect-line: 3
+= 1

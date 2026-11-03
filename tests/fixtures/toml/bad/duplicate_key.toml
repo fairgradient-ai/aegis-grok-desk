@@ -1,0 +1,4 @@
+# expect: duplicate key a
+# expect-line: 4
+a = 1
+a = 2

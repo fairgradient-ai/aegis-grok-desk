@@ -1,0 +1,2 @@
+docs/HOOK_SAMPLES.md: curl -X POST https://127\.0\.0\.1:9/
+docs/NOPE.md: curl -X DELETE

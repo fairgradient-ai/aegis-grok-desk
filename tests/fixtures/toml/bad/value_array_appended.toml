@@ -1,0 +1,4 @@
+# expect: cannot be extended by [[a]]
+# expect-line: 4
+a = [1]
+[[a]]

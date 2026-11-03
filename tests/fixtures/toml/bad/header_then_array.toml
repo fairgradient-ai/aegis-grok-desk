@@ -1,0 +1,4 @@
+# expect: would redefine it as an array of tables
+# expect-line: 4
+[a]
+[[a]]

@@ -1,0 +1,3 @@
+# expect: control character U+007F in a string
+# expect-line: 3
+a = "xy"

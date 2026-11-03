@@ -1,0 +1,4 @@
+# expect: already holds a value, not a table
+# expect-line: 4
+a = 1
+[a.b]

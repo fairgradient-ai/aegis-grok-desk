@@ -1,0 +1,3 @@
+# expect: unterminated multi-line string
+# expect-line: 3
+a = '''abc
