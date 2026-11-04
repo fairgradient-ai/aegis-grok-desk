@@ -48,11 +48,33 @@ Closed lists
 * Modules that run, compile, load or deserialise code, or call into foreign libraries, fail
   everywhere (rule ``dynamic-exec``, ``DYNAMIC_EXEC_MODULES``): ``code``, ``codeop``,
   ``runpy``, ``marshal``, ``pickle``, ``shelve``, ``timeit``, ``cProfile``, ``profile``,
-  ``pdb``, ``ctypes``, ``cffi``, ``zipimport`` and ``importlib.machinery``; so do the calls
-  ``exec()``, ``eval()``, ``compile()``, ``importlib.util.spec_from_file_location()``,
-  ``importlib.util.module_from_spec()`` and ``pkgutil.resolve_name()``. Dynamic imports
-  (``__import__``, ``importlib.import_module``) of a restricted module are rejected; a dynamic
-  import whose target is not a string literal is rejected because the gate cannot read it.
+  ``pdb``, ``ctypes``, ``cffi``, ``zipimport``, ``importlib.machinery``, ``pkgutil`` and ``imp``;
+  so do the calls ``exec()``, ``eval()``, ``compile()``, ``importlib.util.spec_from_file_location()``,
+  ``importlib.util.module_from_spec()`` and ``pkgutil.resolve_name()``, every ``importlib`` name but
+  ``importlib.import_module`` and ``importlib.util.find_spec`` (``importlib._bootstrap``,
+  ``importlib.reload``, ``importlib.abc``, ...), and, on any object, the attributes that reach an
+  import loader or the import machinery (``LOADER_ATTRS``: ``.loader``, ``.load_module()``,
+  ``.exec_module()``, ``.create_module()``, ``.find_module()``, ``sys.meta_path``, ...): a module
+  loaded through a loader bypasses every import rule, so ``find_spec`` answers only whether a module
+  exists. Dynamic imports (``__import__``, ``importlib.import_module``) of a restricted module are
+  rejected; a dynamic import whose target is not a string literal is rejected because the gate
+  cannot read it.
+* Reflection that hands out objects the gate cannot name fails (rule ``reflection``): ``sys.modules``
+  used as anything but a literal subscript, a literal ``.get()`` or the right side of ``in``
+  (``.items()``, ``.values()``, iteration, an alias or an argument would expose every loaded module);
+  ``gc.get_objects()``/``get_referents()``/``get_referrers()``, ``sys._getframe()`` and
+  ``inspect``'s frame and module finders (``REFLECTION_CALLS``), called or referenced; and the
+  attributes that reach a frame's or a bound method's namespaces (``f_globals``, ``tb_frame``,
+  ``__self__``, ``__wrapped__``, ... in ``REFLECTION_ATTRS``).
+* A module whose attributes run commands, open connections or load code (``MODULE_VALUE_NAMES``:
+  ``os``, ``sys``, ``subprocess``, ``importlib``, ...) is never a value (rule ``module-value``): handed to a
+  function, put in a container, returned by a ``lambda`` or a dynamic import used as an argument, its
+  ``os.system`` would be called as ``m.system`` where no rule names it. ``import os as o`` and ``o = os``
+  are aliases the gate follows; attribute access and ``getattr(os, "literal")`` stay legal.
+* A module reached through another module's attribute fails (rule ``module-reexport``): ``shutil.os``,
+  ``os.sys``, ``tempfile._os``, ``state.os.environ``: the gate names a callee by its import, so a
+  module re-exported as an attribute (``REEXPORT_MODULES``) would carry ``os.system`` or
+  ``subprocess.run`` under a name no rule reads.
 * ``subprocess`` may be imported only by the repository gates and harnesses named in
   ``SUBPROCESS_ALLOWED`` (they spawn the interpreter and ``git``) and by test modules under
   ``tests/gates/``. Every ``subprocess`` call anywhere is inspected: a string argument naming
@@ -60,9 +82,44 @@ Closed lists
   count), a ``shell=True`` keyword, ``getoutput``/``getstatusoutput`` (they run a shell), a
   string argument carrying Python source that imports a restricted module or calls
   ``urlopen``/``Request``/``exec``/``__import__``, and a ``-c`` whose code is not a literal
-  all fail. ``os.system``, ``os.popen``, ``os.exec*``, ``os.spawn*``, ``os.posix_spawn*``,
+  all fail; so does a subprocess call with a ``*args`` or ``**kwargs`` splat (``**{"shell": True}``
+  cannot be read), and, outside ``tests/``, one whose command is a shell or a code interpreter
+  named by a literal (``SHELL_BINARIES``: ``sh``, ``bash``, ``env``, ``perl``, ...; fed on stdin or
+  not). Outside ``tests/``, a subprocess call whose string arguments include the literal ``-c`` or
+  ``--config-env`` (``--config-env=...`` too) fails (rule ``subprocess-config``): a ``git -c
+  alias.x=!sh`` override runs an arbitrary command behind a literal ``git``, and the interpreter's
+  ``-c`` runs code. In the ``SUBPROCESS_ALLOWED`` modules the rule covers every call, so a wrapper
+  such as ``run_git(root, ["-c", ...])`` cannot carry the override either; there, any string of the
+  module that is such a flag or one that re-points git (``--git-dir``, ``--work-tree``,
+  ``--exec-path``, ``--namespace``; a module constant or a list of them included) fails, every
+  ``env=`` must be a call of the module's own environment builder (``SUBPROCESS_ENV_BUILDERS``:
+  ``git_environment`` in ``check_grok_template.py``, which drops every ``GIT_*`` variable of the
+  caller and pins the configuration that runs commands, ``scrubbed_environment`` in
+  ``cli_journeys.py``), and a ``GIT_*`` string outside that builder fails.
+* Outside ``tests/``, writing the process environment fails (rule ``environment-write``):
+  ``os.environ[...] = ...`` (an alias of it too), ``del os.environ[...]``, ``os.environ.update()``,
+  ``.setdefault()``, ``.pop()``, ``.clear()``, ``os.environb`` likewise, ``os.putenv()`` and
+  ``os.unsetenv()``: a ``GIT_CONFIG_*``, ``PATH`` or ``HOME`` set in-process would steer the git a safe
+  export runs. Reading it is fine.
+  ``os.system``, ``os.popen``, ``os.exec*``, ``os.spawn*``, ``os.posix_spawn*``,
   ``os.startfile``, ``platform.popen`` and ``pty.spawn`` fail everywhere, also when reached
-  through ``getattr`` or a module alias.
+  through ``getattr`` or a module alias, and also when merely referenced (handed to ``map``, a
+  ``key=`` or a ``run=`` seam, the call happens where the gate cannot see it).
+* The ``SUBPROCESS_ALLOWED`` modules are themselves subprocess wrappers. In a module that is
+  neither one of them nor under ``tests/gates/``, importing a name from one of them, or reaching
+  any attribute of one (directly, through an alias, ``getattr`` with a literal name,
+  ``sys.modules`` or a literal dynamic import), fails (rule ``subprocess-wrapper``) unless the
+  dotted name is in ``SUBPROCESS_SAFE_EXPORTS``: ``check_grok_template.checkout_state`` (the
+  release-pin check of ``routine.py`` and ``desk_doctor.py``, which runs only its own literal git
+  argument lists) and ``check_grok_template.run`` (the template check). A plain ``import
+  check_grok_template`` is fine, and so is a call of a safe export; the module object and a safe export
+  are used for nothing else: a wrapper module as a value (in a container, a loop, an argument, a
+  ``lambda``, the result of a dynamic import) and a safe export that is not the callee of a call
+  (``inspect.getmodule(check_grok_template.checkout_state)``, an alias, ``.__wrapped__``) fail too, and
+  so does a wrapper module reached under another path (``scripts.check_grok_template``) or through
+  another module (``routine.check_grok_template``). No desk tool is added to ``SUBPROCESS_ALLOWED``: a
+  tool that needs git calls a safe export, so ``run_git`` and the module's ``subprocess`` stay out of
+  reach.
 * Third-party HTTP clients (``requests``, ``httpx``, ``aiohttp``, ``urllib3``, ``pycurl``,
   ``websocket``/``websockets``, ``httplib2``) fail everywhere, imported or reached through a
   resolved reflection (``sys.modules["requests"].post(...)``); the repository is stdlib-only.
@@ -156,6 +213,33 @@ SUBPROCESS_ALLOWED = frozenset({
     "scripts/check_grok_template.py",
     "scripts/cli_journeys.py",
 })
+# The import names of the SUBPROCESS_ALLOWED modules (``scripts/<name>.py`` -> ``<name>``): subprocess wrappers that
+# any other module reaches only through SUBPROCESS_SAFE_EXPORTS (rule ``subprocess-wrapper``).
+SUBPROCESS_WRAPPER_MODULES = frozenset(os.path.splitext(os.path.basename(rel))[0] for rel in SUBPROCESS_ALLOWED)
+# The dotted names of a SUBPROCESS_ALLOWED module that run only their own literal git argument lists: the release-pin
+# check (routine.py, desk_doctor.py) and the template check (desk_doctor.py). Adding a name is a reviewed change.
+SUBPROCESS_SAFE_EXPORTS = frozenset({
+    "check_grok_template.checkout_state",
+    "check_grok_template.run",
+})
+# Command-line options that override git's configuration (``-c name=value``, ``--config-env``) or run interpreter code.
+SUBPROCESS_CONFIG_FLAGS = ("-c", "--config-env")
+# git options that re-point it at another repository, work tree or program directory (``--git-dir=...`` too).
+SUBPROCESS_REDIRECT_FLAGS = ("--git-dir", "--work-tree", "--exec-path", "--namespace", "--super-prefix")
+# The one function of each SUBPROCESS_ALLOWED module whose call may be a subprocess ``env=`` (and, in it alone, a GIT_ name).
+SUBPROCESS_ENV_BUILDERS = {
+    "scripts/check_grok_template.py": "git_environment",
+    "scripts/cli_journeys.py": "scrubbed_environment",
+}
+# A shell or a code interpreter named as a command outside tests/: it runs whatever its arguments or stdin say.
+SHELL_BINARIES = frozenset({
+    "sh", "bash", "dash", "zsh", "ksh", "mksh", "csh", "tcsh", "fish", "busybox", "env", "xargs", "nohup", "sudo",
+    "su", "doas", "cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "osascript", "python", "python3", "perl",
+    "ruby", "node", "php", "lua", "tclsh", "awk", "gawk",
+})
+ENVIRON_NAMES = ("os.environ", "os.environb")
+ENVIRON_MUTATORS = frozenset({"update", "setdefault", "pop", "popitem", "clear", "__setitem__", "__delitem__"})
+ENVIRON_FUNCTIONS = ("os.putenv", "os.unsetenv")
 # Test modules that drive the gates as subprocesses live here and nowhere else.
 SUBPROCESS_TEST_PREFIX = "tests/gates/"
 SHELL_HELPERS = ("subprocess.getoutput", "subprocess.getstatusoutput")
@@ -168,8 +252,35 @@ DYNAMIC_IMPORTERS = ("__import__", "importlib.import_module", "importlib.__impor
 # Modules that run, compile, load or deserialise code, or call into foreign libraries.
 DYNAMIC_EXEC_MODULES = (
     "code", "codeop", "runpy", "marshal", "pickle", "shelve", "timeit", "cProfile", "profile",
-    "pdb", "ctypes", "cffi", "zipimport", "importlib.machinery",
+    "pdb", "ctypes", "cffi", "zipimport", "importlib.machinery", "pkgutil", "imp",
 )
+# The importlib names a module may use: a literal dynamic import (checked as an import) and find_spec, whose answer
+# nothing can load once every loader attribute fails. Every other importlib name loads or reloads code.
+IMPORTLIB_ALLOWED = ("importlib", "importlib.import_module", "importlib.__import__", "importlib.util",
+                     "importlib.util.find_spec")
+# Attribute names that reach an import loader or the import machinery, on any object (rule ``dynamic-exec``).
+LOADER_ATTRS = frozenset({
+    "loader", "load_module", "exec_module", "create_module", "find_module", "find_loader", "get_loader",
+    "get_importer", "iter_importers", "spec_from_loader", "meta_path", "path_hooks", "path_importer_cache",
+})
+# Calls that hand out arbitrary objects (modules among them) or a frame's namespaces (rule ``reflection``).
+REFLECTION_CALLS = (
+    "gc.get_objects", "gc.get_referents", "gc.get_referrers", "sys._getframe", "sys._current_frames",
+    "inspect.currentframe", "inspect.stack", "inspect.trace", "inspect.getouterframes", "inspect.getinnerframes",
+    "inspect.getmodule", "inspect.getmembers", "inspect.getmembers_static",
+)
+# Modules whose attributes run commands, open connections or load code: never a value (rule ``module-value``).
+MODULE_VALUE_NAMES = frozenset({
+    "os", "sys", "subprocess", "shutil", "socket", "ssl", "builtins", "importlib", "importlib.util", "pkgutil",
+    "platform", "pty", "inspect", "gc", "ctypes", "posix", "nt", "urllib.request", "http.client", "runpy",
+})
+# Modules that other modules keep as attributes (``shutil.os``, ``os.sys``, ``tempfile._os``): reaching one through
+# another module's attribute hides it from every rule that names it (rule ``module-reexport``).
+REEXPORT_MODULES = frozenset({
+    "os", "sys", "subprocess", "socket", "ssl", "shutil", "importlib", "pkgutil", "builtins", "gc", "inspect",
+    "ctypes", "posix", "nt", "pty", "platform", "runpy", "asyncio", "multiprocessing", "urllib", "http",
+    "_os", "_sys", "_subprocess", "_posixsubprocess", "_socket", "_ssl", "_imp", "_bootstrap", "_bootstrap_external",
+})
 DYNAMIC_EXEC_CALLS = (
     "exec", "eval", "compile", "importlib.util.spec_from_file_location",
     "importlib.util.module_from_spec", "pkgutil.resolve_name",
@@ -178,6 +289,8 @@ DYNAMIC_EXEC_CALLS = (
 REFLECTION_ATTRS = frozenset({
     "__dict__", "__getattribute__", "__setattr__", "__delattr__", "__subclasses__", "__globals__",
     "__builtins__", "__code__", "__loader__", "__spec__", "__mro__", "__bases__", "__import__",
+    "__self__", "__wrapped__", "f_globals", "f_locals", "f_builtins", "f_back", "tb_frame", "gi_frame", "cr_frame",
+    "ag_frame",
 })
 # Builtins whose aliases are tracked (``g = getattr; g(os, "system")``).
 TRACKED_BUILTINS = frozenset({
@@ -207,7 +320,7 @@ SENSITIVE_ATTRS = frozenset({
     "open", "request", "putrequest", "endheaders", "send", "urlopen", "Request", "system", "popen",
     "run", "Popen", "call", "check_call", "check_output", "exec", "eval", "compile",
     "import_module", "__import__", "get_method", "method", "data",
-}) | frozenset(WRITE_ATTRS) | REFLECTION_ATTRS | NETWORK_CALL_ATTRS
+}) | frozenset(WRITE_ATTRS) | REFLECTION_ATTRS | NETWORK_CALL_ATTRS | LOADER_ATTRS
 CURL_WGET_RE = re.compile(r"(?<![\w-])(curl|wget)(?![\w-])")
 # Python source smuggled into a subprocess argument (``python -c "import urllib.request; ..."``).
 CODE_RE = re.compile(
@@ -328,6 +441,63 @@ def last_segment(name: str) -> str:
     return name.rsplit(".", 1)[-1]
 
 
+def wrapper_index(name: Optional[str]) -> Optional[int]:
+    """The index of the first segment of ``name`` that is a ``SUBPROCESS_ALLOWED`` module, else ``None``."""
+    if not name:
+        return None
+    return next((index for index, part in enumerate(name.split(".")) if part in SUBPROCESS_WRAPPER_MODULES), None)
+
+
+def wrapper_export(name: Optional[str]) -> Optional[str]:
+    """``<module>.<attribute>`` when ``name`` reaches into a ``SUBPROCESS_ALLOWED`` module from its own name, the
+    dotted path up to the module when it reaches one under another path or through another module (never a safe
+    export), else ``None``."""
+    index = wrapper_index(name)
+    if index is None or name is None:
+        return None
+    parts = name.split(".")
+    if index > 0:
+        return ".".join(parts[:index + 1])
+    if len(parts) < 2:
+        return None
+    return "%s.%s" % (parts[0], parts[1])
+
+
+def is_config_flag(text: str) -> bool:
+    """``-c``, ``--config-env`` or ``--config-env=...`` exactly (``-C``, git's change-directory flag, is fine)."""
+    return text in SUBPROCESS_CONFIG_FLAGS or text.startswith("--config-env=")
+
+
+def is_redirect_flag(text: str) -> bool:
+    """A git option that re-points it (``--git-dir``, ``--git-dir=...``, ``--exec-path``, ...)."""
+    return any(text == flag or text.startswith(flag + "=") for flag in SUBPROCESS_REDIRECT_FLAGS)
+
+
+def command_head(call: ast.Call) -> Optional[str]:
+    """The literal program a subprocess call runs (its first argument's first element, or the first word of a string
+    command), as a base name; ``None`` when it is not a literal."""
+    node: Optional[ast.AST] = call.args[0] if call.args else None
+    args_kw = keyword(call, "args")
+    if args_kw is not None:
+        node = args_kw.value
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        node = node.left
+    if isinstance(node, (ast.List, ast.Tuple)):
+        node = node.elts[0] if node.elts else None
+        text = literal_str(node)
+    else:
+        text = literal_str(node)
+        text = text.split()[0] if text and text.split() else None
+    if not text:
+        return None
+    return text.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def importlib_forbidden(name: Optional[str]) -> bool:
+    """An ``importlib`` name other than the literal dynamic import and ``find_spec``."""
+    return module_matches(name, "importlib") and name not in IMPORTLIB_ALLOWED
+
+
 class ModuleGate:
     """AST gate for one Python module.
 
@@ -351,6 +521,7 @@ class ModuleGate:
         self.http_client_module = False
         self.socket_module = False
         self.reported: Set[Tuple[int, str]] = set()
+        self.parents: Dict[ast.AST, ast.AST] = {}
 
     # -- reporting -------------------------------------------------------------------------
     def fail(self, node: ast.AST, rule: str, message: str) -> None:
@@ -429,6 +600,17 @@ class ModuleGate:
         specific member and is therefore never an ambiguous parent import.
         """
         top = module.split(".")[0]
+        if module != top:
+            self.check_wrapper(node, module, True)
+        if importlib_forbidden(module):
+            self.fail(node, "dynamic-exec", f"'{module}' loads or reloads code the gate cannot read; only "
+                      "importlib.import_module (a literal name) and importlib.util.find_spec may be used")
+            return
+        if module in REFLECTION_CALLS:
+            self.fail(node, "reflection", f"'{module}' hands out objects or frames the gate cannot name; not allowed")
+            return
+        if any(part in REEXPORT_MODULES for part in module.split(".")[1:]) and not module_matches(module, "importlib"):
+            self.check_reexport(node, module)
         if bare and module in AMBIGUOUS_PARENTS:
             self.fail(node, "ambiguous-import",
                       f"bare 'import {module}' is ambiguous; import the submodule you need "
@@ -576,11 +758,129 @@ class ModuleGate:
             self.fail(call, "dynamic-import",
                       f"{name}() with a non-literal module name cannot be checked by the gate")
 
+    def check_wrapper(self, node: ast.AST, name: Optional[str], rooted: bool) -> None:
+        """Rule ``subprocess-wrapper``: any name of a SUBPROCESS_ALLOWED module but the safe exports, and the module
+        reached under another path or through another module."""
+        if self.subprocess_allowed or not rooted:
+            return
+        export = wrapper_export(name)
+        if export is None:
+            return
+        if (wrapper_index(name) or 0) > 0:
+            self.fail(node, "subprocess-wrapper",
+                      f"{export} reaches a subprocess wrapper under another path or through another module; import "
+                      f"it by its own name and call only {', '.join(sorted(SUBPROCESS_SAFE_EXPORTS))}")
+        elif export not in SUBPROCESS_SAFE_EXPORTS:
+            self.fail(node, "subprocess-wrapper",
+                      f"{export} reaches a subprocess wrapper; outside the modules of SUBPROCESS_ALLOWED and "
+                      f"{SUBPROCESS_TEST_PREFIX} only {', '.join(sorted(SUBPROCESS_SAFE_EXPORTS))} may be used")
+
+    def is_callee(self, node: ast.AST) -> bool:
+        parent = self.parents.get(node)
+        return isinstance(parent, ast.Call) and parent.func is node
+
+    def check_value_context(self, node: ast.AST) -> None:
+        """The value rules: a wrapper module or a safe export used as anything but a safe export's call, and
+        ``sys.modules`` used as anything but a literal lookup or a membership test."""
+        if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)) and not isinstance(
+                getattr(node, "ctx", ast.Load()), ast.Load):
+            return
+        name, rooted = self.resolve(node)
+        if name is None or not rooted:
+            return
+        if name == "sys.modules" and not self.literal_module_lookup(node):
+            self.fail(node, "reflection", "sys.modules used as a value hands out every loaded module; read one by a "
+                      "literal name (sys.modules['m'], sys.modules.get('m')) or test 'm' in sys.modules")
+        if name in MODULE_VALUE_NAMES and isinstance(node, (ast.Name, ast.Call, ast.Subscript)) and not self.module_use(node):
+            self.fail(node, "module-value", f"the module {name} is used as a value; its attributes would be called "
+                      "where no rule names them (use them as attributes: os.path, getattr(os, 'literal'))")
+        if name in REFLECTION_CALLS and not isinstance(node, ast.Call):
+            self.fail(node, "reflection", f"{name} hands out objects or frames the gate cannot name; not allowed, "
+                      "called or referenced")
+        if self.subprocess_allowed or wrapper_index(name) != 0:
+            return
+        parts = name.split(".")
+        parent = self.parents.get(node)
+        if len(parts) == 1:
+            safe = (isinstance(parent, ast.Attribute) and parent.value is node
+                    and "%s.%s" % (name, parent.attr) in SUBPROCESS_SAFE_EXPORTS and self.is_callee(parent))
+            if not safe:
+                self.fail(node, "subprocess-wrapper", f"the subprocess wrapper module {name} is used as a value; "
+                          f"outside SUBPROCESS_ALLOWED it serves only calls of {', '.join(sorted(SUBPROCESS_SAFE_EXPORTS))}")
+        elif "%s.%s" % (parts[0], parts[1]) in SUBPROCESS_SAFE_EXPORTS and (len(parts) > 2 or not self.is_callee(node)):
+            if not isinstance(node, ast.Call):
+                self.fail(node, "subprocess-wrapper", f"{name} is used as a value; a safe export is only ever called")
+
+    def module_use(self, node: ast.AST) -> bool:
+        """``node`` (a module) is the base of an attribute, the first argument of a literal ``getattr``/``hasattr``,
+        or the whole value of a plain alias (``o = os``, which the gate follows)."""
+        parent = self.parents.get(node)
+        if isinstance(parent, ast.Attribute) and parent.value is node:
+            return True
+        if isinstance(parent, ast.Call) and parent.args and parent.args[0] is node:
+            # getattr/hasattr with a literal name is resolved; with any other name, and setattr, delattr and vars on
+            # a module, the reflection rule reports it
+            return strip_builtins(self.resolve(parent.func)[0]) in ("getattr", "hasattr", "setattr", "delattr", "vars")
+        if isinstance(parent, ast.Assign) and parent.value is node:
+            return all(isinstance(target, ast.Name) for target in parent.targets)
+        return False
+
+    def literal_module_lookup(self, node: ast.AST) -> bool:
+        parent = self.parents.get(node)
+        if isinstance(parent, ast.Subscript) and parent.value is node:
+            return literal_str(subscript_key(parent)) is not None and isinstance(parent.ctx, ast.Load)
+        if isinstance(parent, ast.Attribute) and parent.value is node and parent.attr == "get":
+            call = self.parents.get(parent)
+            return (isinstance(call, ast.Call) and call.func is parent and bool(call.args)
+                    and literal_str(call.args[0]) is not None)
+        if isinstance(parent, ast.Compare) and node in parent.comparators:
+            return all(isinstance(op, (ast.In, ast.NotIn)) for op in parent.ops)
+        return False
+
+    def check_reexport(self, node: ast.AST, name: str) -> None:
+        """Rule ``module-reexport``: a module reached as another module's attribute."""
+        parts = name.split(".")
+        hidden = next((part for part in parts[1:] if part in REEXPORT_MODULES), None)
+        if hidden is None or module_matches(name, "importlib") or wrapper_index(name) is not None:
+            return  # a wrapper module's attribute is the subprocess-wrapper rule's finding
+        self.fail(node, "module-reexport", f"{name} reaches the module {hidden} through another module's attribute; "
+                  f"import {hidden.lstrip('_')} by its own name so the gate can read what it calls")
+
+    def check_config_flags(self, call: ast.Call) -> None:
+        """Rule ``subprocess-config``: a literal ``-c`` or ``--config-env`` among the call's string arguments."""
+        strings = [text for node in list(call.args) + [kw.value for kw in call.keywords]
+                   for text in string_values(node)]
+        if any(is_config_flag(text) for text in strings):
+            self.fail(call, "subprocess-config",
+                      "a command line outside tests/ carries -c or --config-env: a git configuration override "
+                      "(alias.x=!cmd) or interpreter code runs behind a literal command name")
+        if self.rel in SUBPROCESS_ALLOWED and any(is_redirect_flag(text) for text in strings):
+            self.fail(call, "subprocess-config", "a git command line re-points git (--git-dir, --work-tree, --exec-path, "
+                      "--namespace) at another repository or program directory")
+
     def check_subprocess(self, call: ast.Call, name: str) -> None:
         if not module_matches(name, SHELL_MODULE):
+            if self.rel in SUBPROCESS_ALLOWED:
+                self.check_config_flags(call)
             return
         if name in SHELL_HELPERS:
             self.fail(call, "subprocess-shell", f"{name}() runs its command through a shell")
+        if has_splat(call):
+            self.fail(call, "subprocess-shell", f"{name}() with *args/**kwargs cannot be read (shell=True can hide "
+                      "in a splat)")
+        head = command_head(call)
+        if not self.is_test and head is not None and head.lower() in SHELL_BINARIES:
+            self.fail(call, "subprocess-shell", f"{name}() runs {head}, a shell or code interpreter that runs whatever "
+                      "its arguments or its input say")
+        if self.rel in SUBPROCESS_ALLOWED:
+            env = keyword(call, "env")
+            builder = SUBPROCESS_ENV_BUILDERS.get(self.rel)
+            if env is not None and not (isinstance(env.value, ast.Call) and isinstance(env.value.func, ast.Name)
+                                        and env.value.func.id == builder):
+                self.fail(call, "subprocess-config", f"env= of a subprocess call in {self.rel} must be a call of "
+                          f"{builder}(), the module's reviewed environment builder (a GIT_CONFIG_* entry runs commands)")
+        if not self.is_test:
+            self.check_config_flags(call)
         strings = [text for node in list(call.args) + [kw.value for kw in call.keywords]
                    for text in string_values(node)]
         if any(CURL_WGET_RE.search(text) for text in strings):
@@ -606,6 +906,11 @@ class ModuleGate:
     def check_reference(self, node: ast.AST, name: str) -> None:
         """A resolved name that is called, or merely obtained through ``getattr``."""
         plain = strip_builtins(name) or name
+        if name in REFLECTION_CALLS:
+            self.fail(node, "reflection", f"{name} hands out objects or frames the gate cannot name; not allowed")
+        if name in ENVIRON_FUNCTIONS or (any(module_matches(name, environ) for environ in ENVIRON_NAMES)
+                                         and last_segment(name) in ENVIRON_MUTATORS):
+            self.check_environment_write(node, name)
         if name.split(".")[0] in THIRD_PARTY_HTTP:
             self.fail(node, "third-party-http",
                       f"{name} reaches a third-party HTTP client; the repository is stdlib-only and "
@@ -686,6 +991,10 @@ class ModuleGate:
             return
         target, rooted = self.resolve(call.args[0])
         attr = literal_str(call.args[1])
+        if attr is not None and target is not None:
+            self.check_wrapper(call, f"{target}.{attr}", rooted)
+        if attr is not None and attr in LOADER_ATTRS:
+            self.fail(call, "dynamic-exec", f"{plain}(..., {attr!r}) reaches an import loader or the import machinery")
         if attr is None:
             if self.network_module or rooted:
                 self.fail(call, "reflection",
@@ -746,13 +1055,16 @@ class ModuleGate:
             attr = literal_str(arg)
             if attr is None:
                 self.fail(call, "reflection", f"{name}() with a non-literal attribute name cannot be checked by the gate")
+            elif any(segment in LOADER_ATTRS for segment in attr.split(".")):
+                self.fail(call, "dynamic-exec", f"{name}({attr!r}) reaches an import loader or the import machinery")
             elif self.network_module:
                 self.fail(call, "indirect-call", f"{name}() hides the call it makes; a GET-only client calls what it needs directly")
             elif any(segment in SENSITIVE_ATTRS for segment in attr.split(".")):
                 self.fail(call, "indirect-call", f"{name}({attr!r}) reaches a write-capable attribute")
 
     def visit_call(self, call: ast.Call) -> None:
-        name, _rooted = self.resolve(call.func)
+        name, rooted = self.resolve(call.func)
+        self.check_wrapper(call, name, rooted)
         plain = strip_builtins(name)
         attr = call.func.attr if isinstance(call.func, ast.Attribute) else None
         if name is None:
@@ -797,6 +1109,19 @@ class ModuleGate:
             self.check_http_client_call(call, attr)
 
     def visit_attribute(self, node: ast.Attribute) -> None:
+        name, rooted = self.resolve(node)
+        self.check_wrapper(node, name, rooted)
+        if node.attr in LOADER_ATTRS:
+            self.fail(node, "dynamic-exec", f".{node.attr} reaches an import loader or the import machinery; a module "
+                      "loaded through it bypasses every import rule")
+        if rooted and name is not None:
+            if importlib_forbidden(name):
+                self.fail(node, "dynamic-exec", f"{name} loads or reloads code the gate cannot read; only "
+                          "importlib.import_module (a literal name) and importlib.util.find_spec may be used")
+            self.check_reexport(node, name)
+        if rooted and name is not None and (name in SHELL_ESCAPE_EXACT or name.startswith(SHELL_ESCAPE_PREFIXES)):
+            # A reference handed to another callable (map(os.system, ...), a run= seam) is a call the gate never sees.
+            self.fail(node, "shell-escape", f"{name} can run an arbitrary command; not allowed, called or referenced")
         if node.attr in REFLECTION_ATTRS:
             self.fail(node, "reflection", f".{node.attr} reaches an object's namespace or class machinery directly; not allowed")
         elif node.attr == "__class__" and self.network_module:
@@ -805,6 +1130,9 @@ class ModuleGate:
     def visit_subscript(self, node: ast.Subscript) -> None:
         key = literal_str(subscript_key(node))
         if key is not None:
+            if key in LOADER_ATTRS and isinstance(node.value, ast.Call) and strip_builtins(
+                    self.resolve(node.value.func)[0]) == "vars":
+                self.fail(node, "dynamic-exec", f"vars(...)[{key!r}] reaches an import loader or the import machinery")
             return
         value = node.value
         if isinstance(value, ast.Call):
@@ -837,13 +1165,47 @@ class ModuleGate:
                               "path; a GET-only client builds the URL once and leaves the request alone")
             elif isinstance(target, ast.Subscript):
                 inner = target.value
+                if self.resolve(inner)[0] in ENVIRON_NAMES:
+                    self.check_environment_write(node, "%s[...]" % self.resolve(inner)[0])
                 if isinstance(inner, ast.Call) and strip_builtins(self.resolve(inner.func)[0]) in ("vars", "globals", "locals"):
                     self.fail(node, "reflection", "assigning through a namespace dictionary rebinds names behind the gate's back")
                 elif self.resolve(inner)[0] == "sys.modules":
                     self.fail(node, "reflection", "assigning into sys.modules injects a module the gate did not read")
 
+    def check_environment_write(self, node: ast.AST, what: str) -> None:
+        """Rule ``environment-write``: shipped code never writes the process environment (module notes)."""
+        if self.is_test:
+            return
+        self.fail(node, "environment-write", f"{what} writes the process environment; outside tests/ nothing may (a "
+                  "GIT_CONFIG_*, PATH or HOME set in-process steers the git a safe export runs)")
+
+    def check_module_strings(self, tree: ast.AST) -> None:
+        """In a SUBPROCESS_ALLOWED module: no string is a git override or re-pointing flag, and a GIT_* string stands
+        only in the module's environment builder (``SUBPROCESS_ENV_BUILDERS``)."""
+        builder = SUBPROCESS_ENV_BUILDERS.get(self.rel)
+        spans = [(node.lineno, getattr(node, "end_lineno", node.lineno) or node.lineno) for node in ast.walk(tree)
+                 if isinstance(node, ast.FunctionDef) and node.name == builder]
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Constant, ast.JoinedStr, ast.BinOp)):
+                continue
+            for text in string_values(node) if not isinstance(node, ast.Constant) else (
+                    [node.value] if isinstance(node.value, str) else []):
+                line = getattr(node, "lineno", 0) or 0
+                if is_config_flag(text) or is_redirect_flag(text):
+                    self.fail(node, "subprocess-config", f"{text!r} in {self.rel} overrides or re-points git; the "
+                              "allowed modules build no such command line, from a literal or a constant")
+                elif text.startswith("GIT_") and not any(start <= line <= end for start, end in spans):
+                    self.fail(node, "subprocess-config", f"{text!r} names a git environment variable outside "
+                              f"{builder or 'the module'}(), the module's reviewed environment builder")
+
     def visit_nodes(self, tree: ast.AST) -> None:
         for node in ast.walk(tree):
+            if isinstance(node, (ast.Name, ast.Attribute, ast.Call, ast.Subscript)):
+                self.check_value_context(node)
+            if isinstance(node, ast.Delete):
+                for target in node.targets:
+                    if isinstance(target, ast.Subscript) and self.resolve(target.value)[0] in ENVIRON_NAMES:
+                        self.check_environment_write(node, "del %s[...]" % self.resolve(target.value)[0])
             if isinstance(node, ast.Call):
                 self.visit_call(node)
             elif isinstance(node, ast.Attribute):
@@ -864,10 +1226,15 @@ class ModuleGate:
             self.findings.append(Finding(self.rel, exc.lineno or 0, "syntax",
                                          f"cannot parse: {exc.msg}", exc.text or ""))
             return self.findings
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                self.parents[child] = parent
         self.visit_imports(tree)
         self.visit_aliases(tree)
         self.visit_classes(tree)
         self.visit_aliases(tree)
+        if self.rel in SUBPROCESS_ALLOWED:
+            self.check_module_strings(tree)
         self.visit_nodes(tree)
         return self.findings
 

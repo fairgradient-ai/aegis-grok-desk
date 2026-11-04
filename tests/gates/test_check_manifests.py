@@ -17,6 +17,7 @@ from typing import Any, Callable, List
 import tests._path  # noqa: F401
 import check_grok_template
 import check_manifests
+from aegis_desk import routines
 from tests.gates._trees import fixture_tree, read, write
 # isort: on
 
@@ -218,6 +219,289 @@ class ManifestContractTests(unittest.TestCase):
         payload = json.loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual("0.1.0", payload["version"])
+
+
+STUB_TOOL = '''"""Gate fixture tool: only its parser matters to the manifest check (read by AST, never imported)."""
+from __future__ import annotations
+
+import argparse
+
+ACTIONS = ("list", "show")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="stub")
+    parser.add_argument("--post", action="store_true", help="record the run")
+    parser.add_argument("--summary", action="store_true", help="always print the pre-close line")
+    parser.add_argument("--until", default=None, metavar="HH:MM", help="a value-taking flag")
+    parser.add_argument("--fixture-set", metavar="NAME", default=None, help="recorded fixture set")
+    return parser
+'''
+
+POSITIONAL_TOOL = '''"""Gate fixture tool with positionals: choices from a module-level tuple and from an inline list."""
+from __future__ import annotations
+
+import argparse
+from typing import Tuple
+
+ACTIONS: Tuple[str, ...] = ("list", "show")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="stub")
+    parser.add_argument("action", nargs="?", default=None, choices=ACTIONS, help="what to do")
+    parser.add_argument("mode", nargs="?", default=None, choices=["week", "day"], help="which view")
+    return parser
+'''
+
+ROUTINE_MANIFEST = '''# Gate test routine manifest: one routine on the good tree's desk-lead agent.
+schema_version = 1
+
+[profiles.lean]
+description = "one run per weekday"
+
+[[routine]]
+id = "book-check"
+owner = "desk-lead"
+stage = 1
+profiles = ["lean"]
+et = { lean = ["10:05"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["book_check --post"]
+post = ["book_check"]
+posts = "transitions"
+quiet_rule = "Posts only a verdict change or a standing UNAVAILABLE."
+approval_boundary = "read-only; writes only under state/ and journal/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot {slot} and post its output verbatim."
+'''
+
+SECOND_ROUTINE = '''
+[[routine]]
+id = "eod"
+owner = "desk-lead"
+stage = 1
+profiles = ["lean"]
+et = { lean = ["16:35"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["book_check --post --summary"]
+depends_on = { routine = "book-check", min_gap_min = 20 }
+post = ["book_check"]
+posts = "always"
+quiet_rule = "Always one message."
+approval_boundary = "read-only; writes only under state/ and journal/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod --slot {slot} and post its output verbatim."
+'''
+
+REAL_AUTOREVIEW = os.path.join(tests._path._ROOT, "routines", "autoreview.toml")
+LANDED_STEP_TOOLS = ("assignment_watch", "book", "book_check", "csv_recon", "expiry_checklist")
+
+
+def routine_tree(root: str, manifest: str = ROUTINE_MANIFEST, autoreview: bool = True) -> None:
+    """Turn a good-tree copy into one whose manifest declares routines, with the tool and texts they need."""
+    write(root, "routines/manifest.toml", manifest)
+    write(root, "scripts/book_check.py", STUB_TOOL)
+    if autoreview:
+        with open(REAL_AUTOREVIEW, encoding="utf-8") as handle:
+            write(root, "routines/autoreview.toml", handle.read())
+
+
+class RoutinesManifestTests(unittest.TestCase):
+    """check_routines_manifest: the full parse (aegis_desk.routines), owners, tool parsers by AST, Auto-review."""
+
+    def run_on(self, manifest: str = ROUTINE_MANIFEST, autoreview: bool = True,
+               extra: Callable[[str], None] = lambda root: None) -> dict:
+        with fixture_tree() as root:
+            routine_tree(root, manifest, autoreview)
+            extra(root)
+            return check_manifests.run(root)
+
+    def assert_fails(self, result: dict, *needles: str) -> None:
+        self.assertFalse(result["ok"], joined(result["errors"]))
+        text = joined(result["errors"])
+        for needle in needles:
+            self.assertIn(needle, text)
+
+    def mutated(self, old: str, new: str, text: str = ROUTINE_MANIFEST) -> str:
+        self.assertEqual(1, text.count(old), old)
+        return text.replace(old, new)
+
+    def test_routine_tree_passes(self) -> None:
+        result = self.run_on()
+        self.assertTrue(result["ok"], joined(result["errors"]))
+        self.assertEqual(1, result["checked"]["routines"])
+        result = self.run_on(ROUTINE_MANIFEST + SECOND_ROUTINE)
+        self.assertTrue(result["ok"], joined(result["errors"]))
+        self.assertEqual(2, result["checked"]["routines"])
+
+    def test_skeleton_manifest_needs_no_autoreview(self) -> None:
+        with fixture_tree() as root:
+            self.assertFalse(os.path.exists(os.path.join(root, "routines", "autoreview.toml")))
+            result = check_manifests.run(root)
+        self.assertTrue(result["ok"], joined(result["errors"]))
+        self.assertEqual(0, result["checked"]["routines"])
+
+    def test_structural_rules_reach_the_gate(self) -> None:
+        two = ROUTINE_MANIFEST + SECOND_ROUTINE
+        cases = (
+            ("duplicate id", self.mutated('id = "eod"', 'id = "book-check"', two), "duplicate routine id 'book-check'"),
+            ("bad id", self.mutated('id = "book-check"', 'id = "Book_Check"'), "routine id must match"),
+            ("unknown profile", self.mutated('profiles = ["lean"]\net = { lean = ["10:05"] }',
+                                             'profiles = ["turbo"]\net = { turbo = ["10:05"] }'),
+             "profile 'turbo' is not declared under [profiles]"),
+            ("bad time", self.mutated('et = { lean = ["10:05"] }', 'et = { lean = ["10:5"] }'),
+             "et.lean slot '10:5' is not HH:MM"),
+            ("bad day", self.mutated('"Fri"]', '"Fry"]', ROUTINE_MANIFEST), "day 'Fry' is not one of"),
+            ("delay window", self.mutated('et = { lean = ["10:05"] }', 'et = { lean = ["09:35"] }'),
+             "slot 09:35 falls in the delay window 08:00-10:00 ET on a weekday"),
+            ("owned flag", self.mutated('chain = ["book_check --post"]', 'chain = ["book_check --post --json"]'),
+             "--json is set by routine.py, never by the manifest"),
+            ("forbidden flag", self.mutated('chain = ["book_check --post"]',
+                                            'chain = ["book_check --post --allow-dirty"]'),
+             "--allow-dirty is never allowed in a routine chain"),
+            ("ack config", self.mutated('chain = ["book_check --post"]', 'chain = ["book_check --post", "ack config"]'),
+             "step 'ack config': ack is not a step tool"),
+            ("unknown dependency", self.mutated('routine = "book-check", min_gap_min', 'routine = "bookcheck", min_gap_min',
+                                                two),
+             "depends_on.routine 'bookcheck' is not a routine of this manifest"),
+            ("min_gap 10", self.mutated('min_gap_min = 20', 'min_gap_min = 10', two),
+             "depends_on.min_gap_min must be an integer of at least 20 (found 10)"),
+            ("gap violation", self.mutated('et = { lean = ["16:35"] }', 'et = { lean = ["10:15"] }', two),
+             "routine eod: slot 10:15 is 10 min after book-check's latest slot 10:05 (depends_on.min_gap_min 20)"),
+            ("post not in chain", self.mutated('post = ["book_check"]\nposts = "transitions"',
+                                               'post = ["csv_recon"]\nposts = "fired"'),
+             "post tool 'csv_recon' is not a step of its chains"),
+            ("transitions without book_check", self.mutated('chain = ["book_check --post"]\npost = ["book_check"]',
+                                                            'chain = ["book_check --post", "expiry_checklist --week"]\n'
+                                                            'post = ["expiry_checklist"]'),
+             "posts 'transitions' requires post = [\"book_check\"]"),
+            ("unknown slot_chain key", self.mutated('chain = ["book_check --post"]',
+                                                    'chain = ["book_check --post"]\nslot_chain = { "10:06" = '
+                                                    '["book_check --post --summary"] }'),
+             "slot_chain key '10:06' is not a slot of the routine"),
+            ("prompt mismatch", self.mutated("routine.py book-check --slot", "routine.py book-check --allow-dirty --slot"),
+             "routine book-check: prompt must be exactly"),
+        )
+        for name, manifest, needle in cases:
+            with self.subTest(name):
+                self.assert_fails(self.run_on(manifest), "routines/manifest.toml: ", needle)
+
+    def test_unknown_owner_fixture(self) -> None:
+        with fixture_tree("routine_unknown_owner") as root:
+            result = check_manifests.run(root)
+        self.assert_fails(result, "routines/manifest.toml: routine book-check: owner 'risk-bot' has no agents/risk-bot.md")
+        self.assertEqual(1, len(result["errors"]), joined(result["errors"]))
+
+    def test_unknown_flag_fixture(self) -> None:
+        with fixture_tree("routine_unknown_flag") as root:
+            result = check_manifests.run(root)
+        self.assert_fails(result, "routines/manifest.toml: routine book-check: step 'book_check --post --nope': "
+                                  "scripts/book_check.py does not accept --nope")
+        self.assertEqual(1, len(result["errors"]), joined(result["errors"]))
+
+    def test_autoreview_too_long_fixture(self) -> None:
+        with fixture_tree("autoreview_too_long") as root:
+            result = check_manifests.run(root)
+        self.assert_fails(result, "routines/autoreview.toml: [allow_routines] renders to 1080 characters (limit 1000)")
+        self.assertEqual(1, len(result["errors"]), joined(result["errors"]))
+
+    def test_chain_tool_must_exist_in_the_tree(self) -> None:
+        manifest = self.mutated('chain = ["book_check --post"]', 'chain = ["book_check --post", "csv_recon"]')
+        self.assert_fails(self.run_on(manifest),
+                          "routines/manifest.toml: routine book-check: step 'csv_recon': scripts/csv_recon.py does not exist")
+
+    def test_flag_values_by_ast(self) -> None:
+        accepted = ("book_check --post --until 10:00", "book_check --post --until=10:00", "book_check --summary --post")
+        for chain in accepted:
+            result = self.run_on(self.mutated('chain = ["book_check --post"]', 'chain = ["%s"]' % chain))
+            self.assertTrue(result["ok"], (chain, joined(result["errors"])))
+        refused = (
+            ("book_check --post --until", "scripts/book_check.py: --until needs a value"),
+            ("book_check --post --until --summary", "scripts/book_check.py: --until needs a value"),
+            ("book_check --post --summary=yes", "scripts/book_check.py: --summary takes no value"),
+            ("book_check --post extra", "scripts/book_check.py does not take a positional argument 'extra'"),
+            ("book_check --post -x", "scripts/book_check.py does not accept -x"),
+        )
+        for chain, needle in refused:
+            with self.subTest(chain):
+                self.assert_fails(self.run_on(self.mutated('chain = ["book_check --post"]', 'chain = ["%s"]' % chain)),
+                                  "step '%s': %s" % (chain, needle))
+
+    def test_positionals_and_their_choices_by_ast(self) -> None:
+        def with_tool(root: str) -> None:
+            write(root, "scripts/assignment_watch.py", POSITIONAL_TOOL)
+
+        for chain in ("assignment_watch list", "assignment_watch show week", "assignment_watch"):
+            manifest = self.mutated('chain = ["book_check --post"]', 'chain = ["book_check --post", "%s"]' % chain)
+            result = self.run_on(manifest, extra=with_tool)
+            self.assertTrue(result["ok"], (chain, joined(result["errors"])))
+        refused = (
+            ("assignment_watch nope", "positional 'nope' is not one of list, show (scripts/assignment_watch.py action)"),
+            ("assignment_watch list month", "positional 'month' is not one of week, day (scripts/assignment_watch.py mode)"),
+            ("assignment_watch list week extra", "scripts/assignment_watch.py does not take a positional argument 'extra'"),
+        )
+        for chain, needle in refused:
+            with self.subTest(chain):
+                manifest = self.mutated('chain = ["book_check --post"]', 'chain = ["book_check --post", "%s"]' % chain)
+                self.assert_fails(self.run_on(manifest, extra=with_tool), needle)
+
+    def test_unparsable_tool_is_reported(self) -> None:
+        def broken(root: str) -> None:
+            write(root, "scripts/book_check.py", "def broken(:\n")
+
+        self.assert_fails(self.run_on(extra=broken), "routines/manifest.toml: routine book-check: step 'book_check --post': "
+                                                     "scripts/book_check.py cannot be read as Python")
+
+    def test_autoreview_is_required_once_a_routine_is_declared(self) -> None:
+        self.assert_fails(self.run_on(autoreview=False),
+                          "routines/autoreview.toml: missing; required once routines/manifest.toml declares a routine")
+
+    def test_autoreview_structure_reaches_the_gate(self) -> None:
+        def short_limit(root: str) -> None:
+            path = os.path.join(root, "routines", "autoreview.toml")
+            write(root, "routines/autoreview.toml", read(root, "routines/autoreview.toml").replace(
+                "limit_chars = 1000", "limit_chars = 999"))
+            self.assertTrue(os.path.isfile(path))
+
+        self.assert_fails(self.run_on(extra=short_limit), "routines/autoreview.toml: limit_chars must be 1000 (found 999)")
+
+    def test_invalid_toml_is_one_error(self) -> None:
+        result = self.run_on(ROUTINE_MANIFEST + "\n[[routine]\n")
+        self.assert_fails(result, "routines/manifest.toml: not valid TOML")
+
+    def test_parser_spec_of_the_landed_tools(self) -> None:
+        scripts = os.path.join(tests._path._ROOT, "scripts")
+        spec = check_manifests.read_parser_spec(os.path.join(scripts, "book_check.py"))
+        self.assertEqual({"--post": False, "--summary": False, "--watch-alive": False, "--next-run-utc": True,
+                          "--routine": True, "--scheduled-et": True, "--fixture-set": True}, spec.flags)
+        self.assertEqual((), spec.positionals)
+        self.assertEqual({"--week": False, "--tomorrow": False, "--final-call": False, "--fixture-set": True},
+                         check_manifests.read_parser_spec(os.path.join(scripts, "expiry_checklist.py")).flags)
+        ack = check_manifests.read_parser_spec(os.path.join(scripts, "ack.py"))
+        self.assertEqual(("list", "show", "ack", "snooze", "acted", "config"), ack.positionals[0].choices)
+        self.assertEqual("signal_id", ack.positionals[1].name)
+        self.assertIsNone(ack.positionals[1].choices)
+        for tool in LANDED_STEP_TOOLS:
+            flags = check_manifests.read_parser_spec(os.path.join(scripts, tool + ".py")).flags
+            self.assertEqual(tool in routines.FIXTURE_SET_TOOLS, "--fixture-set" in flags, tool)
+
+    def test_real_manifest_steps_of_the_landed_tools_are_accepted(self) -> None:
+        # The full real-tree check also needs desk_doctor, eod_summary and trigger_levels (PR 2d builders).
+        scripts = os.path.join(tests._path._ROOT, "scripts")
+        manifest = routines.load_manifest()
+        checked = 0
+        for routine in manifest.routines:
+            for steps in routine.chains():
+                for step in steps:
+                    tool = routines.step_tool(step)
+                    if tool not in LANDED_STEP_TOOLS:
+                        continue
+                    spec = check_manifests.read_parser_spec(os.path.join(scripts, tool + ".py"))
+                    self.assertEqual([], check_manifests.check_step(spec, "scripts/%s.py" % tool,
+                                                                    routines.step_tokens(step)), step)
+                    checked += 1
+        self.assertEqual(12, checked)
 
 
 class TemplateContractTests(unittest.TestCase):

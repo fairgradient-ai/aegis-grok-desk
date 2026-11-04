@@ -69,6 +69,10 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--emitted-file", metavar="PATH", default=None,
                         help="the emitted numbers: a JSON list of strings, or the emitted document {emitted_numbers, "
                              "rule_ids, identifiers, clocks, as_of} book_check.py prints (strict)")
+    parser.add_argument("--footer", choices=alert_lint.FOOTER_KINDS, default=None,
+                        help="the footer the last line must be: rules (every alert, sheet and summary) or snapshot "
+                             "(opening_bell.py's rule-free market snapshot only); default: the emitted document's "
+                             "footer key, else rules")
     return parser
 
 
@@ -112,7 +116,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return fail(args, version, now, "emitted_invalid", "the emitted file %s cannot be used: %s"
                     % (args.emitted_file, exc))
     rule_ids = document.rule_ids
-    result = document.check(text)
+    result = document.check(text, args.footer)
     exit_code = contract.EXIT_QUIET if result.ok else contract.EXIT_ERROR
     if args.json:
         payload = result.as_dict()

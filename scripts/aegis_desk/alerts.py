@@ -393,13 +393,18 @@ def quarantine_words(reason: str) -> str:
     return GROUP_WORDS
 
 
-def fmt_footer(as_of: datetime.datetime, delay_min: int, emitted: List[str], clocks: Optional[List[str]] = None) -> str:
-    """The fixed footer (``alert_lint.footer_line``) with the data's as-of time (its ``HH:MM UTC`` added to
-    ``clocks`` when given). Its ``15 min`` is in the lint's whitelist (addendum decision 6) and is not emitted; any
+def fmt_footer(as_of: datetime.datetime, delay_min: int, emitted: List[str], clocks: Optional[List[str]] = None,
+               kind: str = alert_lint.FOOTER_RULES) -> str:
+    """The fixed footer (``alert_lint.footer_line``; with ``kind`` ``snapshot`` the market-snapshot footer of
+    ``alert_lint.snapshot_footer_line``, for rule-free text only) with the data's as-of time (its ``HH:MM UTC`` added
+    to ``clocks`` when given). Its ``15 min`` is in the lint's whitelist (addendum decision 6) and is not emitted; any
     other delay is."""
+    if kind not in alert_lint.FOOTER_KINDS:
+        raise ValueError("kind must be one of %s, got %r" % (", ".join(alert_lint.FOOTER_KINDS), kind))
     if _whole(delay_min, "the feed delay") != alert_lint.FOOTER_DELAY_MIN:
         _emit(emitted, str(delay_min))
-    line = alert_lint.footer_line(as_of, delay_min)
+    line = (alert_lint.footer_line(as_of, delay_min) if kind == alert_lint.FOOTER_RULES
+            else alert_lint.snapshot_footer_line(as_of, delay_min))
     clock = as_of.astimezone(datetime.timezone.utc).strftime("%H:%M UTC")
     if clocks is not None and clock not in clocks:
         clocks.append(clock)
@@ -611,7 +616,9 @@ def _instant(value: Any) -> Optional[datetime.datetime]:
     return None
 
 
-def _book_as_of(document: Mapping[str, Any]) -> datetime.datetime:
+def book_as_of(document: Mapping[str, Any]) -> datetime.datetime:
+    """The footer's instant of a book: the newest quote as-of of its legs, else its ``generated_at`` (``ValueError``
+    when it has neither). Every builder's footer reads it; the level sheet and the summaries reuse it."""
     stamps = [stamp for stamp in (_instant(leg.get("as_of")) for leg in document.get("legs") or []) if stamp]
     if stamps:
         return max(stamps)
@@ -668,7 +675,7 @@ def _grade_and_as_of(document: Mapping[str, Any], group: Optional[Mapping[str, A
     symbols = {leg.get("underlying") for leg in legs if leg.get("occ")}
     grades.extend((underlyings.get(symbol) or {}).get("quote_grade") for symbol in sorted(s for s in symbols if s))
     stamps = [stamp for stamp in (_instant(leg.get("as_of")) for leg in legs) if stamp]
-    return _worst_grade(grades), (min(stamps) if stamps else _book_as_of(document))
+    return _worst_grade(grades), (min(stamps) if stamps else book_as_of(document))
 
 
 # --------------------------------------------------------------------------------------------
@@ -837,7 +844,7 @@ class _Message:
 
     def finish(self, kind: str, signal_record: Optional[Dict[str, Any]], group_id: Optional[str] = None,
                verdict: Optional[str] = None) -> Alert:
-        as_of = _book_as_of(self.document)
+        as_of = book_as_of(self.document)
         _words, delay = _source(self.document)
         footer = fmt_footer(as_of, delay, self.emitted, self.clocks)
         body = "\n".join(self.lines)
@@ -1250,6 +1257,7 @@ __all__ = [
     "VERDICT_WORDS",
     "VERIFY_LIVE_QUOTES",
     "WITHHELD_SENTENCE",
+    "book_as_of",
     "compose",
     "config_changed_text",
     "exit_signal_text",

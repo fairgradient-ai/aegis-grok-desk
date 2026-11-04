@@ -1,0 +1,13 @@
+# Gate fixture: an allow text that renders past limit_chars. routine_audit.py --rules-text prints them and SETUP.md
+# repeats them verbatim; {routine_ids} is replaced by the manifest's routine ids, comma-separated, in manifest order.
+schema_version = 1
+limit_chars = 1000
+
+[allow_routines]
+text = "Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): {routine_ids}. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order. The same command also runs from the desk's own scheduled routines on the owner's computer, from the Floor's shared chat when the owner asks for a run by name, and from a Test run the owner starts on the desktop app; in each case the runs stay inside the same read-only boundary and write only under the desk root. A run that finds the checkout changed, a lock held by another run or an input it cannot read stops and writes an incident file for the owner instead, and the next evening brief names that incident with the routine id, the slot and the time it ran, so nothing is ever retried in a loop behind the owner's back."
+
+[ask_first_writes]
+text = "Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list."
+
+[ask_first_owner_authority]
+text = "Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py. These record the owner's own decisions: run them only after the owner taps approve on this card."

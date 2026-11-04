@@ -29,7 +29,11 @@ Rules
 * ``[rates]``: ``risk_free_rate`` (number, kept as ``Decimal`` and also as the float
   ``risk_free_rate_f`` the pricing engine takes), ``source`` (string), ``as_of`` (TOML local date).
 * ``[levels]``: ``order_shape_enabled`` (boolean; default policy false, flipped only after
-  counsel sign-off).
+  counsel sign-off), and the optional ``penny_classes`` and ``penny_all_classes`` (lists of OCC
+  roots, each a capital letter then up to five capitals or digits, no duplicates, the two lists
+  disjoint; absent is empty): the roots ``aegis_desk.levels`` rounds on the Penny Interval grid
+  (0.01 below 3.00, 0.05 at or above) or on 0.01 at every price. A root in neither list uses the
+  standard grid (0.05 below 3.00, 0.10 at or above), whose prices are valid on every class's grid.
 
 Integers where a decimal is allowed (``declared_equity = 250000``) are accepted and converted
 exactly; a boolean is never a number; a string is never a number, time or date.
@@ -44,6 +48,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
@@ -76,7 +81,9 @@ _ACCOUNT_KEYS = ("name", "type")
 _MARKET_DATA_KEYS = ("vendor", "host", "token_env", "token_file", "feed_delay_min", "quote_ttl_min",
                      "grace_min", "pin_band")
 _RATES_KEYS = ("risk_free_rate", "source", "as_of")
-_LEVELS_KEYS = ("order_shape_enabled",)
+_LEVELS_KEYS = ("order_shape_enabled", "penny_classes", "penny_all_classes")
+OCC_ROOT_RE = re.compile(r"^[A-Z][A-Z0-9]{0,5}\Z")
+"""An OCC root as ``[levels] penny_classes`` and ``penny_all_classes`` name it (``WMT``, ``SPXW``, ``BRKB1``)."""
 
 
 class DeskConfigError(ValueError):
@@ -146,6 +153,8 @@ class RatesSection:
 @dataclass(frozen=True)
 class LevelsSection:
     order_shape_enabled: bool
+    penny_classes: Tuple[str, ...] = ()
+    penny_all_classes: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -371,11 +380,35 @@ class _Reader:
             as_of=self.local_date(table, "as_of", where),
         )
 
+    def roots(self, table: Dict[str, Any], key: str, where: str) -> Tuple[str, ...]:
+        """An optional list of OCC roots (absent: empty); anything else names the key and the section."""
+        if key not in table:
+            return ()
+        value = table[key]
+        shape = "a list of OCC roots (a capital letter, then up to five capitals or digits)"
+        if not isinstance(value, list):
+            raise self.fail("%s %s must be %s, got %r" % (where, key, shape, value))
+        roots: List[str] = []
+        for item in value:
+            if not isinstance(item, str) or not OCC_ROOT_RE.match(item):
+                raise self.fail("%s %s must be %s: %r is not a root" % (where, key, shape, item))
+            if item in roots:
+                raise self.fail("%s %s names %s twice (a duplicate)" % (where, key, item))
+            roots.append(item)
+        return tuple(roots)
+
     def levels(self, document: Dict[str, Any]) -> LevelsSection:
         where = "[levels]"
         table = self.section(document, "levels")
         self.check_keys(table, _LEVELS_KEYS, where)
-        return LevelsSection(order_shape_enabled=self.boolean(table, "order_shape_enabled", where))
+        enabled = self.boolean(table, "order_shape_enabled", where)
+        penny = self.roots(table, "penny_classes", where)
+        penny_all = self.roots(table, "penny_all_classes", where)
+        both = [root for root in penny if root in penny_all]
+        if both:
+            raise self.fail("%s penny_classes and penny_all_classes both name %s: a root has one tick class"
+                            % (where, ", ".join(both)))
+        return LevelsSection(order_shape_enabled=enabled, penny_classes=penny, penny_all_classes=penny_all)
 
     def parse(self, document: Dict[str, Any], sha256: str) -> DeskConfig:
         self.refuse_machine_role(document, "")
@@ -451,6 +484,7 @@ __all__ = [
     "MACHINE_ROLE_KEY",
     "MACHINE_ROLE_MESSAGE",
     "MarketDataSection",
+    "OCC_ROOT_RE",
     "OwnerSection",
     "QUOTE_TTL_RANGE",
     "RatesSection",

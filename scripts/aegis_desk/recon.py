@@ -1294,6 +1294,12 @@ def plausibility_quarantine(checks: Iterable[PlausibilityCheck],
 # --------------------------------------------------------------------------------------------
 
 
+def recon_path(paths: DeskPaths, et_date: datetime.date) -> str:
+    """``data/positions/<ET date>.recon.json``: the reconciliation record ``csv_recon.py`` writes on every run (the
+    envelope its ``--json`` prints, whatever the verdict), beside the snapshot of the same ET date."""
+    return os.path.join(paths.positions_snapshots_dir, et_date.isoformat() + ".recon.json")
+
+
 def snapshot_positions(paths: DeskPaths, data: bytes, et_date: datetime.date) -> Snapshot:
     """Copy the ``positions.csv`` bytes to ``data/positions/<ET date>.csv`` and write
     ``<ET date>.sha256`` (``<hex>  <ET date>.csv``) atomically under the desk lock. The source
@@ -1397,6 +1403,7 @@ __all__ = [
     "propose_edits",
     "quote_check_symbols",
     "quote_findings",
+    "recon_path",
     "reconcile",
     "render_csv_line",
     "roll_findings",

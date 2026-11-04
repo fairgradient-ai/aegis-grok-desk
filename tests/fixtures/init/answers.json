@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "desk": {
+    "engagement": "active-owner",
+    "cadence_profile": "lean",
+    "chatty_or_quiet": "quiet"
+  },
+  "owner": {
+    "broker_exercise_cutoff_et": "16:30",
+    "approval_level": 2,
+    "declared_equity": "250000.00",
+    "attention_thresholds": {
+      "pl_day_pct": "1.5",
+      "pl_trade_abs": "500.00"
+    },
+    "disclosures_acknowledged": [
+      "occ-characteristics-and-risks-2024",
+      "ai-role-disclosure"
+    ],
+    "accounts": [
+      {"name": "Brokerage (margin)", "type": "margin"},
+      {"name": "Roth IRA", "type": "ira"}
+    ]
+  },
+  "market_data": {
+    "host": "sandbox",
+    "token_env": "TRADIER_API_TOKEN"
+  },
+  "rates": {
+    "risk_free_rate": "0.0412",
+    "source": "3-month Treasury bill, owner-entered",
+    "as_of": "2026-10-30"
+  }
+}

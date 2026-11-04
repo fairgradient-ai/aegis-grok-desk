@@ -39,6 +39,15 @@ the chain are not run. One copy serves the whole chain and is removed afterwards
 that starts with a given text and contains given parts; a key may be a dotted path into the JSON output
 (``payload.requests_made``, ``payload.symbols.0.label``). A JSON ``null`` is compared as ``None``.
 
+The PR 2d journeys run the threshold-level sheet (``trigger_levels``, its plan card, the crossed level once
+``book_check --post`` has recorded the fire), the morning sheet and the evening brief (``eod_summary`` after the steps
+that write the artifacts it reads, and on a bare copy), the doctor (quick and selftest), ``desk_init`` on its own fixture
+root (``tests/fixtures/init``, which holds no ``desk.toml`` until the journey writes one on its copy) and on the main root
+(refused), the opening bell, the routine audit, and ``routine.py`` once per Stage-1 routine of the manifest at its
+slot, with ``--allow-dirty`` (a development checkout is never the release tag; the dirty-checkout refusal is a tool
+test). A :class:`TextMatch` may also name parts that must be absent (the morning sheet carries no early-close line on an
+ordinary day). The generators have no journey: ``check.sh`` steps 9 and 10 run their ``--check`` on the tree under test.
+
 The PR 2c journeys exercise the rules engine on the main fixture root with its adopted example rulebook
 (``rules/``): ``exit_check`` on the regular, expiry-day and stale sets (with and without a next run after
 the close, which decides whether one observation suffices), a candidate rulebook evaluated twice with
@@ -80,6 +89,8 @@ FORBIDDEN_OUTPUT: Tuple["re.Pattern[str]", ...] = (
 ) + alert_lint.FORBIDDEN_PATTERNS
 FIXTURE_DESK = "tests/fixtures/desk"
 FIXTURE_DESK_RECON = "tests/fixtures/desk_recon"
+# desk_init's own root: the owner's answers and the expected rendering, no desk.toml (the journey writes one on its copy).
+FIXTURE_INIT = "tests/fixtures/init"
 # The fixture sets' instants (tests/fixtures/desk/fixtures/tradier/README.md and the recon root's
 # README): regular and stale quotes are read at 14:50 ET on 2026-11-03, after_close at 16:25 ET,
 # pre_open at the 2026-11-02 close (the EOD snapshot), t1 on Thursday 2026-11-19 (T-1 of the Nov-20
@@ -108,22 +119,47 @@ ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_pct_52_4", "number_not_emitted"), ("fail_you_should", "forbidden_language"),
     ("fail_missing_footer", "footer_missing"), ("fail_order_field", "order_field"),
     ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
-    ("fail_homoglyph", "non_ascii"),
+    ("fail_homoglyph", "non_ascii"), ("fail_imperative_execute", "imperative_start"),
+    ("fail_imperative_fill", "imperative_start"), ("fail_order_kind", "forbidden_language"),
 )
 """The alert lint's fixtures (``tests/fixtures/alerts``): the passing messages, and each red-team message with the
 code of its first finding."""
+# PR 2d: the threshold-level sheet and its plan card, the morning sheet and the evening brief, the doctor, the routine
+# entry point, desk_init and the opening bell. The goldens below were computed by the tools on copies of the fixture roots.
+TP80_RESTING = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); resting-eligible: "
+                "yes (below the current ask 3.50)")
+TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 trading days (your threshold: above 21 trading days), "
+                    "and the days only fall")
+TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
+                "crossed (rule fired)")
+PL_LINE = ("realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), $4,097.00 "
+           "(mid) | day $400.00")
+RECON_CLEAN = "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits"
+DOCKET_NONE_DUE = "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due"
+LEVELS_LAST_NIGHT = ("last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; "
+                     "AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels")
+DEV_HEADER = "development run: the checkout is not verified (--allow-dirty)"
+# The morning staging: the doctor, the reconciliation and the week docket at 07:31 ET, the sheet at 07:35 ET; the routines
+# at their slots (preopen 07:35 ET, eod 16:35 ET, eod-brief 17:10 ET, book-check 10:05 ET on Thanksgiving).
+MORNING_STAGE_NOW = "2026-11-03T12:31:00Z"
+MORNING_NOW = "2026-11-03T12:35:00Z"
+EOD_NOW = "2026-11-03T21:35:00Z"
+EOD_BRIEF_NOW = "2026-11-03T22:10:00Z"
+HOLIDAY_SLOT_NOW = "2026-11-26T15:05:00Z"
 
 
 @dataclasses.dataclass(frozen=True)
 class TextMatch:
-    """A string expectation for one JSON key: the value is a string that starts with ``prefix`` and contains every
-    string of ``contains`` (a JSON null or any other type never matches)."""
+    """A string expectation for one JSON key: the value is a string that starts with ``prefix``, contains every
+    string of ``contains`` and none of ``excludes`` (a JSON null or any other type never matches)."""
 
     prefix: str = ""
     contains: Tuple[str, ...] = ()
+    excludes: Tuple[str, ...] = ()
 
     def matches(self, value: Any) -> bool:
-        return isinstance(value, str) and value.startswith(self.prefix) and all(part in value for part in self.contains)
+        return (isinstance(value, str) and value.startswith(self.prefix) and all(part in value for part in self.contains)
+                and not any(part in value for part in self.excludes))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -395,6 +431,160 @@ JOURNEYS += (
                  ("rules_adopt.py", "--file", CANDIDATE_RULES, "--version", "1.1.0", "--owner-phrase", "adopt rules 1.1.0"), 1,
                  {"status": "error", "tool": "rules_adopt", "payload.adopted": False, "payload.during_rth": True,
                   "payload.refusals.0.code": "regular_trading_hours", "payload.written": []}),
+)
+
+
+# PR 2d. The level sheet (D1-16 1-3), the summaries (D1-16 4-6), the doctor, the routine entry point, desk_init and the
+# opening bell (D2-18 1-9), the routine audit, and one development run per Stage-1 routine. Routine runs pass
+# --allow-dirty: a development checkout is never the release tag, and the dirty-checkout refusal is a tool test.
+JOURNEYS += (
+    tool_journey("trigger_levels regular -> TP80 0.65 resting-eligible, TP50 cannot fire",
+                 ("trigger_levels.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "trigger_levels", "payload.lint.ok": True, "payload.et_date": "2026-11-03",
+                  "payload.written": ["levels/2026-11-03.md", "levels/2026-11-03.json"], "payload.plan": None,
+                  "payload.text": TextMatch(prefix="THRESHOLD LEVELS 2026-11-03 | rules 1.0.0, sha cc09859c",
+                                            contains=(TP80_RESTING, TP50_CANNOT_FIRE))}),
+    tool_journey("book_check --post expiry_day, then trigger_levels expiry_day -> UNAVAILABLE (TP80 already crossed)",
+                 ("trigger_levels.py", "--fixture-set", "expiry_day"), 20,
+                 {"status": "unavailable", "payload.lint.ok": True,
+                  "payload.written": ["levels/2026-11-20.md", "levels/2026-11-20.json"],
+                  "payload.text": TextMatch(prefix="THRESHOLD LEVELS 2026-11-20", contains=(TP80_CROSSED,))},
+                 now="2026-11-20T19:55:00Z",
+                 steps=(tool_step(("book_check.py", "--post", "--next-run-utc", EXPIRY_DAY_NEXT_RUN, "--fixture-set",
+                                   "expiry_day"), 10, {"status": "fired", "payload.posted": True}, now=EXPIRY_DAY_NOW),)),
+    tool_journey("trigger_levels --plan AG-20261020-01 regular -> plans/AG-20261020-01.md",
+                 ("trigger_levels.py", "--plan", "AG-20261020-01", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.written": ["levels/2026-11-03.md", "levels/2026-11-03.json", "plans/AG-20261020-01.md"],
+                  "payload.plan.group_id": "AG-20261020-01", "payload.plan.path": "plans/AG-20261020-01.md",
+                  "payload.plan.lint.ok": True,
+                  "payload.plan.text": TextMatch(prefix="PLAN CARD AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c",
+                                                 contains=(TP80_RESTING, "dates that matter: last trading day 2026-11-20"))}),
+    tool_journey("book --snapshot pre_open and regular, csv_recon regular, then eod_summary --brief -> P/L line",
+                 ("eod_summary.py", "--brief"), 0,
+                 {"status": "ok", "tool": "eod_summary", "payload.mode": "brief", "payload.lint.ok": True,
+                  "payload.unavailable": [],
+                  "payload.message": TextMatch(prefix="EOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE)},
+                 steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
+                        tool_step(("book.py", "--snapshot", "--fixture-set", "regular"), 0, {"status": "ok"}),
+                        tool_step(("csv_recon.py", "--fixture-set", "regular"), 0, {"payload.verdict": "CLEAN"}))),
+    tool_journey("book --snapshot pre_open, trigger_levels --from-snapshot, desk_doctor --quick, csv_recon and expiry_checklist "
+                 "--week pre_open, then eod_summary -> MORNING DESK SHEET (no early close on 2026-11-03)",
+                 ("eod_summary.py",), 0,
+                 {"status": "ok", "payload.mode": "morning", "payload.lint.ok": True, "payload.unavailable": [],
+                  "payload.exit_code": 0,
+                  "payload.message": TextMatch(
+                      prefix="MORNING DESK SHEET 2026-11-03\ndoctor (state/doctor.json, quick check at 12:31 UTC): PASS",
+                      contains=(RECON_CLEAN, "open signals: 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+                      excludes=("early close", "UNAVAILABLE:"))},
+                 now=MORNING_NOW,
+                 steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
+                        tool_step(("trigger_levels.py", "--from-snapshot"), 0,
+                                  {"status": "ok", "payload.written": ["levels/2026-11-02.md", "levels/2026-11-02.json"]},
+                                  now=PREV_EOD_NOW),
+                        tool_step(("desk_doctor.py", "--quick"), 0,
+                                  {"payload.verdict": "PASS", "payload.record": "state/doctor.json"}, now=MORNING_STAGE_NOW),
+                        tool_step(("csv_recon.py", "--fixture-set", "pre_open"), 0, {"payload.verdict": "CLEAN"},
+                                  now=MORNING_STAGE_NOW),
+                        tool_step(("expiry_checklist.py", "--week", "--fixture-set", "pre_open"), 0,
+                                  {"payload.mode": "week", "payload.counts.listed": 0}, now=MORNING_STAGE_NOW))),
+    tool_journey("eod_summary on a bare copy -> UNAVAILABLE (reconciliation missing)", ("eod_summary.py",), 20,
+                 {"status": "unavailable", "payload.mode": "morning", "payload.lint.ok": True, "payload.exit_code": 20,
+                  "payload.message": TextMatch(prefix="MORNING DESK SHEET 2026-11-03", contains=(
+                      "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",))}),
+    # market_status (check 9) is not pinned: it depends on the runner's timezone and only ever WARNs.
+    tool_journey("desk_doctor --quick regular -> PASS", ("desk_doctor.py", "--quick"), 0,
+                 {"status": "ok", "tool": "desk_doctor", "payload.verdict": "PASS", "payload.mode": "quick",
+                  "payload.checks.0.id": "interpreter", "payload.checks.2.id": "token_source",
+                  "payload.checks.2.status": "WARN", "payload.checks.3.id": "desk_files",
+                  "payload.checks.3.status": "PASS"}),
+    tool_journey("desk_doctor --selftest -> PASS", ("desk_doctor.py", "--selftest"), 0,
+                 {"status": "ok", "payload.verdict": "PASS", "payload.checks.1.id": "selftest",
+                  "payload.checks.1.status": "PASS"}),
+    tool_journey("ack config, routine book-check 15:35 expiry_day -> EXIT SIGNAL",
+                 ("routine.py", "book-check", "--slot", "15:35", "--allow-dirty", "--fixture-set", "expiry_day"), 10,
+                 {"status": "fired", "tool": "routine", "payload.exit_code": 10, "payload.development": True,
+                  "payload.steps.0.tool": "book_check", "payload.steps.0.exit_code": 10, "payload.lint.ok": True,
+                  "payload.heartbeat": "state/heartbeat/book-check.json",
+                  "payload.message": TextMatch(prefix=DEV_HEADER, contains=(
+                      "EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80",
+                      "pre-close | verdicts: 2 EXIT SIGNAL, 0 UNAVAILABLE, 1 WATCH, 0 HOLD | open signals: 4"))},
+                 now=EXPIRY_DAY_NOW,
+                 steps=(tool_step(("ack.py", "config", "--owner-tapped"), 0, {"status": "ok"}, now="2026-11-20T19:49:00Z"),)),
+    tool_journey("routine book-check 14:05 regular -> CONFIG CHANGED, WATCH",
+                 ("routine.py", "book-check", "--slot", "14:05", "--allow-dirty", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.steps.0.exit_code": 0, "payload.lint.ok": True, "payload.lateness_min": 45,
+                  "payload.message": TextMatch(prefix="development run", contains=(
+                      "CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf",
+                      "WATCH AG-20261020-01 | WMT covered call | your rule DTE21", "run 45 min late"))}),
+    tool_journey("routine final-call 15:20 expiry_day -> FINAL CALL",
+                 ("routine.py", "final-call", "--slot", "15:20", "--allow-dirty", "--fixture-set", "expiry_day"), 10,
+                 {"status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0,
+                  "payload.steps.2.exit_code": 10, "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
+                  "payload.message": TextMatch(prefix="development run", contains=(
+                      "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+                      "assignment watch Fri 2026-11-20 (session open): FIRED"))},
+                 now=EXPIRY_DAY_NOW),
+    tool_journey("routine nope -> usage", ("routine.py", "nope"), 2, {"status": "usage", "error.code": "invalid_arguments"}),
+    tool_journey("desk_init answers -> desk.toml", ("desk_init.py", "--answers", "tests/fixtures/init/answers.json"), 0,
+                 {"status": "ok", "tool": "desk_init", "payload.written": ["desk.toml"],
+                  "payload.desk_toml.sha256": "f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94"},
+                 desk_root=FIXTURE_INIT),
+    tool_journey("desk_init on the main root -> desk_toml_exists",
+                 ("desk_init.py", "--answers", "tests/fixtures/init/answers.json"), 1,
+                 {"status": "error", "error.code": "desk_toml_exists"}),
+    tool_journey("opening_bell SPY regular", ("opening_bell.py", "--symbol", "SPY"), 0,
+                 {"status": "ok", "tool": "opening_bell", "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18",
+                  "payload.dte_calendar": 45, "payload.strike": "640", "payload.call.mid": "28.65", "payload.put.mid": "17.30",
+                  "payload.expected_move.straddle": "36.76", "payload.expected_move.one_sigma": "56.98",
+                  "payload.requests_made": 3}),
+    tool_journey("routine_audit --budget -> lean 41, active 61 runs per week", ("routine_audit.py", "--budget"), 0,
+                 {"status": "ok", "tool": "routine_audit", "payload.mode": "budget",
+                  "payload.budget": {"lean": 41, "active": 61}}),
+    tool_journey("routine_audit --rules-text -> three Auto-review texts within 1000 characters",
+                 ("routine_audit.py", "--rules-text"), 0,
+                 {"status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
+                  "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250},
+                  "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
+    tool_journey("book --snapshot pre_open, trigger_levels --from-snapshot, then routine preopen 07:30 pre_open -> "
+                 "MORNING DESK SHEET",
+                 ("routine.py", "preopen", "--slot", "07:30", "--allow-dirty", "--fixture-set", "pre_open"), 0,
+                 {"status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
+                  "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
+                  "payload.steps.3.tool": "eod_summary", "payload.steps.3.exit_code": 0, "payload.incidents": [],
+                  "payload.withheld": [],
+                  "payload.message": TextMatch(prefix=DEV_HEADER + "\nMORNING DESK SHEET 2026-11-03",
+                                               contains=(RECON_CLEAN, DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+                                               excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))},
+                 now=MORNING_NOW,
+                 steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
+                        tool_step(("trigger_levels.py", "--from-snapshot"), 0, {"status": "ok"}, now=PREV_EOD_NOW))),
+    tool_journey("book --snapshot pre_open, routine eod 16:35 after_close, then routine eod-brief 17:10 -> EOD DESK BRIEF",
+                 ("routine.py", "eod-brief", "--slot", "17:10", "--allow-dirty"), 0,
+                 {"status": "ok", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "17:10",
+                  "payload.heartbeat": "state/heartbeat/eod-brief.json", "payload.steps.0.tool": "eod_summary",
+                  "payload.message": TextMatch(
+                      prefix=DEV_HEADER + "\nEOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE,
+                      contains=("routines: 1 of 7 ran today",), excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))},
+                 now=EOD_BRIEF_NOW,
+                 steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
+                        tool_step(("routine.py", "eod", "--slot", "16:35", "--allow-dirty", "--fixture-set", "after_close"), 0,
+                                  {"status": "ok", "payload.heartbeat": "state/heartbeat/eod.json",
+                                   "payload.steps.1.tool": "trigger_levels", "payload.lint.ok": True,
+                                   "payload.message": TextMatch(prefix=DEV_HEADER + "\nTHRESHOLD LEVELS 2026-11-03")},
+                                  now=EOD_NOW))),
+    tool_journey("routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING",
+                 ("routine.py", "post-expiry", "--slot", "09:30", "--allow-dirty", "--fixture-set", "post_expiry"), 10,
+                 {"status": "fired", "payload.exit_code": 10, "payload.steps.0.tool": "csv_recon",
+                  "payload.steps.0.exit_code": 10, "payload.heartbeat": "state/heartbeat/post-expiry.json",
+                  "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix=DEV_HEADER + "\nEDITS_PENDING (2026-11-21 ET): 2 expired legs, 3 proposed "
+                                                                   "edits")},
+                 now=POST_EXPIRY_NOW),
+    tool_journey("routine book-check 10:05 on Thanksgiving -> quiet (closed day)",
+                 ("routine.py", "book-check", "--slot", "10:05", "--allow-dirty", "--fixture-set", "holiday"), 0,
+                 {"status": "quiet", "payload.closed_day": True, "payload.quiet": True, "payload.steps": [],
+                  "payload.message": None, "payload.heartbeat": "state/heartbeat/book-check.json"},
+                 now=HOLIDAY_SLOT_NOW),
 )
 
 

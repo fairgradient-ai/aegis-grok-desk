@@ -11,6 +11,7 @@ import tests._path  # noqa: F401
 # isort: on
 
 import contextlib
+import datetime
 import io
 import json
 import os
@@ -76,6 +77,25 @@ class ToolTest(unittest.TestCase):
         for code_name in library.CODES:
             self.assertIn(code_name, payload["findings"][0]["code"])
         self.assertIn("1", body["exit_codes"])
+
+    def test_footer_snapshot_flag(self) -> None:
+        stamp = datetime.datetime(2026, 11, 3, 19, 31, 12, tzinfo=datetime.timezone.utc)
+        text = "SPY 648.12 mid, as of 19:31 UTC\n" + library.snapshot_footer_line(stamp)
+        message_file = self.write("snapshot.txt", text.encode("utf-8"))
+        emitted_file = self.write("snapshot.emitted.json", json.dumps(["648.12"]).encode("utf-8"))
+        argv = ["--message-file", message_file, "--emitted-file", emitted_file]
+        self.assertEqual(0, run_tool(argv + ["--footer", "snapshot"])[0])
+        code, body = run_json(argv)
+        self.assertEqual(1, code)
+        self.assertIn("footer_missing", [item["code"] for item in body["payload"]["findings"]],
+                      "without --footer snapshot the rules footer is required")
+        declared = self.write("declared.emitted.json", json.dumps({"emitted_numbers": ["648.12"],
+                                                                   "footer": "snapshot"}).encode("utf-8"))
+        self.assertEqual(0, run_tool(["--message-file", message_file, "--emitted-file", declared])[0],
+                         "a document that declares the snapshot footer is linted with it")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            run_tool(argv + ["--footer", "market"])
+        self.assertEqual(2, raised.exception.code, "an unknown footer kind is a usage error")
 
     def test_passing_fixtures_exit_0(self) -> None:
         for name in PASS_FIXTURES:

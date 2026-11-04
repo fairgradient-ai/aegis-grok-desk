@@ -36,6 +36,36 @@ Contract (``template/grok-bot.json``)
   prepared), the comparison is skipped with a printed ``skip:`` notice rather than reported as
   a pass that never ran.
 
+The release pin (``checkout_state``)
+------------------------------------
+``checkout_state(root, release, run=None)`` is the pin check ``scripts/routine.py`` and
+``scripts/desk_doctor.py`` call (PR 2d decision D2-7): the checkout is pinned when it is a git work
+tree whose HEAD is the commit of the tag ``v<release>`` and ``git status`` lists no path. It runs
+exactly four literal argument lists through ``run`` (default :func:`run_git`, the test seam):
+``rev-parse --is-inside-work-tree``, ``rev-parse --verify --quiet HEAD^{commit}``,
+``rev-parse --verify --quiet refs/tags/v<release>^{commit}`` and
+``--no-optional-locks status --porcelain --untracked-files=all`` (``--no-optional-locks`` keeps
+``git status`` from refreshing and locking the index of a checkout it only reads). It never writes
+git configuration. The answer is ``{git, work_tree, head, tag, tag_commit, dirty, pinned, reason}``
+with one reason: ``git is unavailable``; ``not a git checkout``; ``git refuses this checkout: it is
+owned by another user (see SETUP)`` when git answers ``detected dubious ownership`` (the fix, a
+``safe.directory`` entry, is the owner's SETUP step); ``development checkout (no tag)``;
+``HEAD <8 hex> is not the commit of v<release> (<8 hex>)``; ``the checkout has <n> uncommitted or
+untracked path(s)``; and, pinned, ``release v<release> at <8 hex>, clean``. The gate
+``check_no_write_paths.py`` lets other modules reach this module only through calls of
+``checkout_state`` and ``run`` (``SUBPROCESS_SAFE_EXPORTS``).
+
+git runs with :func:`git_environment`, never the caller's: every ``GIT_*`` variable is dropped (a
+``GIT_CONFIG_COUNT``/``KEY``/``VALUE`` set in-process is a ``-c`` override, ``GIT_DIR`` re-points the
+repository) but ``GIT_CEILING_DIRECTORIES`` and ``GIT_CONFIG_NOSYSTEM``, which only narrow what git
+reads; ``PATH`` is the one this module saw when it was imported; and the configuration that runs a
+command during ``git status`` is pinned through ``GIT_CONFIG_COUNT`` (command-line precedence, over the
+repository's and the owner's own files): ``core.fsmonitor=false``, ``core.hooksPath`` and
+``core.attributesFile`` the null device. The owner's global configuration is still read (its
+``safe.directory`` entry is the SETUP fix for git's ownership refusal). A clean filter that a
+repository's own ``.git/config`` names stays git's to run: writing a repository's ``.git/`` is a file
+write, which this read-only check neither makes nor can prevent.
+
 Usage: ``python3 scripts/check_grok_template.py [repo-root] [--json]``. Exit 0 when every check
 passes (skips are printed), 1 when any fails, 2 on a usage error.
 """
@@ -48,7 +78,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 REPOSITORY = "https://github.com/fairgradient-ai/aegis-grok-desk"
 TEMPLATE = "template/grok-bot.json"
@@ -61,6 +91,11 @@ PUBLIC_URL_DOCS = ("README.md", "docs/FAQ.md")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 RELEASE_TOKEN_RE = re.compile(r"\brelease (\d+\.\d+\.\d+)\b")
 PLAIN_VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+GIT_UNAVAILABLE_REASON = "git is unavailable"
+NOT_A_CHECKOUT_REASON = "not a git checkout"
+DUBIOUS_OWNERSHIP_MARKER = "detected dubious ownership"
+DUBIOUS_OWNERSHIP_REASON = "git refuses this checkout: it is owned by another user (see SETUP)"
+DEVELOPMENT_REASON = "development checkout (no tag)"
 
 
 def load_json(root: str, rel: str, errors: List[str]) -> Optional[Any]:
@@ -174,11 +209,100 @@ def check_public_url(root: str, status: Any, url: Any, errors: List[str]) -> Non
                 errors.append(f"{rel}: published template URL {url} is missing")
 
 
+GIT_PATH = os.environ.get("PATH", os.defpath)
+"""The ``PATH`` git is found on: the one this module saw when it was imported."""
+
+
+def git_environment() -> Dict[str, str]:
+    """The environment git runs with (module notes, "The release pin"): the caller's without its ``GIT_*`` variables,
+    ``PATH`` as imported, and the forced configuration."""
+    kept = ("GIT_CEILING_DIRECTORIES", "GIT_CONFIG_NOSYSTEM")
+    env = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_") or key in kept}
+    env["PATH"] = GIT_PATH
+    env["GIT_ATTR_NOSYSTEM"] = "1"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    forced = (("core.fsmonitor", "false"), ("core.hooksPath", os.devnull), ("core.attributesFile", os.devnull))
+    env["GIT_CONFIG_COUNT"] = str(len(forced))
+    for index, (key, value) in enumerate(forced):
+        env["GIT_CONFIG_KEY_%d" % index] = key
+        env["GIT_CONFIG_VALUE_%d" % index] = value
+    return env
+
+
 def run_git(root: str, args: List[str]) -> Optional["subprocess.CompletedProcess[bytes]"]:
     try:
-        return subprocess.run(["git", "-C", root] + args, capture_output=True, check=False)
+        return subprocess.run(["git", "-C", os.path.abspath(root)] + args, capture_output=True, check=False,
+                              env=git_environment())
     except OSError:
         return None
+
+
+def _stream_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", "replace")
+    return str(value)
+
+
+def _refused(answer: Any) -> bool:
+    """git declined to work in the directory because another user owns it (``safe.directory``)."""
+    return DUBIOUS_OWNERSHIP_MARKER in _stream_text(getattr(answer, "stderr", None))
+
+
+def _first_line(answer: Any) -> Optional[str]:
+    if answer is None or answer.returncode != 0:
+        return None
+    lines = _stream_text(answer.stdout).strip().splitlines()
+    return lines[0].strip() if lines and lines[0].strip() else None
+
+
+def checkout_state(root: str, release: str,
+                   run: Optional[Callable[[str, List[str]], Any]] = None) -> Dict[str, Any]:
+    """Is ``root`` the clean checkout of tag ``v<release>``? (module notes, "The release pin").
+
+    ``run(root, args)`` returns a completed process (``returncode``, ``stdout``, ``stderr``) or ``None`` when git
+    cannot be started; it defaults to :func:`run_git`. ``release`` must be a plain ``X.Y.Z`` (``ValueError``).
+    """
+    if not isinstance(release, str) or not PLAIN_VERSION_RE.fullmatch(release):
+        raise ValueError("release must be a plain X.Y.Z version, got %r" % (release,))
+    git = run_git if run is None else run
+    tag = "v" + release
+    state: Dict[str, Any] = {"git": False, "work_tree": False, "head": None, "tag": tag, "tag_commit": None,
+                             "dirty": None, "pinned": False, "reason": GIT_UNAVAILABLE_REASON}
+    inside = git(root, ["rev-parse", "--is-inside-work-tree"])
+    if inside is None:
+        return state
+    state["git"] = True
+    if inside.returncode != 0 or _stream_text(inside.stdout).strip() != "true":
+        state["reason"] = DUBIOUS_OWNERSHIP_REASON if _refused(inside) else NOT_A_CHECKOUT_REASON
+        return state
+    state["work_tree"] = True
+    head = git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])
+    tagged = git(root, ["rev-parse", "--verify", "--quiet", "refs/tags/" + tag + "^{commit}"])
+    status = git(root, ["--no-optional-locks", "status", "--porcelain", "--untracked-files=all"])
+    if head is None or tagged is None or status is None:
+        return state
+    if any(_refused(answer) for answer in (head, tagged, status)):
+        state["reason"] = DUBIOUS_OWNERSHIP_REASON
+        return state
+    state["head"] = _first_line(head)
+    state["tag_commit"] = _first_line(tagged)
+    if status.returncode == 0:
+        state["dirty"] = sum(1 for line in _stream_text(status.stdout).splitlines() if line.strip())
+    if state["tag_commit"] is None:
+        state["reason"] = DEVELOPMENT_REASON
+    elif state["head"] != state["tag_commit"]:
+        shown = state["head"][:8] if state["head"] else "(no commit)"
+        state["reason"] = "HEAD %s is not the commit of %s (%s)" % (shown, tag, state["tag_commit"][:8])
+    elif state["dirty"] is None:
+        state["reason"] = "git status failed (exit %d); the checkout cannot be verified" % status.returncode
+    elif state["dirty"]:
+        state["reason"] = "the checkout has %d uncommitted or untracked path(s)" % state["dirty"]
+    else:
+        state["pinned"] = True
+        state["reason"] = "release %s at %s, clean" % (tag, state["head"][:8])
+    return state
 
 
 def compare_to_release_tag(root: str, release: Optional[str], claimed: List[str],

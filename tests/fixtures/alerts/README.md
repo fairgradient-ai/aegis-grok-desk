@@ -36,3 +36,6 @@ Each is `pass_exit_signal` or `pass_watch` with one documented change (`fail_fix
 | `fail_imperative_start` | a segment that starts with an imperative word (IS01) | `imperative_start` |
 | `fail_split_phrase` | an advice phrase (FL02) broken across two lines | `forbidden_language` |
 | `fail_homoglyph` | a Cyrillic letter inside the plan word | `non_ascii` |
+| `fail_imperative_execute` | a segment that starts with the imperative IS08 (added in PR 2d) | `imperative_start` |
+| `fail_imperative_fill` | a segment that starts with the imperative IS09 (added in PR 2d) | `imperative_start` |
+| `fail_order_kind` | a resting order kind (lint table entry FL25, added in PR 2d) after the plan | `forbidden_language` |

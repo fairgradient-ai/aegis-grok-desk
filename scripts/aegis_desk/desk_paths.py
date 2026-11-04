@@ -17,10 +17,10 @@ directories on request. The layout::
 is a :class:`DeskPathsError`, a ``ValueError``); every attribute is an absolute path under that
 root. :func:`ensure_runtime_dirs` creates the directories a tool may need to write into
 (:data:`RUNTIME_DIRS`: ``state/``, ``state/heartbeat/``, ``data/cache/``, ``data/book/``,
-``data/positions/``, ``journal/``, ``levels/``, ``reports/``, ``incidents/``) with ``exist_ok``
-and nothing else: it never creates ``desk.toml``, ``positions.csv``, ``rules/``, ``research/``,
-``plans/``, ``tickets/`` or ``fixtures/``, which are the owner's (or the fixture tree's) to
-provide. The tools pass ``args.desk_root`` from :class:`aegis_desk.contract.ReadOnlyParser`
+``data/positions/``, ``journal/``, ``levels/``, ``plans/``, ``reports/``, ``incidents/``) with
+``exist_ok`` and nothing else: it never creates ``desk.toml``, ``positions.csv``, ``rules/``,
+``research/``, ``tickets/`` or ``fixtures/``, which are the owner's (or the fixture tree's) to
+provide. ``plans/`` holds the exit-plan cards ``trigger_levels.py --plan`` writes. The tools pass ``args.desk_root`` from :class:`aegis_desk.contract.ReadOnlyParser`
 here, so a tool can never derive a path from anything but the explicit root.
 """
 
@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 RUNTIME_DIRS: Tuple[str, ...] = (
-    "state", "state/heartbeat", "data/cache", "data/book", "data/positions", "journal", "levels",
+    "state", "state/heartbeat", "data/cache", "data/book", "data/positions", "journal", "levels", "plans",
     "reports", "incidents",
 )
 """Root-relative directories :func:`ensure_runtime_dirs` creates (in this order), and no others."""
@@ -129,8 +129,8 @@ def for_root(desk_root: str) -> DeskPaths:
 def ensure_runtime_dirs(paths: DeskPaths) -> List[str]:
     """Create :data:`RUNTIME_DIRS` under the root (``exist_ok``) and return the ones created.
 
-    Never touches ``desk.toml``, ``positions.csv``, ``rules/``, ``research/``, ``plans/``,
-    ``tickets/`` or ``fixtures/``; existing files and directories are left as they are.
+    Never touches ``desk.toml``, ``positions.csv``, ``rules/``, ``research/``, ``tickets/`` or
+    ``fixtures/``; existing files and directories are left as they are.
     """
     if not isinstance(paths, DeskPaths):
         raise DeskPathsError("ensure_runtime_dirs() takes a DeskPaths, got %s" % type(paths).__name__)

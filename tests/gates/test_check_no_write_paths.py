@@ -24,6 +24,10 @@ OTHER = "scripts/aegis_desk/quote_cache.py"
 TEST_MODULE = "tests/smoke/test_loopback.py"
 GATE_TEST = "tests/gates/test_probe.py"
 HARNESS = "scripts/cli_journeys.py"
+TEMPLATE_GATE = "scripts/check_grok_template.py"
+ROUTINE = "scripts/routine.py"
+DOCTOR = "scripts/desk_doctor.py"
+TOOL_TEST = "tests/tools/test_probe_tool.py"
 FUTURE = "from __future__ import annotations\n"
 
 
@@ -376,7 +380,8 @@ class AliasAndIndirectionTests(unittest.TestCase):
         self.assertEqual(["indirect-call"], gate_rules(CLIENT, (
             "import functools\nimport urllib.request\n"
             "def a(u):\n    return functools.partial(urllib.request.urlopen, u, b\"x\")()\n")))
-        self.assertEqual(["indirect-call"], gate_rules(OTHER, (
+        # PR 2d: the bare reference to os.system is itself a shell-escape finding (it could ride a run= seam).
+        self.assertEqual(["indirect-call", "shell-escape"], gate_rules(OTHER, (
             "import functools\nimport os\nrun = functools.partial(os.system, \"ls\")\n")))
         self.assertEqual([], gate_rules(OTHER, (
             "import functools\nimport json\ndumps = functools.partial(json.dumps, indent=2)\n")))
@@ -434,7 +439,9 @@ class StdlibBypassTests(unittest.TestCase):
         self.assertEqual(["dynamic-exec"], gate_rules(OTHER, "import builtins\nbuiltins.exec(\"x\")\n"))
         self.assertEqual(["dynamic-exec"], gate_rules(OTHER, (
             "import importlib.util\ns = importlib.util.spec_from_file_location(\"m\", \"/tmp/m.py\")\n")))
-        self.assertEqual(["dynamic-exec"], gate_rules(OTHER, "import pkgutil\nf = pkgutil.resolve_name(\"os:system\")\n"))
+        # pkgutil loads modules by itself (get_loader, find_loader): its import fails too, and so does resolve_name
+        self.assertEqual(["dynamic-exec", "dynamic-exec"],
+                         gate_rules(OTHER, "import pkgutil\nf = pkgutil.resolve_name(\"os:system\")\n"))
         self.assertEqual([], gate_rules(OTHER, "import re\np = re.compile(\"x\")\n"))
 
     def test_review_fixtures_fail(self) -> None:
@@ -522,6 +529,258 @@ class SubprocessScopeTests(unittest.TestCase):
         self.assertEqual(["subprocess-curl"], gate_rules(HARNESS, "import subprocess\nsubprocess.run([\"./curl\", \"https://x\"])\n"))
         self.assertEqual(["subprocess-shell"], gate_rules(HARNESS, "import subprocess\nsubprocess.getoutput(\"ls\")\n"))
         self.assertEqual([], gate_rules(HARNESS, "import subprocess\nsubprocess.run([\"git\", \"status\"], check=False)\n"))
+
+
+class SubprocessWrapperTests(unittest.TestCase):
+    """PR 2d decision D2-7: no desk tool joins SUBPROCESS_ALLOWED. The pin check reaches git only through
+    ``check_grok_template.checkout_state`` (and the template check ``check_grok_template.run``), every other name of
+    a subprocess-capable module is a laundering path (rule ``subprocess-wrapper``), and a git or interpreter
+    configuration override on a command line outside tests/ fails (rule ``subprocess-config``)."""
+
+    def fixture_rules(self, case: str) -> Dict[str, List[str]]:
+        with fixture_tree(case) as root:
+            result = check_no_write_paths.run(root)
+        self.assertFalse(result["ok"])
+        return {rel: sorted(rules) for rel, rules in rules_by_file(result).items()}
+
+    def test_curl_in_the_routine_entry_point_fails_twice(self) -> None:
+        self.assertEqual({ROUTINE: ["subprocess-curl", "subprocess-import"]}, self.fixture_rules("subprocess_in_routine"))
+
+    def test_laundering_a_command_through_run_git_fails(self) -> None:
+        self.assertEqual({ROUTINE: ["subprocess-wrapper"]}, self.fixture_rules("subprocess_wrapper"))
+
+    def test_desk_tools_may_not_import_subprocess(self) -> None:
+        self.assertEqual(["subprocess-import"], gate_rules(DOCTOR, "import subprocess\nsubprocess.run(['git', 'status'], check=False)\n"))
+        self.assertEqual(["subprocess-import", "subprocess-shell"], gate_rules(ROUTINE, "import subprocess\nsubprocess.run(\"ls\", shell=True)\n"))
+        self.assertEqual(["subprocess-import"], gate_rules("scripts/aegis_desk/checkout.py", "from subprocess import run\n"))
+
+    def test_git_configuration_overrides_fail_outside_tests(self) -> None:
+        self.assertEqual(["subprocess-config"], gate_rules(TEMPLATE_GATE, (
+            "import subprocess\nsubprocess.run([\"git\", \"-c\", \"alias.x=!sh\", \"x\"])\n")))
+        self.assertEqual(["subprocess-config"], gate_rules(HARNESS, (
+            "import subprocess\nsubprocess.run([\"git\", \"--config-env\", \"alias.x=X\", \"x\"], check=False)\n")))
+        self.assertEqual(["subprocess-config"], gate_rules(HARNESS, (
+            "import subprocess\nsubprocess.run([\"git\", \"--config-env=alias.x=X\", \"x\"], check=False)\n")))
+        self.assertEqual(["subprocess-config"], gate_rules(HARNESS, (
+            "import subprocess\nimport sys\nsubprocess.run([sys.executable, \"-c\", \"print(1)\"], check=False)\n")))
+        # The wrapper's own callers inside an allowed module are held to the same rule: run_git's argument list is
+        # the command line.
+        self.assertEqual(["subprocess-config"], gate_rules(TEMPLATE_GATE, (
+            "import subprocess\ndef run_git(root, args):\n    return subprocess.run([\"git\", \"-C\", root] + args, check=False)\n"
+            "def a(root):\n    return run_git(root, [\"-c\", \"alias.x=!sh\", \"x\"])\n")))
+        # Plain git with literal arguments stays legal in the allowed modules; tests/gates may still configure git.
+        self.assertEqual([], gate_rules(TEMPLATE_GATE, (
+            "import subprocess\nsubprocess.run([\"git\", \"--no-optional-locks\", \"status\", \"--porcelain\"], check=False)\n")))
+        self.assertEqual([], gate_rules(GATE_TEST, (
+            "import subprocess\nsubprocess.run([\"git\", \"-c\", \"user.name=t\", \"commit\"], check=False)\n")))
+
+    def test_the_two_safe_exports_pass(self) -> None:
+        self.assertEqual([], gate_rules(ROUTINE, (
+            "import check_grok_template\ndef a(r):\n    return check_grok_template.checkout_state(r, \"0.1.0\")\n")))
+        self.assertEqual([], gate_rules(DOCTOR, (
+            "import check_grok_template\nCHECKOUT_RUN = None\ndef a(r):\n"
+            "    return check_grok_template.checkout_state(r, \"0.1.0\", run=CHECKOUT_RUN), check_grok_template.run(r)\n")))
+        self.assertEqual([], gate_rules(DOCTOR, "from check_grok_template import checkout_state, run\n"))
+        self.assertEqual([], gate_rules(TOOL_TEST, "import check_grok_template\ndef a(r):\n    return check_grok_template.run(r)\n"))
+        self.assertEqual([], gate_rules(ROUTINE, "import check_grok_template\n"))
+
+    def test_every_other_name_of_a_subprocess_module_fails(self) -> None:
+        for source in (
+            "from check_grok_template import run_git\n",
+            "from check_grok_template import checkout_state, run_git as g\n",
+            "import check_grok_template as t\ndef a(r):\n    return t.run_git(r, [\"status\"])\n",
+            "import check_grok_template\nf = check_grok_template.run_git\n",
+            "import check_grok_template\ndef a(r):\n    return getattr(check_grok_template, \"run_git\")(r, [\"status\"])\n",
+            "import check_grok_template\ndef a():\n    return check_grok_template.subprocess.run([\"git\", \"status\"])\n",
+            "import check_grok_template\ndef a(r):\n    return check_grok_template.compare_to_release_tag(r, \"0.1.0\", [], [], [])\n",
+            "import cli_journeys\ndef a(j, r):\n    return cli_journeys.run_journey(j, r)\n",
+            "from cli_journeys import FORBIDDEN_OUTPUT\n",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(["subprocess-wrapper"], gate_rules(ROUTINE, source))
+        # A test module outside tests/gates is held to the rule; the gate tests and the allowed modules are not.
+        self.assertEqual(["subprocess-wrapper"], gate_rules(TOOL_TEST, "import check_grok_template\nf = check_grok_template.run_git\n"))
+        self.assertEqual([], gate_rules(GATE_TEST, "import check_grok_template\nf = check_grok_template.run_git\n"))
+        self.assertEqual([], gate_rules(HARNESS, "import check_grok_template\nf = check_grok_template.run_git\n"))
+
+    def test_a_shell_escape_cannot_ride_the_pin_check_s_run_seam(self) -> None:
+        # checkout_state(root, release, run=...) calls run(root, args): a shell escape handed over by reference (never
+        # called where the gate could see it) would run behind a safe export, so a bare reference fails too.
+        for source in (
+            "import check_grok_template\nimport os\ndef a(r):\n    return check_grok_template.checkout_state(r, \"0.1.0\", run=os.execv)\n",
+            "import check_grok_template\nimport os\nCHECKOUT_RUN = os.execv\ndef a(r):\n"
+            "    return check_grok_template.checkout_state(r, \"0.1.0\", run=CHECKOUT_RUN)\n",
+            "import os\nf = os.system\n",
+            "import os\nlist(map(os.system, [\"ls\"]))\n",
+            "import os as o\nsorted([\"ls\"], key=o.popen)\n",
+            "import pty\nhook = pty.spawn\n",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(["shell-escape"], gate_rules(ROUTINE, source))
+        self.assertEqual([], gate_rules(ROUTINE, "import os\np = os.path.join(\"a\", \"b\")\ne = os.environ\n"))
+
+    def test_the_allow_list_is_unchanged_and_the_exports_are_documented(self) -> None:
+        self.assertEqual(frozenset({"scripts/check_grok_template.py", "scripts/cli_journeys.py"}),
+                         check_no_write_paths.SUBPROCESS_ALLOWED)
+        self.assertEqual(frozenset({"check_grok_template.checkout_state", "check_grok_template.run"}),
+                         check_no_write_paths.SUBPROCESS_SAFE_EXPORTS)
+        for needle in ("SUBPROCESS_SAFE_EXPORTS", "subprocess-wrapper", "subprocess-config"):
+            self.assertIn(needle, check_no_write_paths.__doc__)
+
+
+class ReviewBypassTests(unittest.TestCase):
+    """PR 2d review, lens 2: every route the reviewers ran past the gate, and the generalisations of each, fail; the
+    shapes the desk uses still pass."""
+
+    def assert_rule(self, rule: str, rel: str, sources: List[str]) -> None:
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertIn(rule, gate_rules(rel, source))
+
+    def test_a_module_cannot_be_loaded_through_a_loader(self) -> None:
+        self.assert_rule("dynamic-exec", ROUTINE, [
+            "import importlib.util\nweb = importlib.util.find_spec('urllib.request').loader.load_module()\n",
+            "import importlib.util\nspec = importlib.util.find_spec('subprocess')\nloader = spec.loader\n",
+            "import importlib.util, types\ns = importlib.util.find_spec('subprocess')\nm = types.ModuleType('s')\n"
+            "s.loader.exec_module(m)\n",
+            "import importlib.util\nspec = importlib.util.find_spec('subprocess')\nl = getattr(spec, 'loader')\n",
+            "def a(finder, name):\n    return finder.find_module(name).load_module(name)\n",
+            "def a(loader, spec):\n    return loader.create_module(spec)\n",
+            "import pkgutil\nm = pkgutil.get_loader('subprocess').load_module()\n",
+            "from pkgutil import find_loader\n",
+            "import importlib\nm = importlib._bootstrap._load(None)\n",
+            "import importlib\nimport subprocess as _s\nimportlib.reload(_s)\n",
+            "from importlib import abc\n",
+            "import imp\n",
+            "import sys\nfinders = sys.meta_path\n",
+            "import operator\nf = operator.attrgetter('loader')\n",
+        ])
+        # the doctor's interpreter check: find_spec answers whether a module exists, and nothing can load it
+        self.assertEqual([], gate_rules(DOCTOR, (
+            "import importlib.util\nNAMES = ('json', 'csv')\ndef found(name):\n"
+            "    return importlib.util.find_spec(name) is not None\nfinder = importlib.util.find_spec\n")))
+        self.assertEqual([], gate_rules(OTHER, "import importlib\ndef t():\n    return importlib.import_module('tomllib')\n"))
+
+    def test_sys_modules_is_read_only_by_a_literal_name(self) -> None:
+        self.assert_rule("reflection", ROUTINE, [
+            "import sys\nfor name, mod in sys.modules.items():\n    pass\n",
+            "import sys\nmods = list(sys.modules.values())\n",
+            "import sys\nfor name in sys.modules:\n    pass\n",
+            "import sys\ntable = sys.modules\n",
+            "import sys\ndef a(f):\n    return f(sys.modules)\n",
+            "import sys\nm = dict(sys.modules)\n",
+            "import sys\nm = getattr(sys, 'modules').copy()\n",
+        ])
+        self.assertEqual([], gate_rules(ROUTINE, (
+            "import sys\nhere = 'json' in sys.modules\nm = sys.modules.get('json')\nj = sys.modules['json']\n")))
+
+    def test_objects_and_frames_that_hand_out_modules_fail(self) -> None:
+        self.assert_rule("reflection", ROUTINE, [
+            "import gc\nfor m in gc.get_objects():\n    pass\n",
+            "import gc\nrefs = gc.get_referents\n",
+            "import sys\nf = sys._getframe()\n",
+            "import inspect\nf = inspect.currentframe()\n",
+            "import inspect, json\nm = inspect.getmodule(json.dumps)\n",
+            "def a(frame):\n    return frame.f_globals['x']\n",
+            "def a(error):\n    return error.__traceback__.tb_frame\n",
+            "import os\nposix = os.getcwd.__self__\n",
+        ])
+
+    def test_a_module_reached_through_another_module_fails(self) -> None:
+        self.assert_rule("module-reexport", ROUTINE, [
+            "import shutil\nshutil.os.system('ls')\n",
+            "import os\nos.sys.modules['subprocess'].run(['ls'])\n",
+            "import tempfile\nf = tempfile._os.popen\n",
+            "import platform\nr = platform.subprocess\n",
+            "from aegis_desk import state\ns = state.os.environ\n",
+        ])
+        self.assertEqual([], gate_rules(ROUTINE, "import os\np = os.path.join('a', 'b')\nd = os.environ.get('HOME')\n"))
+
+    def test_a_command_capable_module_is_never_a_value(self) -> None:
+        self.assert_rule("module-value", ROUTINE, [
+            "import os\ndef f(m):\n    return m.system('ls')\nf(os)\n",
+            "import os\nfor m in (os,):\n    m.system('ls')\n",
+            "import subprocess as s\nholder = {'m': s}\n",
+            "import sys\nlook = lambda: sys\n",
+            "import importlib\ndef f(m):\n    return m\nf(importlib.import_module('os'))\n",
+            "import sys\ndef f(m):\n    return m\nf(sys.modules['os'])\n",
+        ])
+        self.assertEqual([], gate_rules(ROUTINE, (
+            "import os\nimport sys\nimport os as o\nalias = os\np = os.path.join('a', 'b')\nw = getattr(os, 'getcwd')()\n"
+            "c = o.getcwd()\nh = alias.getcwd()\nsys.stdout.write('x')\n")))
+
+    def test_a_wrapper_module_is_used_only_to_call_a_safe_export(self) -> None:
+        self.assert_rule("subprocess-wrapper", ROUTINE, [
+            "import check_grok_template\nfor w in (check_grok_template,):\n    w.subprocess.run(['sh'])\n",
+            "import check_grok_template\ndef f(m):\n    return m.run_git('.', ['status'])\nf(check_grok_template)\n",
+            "import check_grok_template\ng = lambda: check_grok_template\n",
+            "import check_grok_template\nwrappers = [check_grok_template]\n",
+            "import inspect, check_grok_template\nm = inspect.getmodule(check_grok_template.checkout_state)\n",
+            "import check_grok_template\nf = check_grok_template.checkout_state\n",
+            "from check_grok_template import checkout_state\nkeep = [checkout_state]\n",
+            "import check_grok_template\ndef a(r):\n    return check_grok_template.checkout_state.__wrapped__\n",
+            "from scripts.check_grok_template import run_git\n",
+            "import scripts.check_grok_template\n",
+            "from scripts import check_grok_template\n",
+            "import scripts.cli_journeys as harness\n",
+            "import importlib\nm = importlib.import_module('check_grok_template')\n",
+        ])
+        self.assert_rule("subprocess-wrapper", "scripts/aegis_desk/probe.py", [
+            "import routine\nroutine.check_grok_template.run_git('.', ['x'])\n",
+            "import desk_doctor\nm = desk_doctor.check_grok_template\n",
+        ])
+        self.assertEqual([], gate_rules(ROUTINE, (
+            "import check_grok_template\nfrom check_grok_template import checkout_state\nCHECKOUT_RUN = None\n"
+            "def a(r):\n    return check_grok_template.checkout_state(r, '0.1.0', run=CHECKOUT_RUN), checkout_state(r, "
+            "'0.1.0'), check_grok_template.run(r)\n")))
+
+    def test_the_allowed_modules_build_no_override_and_no_environment(self) -> None:
+        self.assert_rule("subprocess-config", TEMPLATE_GATE, [
+            "import subprocess\nFLAG = '-c'\nsubprocess.run(['git', FLAG, 'alias.x=!sh', 'x'])\n",
+            "import subprocess\nFLAGS = ['-c', 'alias.x=!sh']\nsubprocess.run(['git'] + FLAGS + ['x'])\n",
+            "import subprocess\nsubprocess.run(['git', '--git-dir=/tmp/x', 'status'])\n",
+            "import subprocess\nsubprocess.run(['git', '--exec-path', '/tmp', 'status'])\n",
+            "import subprocess\nsubprocess.run(['git', '--work-tree=/tmp', 'status'])\n",
+            "import subprocess\nsubprocess.run(['git', 'status'], env={'GIT_CONFIG_COUNT': '1'})\n",
+            "import os, subprocess\nenv = dict(os.environ)\nsubprocess.run(['git', 'status'], env=env)\n",
+            "import subprocess\nKEY = 'GIT_CONFIG_PARAMETERS'\n",
+        ])
+        self.assert_rule("subprocess-shell", TEMPLATE_GATE, [
+            "import subprocess\nsubprocess.run('ls', **{'shell': True})\n",
+            "import subprocess\nopts = {'shell': True}\nsubprocess.run('ls', **opts)\n",
+            "import subprocess\nargs = ['ls']\nsubprocess.run(*args)\n",
+        ])
+        self.assert_rule("subprocess-shell", HARNESS, [
+            "import subprocess\nsubprocess.run(['sh'], input=b'ls')\n",
+            "import subprocess\nsubprocess.run(['/bin/bash', 'script.sh'])\n",
+            "import subprocess\nsubprocess.run(['perl', '-e', 'print 1'])\n",
+            "import subprocess\nsubprocess.run(['env', 'ls'])\n",
+        ])
+        # the env builder of the allowed module is the one place a GIT_ name may be written
+        self.assertEqual([], gate_rules(TEMPLATE_GATE, (
+            "import os, subprocess\ndef git_environment():\n    env = {k: v for k, v in os.environ.items() if not "
+            "k.startswith('GIT_')}\n    env['GIT_CONFIG_COUNT'] = '1'\n    return env\n"
+            "def run_git(root, args):\n    return subprocess.run(['git', '-C', root] + args, env=git_environment())\n")))
+        self.assertEqual([], gate_rules(HARNESS, (
+            "import subprocess, sys\ndef scrubbed_environment():\n    return {'PYTHONUTF8': '1'}\n"
+            "def a(script):\n    return subprocess.run([sys.executable, script], env=scrubbed_environment())\n")))
+        # tests/gates may still run a shell (check.sh) and configure git
+        self.assertEqual([], gate_rules(GATE_TEST, "import subprocess\nsubprocess.run(['bash', 'scripts/check.sh'])\n"))
+
+    def test_shipped_code_writes_no_environment_variable(self) -> None:
+        self.assert_rule("environment-write", ROUTINE, [
+            "import os\nos.environ['GIT_CONFIG_COUNT'] = '1'\n",
+            "import os\nos.environ.update({'PATH': '/tmp'})\n",
+            "import os\nos.environ.setdefault('HOME', '/tmp')\n",
+            "import os\nos.putenv('GIT_DIR', '/tmp')\n",
+            "import os\ndel os.environ['PATH']\n",
+            "import os\nenv = os.environ\nenv['XDG_CONFIG_HOME'] = '/tmp'\n",
+            "import os\nos.environb[b'PATH'] = b'/tmp'\n",
+        ])
+        self.assertEqual([], gate_rules(TOOL_TEST, (
+            "import os\nfrom unittest import mock\ndef t():\n    os.environ['AEGIS_TEST'] = '1'\n"
+            "    return mock.patch.dict(os.environ, {'TZ': 'UTC'})\n")))
+        self.assertEqual([], gate_rules(ROUTINE, "import os\nhome = os.environ.get('HOME')\nnames = list(os.environ)\n"))
 
 
 class ProseRuleTests(unittest.TestCase):

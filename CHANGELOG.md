@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Levels, routines and the doctor:
+  - the threshold-level sheet (`levels.py`, `trigger_levels.py`): each adopted rule as an option or spread
+    price, an underlying level, a band or a date, with its arithmetic shown, rounded on the class's tick grid in
+    the direction that keeps a resting take-profit inside the rule, take-profit levels marked resting-eligible
+    and loss levels alert-only, and exit-plan cards;
+  - the routine manifest (`routines/manifest.toml`, `routines.py`) with the Stage-1 routines, their posting
+    policies, dependencies and weekly budget (lean 41, active 61 runs), the Grok Bot Auto-review texts
+    (`routines/autoreview.toml`) and `routine_audit.py`;
+  - `routine.py`, the single reviewed routine entry point: it refuses to run a step on a checkout that is not the
+    pinned release, runs the chain in-process, lints every part and the whole message, and writes the heartbeat,
+    journal and run record;
+  - the desk doctor (`doctor.py`, `desk_doctor.py`): twelve checks, including sandbox-token verification and
+    broker-looking environment names;
+  - the Morning Desk Sheet and EOD Desk Brief (`summaries.py`, `eod_summary.py`), including P/L per open trade;
+  - `desk_init.py`, which renders `desk.toml` byte for byte from the interview;
+  - `opening_bell.py`, with a market-snapshot footer that the lint accepts only on rule-free text;
+  - `gen_tools_doc.py` (`docs/TOOLS.md`) and `gen_role_skills.py` (the role skills), both drift-checked by
+    `check.sh`;
+  - `csv_recon` and `expiry_checklist` now write their records (`data/positions/<date>.recon.json`,
+    `reports/expiry/<date>.<mode>.json`);
+  - the no-write gate also rejects loader and reflection routes, laundering through the subprocess-allowed
+    modules, git configuration through arguments or the environment, and environment writes;
+  - two placeholder agents; twenty-four more journeys (81 in all).
 - Rules engine: the strict exit-rulebook grammar with parameters bounded in their safe direction, the metric
   catalogue on the book's fields, Kleene evaluation and the verdict precedence EXIT_SIGNAL > UNAVAILABLE >
   WATCH > HOLD, the adoption lint and per-rule shas (`scripts/aegis_desk/exit_rules.py`); the per-(group, rule)

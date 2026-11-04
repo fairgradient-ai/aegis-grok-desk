@@ -81,7 +81,7 @@ OUTPUT: Dict[str, Any] = {
               "expiry": "YYYY-MM-DD | null", "settlement": "pm | am | null", "dte_calendar": "integer | null",
               "dte_trading": "integer | null", "quantity": "decimal string (signed)", "multiplier": "integer",
               "cost_basis_total": "decimal string (signed cash flow)", "entry_price_per_share": "decimal string",
-              "open_quantity": "decimal string (signed open quantity: the part the marks and P/L apply to)",
+              "open_quantity": "decimal string (the signed open quantity, the part the marks and P/L apply to)",
               "remaining_cost_basis": "decimal string (the open part's pro-rata cost basis)",
               "status": "open | closed", "quote_grade": "A-F | null", "quote_status": "fresh | stale | one_side_stale | "
               "undated | closed_day | missing | expired | closed", "bid": "decimal string | null",

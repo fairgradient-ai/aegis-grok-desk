@@ -36,6 +36,7 @@
 #                          zero discovered tests fail on every interpreter, whatever the floor
 #   8. journeys            cli_journeys.py (commands as subprocesses in a scrubbed environment)
 #   9. TOOLS.md drift      scripts/gen_tools_doc.py --check when that generator exists
+#  10. role skills        scripts/gen_role_skills.py --check when that generator exists
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${1:-$HERE/..}" && pwd)"
@@ -584,6 +585,15 @@ if [ -f scripts/gen_tools_doc.py ]; then
   python3 scripts/gen_tools_doc.py --check
 else
   echo "skip: scripts/gen_tools_doc.py not present; docs/TOOLS.md drift check not run"
+fi
+
+# ---------------------------------------------------------------------------------------------
+# Step 10: the aegis-role-* skills and their index blocks are generated from agents/*.md; fail on
+# drift once the generator exists in the tree under test.
+if [ -f scripts/gen_role_skills.py ]; then
+  python3 scripts/gen_role_skills.py --check
+else
+  echo "skip: scripts/gen_role_skills.py not present; role-skill drift check not run"
 fi
 
 echo "ok: all repository gates passed for $ROOT"

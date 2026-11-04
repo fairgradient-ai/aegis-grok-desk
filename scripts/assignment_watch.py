@@ -21,11 +21,13 @@ act-by time (the owner's broker cutoff on the leg's last trading day) in ET and 
 data footer. Exit 10 when any tier fired (``HIGH``, ``PIN HIGH``, ``ITM`` on its last trading day), 20
 when any leg or group is UNAVAILABLE and nothing fired, 0 otherwise; 1 on configuration or file errors
 (``desk_root``, ``config_invalid``, ``positions_missing``, ``positions_invalid``, ``calendar_invalid``,
-``io_error``), 2 on usage. Never writes ``positions.csv``. ``--json`` payload: ``{"verdict", "exit_code",
-"today", "next_trading_day", "week_start", "week_end", "legs": [...], "expired", "quarantined",
-"quote_check", "counts", "session", "warnings", "fixture_set"}``. On an early-close day the act-by is the
-earlier of the broker cutoff and the 13:00 ET close, marked ``early close ...: confirm your broker's cutoff``
-(``act_by_early_close`` in each leg).
+``io_error``), 2 on usage. Never writes ``positions.csv`` and keeps no record of its own. ``--json`` payload:
+``{"verdict", "exit_code", "today", "next_trading_day", "week_start", "week_end", "legs": [...], "expired",
+"quarantined", "quote_check", "counts", "session", "warnings", "fixture_set", "message", "as_of"}``:
+``message`` is the human text exactly (without the final newline) and ``as_of`` the instant of its footer line (the
+newest graded quote, or the run instant when nothing was quoted), so a routine can post the text without running the
+tool twice. On an early-close day the act-by is the earlier of the broker cutoff and the 13:00 ET close, marked
+``early close ...: confirm your broker's cutoff`` (``act_by_early_close`` in each leg).
 """
 
 from __future__ import annotations
@@ -67,6 +69,8 @@ OUTPUT: Dict[str, Any] = {
     "session": "market_clock.SessionInfo.as_dict()",
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
+    "message": "string: the human text exactly, without the final newline",
+    "as_of": "ISO-8601 UTC: the instant of the text's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)",
 }
 
 
@@ -204,23 +208,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     all_warnings = list(sheet.warnings) + warnings
 
-    if args.json:
-        payload: Dict[str, Any] = dict(sheet.as_dict())
-        payload.update({
-            "verdict": verdict_word(exit_code),
-            "exit_code": exit_code,
-            "quote_check": {"symbols": symbols, "quoted": quoted, "missing": missing, "requests_made": requests_made},
-            "counts": counts,
-            "session": session.as_dict(),
-            "warnings": all_warnings,
-            "fixture_set": market.fixture_set,
-        })
-        body = contract.envelope(TOOL, version, payload, source=quote_cache.source_label(market.cfg),
-                                 delay_min=market.cfg.market_data.feed_delay_min, generated_at=now,
-                                 status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
-        print(contract.json_dumps(body))
-        return exit_code
-
     lines = [summary_line(sheet, session, exit_code, counts)]
     listed = False
     for leg in sheet.legs:
@@ -242,7 +229,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         name = session.holiday_name or ("weekend" if session.session == market_clock.SESSION_WEEKEND else "closed")
         lines.append("NYSE closed (%s): no quote fetch" % name)
     lines.append(quote_cache.footer_line(market.cfg, footer_as_of))
-    print("\n".join(lines))
+    message = "\n".join(lines)
+
+    if args.json:
+        payload: Dict[str, Any] = dict(sheet.as_dict())
+        payload.update({
+            "verdict": verdict_word(exit_code),
+            "exit_code": exit_code,
+            "quote_check": {"symbols": symbols, "quoted": quoted, "missing": missing, "requests_made": requests_made},
+            "counts": counts,
+            "session": session.as_dict(),
+            "warnings": all_warnings,
+            "fixture_set": market.fixture_set,
+            "message": message,
+            "as_of": state.format_utc(footer_as_of),
+        })
+        body = contract.envelope(TOOL, version, payload, source=quote_cache.source_label(market.cfg),
+                                 delay_min=market.cfg.market_data.feed_delay_min, generated_at=now,
+                                 status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
+        print(contract.json_dumps(body))
+        return exit_code
+    print(message)
     return exit_code
 
 

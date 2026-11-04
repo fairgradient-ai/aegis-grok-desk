@@ -38,8 +38,19 @@ the skills, agents, rules and hooks checked in here.
 * The desk-rule paragraph (the paragraph of ``rules/aegis-desk.mdc`` that begins "This desk
   never places") appears verbatim in ``GEMINI.md`` and ``AGENTS.md``, which are loaded on every
   Gemini CLI and generic-agent session respectively.
-* ``routines/manifest.toml`` passes a minimal line-based check (``schema_version`` present
-  exactly once). The vendored TOML reader will parse it fully in a later release.
+* ``routines/manifest.toml`` carries exactly one top-level ``schema_version = <int>`` line and
+  passes the full parse of ``aegis_desk.routines.load_manifest`` (imported from this checkout, never
+  from the tree under test): every structural rule of that module's notes, every problem reported.
+  Then, against the tree under test: every ``owner`` is an ``agents/<owner>.md`` stem; every chain
+  step's tool exists as ``scripts/<tool>.py`` and that file's parser accepts the step's tokens. The
+  parser is read by AST, never imported: the accepted flags are the option strings of every
+  ``.add_argument(...)`` call (value-taking unless the action is ``store_true``, ``store_false``,
+  ``store_const``, ``append_const``, ``count``, ``help`` or ``version``; ``--flag=value`` is the
+  same flag), and a positional token is accepted only by a declared positional, within its
+  ``choices=`` when those are a literal list or tuple or a module-level literal (``ack.ACTIONS``).
+  Once the manifest declares a routine, ``routines/autoreview.toml`` is required: schema 1,
+  ``limit_chars`` 1000, the three texts, each rendered text within the limit and the allow text
+  naming every routine id (``aegis_desk.routines.rules_text_problems``).
 
 Usage: ``python3 scripts/check_manifests.py [repo-root] [--json]``. Exit 0 when every check
 passes, 1 when any fails, 2 on a usage error. ``--json`` prints one object with ``ok``,
@@ -48,11 +59,15 @@ passes, 1 when any fails, 2 on a usage error. ``--json`` prints one object with 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from aegis_desk import routines
 
 CANONICAL_NAME = "aegis-desk"
 REPOSITORY = "https://github.com/fairgradient-ai/aegis-grok-desk"
@@ -90,6 +105,10 @@ DESK_RULE = "rules/aegis-desk.mdc"
 DESK_RULE_PARAGRAPH_START = "This desk never places"
 DESK_RULE_MIRRORS = ("GEMINI.md", "AGENTS.md")
 ROUTINES_MANIFEST = "routines/manifest.toml"
+ROUTINES_AUTOREVIEW = "routines/autoreview.toml"
+# argparse actions that consume no value on the command line.
+NO_VALUE_ACTIONS = frozenset({"store_true", "store_false", "store_const", "append_const", "count", "help", "version"})
+UNBOUNDED_NARGS = ("*", "+", "...", "A...")
 CODEX_INSTALL_POLICIES = ("AVAILABLE", "INSTALLED_BY_DEFAULT", "NOT_AVAILABLE")
 CODEX_AUTH_POLICIES = ("ON_INSTALL", "ON_USE")
 # Manifest keys whose value is a path into this repository.
@@ -337,22 +356,204 @@ def check_desk_rule_mirrors(root: str, errors: List[str]) -> None:
             errors.append(f"{rel}: must repeat the desk-rule paragraph of {DESK_RULE} verbatim")
 
 
-def check_routines_manifest(root: str, errors: List[str]) -> None:
+@dataclass(frozen=True)
+class Positional:
+    """One positional ``add_argument`` of a tool parser, as read by AST."""
+
+    name: str
+    choices: Optional[Tuple[str, ...]]
+    choices_readable: bool
+    nargs: Any
+
+
+@dataclass(frozen=True)
+class ParserSpec:
+    """What a tool's parser accepts: ``flags`` maps each option string to whether it takes a value."""
+
+    flags: Dict[str, bool]
+    positionals: Tuple[Positional, ...]
+
+
+def _literal_strings(node: Optional[ast.AST]) -> Optional[Tuple[str, ...]]:
+    """A list, tuple or set literal of string constants, else ``None``."""
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)) and all(
+            isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.elts):
+        return tuple(item.value for item in node.elts)
+    return None
+
+
+def _module_constants(tree: ast.Module) -> Dict[str, Tuple[str, ...]]:
+    """Module-level ``NAME = (...)`` / ``NAME: T = (...)`` assignments of string literals."""
+    found: Dict[str, Tuple[str, ...]] = {}
+    for node in tree.body:
+        target: Optional[ast.AST] = None
+        value: Optional[ast.AST] = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target, value = node.target, node.value
+        strings = _literal_strings(value)
+        if isinstance(target, ast.Name) and strings is not None:
+            found[target.id] = strings
+    return found
+
+
+def read_parser_spec(path: str) -> ParserSpec:
+    """The :class:`ParserSpec` of the tool at ``path``, read by AST (the module is never imported).
+
+    ``OSError``, ``UnicodeDecodeError`` and ``SyntaxError`` propagate for the caller to report.
+    """
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    constants = _module_constants(tree)
+    flags: Dict[str, bool] = {}
+    positionals: List[Positional] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument"):
+            continue
+        names = [arg.value for arg in node.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str)]
+        if not names:
+            continue
+        keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
+        action = keywords.get("action")
+        action_name = action.value if isinstance(action, ast.Constant) and isinstance(action.value, str) else None
+        if names[0].startswith("-"):
+            for name in names:
+                if name.startswith("-"):
+                    flags[name] = action_name not in NO_VALUE_ACTIONS
+            continue
+        choices: Optional[Tuple[str, ...]] = None
+        readable = True
+        if "choices" in keywords:
+            node_choices = keywords["choices"]
+            choices = _literal_strings(node_choices)
+            if choices is None and isinstance(node_choices, ast.Name):
+                choices = constants.get(node_choices.id)
+            readable = choices is not None
+        nargs_node = keywords.get("nargs")
+        nargs = nargs_node.value if isinstance(nargs_node, ast.Constant) else None
+        positionals.append(Positional(names[0], choices, readable, nargs))
+    return ParserSpec(flags, tuple(positionals))
+
+
+def _positional_capacity(positional: Positional) -> Optional[int]:
+    """How many tokens a positional takes (``None``: any number)."""
+    if positional.nargs in UNBOUNDED_NARGS:
+        return None
+    if isinstance(positional.nargs, int) and not isinstance(positional.nargs, bool):
+        return positional.nargs
+    return 1
+
+
+def check_step(spec: ParserSpec, tool_rel: str, tokens: Sequence[str]) -> List[str]:
+    """Why ``tokens`` (the tool first) would not parse with ``spec``; ``[]`` when they would."""
+    problems: List[str] = []
+    slots = [(positional, _positional_capacity(positional)) for positional in spec.positionals]
+    slot_index, used = 0, 0
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token.startswith("-"):
+            flag, has_value, _value = token.partition("=")
+            if flag not in spec.flags:
+                problems.append(f"{tool_rel} does not accept {flag}")
+            elif spec.flags[flag]:
+                if not has_value:
+                    if index + 1 >= len(tokens) or tokens[index + 1].startswith("-"):
+                        problems.append(f"{tool_rel}: {flag} needs a value")
+                    else:
+                        index += 1
+            elif has_value:
+                problems.append(f"{tool_rel}: {flag} takes no value")
+            index += 1
+            continue
+        while slot_index < len(slots) and slots[slot_index][1] is not None and used >= slots[slot_index][1]:
+            slot_index, used = slot_index + 1, 0
+        if slot_index >= len(slots):
+            problems.append(f"{tool_rel} does not take a positional argument {token!r}")
+        else:
+            positional = slots[slot_index][0]
+            used += 1
+            if not positional.choices_readable:
+                problems.append(f"positional {token!r}: the choices of {positional.name} in {tool_rel} "
+                                "cannot be read statically")
+            elif positional.choices is not None and token not in positional.choices:
+                problems.append(f"positional {token!r} is not one of {', '.join(positional.choices)} "
+                                f"({tool_rel} {positional.name})")
+        index += 1
+    return problems
+
+
+def check_routines_manifest(root: str, errors: List[str]) -> int:
+    """The routine manifest and its Auto-review texts (module notes); returns the number of routines."""
     path = os.path.join(root, ROUTINES_MANIFEST)
     if not os.path.isfile(path):
         errors.append(f"{ROUTINES_MANIFEST}: missing")
-        return
+        return 0
     try:
         text = read_text(root, ROUTINES_MANIFEST)
     except UnicodeDecodeError as exc:
         errors.append(f"{ROUTINES_MANIFEST}: not valid UTF-8: {exc}")
-        return
+        return 0
     schema_lines = [line for line in text.splitlines() if SCHEMA_VERSION_RE.match(line)]
     if len(schema_lines) != 1:
         errors.append(
             f"{ROUTINES_MANIFEST}: expected exactly one top-level 'schema_version = <int>' line, "
             f"found {len(schema_lines)}"
         )
+    try:
+        manifest = routines.parse_manifest_text(text, ROUTINES_MANIFEST)
+    except routines.ManifestError as exc:
+        errors.extend(f"{ROUTINES_MANIFEST}: {problem}" for problem in exc.problems)
+        return 0
+    specs: Dict[str, Any] = {}
+    for routine in manifest.routines:
+        label = f"{ROUTINES_MANIFEST}: routine {routine.id}"
+        if not os.path.isfile(os.path.join(root, "agents", routine.owner + ".md")):
+            errors.append(f"{label}: owner {routine.owner!r} has no agents/{routine.owner}.md")
+        seen: List[str] = []
+        for steps in routine.chains():
+            for step in steps:
+                if step in seen:
+                    continue
+                seen.append(step)
+                tokens = routines.step_tokens(step)
+                tool_rel = f"scripts/{tokens[0]}.py"
+                tool_path = os.path.join(root, "scripts", tokens[0] + ".py")
+                if not os.path.isfile(tool_path):
+                    errors.append(f"{label}: step {step!r}: {tool_rel} does not exist")
+                    continue
+                if tool_rel not in specs:
+                    try:
+                        specs[tool_rel] = read_parser_spec(tool_path)
+                    except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as exc:
+                        specs[tool_rel] = f"{tool_rel} cannot be read as Python ({exc.__class__.__name__}: {exc})"
+                spec = specs[tool_rel]
+                if isinstance(spec, str):
+                    errors.append(f"{label}: step {step!r}: {spec}")
+                    continue
+                errors.extend(f"{label}: step {step!r}: {problem}" for problem in check_step(spec, tool_rel, tokens))
+    if manifest.routines:
+        check_autoreview(root, manifest, errors)
+    return len(manifest.routines)
+
+
+def check_autoreview(root: str, manifest: Any, errors: List[str]) -> None:
+    """``routines/autoreview.toml``: present, well formed, every rendered text within the limit."""
+    path = os.path.join(root, ROUTINES_AUTOREVIEW)
+    if not os.path.isfile(path):
+        errors.append(f"{ROUTINES_AUTOREVIEW}: missing; required once {ROUTINES_MANIFEST} declares a routine")
+        return
+    try:
+        autoreview = routines.parse_autoreview_text(read_text(root, ROUTINES_AUTOREVIEW), ROUTINES_AUTOREVIEW)
+    except UnicodeDecodeError as exc:
+        errors.append(f"{ROUTINES_AUTOREVIEW}: not valid UTF-8: {exc}")
+        return
+    except routines.ManifestError as exc:
+        errors.extend(f"{ROUTINES_AUTOREVIEW}: {problem}" for problem in exc.problems)
+        return
+    errors.extend(f"{ROUTINES_AUTOREVIEW}: {problem}" for problem in routines.rules_text_problems(manifest, autoreview))
 
 
 def run(root: str) -> Dict[str, Any]:
@@ -395,7 +596,7 @@ def run(root: str) -> Dict[str, Any]:
     check_hooks(root, manifests, errors)
     check_template_release(root, version, errors)
     check_desk_rule_mirrors(root, errors)
-    check_routines_manifest(root, errors)
+    routine_count = check_routines_manifest(root, errors)
 
     return {
         "ok": not errors,
@@ -407,6 +608,8 @@ def run(root: str) -> Dict[str, Any]:
             "desk_rule_mirrors": list(DESK_RULE_MIRRORS),
             "template": TEMPLATE,
             "routines_manifest": ROUTINES_MANIFEST,
+            "routines": routine_count,
+            "routines_autoreview": ROUTINES_AUTOREVIEW,
         },
     }
 
@@ -425,7 +628,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         print(
             f"ok: {len(MANIFESTS)} manifests agree on {CANONICAL_NAME} {result['version']}; "
-            "hooks declared once per runtime; desk-rule paragraph mirrored; template release pinned"
+            "hooks declared once per runtime; desk-rule paragraph mirrored; template release pinned; "
+            f"routine manifest parsed ({result['checked']['routines']} routine(s))"
         )
     return 0 if result["ok"] else 1
 

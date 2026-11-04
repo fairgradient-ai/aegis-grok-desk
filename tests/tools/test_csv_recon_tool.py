@@ -10,6 +10,7 @@ import tests._path  # noqa: F401
 # isort: on
 
 import contextlib
+import datetime
 import hashlib
 import io
 import json
@@ -20,7 +21,7 @@ import unittest
 from typing import Any, Dict, List, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import positions_csv, recon, state
+from aegis_desk import alert_lint, alerts, contract, desk_paths, positions_csv, recon, state
 
 import csv_recon as tool  # the tool module scripts/csv_recon.py
 
@@ -39,6 +40,19 @@ RECON_EDIT_LINES = (
     "equity,NVDA,,200,,,,,AG-20261022-03,2026-10-22,28240.00,,,closed,2026-11-20,200,150.00,,",
     "option,SPX,SPX261120C06500000,1,,,,,AG-20261101-05,2026-11-01,2450.00,,24.50,closed,2026-11-20,1,23.17,,AM-settled index call",
 )
+
+
+def posted_lint(payload: Dict[str, Any]) -> Any:
+    """The routine's composition of a text part (PR 2d decision D2-3): the message through ``alerts.fmt_reason``, the
+    alert footer at ``payload.as_of``, then the strict lint."""
+    emitted: List[str] = []
+    rule_ids: List[str] = []
+    identifiers: List[str] = []
+    clocks: List[str] = []
+    text = alerts.fmt_reason(payload["message"], emitted, rule_ids=rule_ids, identifiers=identifiers, clocks=clocks)
+    as_of = contract.parse_utc_instant(payload["as_of"])
+    text += "\n" + alerts.fmt_footer(as_of, 15, emitted, clocks)
+    return alert_lint.check(text, emitted, rule_ids=rule_ids or None, identifiers=identifiers, clocks=clocks, as_of=as_of)
 
 
 def run_tool(argv: Sequence[str]) -> Tuple[int, str]:
@@ -392,6 +406,147 @@ class MainRootTest(DeskCopy):
             lowered = text.lower()
             for word in ("buy", "sell", "limit order", "market order", "submit", "place_order"):
                 self.assertNotIn(word, lowered, (fixture_set, word))
+
+
+# (fixture root, fixture set, instant, exit code, verdict, the footer's instant as payload.as_of): the quote check's
+# as-of (the landed tool's own payload.quote_check.as_of on a fresh copy), or the run instant when no quote was
+# fetched (a weekend, a holiday).
+MESSAGE_CASES = (
+    (MAIN_DESK, "regular", REGULAR_NOW, 0, "CLEAN", "2026-11-03T19:31:12+00:00"),
+    (MAIN_DESK, "pre_open", "2026-11-03T12:31:00Z", 0, "CLEAN", "2026-11-02T20:59:55+00:00"),
+    (MAIN_DESK, "post_expiry", POST_EXPIRY_NOW, 10, "EDITS_PENDING", "2026-11-21T14:30:00+00:00"),
+    (MAIN_DESK, "holiday", HOLIDAY_NOW, 20, "UNAVAILABLE", "2026-11-26T15:00:00+00:00"),
+    (RECON_DESK, "recon", RECON_NOW, 20, "UNAVAILABLE", "2026-11-23T20:59:50+00:00"),
+)
+
+
+class MessageAndRecordTest(DeskCopy):
+    """PR 2d decisions D2-15 (``payload.message`` is the posted prose without ``--diff``, ``payload.as_of`` the
+    instant of its footer line) and D1-11 (every run writes the reconciliation record
+    ``data/positions/<ET date>.recon.json`` under the desk lock, whatever the verdict)."""
+
+    source = MAIN_DESK
+
+    def fresh_root(self, source: str) -> str:
+        holder = tempfile.TemporaryDirectory(prefix="aegis-recon-tool-twin-")
+        self.addCleanup(holder.cleanup)
+        root = os.path.join(os.path.realpath(holder.name), "desk")
+        shutil.copytree(source, root)
+        return root
+
+    def run_on(self, root: str, fixture_set: str, now: str, json_mode: bool, extra: Sequence[str] = ()) -> Tuple[int, str]:
+        argv = ["--offline", "--desk-root", root, "--now", now, "--fixture-set", fixture_set] + list(extra)
+        return run_tool(argv + (["--json"] if json_mode else []))
+
+    def record(self, root: str, et_date: str) -> Dict[str, Any]:
+        with open(os.path.join(root, "data", "positions", et_date + ".recon.json"), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_schema_names_the_message_and_its_as_of(self) -> None:
+        code, body = run_json(["--schema"])
+        self.assertEqual(0, code)
+        payload = body["envelope"]["payload"]
+        self.assertIn("message", payload)
+        self.assertIn("as_of", payload)
+
+    def test_recon_path_is_beside_the_snapshot(self) -> None:
+        paths = desk_paths.for_root(self.root)
+        self.assertEqual(os.path.join(self.root, "data", "positions", "2026-11-03.recon.json"),
+                         recon.recon_path(paths, datetime.date(2026, 11, 3)))
+        self.assertIn("recon_path", recon.__all__)
+
+    def test_message_is_the_prose_without_diff_and_as_of_is_the_footer_instant(self) -> None:
+        for source, fixture_set, now, exit_code, verdict, as_of in MESSAGE_CASES:
+            with self.subTest(fixture_set=fixture_set, now=now):
+                code, out = self.run_on(self.fresh_root(source), fixture_set, now, True)
+                body = json.loads(out)
+                human_code, text = self.run_on(self.fresh_root(source), fixture_set, now, False)
+                self.assertEqual((exit_code, exit_code, verdict), (code, human_code, body["payload"]["verdict"]), out)
+                self.assertEqual(text.rstrip("\n"), body["payload"]["message"])
+                self.assertEqual(as_of, body["payload"]["as_of"])
+                lint = posted_lint(body["payload"])
+                self.assertTrue(lint.ok, lint.problems)
+                self.assertEqual([], [p.pattern for p in alert_lint.FORBIDDEN_PATTERNS if p.search(body["payload"]["message"])])
+                self.assertEqual("Tradier sandbox, delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
+                _code, diff_out = self.run_on(self.fresh_root(source), fixture_set, now, True, extra=["--diff"])
+                self.assertEqual(body["payload"]["message"], json.loads(diff_out)["payload"]["message"],
+                                 "the message never carries the --diff rows")
+
+    def test_every_verdict_writes_the_record(self) -> None:
+        for source, fixture_set, now, exit_code, verdict, _as_of in MESSAGE_CASES:
+            with self.subTest(fixture_set=fixture_set, now=now):
+                json_root = self.fresh_root(source)
+                code, out = self.run_on(json_root, fixture_set, now, True)
+                printed = json.loads(out)
+                et_date = printed["payload"]["et_date"]
+                record = self.record(json_root, et_date)
+                self.assertEqual(printed, record, "the record is the envelope --json prints")
+                self.assertEqual((verdict, exit_code), (record["payload"]["verdict"], record["payload"]["exit_code"]))
+                for key in ("edits", "unavailable"):
+                    self.assertIsInstance(record["payload"]["counts"][key], int)
+                self.assertEqual(now.replace("Z", "+00:00"), record["generated_at"])
+                human_root = self.fresh_root(source)
+                human_code, _text = self.run_on(human_root, fixture_set, now, False, extra=["--diff"])
+                self.assertEqual(code, human_code)
+                self.assertEqual(record, self.record(human_root, et_date), "a human --diff run writes the same record")
+                self.assertEqual([et_date + ".csv", et_date + ".recon.json", et_date + ".sha256"],
+                                 sorted(os.listdir(os.path.join(human_root, "data", "positions"))))
+
+    def test_the_errors_verdict_writes_the_record_and_prints_the_error_envelope(self) -> None:
+        self.rewrite("positions.csv", "cost_basis_total,", "cost_basis_totl,")
+        code, body = run_json(self.argv("regular", REGULAR_NOW))
+        self.assertEqual((1, "error", "positions_invalid"), (code, body["status"], body["error"]["code"]))
+        self.assertNotIn("payload", body)
+        record = self.record(self.root, "2026-11-03")
+        self.assertEqual(("csv_recon", "error", "ERRORS", 1, "2026-11-03"),
+                         (record["tool"], record["status"], record["payload"]["verdict"], record["payload"]["exit_code"],
+                          record["payload"]["et_date"]))
+        self.assertTrue(record["payload"]["file_errors"])
+        self.assertEqual(self.positions_sha, record["payload"]["positions_sha256"])
+        self.assertTrue(record["payload"]["message"].startswith("ERRORS (2026-11-03 ET): positions.csv cannot be used:"))
+        self.assertEqual("2026-11-03T19:50:00+00:00", record["payload"]["as_of"])
+
+    def test_a_busy_lock_is_a_warning_and_no_record(self) -> None:
+        def busy(paths: Any, et_date: Any, body: Any) -> str:
+            raise state.LockBusy(paths.lock_path, 5.0)
+
+        with mock.patch.object(tool, "write_record", side_effect=busy):
+            code, body = run_json(self.argv("regular", REGULAR_NOW))
+            human_code, text = run_tool(self.argv("regular", REGULAR_NOW, json_mode=False))
+        self.assertEqual((0, 0, "ok"), (code, human_code, body["status"]))
+        warnings = [w for w in body["payload"]["warnings"] if w.startswith("reconciliation record not written: ")]
+        self.assertEqual(1, len(warnings), body["payload"]["warnings"])
+        self.assertIn("is busy", warnings[0])
+        self.assertIn("warning: " + warnings[0], text.splitlines())
+        self.assertIn("warning: " + warnings[0], body["payload"]["message"].splitlines())
+        self.assertFalse(os.path.exists(os.path.join(self.root, "data", "positions", "2026-11-03.recon.json")))
+
+    def test_the_record_is_written_under_the_desk_lock(self) -> None:
+        held = []
+        real_locked = state.locked
+
+        def watching(lock_path: str, *args: Any, **kwargs: Any) -> Any:
+            held.append(lock_path)
+            return real_locked(lock_path, *args, **kwargs)
+
+        real_write = state.atomic_write_json
+
+        def write(path: str, obj: Any) -> None:
+            if path.endswith(".recon.json"):
+                self.assertTrue(held and held[-1].endswith(os.path.join("state", ".lock")), held)
+            real_write(path, obj)
+
+        with mock.patch.object(state, "locked", side_effect=watching), \
+                mock.patch.object(state, "atomic_write_json", side_effect=write):
+            code, _body = run_json(self.argv("regular", REGULAR_NOW))
+        self.assertEqual(0, code)
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "data", "positions", "2026-11-03.recon.json")))
+
+    def test_a_record_that_cannot_be_written_is_an_io_error(self) -> None:
+        os.makedirs(os.path.join(self.root, "data", "positions", "2026-11-03.recon.json"))
+        code, body = run_json(self.argv("regular", REGULAR_NOW))
+        self.assertEqual((1, "error", "io_error"), (code, body["status"], body["error"]["code"]))
+        self.assertIn("data/positions/2026-11-03.recon.json", body["error"]["message"])
 
 
 if __name__ == "__main__":

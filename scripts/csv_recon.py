@@ -38,10 +38,22 @@ production-host and missing-token refusals; 2 on usage. This tool NEVER writes `
 and reads it ONCE: the snapshot, the proposed edits' raw cells and the parsed rows all describe the
 same bytes. ``--json`` payload: the reconciliation dict (``verdict``, ``exit_code``, ``settlements``,
 ``edits`` with ``csv_line``, ``findings``, ``quote_check``, ``quarantined``, ``file_errors``,
-``counts``) plus ``session``, ``history``, ``snapshot``, ``positions_sha256``, ``warnings`` and
-``fixture_set``. The ``ERRORS`` verdict is the error envelope (``error.code`` ``positions_invalid``,
-the message naming the file errors), the shape ``book.py``, ``assignment_watch.py`` and
+``counts``) plus ``session``, ``history``, ``snapshot``, ``positions_sha256``, ``warnings``,
+``fixture_set``, ``message`` (the prose exactly as printed without ``--diff``, without the final
+newline: the text a routine posts, never the owner's cells of the ``--diff`` rows) and ``as_of`` (the
+instant of the prose's footer line: the quote check's as-of, or the run instant when nothing was
+quoted). The ``ERRORS`` verdict is the error envelope (``error.code`` ``positions_invalid``, the
+message naming the file errors), the shape ``book.py``, ``assignment_watch.py`` and
 ``expiry_checklist.py`` give the same file; the snapshot of record is written before it.
+
+The reconciliation record: every run that reaches a verdict (``ERRORS`` included) writes the success
+envelope of that payload (``status`` from the verdict's exit code) to
+``data/positions/<ET date>.recon.json`` (``recon.recon_path``) atomically under the desk lock, in
+human mode too, so the Morning Desk Sheet and the EOD brief read one record of the day's verdict
+(PR 2d decision D1-11); they read only ``payload.verdict``, ``payload.et_date``,
+``payload.counts.edits``, ``payload.counts.unavailable`` and ``generated_at``. A busy lock leaves the
+record unwritten with the warning ``reconciliation record not written: ...`` (the verdict and exit
+code stand); any other write failure is exit 1 ``io_error``.
 """
 
 from __future__ import annotations
@@ -95,6 +107,8 @@ OUTPUT: Dict[str, Any] = {
     "positions_sha256": "hex of positions.csv",
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
+    "message": "string: the prose exactly as printed without --diff, without the final newline",
+    "as_of": "ISO-8601 UTC: the instant of the prose's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)",
 }
 
 
@@ -190,6 +204,14 @@ def prose(result: recon.Reconciliation, snapshot: Optional[recon.Snapshot], path
     return lines
 
 
+def write_record(paths: desk_paths.DeskPaths, et_date: datetime.date, body: Dict[str, Any]) -> str:
+    """Write the reconciliation record (module notes) atomically under the desk lock; returns its path."""
+    path = recon.recon_path(paths, et_date)
+    with state.locked(paths.lock_path):
+        state.atomic_write_json(path, body)
+    return path
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     version = release_version()
     parser = build_parser(version)
@@ -274,15 +296,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              pin_band=market.cfg.market_data.pin_band, histories=histories, quotes=quotes, acks=acks)
     result.warnings.extend(warnings)
     exit_code = result.exit_code
-    if result.verdict == recon.VERDICT_ERRORS and args.json:
-        # The error envelope, as the other tools give the same file; the prose keeps the verdict and snapshot lines.
-        return fail(args, version, now, "positions_invalid",
-                    "%s: positions.csv cannot be used: %s" % (result.verdict, "; ".join(result.file_errors)), exit_code)
     footer_as_of = now
     if result.quote_check is not None and result.quote_check.as_of is not None:
         footer_as_of = result.quote_check.as_of
 
-    if args.json:
+    def envelope() -> Dict[str, Any]:
         payload = result.as_dict()
         payload["session"] = session.as_dict()
         payload["history"] = history_entries
@@ -290,10 +308,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                                               "sha256": snapshot.sha256}
         payload["positions_sha256"] = positions.sha256
         payload["fixture_set"] = market.fixture_set
-        body = contract.envelope(TOOL, version, payload, source=quote_cache.source_label(market.cfg),
+        payload["message"] = "\n".join(prose(result, snapshot, paths, market.cfg, False, footer_as_of))
+        payload["as_of"] = state.format_utc(footer_as_of)
+        return contract.envelope(TOOL, version, payload, source=quote_cache.source_label(market.cfg),
                                  delay_min=market.cfg.market_data.feed_delay_min, generated_at=now,
                                  status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
-        print(contract.json_dumps(body))
+
+    try:
+        write_record(paths, session.et_date, envelope())
+    except state.LockBusy as exc:
+        result.warnings.append("reconciliation record not written: %s" % exc)
+    except OSError as exc:
+        return fail(args, version, now, "io_error", "cannot write the reconciliation record %s: %s"
+                    % (paths.relative(recon.recon_path(paths, session.et_date)), exc.strerror or exc),
+                    contract.EXIT_ERROR)
+    if result.verdict == recon.VERDICT_ERRORS and args.json:
+        # The error envelope, as the other tools give the same file; the prose keeps the verdict and snapshot lines.
+        return fail(args, version, now, "positions_invalid",
+                    "%s: positions.csv cannot be used: %s" % (result.verdict, "; ".join(result.file_errors)), exit_code)
+
+    if args.json:
+        print(contract.json_dumps(envelope()))
         return exit_code
 
     print("\n".join(prose(result, snapshot, paths, market.cfg, args.diff, footer_as_of)))

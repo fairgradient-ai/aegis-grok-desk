@@ -79,6 +79,67 @@ class FooterTest(unittest.TestCase):
         self.assertEqual(["empty_message"], codes(alert_lint.check(" \n\n ", [])))
 
 
+class SnapshotFooterTest(unittest.TestCase):
+    """The market-snapshot footer (``footer="snapshot"``): an accurate disclosure for a public quote shown before
+    any rule exists. It closes only rule-free text, so the rules footer stays mandatory for anything a rule says."""
+
+    SNAPSHOT = alert_lint.snapshot_footer_line(AS_OF)
+    BODY = "SPY 648.12 mid (bid 648.10, ask 648.14), as of 19:31 UTC"
+    EMITTED = ["648.12", "648.10", "648.14"]
+
+    def lint(self, text: str, **kwargs: object) -> alert_lint.LintResult:
+        return alert_lint.check(text, self.EMITTED, footer=alert_lint.FOOTER_SNAPSHOT, **kwargs)
+
+    def test_the_exact_line(self) -> None:
+        self.assertEqual("public market data · posted by an AI assistant · not a signal and not personalized "
+                         "investment advice · data delayed 15 min, as of 19:31 UTC", self.SNAPSHOT)
+        self.assertEqual((alert_lint.FOOTER_RULES, alert_lint.FOOTER_SNAPSHOT), alert_lint.FOOTER_KINDS)
+
+    def test_a_snapshot_passes_only_in_snapshot_mode(self) -> None:
+        text = message(self.BODY, footer=self.SNAPSHOT)
+        self.assertTrue(self.lint(text, as_of=AS_OF).ok, self.lint(text).problems)
+        default = alert_lint.check(text, self.EMITTED)
+        self.assertFalse(default.ok)
+        self.assertIn("footer_missing", codes(default), "the default stays the rules footer: a snapshot footer never "
+                      "closes an alert (its middle dots and delay are not whitelisted there either)")
+        rules_closed = self.lint(message(self.BODY))
+        self.assertFalse(rules_closed.ok)
+        self.assertIn("footer_missing", codes(rules_closed), "snapshot mode does not accept the rules footer either")
+
+    def test_rule_content_cannot_close_with_the_snapshot_footer(self) -> None:
+        for body in ("your rule TP80 (rules 1.0.0, sha cc09859c) fired", "EXIT SIGNAL AG-20261020-01 | WMT covered call",
+                     "WATCH AG-20261020-01", "HOLD portfolio", "UNAVAILABLE: book stale", "rules 1.0.0"):
+            with self.subTest(body=body):
+                result = self.lint(message(body, footer=self.SNAPSHOT))
+                self.assertIn("footer_missing", codes(result))
+                self.assertTrue(any("rule content" in problem for problem in result.problems), result.problems)
+        named = self.lint(message(self.BODY, footer=self.SNAPSHOT), rule_ids=["TP80"])
+        self.assertIn("footer_missing", codes(named), "a caller naming rule ids is not a snapshot")
+        self.assertTrue(self.lint(message(self.BODY, footer=self.SNAPSHOT), rule_ids=[]).ok)
+
+    def test_the_footer_rules_still_hold(self) -> None:
+        pinned = self.lint(message(self.BODY, footer=self.SNAPSHOT), as_of=AS_OF + datetime.timedelta(minutes=5))
+        self.assertEqual(["footer_missing"], codes(pinned), "as_of pins the snapshot footer's clock too")
+        late = alert_lint.snapshot_footer_line(AS_OF, 20)
+        self.assertEqual(["number_not_emitted"], codes(self.lint(message(self.BODY, footer=late))),
+                         "a delay other than 15 minutes must be emitted")
+        dotted = message(self.BODY + " · extra", footer=self.SNAPSHOT)
+        self.assertEqual(["non_ascii"], codes(self.lint(dotted)), "the middle dot belongs to the footer line only")
+        with self.assertRaises(ValueError):
+            alert_lint.check(message(self.BODY, footer=self.SNAPSHOT), self.EMITTED, footer="market")
+
+    def test_the_emitted_document_names_its_footer(self) -> None:
+        text = message(self.BODY, footer=self.SNAPSHOT)
+        document = alert_lint.load_emitted({"emitted_numbers": self.EMITTED, "footer": "snapshot"})
+        self.assertEqual(alert_lint.FOOTER_SNAPSHOT, document.footer)
+        self.assertTrue(document.check(text).ok, document.check(text).problems)
+        self.assertEqual(alert_lint.FOOTER_RULES, alert_lint.load_emitted({"emitted_numbers": self.EMITTED}).footer)
+        self.assertFalse(alert_lint.load_emitted({"emitted_numbers": self.EMITTED}).check(text).ok)
+        self.assertNotIn("footer", alert_lint.EMITTED_DOCUMENT_KEYS, "an optional key: every rules document is unchanged")
+        with self.assertRaises(ValueError):
+            alert_lint.load_emitted({"emitted_numbers": self.EMITTED, "footer": "market"})
+
+
 class NumericTokenTest(unittest.TestCase):
     def tokens(self, text: str) -> List[str]:
         return [token.text for token in alert_lint.numeric_tokens(text)]
@@ -240,7 +301,7 @@ class ImperativeStartTest(unittest.TestCase):
         return "imperative_start" in codes(result)
 
     def test_every_word_at_every_sentence_start(self) -> None:
-        self.assertEqual(7, len(alert_lint.IMPERATIVE_START_WORDS))
+        self.assertEqual(9, len(alert_lint.IMPERATIVE_START_WORDS))
         for word in alert_lint.IMPERATIVE_START_WORDS:
             for spelled in (word, word.title(), word.upper()):
                 for text in (message(spelled + " the group now"), message(HEAD + " | " + spelled + " it"),
@@ -255,6 +316,29 @@ class ImperativeStartTest(unittest.TestCase):
                         continue
                     with self.subTest(text=text):
                         self.assertTrue(self.imperative(text))
+
+    def test_the_pr2d_hardening(self) -> None:
+        # PR 2d addendum O2 (decisions D1-9): two imperative starts (IS08, IS09) and one order kind (FL25), while the
+        # plan's own warning on a level sheet still passes. The words are assembled so this file spells none of them.
+        is08, is09 = "exe" + "cute", "fi" + "ll"
+        self.assertEqual((is08, is09), alert_lint.IMPERATIVE_START_WORDS[7:])
+        working = next(entry for entry in alert_lint.FORBIDDEN_LANGUAGE if entry.code == "FL25")
+        self.assertEqual(("order-kind", "wor" + "king or" + "der"), (working.category, working.example))
+        warning = message("TP50 fires at an option price of 1.71 (= credit 3.42 x (1 - 50 %)); alert level, not an "
+                          "order: a limit at this price " + is08 + "s immediately")
+        self.assertTrue(alert_lint.check(warning, ["1.71", "3.42", "1", "50"]).ok, alert_lint.check(warning, []).problems)
+        for text, code, problem in ((is08.title() + " at 1.71 when TP50 fires", "imperative_start", "IS08"),
+                                    (is09.title() + " at 1.71 when TP50 fires", "imperative_start", "IS09"),
+                                    ("a " + working.example + " at 1.71 rests", "forbidden_language", "FL25"),
+                                    ("a " + working.example.replace("der", "ders") + " rests", "forbidden_language",
+                                     "FL25")):
+            with self.subTest(text=text):
+                result = alert_lint.check(message(text), ["1.71"])
+                self.assertEqual([code], codes(result), result.problems)
+                self.assertIn(problem, result.problems[0])
+        for text in ("the " + is09 + " of it", "TP50 " + is08 + "s at 1.71", "the " + is09 + " rate"):
+            with self.subTest(text=text):
+                self.assertNotIn("imperative_start", codes(alert_lint.check(message(text), ["1.71", "50"])))
 
     def test_mid_sentence_words_are_not_starts(self) -> None:
         for word in alert_lint.IMPERATIVE_START_WORDS:
@@ -366,6 +450,14 @@ def fail_fixture_table() -> dict:
                                                     % example("FL02").replace(" ", "\n"))], ([], []),
                               ["forbidden_language"]),
         "fail_homoglyph": ("pass_exit_signal", [("your plan: close", "your plan: cl\u043ese")], ([], []), ["non_ascii"]),
+        "fail_imperative_execute": ("pass_exit_signal", [("your plan: close |", "your plan: close | %s the group today |"
+                                                          % alert_lint.IMPERATIVE_START_WORDS[7].title())], ([], []),
+                                    ["imperative_start"]),
+        "fail_imperative_fill": ("pass_exit_signal", [("your plan: close |", "your plan: close | %s the group today |"
+                                                       % alert_lint.IMPERATIVE_START_WORDS[8].title())], ([], []),
+                                 ["imperative_start"]),
+        "fail_order_kind": ("pass_exit_signal", [("your plan: close |", "your plan: close; a %s rests |"
+                                                     % example("FL25"))], ([], []), ["forbidden_language"]),
     }
 
 

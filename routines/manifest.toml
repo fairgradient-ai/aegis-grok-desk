@@ -1,4 +1,104 @@
-# Aegis Desk routine manifest. One entry per routine: owning Bot, stage, profiles with ET times,
-# the tool chain run by scripts/routine.py, dependencies and the written quiet rule.
-# Populated with release 0.1.0.
+# Aegis Desk routine manifest (schema 1). One [[routine]] per routine.py id: the owning Bot, the stage, the
+# per-profile ET slots, the tool chain scripts/routine.py runs in-process, dependencies, the posting policy and
+# the written quiet rule. Generated texts (Auto-review rules) live in routines/autoreview.toml.
 schema_version = 1
+
+[profiles.lean]
+description = "about 8 runs per weekday plus Saturday"
+
+[profiles.active]
+description = "lean plus four paused book-check slots, unpaused only on the conditions the owner chose"
+additive = true
+
+[[routine]]
+id = "preopen"
+owner = "desk-lead"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["07:30"], active = ["07:30"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["desk_doctor --quick", "csv_recon", "expiry_checklist --week", "eod_summary"]
+post = ["eod_summary"]
+posts = "always"
+quiet_rule = "Always one message: the doctor line, the recon verdict, standing signals, the docket and last night's levels; a missing or late upstream artifact is UNAVAILABLE."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py preopen --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "book-check"
+owner = "exit-sentinel"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["10:05", "12:05", "14:05", "15:35"], active = ["10:05", "11:05", "12:05", "13:05", "14:05", "14:35", "15:05", "15:35"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["book_check --post"]
+slot_chain = { "10:05" = ["book_check --post", "trigger_levels"], "12:05" = ["book_check --post --watch-alive"], "15:35" = ["book_check --post --summary"] }
+depends_on = { routine = "preopen", min_gap_min = 20 }
+post = ["book_check"]
+posts = "transitions"
+quiet_rule = "Posts only a verdict change, a new rule firing, a standing UNAVAILABLE or a ladder re-post; 12:05 posts watch alive when nothing posted since the open; 15:35 always posts the pre-close line."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/, levels/, plans/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "final-call"
+owner = "position-control"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["15:20"], active = ["15:20"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["expiry_checklist --final-call", "expiry_checklist --tomorrow", "assignment_watch"]
+post = ["expiry_checklist", "assignment_watch"]
+posts = "fired"
+quiet_rule = "Posts on an expiry day (act-by times), the day before a held contract's last trading day (T-1 preview) and when a pin or dividend tier fires; otherwise quiet. On an early-close day it runs no step: the 07:30 Morning Desk Sheet carries the early-close line."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py final-call --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "eod"
+owner = "exit-sentinel"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["16:35"], active = ["16:35"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["book --snapshot --report", "trigger_levels --from-snapshot", "csv_recon"]
+post = ["trigger_levels"]
+posts = "always"
+quiet_rule = "Always one message: the end-of-day threshold-level sheet from the snapshot."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/, levels/, plans/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "eod-brief"
+owner = "desk-lead"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["17:10"], active = ["17:10"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["eod_summary --brief"]
+depends_on = { routine = "eod", min_gap_min = 20 }
+post = ["eod_summary"]
+posts = "always"
+quiet_rule = "Always one message: P/L today, MTD and YTD, signals, the docket, N of N routines ran with late and missed runs named, the owner's to-do list."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod-brief --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "post-expiry"
+owner = "position-control"
+stage = 1
+profiles = ["lean", "active"]
+et = { lean = ["09:30"], active = ["09:30"] }
+days = ["Sat"]
+trading_days_only = false
+chain = ["csv_recon"]
+post = ["csv_recon"]
+posts = "fired"
+quiet_rule = "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits (csv_recon.py --diff shows the rows); confirm against your broker."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py post-expiry --slot {slot} and post its output verbatim."

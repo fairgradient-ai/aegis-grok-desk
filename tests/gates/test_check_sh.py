@@ -31,8 +31,12 @@ EXPECTED_OK_LINES = (
     "ok: unit tests -",
     "ok: 3 command journeys passed",
     "skip: scripts/gen_tools_doc.py not present",
+    "skip: scripts/gen_role_skills.py not present",
     "ok: all repository gates passed",
 )
+# A generator stub for a fixture tree: check.sh steps 9 and 10 run the tree's own generator with --check.
+GENERATOR_STUB = ('"""A stand-in generator for the gate test."""\nfrom __future__ import annotations\n\nimport sys\n\n'
+                  'print(%r)\nsys.exit(%d)\n')
 
 
 def run_check(root: str) -> Tuple[int, str]:
@@ -48,8 +52,12 @@ class CheckShTests(unittest.TestCase):
     def test_real_tree_passes(self) -> None:
         code, output = run_check(ROOT)
         self.assertEqual(0, code, output)
-        for line in ("ok: structure -", "ok: python floor -", "ok: unit tests -", "ok: all repository gates passed"):
+        for line in ("ok: structure -", "ok: python floor -", "ok: unit tests -",
+                     "ok: docs/TOOLS.md matches the --schema of", "role skill(s) match agents/ (",
+                     "ok: all repository gates passed"):
             self.assertIn(line, output)
+        for line in ("skip: scripts/gen_tools_doc.py not present", "skip: scripts/gen_role_skills.py not present"):
+            self.assertNotIn(line, output)
 
     def test_good_fixture_passes_every_step(self) -> None:
         with fixture_tree() as root:
@@ -231,6 +239,30 @@ class CheckShTests(unittest.TestCase):
             code, output = run_check(root)
         self.assertEqual(1, code, output)
         self.assertIn("error: the unit test suite failed", output)
+
+    def test_steps_9_and_10_run_the_tree_s_own_generators_and_stop_the_gate_on_drift(self) -> None:
+        for script, other in (("gen_tools_doc.py", "gen_role_skills.py"), ("gen_role_skills.py", "gen_tools_doc.py")):
+            with self.subTest(generator=script):
+                with fixture_tree() as root:
+                    write(root, "scripts/" + script, GENERATOR_STUB % ("error: stub drift in " + script, 1))
+                    code, output = run_check(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("error: stub drift in " + script, output)
+                self.assertNotIn("ok: all repository gates passed", output)
+                if script == "gen_role_skills.py":
+                    self.assertIn("skip: scripts/%s not present" % other, output, "step 9 ran first and skipped")
+
+    def test_step_10_runs_the_role_skill_check_when_the_generator_exists(self) -> None:
+        with fixture_tree() as root:
+            write(root, "scripts/gen_role_skills.py", GENERATOR_STUB % ("ok: stub role skills checked", 0))
+            code, output = run_check(root)
+        self.assertEqual(0, code, output)
+        self.assertIn("ok: stub role skills checked", output)
+        self.assertNotIn("skip: scripts/gen_role_skills.py not present", output)
+        self.assertIn("skip: scripts/gen_tools_doc.py not present", output)
+        self.assertIn("ok: all repository gates passed", output)
+        self.assertLess(output.index("skip: scripts/gen_tools_doc.py not present"),
+                        output.index("ok: stub role skills checked"), "step 10 runs after step 9")
 
     def test_every_bad_fixture_is_exercised(self) -> None:
         with open(__file__, encoding="utf-8") as handle:
