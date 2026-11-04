@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Rules engine: the strict exit-rulebook grammar with parameters bounded in their safe direction, the metric
+  catalogue on the book's fields, Kleene evaluation and the verdict precedence EXIT_SIGNAL > UNAVAILABLE >
+  WATCH > HOLD, the adoption lint and per-rule shas (`scripts/aegis_desk/exit_rules.py`); the per-(group, rule)
+  state machine with time-based confirmations on quote stamps, bounded re-arm, a cooldown that never holds a
+  re-arm past the next session's open, first observation and carry-forward (`rule_state.py`); the alert texts
+  with their fixed footer and emitted-number documents (`alerts.py`), the lint that proves every number and
+  identifier was emitted and that no trade language appears (`alert_lint.py`), the signal and alert journals
+  (`signals.py`); the tools `exit_check.py`, `rules_diff.py`, `rules_adopt.py` (owner-tapped, immutable
+  versions, refused in regular trading hours unless `--allow-rth`), `book_check.py` (posting rules, re-post
+  ladder, CONFIG CHANGED first, dry run without `--post`), `ack.py` and `alert_lint.py`; the example rulebook
+  `rules/examples/exit_rules-1.0.0.toml` (each rule illustrative until adopted), adopted rulebooks in both
+  fixture roots, red-team lint fixtures; twenty-eight more tool journeys.
 - Book follow-up: every book leg carries `fresh_bid` and `fresh_ask` (the liquidation sides of a grade
   A-E quote; a zero ask stays 0, no offer), and `extrinsic_bid` now uses the assignment watch's geometry
   (any grade A-E fresh bid, the usable underlying mid stamped within 60 s, the strike as a plain decimal),

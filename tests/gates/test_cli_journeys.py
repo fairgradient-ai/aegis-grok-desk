@@ -8,7 +8,13 @@ three gate journeys stay exactly three (``tests/gates/test_check_sh.py`` expects
 journeys passed`` on a fixture tree), the PR 2b journeys of the addendum are listed with their
 expectations, and ``steps`` run in order on one copy (proved with two ``heartbeat.py`` commands, which
 cost nothing: the second sees the first's record), stop at the first failing step and leave no copy
-behind. Each ``StepsTest`` test points ``tempfile.tempdir`` at a private root of its own, so the harness's
+behind. The PR 2c journeys (the rules engine: ``exit_check``, ``book_check``, ``ack``, ``alert_lint``,
+``rules_diff``, ``rules_adopt``) are pinned with the values the tools computed on the fixture root, their
+chains (``ack.py config --owner-tapped`` first, ``book_check.py --post`` twice, an adoption read back) are
+checked step by step, every red-team and passing alert fixture has its own journey, ``FORBIDDEN_OUTPUT``
+holds every forbidden phrase of the alert lint's table (a command whose output carries one fails, checked
+with the table's own examples so no phrase is spelled here), and a :class:`TextMatch` expectation checks a
+string's start and parts (``payload.message`` starts with ``CONFIG CHANGED``; the pre-close line is in it). Each ``StepsTest`` test points ``tempfile.tempdir`` at a private root of its own, so the harness's
 copies land there and a suite or ``cli_journeys.py`` run sharing the machine's temp directory cannot
 change the listings it compares. No order-shaped word appears in a journey's name or command line.
 """
@@ -19,15 +25,18 @@ from __future__ import annotations
 import tests._path  # noqa: F401
 # isort: on
 
+import glob
+import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import contract
+from aegis_desk import alert_lint, contract
 
 import cli_journeys as harness
 
@@ -37,6 +46,70 @@ ORDER_SHAPED = re.compile(r"\b(?:buy|sell|sold|bought|place|submit|limit order|m
 GATE_JOURNEYS = ("check_manifests --json", "check_no_write_paths --json", "check_grok_template --json")
 HEARTBEAT_WRITE = ("heartbeat.py", "--routine", "book-check", "--exit-code", "0", "--status", "ok", "--scheduled-et", "10:05")
 HEARTBEAT_LIST = ("heartbeat.py", "--list")
+CANDIDATE = "tests/fixtures/rules/candidate-1.1.0.toml"
+CANDIDATE_SHA256 = "131490c88814cc3a5f17823933275c53d0a68956ce928b610aa904ccc6f355e1"
+ALERT_FIXTURES = "tests/fixtures/alerts"
+FAIL_FIXTURE_CODES = {
+    "fail_2x_credit": "number_not_emitted", "fail_21_dte": "number_not_emitted", "fail_pct_52_4": "number_not_emitted",
+    "fail_you_should": "forbidden_language", "fail_missing_footer": "footer_missing", "fail_order_field": "order_field",
+    "fail_imperative_start": "imperative_start", "fail_split_phrase": "forbidden_language", "fail_homoglyph": "non_ascii",
+}
+PASS_FIXTURES = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close")
+J6 = "ack config, book_check --post expiry_day at 19:50 (4 signals) and 19:51 (quiet), heartbeat --list, ack list"
+J8_LATE = "ack config, book_check --summary regular at 20:35 -> UNAVAILABLE (quotes 63 min old), pre-close line"
+J8 = "ack config, book_check --summary regular at 19:50 -> pre-close line"
+J12 = "rules_adopt 1.1.0 after the close, then ack config reads rules/ADOPTED (1.1.0)"
+PRE_CLOSE_LINE = "pre-close | verdicts: 0 EXIT SIGNAL, 0 UNAVAILABLE, 2 WATCH, 1 HOLD"
+PRE_CLOSE_LINE_LATE = "pre-close | verdicts: 0 EXIT SIGNAL, 3 UNAVAILABLE, 0 WATCH, 0 HOLD"
+VERIFY_LIVE = "verify live quotes in your broker before acting"
+# The PR 2c journeys (addendum, journeys 1-12): the script of the journey's own command, its exit code and keys of
+# its expected JSON. Every value was computed by the tools on a copy of the main fixture root; where it differs from
+# the addendum's hand-written list (journeys 6 and 8) the computed value stands.
+PR_2C: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
+    "exit_check regular -> WMT and NVDA WATCH (DTE21), SPY HOLD": (
+        "exit_check.py", 0, {"payload.group_verdicts.AG-20261020-01": "WATCH", "payload.group_verdicts.AG-20261022-02": "WATCH",
+                             "payload.group_verdicts.AG-20261028-03": "HOLD", "payload.verdicts.0.fired.0.rule_id": "DTE21",
+                             "payload.verdicts.0.fired.0.value": 13, "payload.verdicts.1.pending.0.rule_id": "DELTA_WATCH",
+                             "payload.portfolio.fired.0.rule_id": "CONC", "payload.portfolio.fired.0.value": "26.32",
+                             "payload.no_history.rule_ids": ["MOVE5_DOWN", "MOVE5_UP", "DAILY"]}),
+    "exit_check expiry_day, next run after the close -> EXIT_SIGNAL (WMT TP80 95.32 %, NVDA DELTA_SIGNAL)": (
+        "exit_check.py", 10, {"status": "fired", "payload.verdicts.0.verdict": "EXIT_SIGNAL",
+                              "payload.verdicts.0.fired.0.rule_id": "TP80", "payload.verdicts.0.fired.0.value": "95.32",
+                              "payload.verdicts.0.fired.0.threshold": "80", "payload.verdicts.0.fired.0.quote_grade": "E",
+                              "payload.verdicts.1.verdict": "EXIT_SIGNAL", "payload.verdicts.1.fired.2.rule_id": "DELTA_SIGNAL",
+                              "payload.counts.EXIT_SIGNAL": 2, "payload.single_observation": True}),
+    "exit_check expiry_day, no next run -> WATCH (TP80 pending: observation 1 of 2)": (
+        "exit_check.py", 0, {"payload.verdicts.0.verdict": "WATCH", "payload.verdicts.0.pending.0.rule_id": "TP80",
+                             "payload.verdicts.0.pending.0.observations": 1, "payload.verdicts.0.pending.0.confirmations": 2,
+                             "payload.counts.WATCH": 3, "payload.single_observation": False}),
+    "exit_check stale -> UNAVAILABLE (all three groups)": (
+        "exit_check.py", 20, {"status": "unavailable", "payload.counts.UNAVAILABLE": 3,
+                              "payload.verdicts.0.unavailable.0.rule_id": "TP80", "payload.verdicts.0.fired.0.rule_id": "DTE21"}),
+    "exit_check --dry-run --rules candidate-1.1.0 regular twice (no rule state written)": (
+        "exit_check.py", 0, {"payload.dry_run": True, "payload.rulebook.version": "1.1.0", "payload.rulebook.adopted": False,
+                             "payload.state.status": "missing", "payload.state.written": False}),
+    J6: ("ack.py", 0, {"payload.count": 4, "payload.signals.0.signal_id": "SIG-20261120-001",
+                       "payload.signals.3.signal_id": "SIG-20261120-004", "payload.signals.0.posts": 1,
+                       "payload.signals.3.posts": 1}),
+    "book_check regular dry run without ack -> CONFIG CHANGED first": (
+        "book_check.py", 0, {"payload.dry_run": True, "payload.written": [], "payload.parts.0.kind": "config_changed",
+                             "payload.config_changed.0.old": None,
+                             "payload.message": harness.TextMatch(prefix="CONFIG CHANGED | desk.toml: not acknowledged")}),
+    J8_LATE: ("book_check.py", 20, {"status": "unavailable", "payload.counts.UNAVAILABLE": 3, "payload.quote_age_min": 63,
+                                    "payload.config_changed": [], "payload.parts.3.kind": "pre_close",
+                                    "payload.message": harness.TextMatch(contains=(PRE_CLOSE_LINE_LATE, VERIFY_LIVE))}),
+    J8: ("book_check.py", 0, {"payload.config_changed": [], "payload.parts.3.kind": "pre_close",
+                              "payload.message": harness.TextMatch(contains=(PRE_CLOSE_LINE, VERIFY_LIVE))}),
+    "ack list on a fresh copy -> 0 open signals": ("ack.py", 0, {"payload.action": "list", "payload.count": 0}),
+    "rules_diff candidate-1.1.0 regular -> 0 verdicts changed (TP50 changed)": (
+        "rules_diff.py", 0, {"payload.verdicts_changed": 0, "payload.rules.changed": ["TP50"], "payload.changes": []}),
+    "rules_diff candidate-1.1.0 expiry_day -> 0 verdicts changed (TP50 changed)": (
+        "rules_diff.py", 0, {"payload.verdicts_changed": 0, "payload.rules.changed": ["TP50"], "payload.changes": []}),
+    J12: ("ack.py", 0, {"payload.rulebook_version": "1.1.0", "payload.acknowledged_hashes.rulebook": CANDIDATE_SHA256}),
+    "rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)": (
+        "rules_adopt.py", 1, {"status": "error", "payload.adopted": False, "payload.during_rth": True,
+                              "payload.refusals.0.code": "regular_trading_hours", "payload.written": []}),
+}
 
 
 def by_name() -> Dict[str, harness.Journey]:
@@ -46,6 +119,19 @@ def by_name() -> Dict[str, harness.Journey]:
 def commands(journey: harness.Journey) -> List[Tuple[Tuple[str, ...], int]]:
     """Every command of a journey with its expected exit: the steps first, then the journey's own."""
     return [(step.argv, step.expected_exit) for step in journey.steps] + [(journey.argv, journey.expected_exit)]
+
+
+def instant(argv: Sequence[str]) -> str:
+    return argv[list(argv).index("--now") + 1]
+
+
+def fake_run(stdout: str, stderr: str = "", returncode: int = 0) -> Any:
+    """A stand-in for ``subprocess.run`` that answers every command with the given output."""
+
+    def run(command: Any, **_kwargs: Any) -> "subprocess.CompletedProcess[str]":
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    return run
 
 
 def journey_copies(root: str) -> List[str]:
@@ -96,6 +182,8 @@ class CatalogueTest(unittest.TestCase):
         for journey in harness.JOURNEYS:
             text = " ".join([journey.name] + [" ".join(argv) for argv, _exit in commands(journey)])
             self.assertIsNone(ORDER_SHAPED.search(text), text)
+            for pattern in alert_lint.FORBIDDEN_PATTERNS:
+                self.assertIsNone(pattern.search(text), (journey.name, pattern.pattern))
 
     def test_the_pr_2b_journeys_and_their_expectations_are_listed(self) -> None:
         listed = by_name()
@@ -141,6 +229,137 @@ class CatalogueTest(unittest.TestCase):
                 self.assertIsNotNone(journey.expected_json)
                 for key, value in keys.items():
                     self.assertEqual(value, journey.expected_json[key], key)
+
+    def test_the_pr_2c_journeys_and_their_expectations_are_listed(self) -> None:
+        listed = by_name()
+        for name, (script, exit_code, keys) in PR_2C.items():
+            with self.subTest(journey=name):
+                self.assertIn(name, listed)
+                journey = listed[name]
+                self.assertEqual((script, exit_code, harness.FIXTURE_DESK), (journey.argv[0], journey.expected_exit,
+                                                                            journey.desk_root))
+                self.assertIsNotNone(journey.expected_json)
+                for key, value in keys.items():
+                    self.assertIn(key, journey.expected_json)
+                    self.assertEqual(value, journey.expected_json[key], key)
+
+    def test_the_pr_2c_instants_are_the_fixture_sets_own(self) -> None:
+        listed = by_name()
+        expected = {
+            "exit_check regular -> WMT and NVDA WATCH (DTE21), SPY HOLD": ("regular", harness.REGULAR_NOW),
+            "exit_check expiry_day, next run after the close -> EXIT_SIGNAL (WMT TP80 95.32 %, NVDA DELTA_SIGNAL)": (
+                "expiry_day", harness.EXPIRY_DAY_NOW),
+            "exit_check expiry_day, no next run -> WATCH (TP80 pending: observation 1 of 2)": ("expiry_day", harness.EXPIRY_DAY_NOW),
+            "exit_check stale -> UNAVAILABLE (all three groups)": ("stale", harness.REGULAR_NOW),
+            "book_check regular dry run without ack -> CONFIG CHANGED first": ("regular", harness.REGULAR_NOW),
+            J8_LATE: ("regular", "2026-11-03T20:35:00Z"),
+            J8: ("regular", harness.REGULAR_NOW),
+            "rules_diff candidate-1.1.0 regular -> 0 verdicts changed (TP50 changed)": ("regular", harness.REGULAR_NOW),
+            "rules_diff candidate-1.1.0 expiry_day -> 0 verdicts changed (TP50 changed)": ("expiry_day", harness.EXPIRY_DAY_NOW),
+        }
+        for name, (fixture_set, now) in expected.items():
+            with self.subTest(journey=name):
+                argv = listed[name].argv
+                self.assertEqual(fixture_set, argv[argv.index("--fixture-set") + 1])
+                self.assertEqual(now, instant(argv))
+        with_next_run = listed["exit_check expiry_day, next run after the close -> EXIT_SIGNAL (WMT TP80 95.32 %, NVDA DELTA_SIGNAL)"]
+        self.assertEqual("2026-11-20T21:35:00Z", with_next_run.argv[with_next_run.argv.index("--next-run-utc") + 1])
+        self.assertNotIn("--next-run-utc", listed["exit_check expiry_day, no next run -> WATCH (TP80 pending: observation 1 of 2)"].argv)
+        self.assertNotIn("--summary", listed["book_check regular dry run without ack -> CONFIG CHANGED first"].argv)
+        self.assertFalse(listed["book_check regular dry run without ack -> CONFIG CHANGED first"].steps, "no ack step")
+        for name in ("rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)", J12):
+            for argv, _exit in commands(listed[name]):
+                self.assertNotIn("--allow-rth", argv)
+
+    def test_the_dry_run_journey_runs_the_candidate_twice_on_one_copy(self) -> None:
+        journey = by_name()["exit_check --dry-run --rules candidate-1.1.0 regular twice (no rule state written)"]
+        self.assertEqual(1, len(journey.steps))
+        self.assertEqual(journey.argv, journey.steps[0].argv, "the same command twice: the second finds no rule state")
+        self.assertEqual(0, journey.steps[0].expected_exit)
+        self.assertEqual(CANDIDATE, journey.argv[journey.argv.index("--rules") + 1])
+        self.assertIn("--dry-run", journey.argv)
+        self.assertEqual(False, journey.steps[0].expected_json["payload.state.written"])
+
+    def test_the_posting_chain_acknowledges_then_posts_twice_on_one_copy(self) -> None:
+        journey = by_name()[J6]
+        self.assertEqual(["ack.py", "book_check.py", "book_check.py", "heartbeat.py"], [step.argv[0] for step in journey.steps])
+        ack, first, second, heartbeats = journey.steps
+        self.assertEqual(("ack.py", "config", "--owner-tapped"), ack.argv[:3])
+        self.assertEqual(("2026-11-20T19:49:00Z", 0), (instant(ack.argv), ack.expected_exit))
+        for step, now in ((first, harness.EXPIRY_DAY_NOW), (second, "2026-11-20T19:51:00Z")):
+            self.assertEqual(("book_check.py", "--post", "--routine", "book-check", "--fixture-set", "expiry_day",
+                              "--next-run-utc", "2026-11-20T21:35:00Z"), step.argv[:8])
+            self.assertEqual(now, instant(step.argv))
+        self.assertEqual(first.argv[:8], second.argv[:8], "the same command again, one minute later")
+        self.assertEqual(10, first.expected_exit)
+        self.assertEqual({"payload.lint.ok": True, "payload.signals.0.signal_id": "SIG-20261120-001",
+                          "payload.signals.0.verdict": "EXIT_SIGNAL", "payload.signals.1.verdict": "EXIT_SIGNAL",
+                          "payload.signals.2.verdict": "WATCH", "payload.signals.3.signal_id": "SIG-20261120-004",
+                          "payload.signals.3.trade_id": "portfolio", "payload.heartbeat": "state/heartbeat/book-check.json"},
+                         {key: first.expected_json[key] for key in (
+                             "payload.lint.ok", "payload.signals.0.signal_id", "payload.signals.0.verdict",
+                             "payload.signals.1.verdict", "payload.signals.2.verdict", "payload.signals.3.signal_id",
+                             "payload.signals.3.trade_id", "payload.heartbeat")})
+        self.assertIn("journal/signals.jsonl", first.expected_json["payload.written"])
+        self.assertEqual(0, second.expected_exit)
+        self.assertEqual({"status": "quiet", "payload.quiet": True, "payload.message": None, "payload.signals": [],
+                          "payload.parts": [], "payload.written": ["state/rule_state.json", "state/desk_state.json",
+                                                                   "state/heartbeat/book-check.json"]},
+                         {key: second.expected_json[key] for key in (
+                             "status", "payload.quiet", "payload.message", "payload.signals", "payload.parts",
+                             "payload.written")})
+        self.assertEqual(HEARTBEAT_LIST, heartbeats.argv[:2])
+        self.assertEqual((1, "book-check", 0), (heartbeats.expected_json["payload.count"],
+                                                heartbeats.expected_json["payload.heartbeats.0.routine_id"],
+                                                heartbeats.expected_json["payload.heartbeats.0.exit_code"]))
+        self.assertEqual(("ack.py", "list"), journey.argv[:2])
+
+    def test_the_summary_and_adoption_chains_start_with_their_setup_step(self) -> None:
+        listed = by_name()
+        for name, ack_now, now in ((J8_LATE, "2026-11-03T20:34:00Z", "2026-11-03T20:35:00Z"),
+                                   (J8, "2026-11-03T19:49:00Z", harness.REGULAR_NOW)):
+            with self.subTest(journey=name):
+                journey = listed[name]
+                self.assertEqual(1, len(journey.steps))
+                self.assertEqual(("ack.py", "config", "--owner-tapped"), journey.steps[0].argv[:3])
+                self.assertEqual(ack_now, instant(journey.steps[0].argv))
+                self.assertEqual(("book_check.py", "--summary"), journey.argv[:2])
+                self.assertEqual(now, instant(journey.argv))
+        adoption = listed[J12]
+        self.assertEqual(1, len(adoption.steps))
+        step = adoption.steps[0]
+        self.assertEqual(("rules_adopt.py", "--file", CANDIDATE, "--version", "1.1.0", "--owner-phrase", "adopt rules 1.1.0"),
+                         step.argv[:7])
+        self.assertEqual(("2026-11-03T22:00:00Z", 0), (instant(step.argv), step.expected_exit))
+        self.assertEqual({"payload.adopted": True, "payload.version": "1.1.0", "payload.file": "rules/exit_rules-1.1.0.toml",
+                          "payload.during_rth": False},
+                         {key: step.expected_json[key] for key in ("payload.adopted", "payload.version", "payload.file",
+                                                                   "payload.during_rth")})
+        self.assertEqual(("ack.py", "config", "--owner-tapped"), adoption.argv[:3])
+        refused = listed["rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)"]
+        self.assertEqual(step.argv[:7], refused.argv[:7])
+        self.assertEqual(harness.REGULAR_NOW, instant(refused.argv))
+
+    def test_every_alert_fixture_has_its_own_journey(self) -> None:
+        on_disk = sorted(os.path.basename(path)[:-len(".txt")] for path in glob.glob(os.path.join(ROOT, ALERT_FIXTURES, "*.txt")))
+        self.assertEqual(sorted(PASS_FIXTURES + tuple(FAIL_FIXTURE_CODES)), on_disk)
+        lint_journeys = {journey.argv[journey.argv.index("--message-file") + 1]: journey
+                         for journey in harness.JOURNEYS if journey.argv[0] == "alert_lint.py"}
+        self.assertEqual(len(on_disk), len(lint_journeys))
+        for fixture in on_disk:
+            with self.subTest(fixture=fixture):
+                journey = lint_journeys["%s/%s.txt" % (ALERT_FIXTURES, fixture)]
+                self.assertEqual("%s/%s.emitted.json" % (ALERT_FIXTURES, fixture),
+                                 journey.argv[journey.argv.index("--emitted-file") + 1])
+                if fixture in FAIL_FIXTURE_CODES:
+                    self.assertEqual(1, journey.expected_exit)
+                    self.assertEqual({"status": "error", "payload.ok": False,
+                                      "payload.findings.0.code": FAIL_FIXTURE_CODES[fixture]},
+                                     {key: journey.expected_json[key] for key in ("status", "payload.ok", "payload.findings.0.code")})
+                else:
+                    self.assertEqual(0, journey.expected_exit)
+                    self.assertEqual({"status": "ok", "payload.ok": True, "payload.problems": []},
+                                     {key: journey.expected_json[key] for key in ("status", "payload.ok", "payload.problems")})
 
     def test_the_snapshot_chain_runs_the_snapshot_first_on_the_same_copy(self) -> None:
         journey = by_name()["book --snapshot pre_open 2026-11-02 then book regular 2026-11-03 (day P/L from the snapshot)"]
@@ -256,6 +475,57 @@ class StepsTest(unittest.TestCase):
         plain = harness.tool_journey("y", ("book.py",))
         self.assertEqual((harness.FIXTURE_DESK, (), 0, None), (plain.desk_root, plain.steps, plain.expected_exit,
                                                                plain.expected_json))
+
+
+class ForbiddenOutputTest(unittest.TestCase):
+    """``FORBIDDEN_OUTPUT`` holds the alert lint's whole forbidden-phrase table besides the harness's own two
+    patterns; each table example (the table's own text, so no phrase is spelled here) in a command's stdout or
+    stderr fails the command. ``subprocess.run`` is replaced so no tool runs."""
+
+    def test_the_lint_table_is_part_of_the_screen(self) -> None:
+        for pattern in alert_lint.FORBIDDEN_PATTERNS:
+            self.assertIn(pattern, harness.FORBIDDEN_OUTPUT)
+        self.assertEqual(len(alert_lint.FORBIDDEN_PATTERNS) + 2, len(harness.FORBIDDEN_OUTPUT))
+        self.assertTrue(any("_order" in pattern.pattern for pattern in harness.FORBIDDEN_OUTPUT[:2]))
+        self.assertTrue(any("accounts" in pattern.pattern for pattern in harness.FORBIDDEN_OUTPUT[:2]))
+
+    def test_each_lint_example_in_stdout_or_stderr_fails_the_command(self) -> None:
+        for entry in alert_lint.FORBIDDEN_LANGUAGE:
+            for stdout, stderr in ((json.dumps({"status": "ok", "payload": {"text": "x " + entry.example + " y"}}), ""),
+                                   (json.dumps({"status": "ok"}), "note: " + entry.example)):
+                with self.subTest(entry=entry.code, stream="stderr" if stderr else "stdout"):
+                    with mock.patch("subprocess.run", fake_run(stdout, stderr)):
+                        code, problems = harness.check_command(HEARTBEAT_LIST, 0, {"status": "ok"}, ROOT)
+                    self.assertEqual(0, code)
+                    self.assertTrue(any(problem.startswith("output contains order-shaped text") for problem in problems),
+                                    (entry.code, problems))
+
+    def test_clean_output_passes_the_screen(self) -> None:
+        with mock.patch("subprocess.run", fake_run(json.dumps({"status": "ok", "payload": {"message": "WATCH AG-20261020-01"}}))):
+            self.assertEqual((0, []), harness.check_command(HEARTBEAT_LIST, 0, {"status": "ok"}, ROOT))
+
+
+class TextMatchTest(unittest.TestCase):
+    def test_prefix_and_parts(self) -> None:
+        both = harness.TextMatch(prefix="CONFIG CHANGED |", contains=("pre-close |", "verify live"))
+        self.assertTrue(both.matches("CONFIG CHANGED | desk.toml\npre-close | verdicts\nverify live quotes"))
+        self.assertFalse(both.matches("WATCH x\nCONFIG CHANGED | pre-close | verify live"), "the prefix is the start")
+        self.assertFalse(both.matches("CONFIG CHANGED | pre-close |"), "every part must be present")
+        self.assertFalse(both.matches(None), "a JSON null is not a string")
+        self.assertFalse(both.matches(["CONFIG CHANGED | pre-close | verify live"]))
+        self.assertTrue(harness.TextMatch().matches(""), "no prefix and no parts: any string")
+        self.assertEqual(harness.TextMatch(prefix="a"), harness.TextMatch(prefix="a"))
+
+    def test_check_command_reports_a_text_mismatch_with_the_key(self) -> None:
+        document = json.dumps({"status": "ok", "payload": {"message": "WATCH AG-20261020-01 | WMT covered call"}})
+        with mock.patch("subprocess.run", fake_run(document)):
+            _code, problems = harness.check_command(HEARTBEAT_LIST, 0, {"payload.message": harness.TextMatch(prefix="CONFIG")}, ROOT)
+            _code, passing = harness.check_command(HEARTBEAT_LIST, 0, {"payload.message": harness.TextMatch(
+                prefix="WATCH AG-20261020-01", contains=("covered call",))}, ROOT)
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn("payload.message", problems[0])
+        self.assertIn("CONFIG", problems[0])
+        self.assertEqual([], passing)
 
 
 class LookupTest(unittest.TestCase):

@@ -167,8 +167,12 @@ class FixtureDeskRootTest(unittest.TestCase):
         for name in ("regular", "after_close", "stale", "pre_open", "holiday"):
             self.assertTrue(os.path.isdir(os.path.join(paths.tradier_fixtures_dir, name)), name)
         # The committed fixture root holds only owner files and recorded responses: no runtime state.
-        for rel in ("state", "data", "journal", "rules", "levels", "reports", "incidents"):
+        for rel in ("state", "data", "journal", "levels", "reports", "incidents"):
             self.assertFalse(os.path.exists(os.path.join(FIXTURE_DESK, rel)), rel)
+        # Decision 2 of the PR 2c addendum: rules/ holds the adopted example rulebook and nothing else.
+        self.assertEqual(["ADOPTED", "CHANGELOG.md", "exit_rules-1.0.0.toml"],
+                         sorted(os.listdir(os.path.join(FIXTURE_DESK, "rules"))))
+        self.assertTrue(os.path.isfile(paths.adopted_file), paths.adopted_file)
 
 
 if __name__ == "__main__":
