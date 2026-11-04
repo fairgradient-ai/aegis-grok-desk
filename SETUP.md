@@ -12,10 +12,16 @@ or sent. The complete runbook lands with release 0.1.0; this scaffold lists the 
 | File | Name | Job |
 | --- | --- | --- |
 | `agents/desk-lead.md` | Aegis Desk Lead | Head of the options desk |
+| `agents/exit-sentinel.md` | Aegis Exit Sentinel | Exit-rule monitor of the options desk |
+| `agents/position-control.md` | Aegis Position Control | Book-of-record and expiry controller of the options desk |
 
 ## 5. Install the skills
 
 Skills to install (Stage 1, scaffold): `aegis-desk-charter`
+
+<!-- role-skills:start -->
+Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`
+<!-- role-skills:end -->
 
 ## 6. Create the Aegis Options Floor
 ## 7. Approvals and the connector check

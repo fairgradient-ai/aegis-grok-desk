@@ -901,5 +901,23 @@ class ReviewRenderTest(DocumentCase):
         self.assertTrue(hold.text.startswith("HOLD AG-20261028-03 | "), hold.text)
         self.assert_strict(hold)
 
+
+class BookAsOfTest(DocumentCase):
+    """``alerts.book_as_of`` (public in PR 2d, decisions D1-9 and D1-13): the footer's instant of a book, which the
+    level sheet and the summaries reuse."""
+
+    def test_the_newest_quote_stamp_else_generated_at(self) -> None:
+        self.assertIn("book_as_of", alerts.__all__)
+        document = self.doc("regular")
+        self.assertEqual(datetime.datetime(2026, 11, 3, 19, 31, 12, tzinfo=datetime.timezone.utc),
+                         alerts.book_as_of(document))
+        message = alerts.pre_close_line({"EXIT_SIGNAL": 0, "UNAVAILABLE": 0, "WATCH": 2, "HOLD": 1}, 0, document,
+                                        RUN_INFO)
+        self.assertEqual(alerts.book_as_of(document), message.as_of, "the footer of every builder reads the same instant")
+        bare = {"legs": [{"as_of": None}], "generated_at": "2026-11-03T19:50:00+00:00"}
+        self.assertEqual(datetime.datetime(2026, 11, 3, 19, 50, tzinfo=datetime.timezone.utc), alerts.book_as_of(bare))
+        with self.assertRaises(ValueError):
+            alerts.book_as_of({"legs": [], "generated_at": None})
+
 if __name__ == "__main__":
     unittest.main()

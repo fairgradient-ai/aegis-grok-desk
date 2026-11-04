@@ -144,6 +144,8 @@ class LoadsValidDocumentsTest(DeskConfigTestCase):
         self.assertGreater(cfg.owner.declared_equity, 0)
         self.assertGreaterEqual(len(cfg.owner.accounts), 1)
         self.assertIs(False, cfg.levels.order_shape_enabled)
+        self.assertEqual(((), ()), (cfg.levels.penny_classes, cfg.levels.penny_all_classes),
+                         "the fixture desk.toml names no penny class (PR 2d decisions D1-2)")
         self.assertEqual(datetime.time(16, 30), cfg.owner.broker_exercise_cutoff_et)
 
     def test_base_document_loads_and_defaults_apply(self) -> None:
@@ -330,6 +332,37 @@ class RejectionsTest(DeskConfigTestCase):
         self.assert_rejected(self.mutate("order_shape_enabled = false", 'order_shape_enabled = "false"'),
                              "order_shape_enabled", "bool")
         self.assert_rejected(self.mutate("order_shape_enabled = false", "order_shape_enabled = 0"), "order_shape_enabled")
+
+    def test_levels_penny_classes_are_optional(self) -> None:
+        # D1-2 of the PR 2d decisions: two optional lists of OCC roots; absent means none (the standard grid).
+        cfg = self.load_text(BASE)
+        self.assertEqual(((), ()), (cfg.levels.penny_classes, cfg.levels.penny_all_classes))
+        text = self.mutate("order_shape_enabled = false\n", 'order_shape_enabled = false\npenny_classes = ["WMT", "NVDA"]\n'
+                           'penny_all_classes = ["SPY", "QQQ"]\n')
+        cfg = self.load_text(text)
+        self.assertEqual((("WMT", "NVDA"), ("SPY", "QQQ")), (cfg.levels.penny_classes, cfg.levels.penny_all_classes))
+        self.assertIsInstance(cfg.levels.penny_classes, tuple)
+        empty = self.load_text(self.mutate("order_shape_enabled = false\n",
+                                           "order_shape_enabled = false\npenny_classes = []\npenny_all_classes = []\n"))
+        self.assertEqual(((), ()), (empty.levels.penny_classes, empty.levels.penny_all_classes))
+        roots = self.load_text(self.mutate("order_shape_enabled = false\n",
+                                           'order_shape_enabled = false\npenny_classes = ["A", "BRKB1", "SPXW2Z"]\n'))
+        self.assertEqual(("A", "BRKB1", "SPXW2Z"), roots.levels.penny_classes)
+
+    def test_levels_penny_classes_rejections(self) -> None:
+        for key in ("penny_classes", "penny_all_classes"):
+            for value, needle in (('"WMT"', "list"), ("[1]", "list"), ('["wmt"]', "wmt"), ('["1WMT"]', "1WMT"),
+                                  ('["WMTXYZ1"]', "WMTXYZ1"), ('[""]', "''"), ('["WMT", "WMT"]', "duplicate"),
+                                  ('["W-T"]', "W-T"), ('[" WMT"]', "' WMT'")):
+                with self.subTest(key=key, value=value):
+                    text = self.mutate("order_shape_enabled = false\n",
+                                       "order_shape_enabled = false\n%s = %s\n" % (key, value))
+                    self.assert_rejected(text, key, "[levels]", needle)
+        both = self.mutate("order_shape_enabled = false\n", 'order_shape_enabled = false\npenny_classes = ["WMT", "SPY"]\n'
+                           'penny_all_classes = ["SPY"]\n')
+        self.assert_rejected(both, "penny_classes", "penny_all_classes", "[levels]", "SPY", "both")
+        self.assert_rejected(self.mutate("order_shape_enabled = false\n", "order_shape_enabled = false\npenny = []\n"),
+                             "unknown key 'penny'", "[levels]", "penny_classes", "penny_all_classes")
 
     def test_missing_sections_and_keys(self) -> None:
         for section in ("[desk]", "[owner]", "[market_data]", "[rates]", "[levels]"):

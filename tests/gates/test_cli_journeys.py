@@ -16,7 +16,11 @@ holds every forbidden phrase of the alert lint's table (a command whose output c
 with the table's own examples so no phrase is spelled here), and a :class:`TextMatch` expectation checks a
 string's start and parts (``payload.message`` starts with ``CONFIG CHANGED``; the pre-close line is in it). Each ``StepsTest`` test points ``tempfile.tempdir`` at a private root of its own, so the harness's
 copies land there and a suite or ``cli_journeys.py`` run sharing the machine's temp directory cannot
-change the listings it compares. No order-shaped word appears in a journey's name or command line.
+change the listings it compares. No order-shaped word appears in a journey's name or command line. The PR 2d journeys
+(the level sheet and its plan card, the morning sheet and the evening brief, the doctor, desk_init, the opening bell, the
+routine audit and one development run of every Stage-1 routine of the manifest) are pinned with their commands, instants,
+setup chains and the values the tools computed; every desk tool has at least one journey and the two generators have none
+(``check.sh`` steps 9 and 10 run them), and a :class:`TextMatch` can also require parts to be absent.
 """
 
 from __future__ import annotations
@@ -53,6 +57,8 @@ FAIL_FIXTURE_CODES = {
     "fail_2x_credit": "number_not_emitted", "fail_21_dte": "number_not_emitted", "fail_pct_52_4": "number_not_emitted",
     "fail_you_should": "forbidden_language", "fail_missing_footer": "footer_missing", "fail_order_field": "order_field",
     "fail_imperative_start": "imperative_start", "fail_split_phrase": "forbidden_language", "fail_homoglyph": "non_ascii",
+    "fail_imperative_execute": "imperative_start", "fail_imperative_fill": "imperative_start",
+    "fail_order_kind": "forbidden_language",
 }
 PASS_FIXTURES = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close")
 J6 = "ack config, book_check --post expiry_day at 19:50 (4 signals) and 19:51 (quiet), heartbeat --list, ack list"
@@ -109,6 +115,135 @@ PR_2C: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
     "rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)": (
         "rules_adopt.py", 1, {"status": "error", "payload.adopted": False, "payload.during_rth": True,
                               "payload.refusals.0.code": "regular_trading_hours", "payload.written": []}),
+}
+
+
+# The PR 2d journeys (decisions D1-16 and D2-18 with the addendum's O17, plus the brief's routine_audit journeys and one
+# journey per Stage-1 routine): the script of the journey's own command, its exit code, its fixture root and keys of
+# its expected JSON. Every value was computed by the tools on a copy of the fixture root (opening_bell serialises its
+# money fields as it prints them: the put mid is "17.30", as D2-18 (9) has it).
+TP80_RESTING = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); resting-eligible: "
+                "yes (below the current ask 3.50)")
+TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 trading days (your threshold: above 21 trading days), "
+                    "and the days only fall")
+TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
+                "crossed (rule fired)")
+PL_LINE = ("realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), $4,097.00 "
+           "(mid) | day $400.00")
+RECON_MISSING = "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing"
+RECON_CLEAN = "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits"
+DOCKET_NONE_DUE = "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due"
+LEVELS_LAST_NIGHT = ("last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; "
+                     "AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels")
+DEV_HEADER = "development run: the checkout is not verified (--allow-dirty)"
+J2D_LEVELS = "trigger_levels regular -> TP80 0.65 resting-eligible, TP50 cannot fire"
+J2D_CROSSED = "book_check --post expiry_day, then trigger_levels expiry_day -> UNAVAILABLE (TP80 already crossed)"
+J2D_PLAN = "trigger_levels --plan AG-20261020-01 regular -> plans/AG-20261020-01.md"
+J2D_BRIEF = "book --snapshot pre_open and regular, csv_recon regular, then eod_summary --brief -> P/L line"
+J2D_MORNING = ("book --snapshot pre_open, trigger_levels --from-snapshot, desk_doctor --quick, csv_recon and expiry_checklist "
+               "--week pre_open, then eod_summary -> MORNING DESK SHEET (no early close on 2026-11-03)")
+J2D_BARE = "eod_summary on a bare copy -> UNAVAILABLE (reconciliation missing)"
+J2D_SENTINEL = "ack config, routine book-check 15:35 expiry_day -> EXIT SIGNAL"
+J2D_PREOPEN = ("book --snapshot pre_open, trigger_levels --from-snapshot, then routine preopen 07:30 pre_open -> "
+               "MORNING DESK SHEET")
+J2D_EVENING = "book --snapshot pre_open, routine eod 16:35 after_close, then routine eod-brief 17:10 -> EOD DESK BRIEF"
+PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
+    J2D_LEVELS: ("trigger_levels.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "trigger_levels", "payload.lint.ok": True, "payload.et_date": "2026-11-03",
+        "payload.written": ["levels/2026-11-03.md", "levels/2026-11-03.json"], "payload.plan": None,
+        "payload.text": harness.TextMatch(prefix="THRESHOLD LEVELS 2026-11-03 | rules 1.0.0, sha cc09859c",
+                                          contains=(TP80_RESTING, TP50_CANNOT_FIRE))}),
+    J2D_CROSSED: ("trigger_levels.py", 20, harness.FIXTURE_DESK, {
+        "status": "unavailable", "payload.lint.ok": True, "payload.written": ["levels/2026-11-20.md", "levels/2026-11-20.json"],
+        "payload.text": harness.TextMatch(prefix="THRESHOLD LEVELS 2026-11-20", contains=(TP80_CROSSED,))}),
+    J2D_PLAN: ("trigger_levels.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.written": ["levels/2026-11-03.md", "levels/2026-11-03.json", "plans/AG-20261020-01.md"],
+        "payload.plan.group_id": "AG-20261020-01", "payload.plan.path": "plans/AG-20261020-01.md", "payload.plan.lint.ok": True,
+        "payload.plan.text": harness.TextMatch(prefix="PLAN CARD AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c",
+                                               contains=(TP80_RESTING, "dates that matter: last trading day 2026-11-20"))}),
+    J2D_BRIEF: ("eod_summary.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "eod_summary", "payload.mode": "brief", "payload.lint.ok": True, "payload.unavailable": [],
+        "payload.message": harness.TextMatch(prefix="EOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE)}),
+    J2D_MORNING: ("eod_summary.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.mode": "morning", "payload.lint.ok": True, "payload.unavailable": [], "payload.exit_code": 0,
+        "payload.message": harness.TextMatch(
+            prefix="MORNING DESK SHEET 2026-11-03\ndoctor (state/doctor.json, quick check at 12:31 UTC): PASS",
+            contains=(RECON_CLEAN, "open signals: 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+            excludes=("early close", "UNAVAILABLE:"))}),
+    J2D_BARE: ("eod_summary.py", 20, harness.FIXTURE_DESK, {
+        "status": "unavailable", "payload.mode": "morning", "payload.lint.ok": True, "payload.exit_code": 20,
+        "payload.message": harness.TextMatch(prefix="MORNING DESK SHEET 2026-11-03", contains=(RECON_MISSING,))}),
+    "desk_doctor --quick regular -> PASS": ("desk_doctor.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "desk_doctor", "payload.verdict": "PASS", "payload.mode": "quick",
+        "payload.checks.0.id": "interpreter", "payload.checks.2.id": "token_source", "payload.checks.2.status": "WARN",
+        "payload.checks.3.id": "desk_files", "payload.checks.3.status": "PASS"}),
+    "desk_doctor --selftest -> PASS": ("desk_doctor.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.verdict": "PASS", "payload.checks.1.id": "selftest", "payload.checks.1.status": "PASS"}),
+    J2D_SENTINEL: ("routine.py", 10, harness.FIXTURE_DESK, {
+        "status": "fired", "tool": "routine", "payload.exit_code": 10, "payload.development": True,
+        "payload.steps.0.tool": "book_check", "payload.steps.0.exit_code": 10, "payload.lint.ok": True,
+        "payload.heartbeat": "state/heartbeat/book-check.json",
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER, contains=(
+            "EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80",
+            "pre-close | verdicts: 2 EXIT SIGNAL, 0 UNAVAILABLE, 1 WATCH, 0 HOLD | open signals: 4"))}),
+    "routine book-check 14:05 regular -> CONFIG CHANGED, WATCH": ("routine.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.steps.0.exit_code": 0, "payload.lint.ok": True, "payload.lateness_min": 45,
+        "payload.message": harness.TextMatch(prefix="development run", contains=(
+            "CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf",
+            "WATCH AG-20261020-01 | WMT covered call | your rule DTE21", "run 45 min late"))}),
+    "routine final-call 15:20 expiry_day -> FINAL CALL": ("routine.py", 10, harness.FIXTURE_DESK, {
+        "status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0, "payload.steps.2.exit_code": 10,
+        "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
+        "payload.message": harness.TextMatch(prefix="development run", contains=(
+            "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+            "assignment watch Fri 2026-11-20 (session open): FIRED"))}),
+    "routine nope -> usage": ("routine.py", 2, harness.FIXTURE_DESK, {"status": "usage", "error.code": "invalid_arguments"}),
+    "desk_init answers -> desk.toml": ("desk_init.py", 0, harness.FIXTURE_INIT, {
+        "status": "ok", "tool": "desk_init", "payload.written": ["desk.toml"],
+        "payload.desk_toml.sha256": "f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94"}),
+    "desk_init on the main root -> desk_toml_exists": ("desk_init.py", 1, harness.FIXTURE_DESK, {
+        "status": "error", "error.code": "desk_toml_exists"}),
+    "opening_bell SPY regular": ("opening_bell.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "opening_bell", "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18",
+        "payload.dte_calendar": 45, "payload.strike": "640", "payload.call.mid": "28.65", "payload.put.mid": "17.30",
+        "payload.expected_move.straddle": "36.76", "payload.expected_move.one_sigma": "56.98", "payload.requests_made": 3}),
+    "routine_audit --budget -> lean 41, active 61 runs per week": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 41, "active": 61}}),
+    "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
+        "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250},
+        "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
+    J2D_PREOPEN: ("routine.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
+        "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
+        "payload.steps.3.tool": "eod_summary", "payload.steps.3.exit_code": 0, "payload.incidents": [], "payload.withheld": [],
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\nMORNING DESK SHEET 2026-11-03",
+                                             contains=(RECON_CLEAN, DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+                                             excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))}),
+    J2D_EVENING: ("routine.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "17:10",
+        "payload.heartbeat": "state/heartbeat/eod-brief.json", "payload.steps.0.tool": "eod_summary",
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\nEOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): "
+                                             + PL_LINE, contains=("routines: 1 of 7 ran today",),
+                                             excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))}),
+    "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": ("routine.py", 10, harness.FIXTURE_DESK, {
+        "status": "fired", "payload.exit_code": 10, "payload.steps.0.tool": "csv_recon", "payload.steps.0.exit_code": 10,
+        "payload.heartbeat": "state/heartbeat/post-expiry.json", "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\nEDITS_PENDING (2026-11-21 ET): 2 expired legs, 3 proposed edits")}),
+    "routine book-check 10:05 on Thanksgiving -> quiet (closed day)": ("routine.py", 0, harness.FIXTURE_DESK, {
+        "status": "quiet", "payload.closed_day": True, "payload.quiet": True, "payload.steps": [], "payload.message": None,
+        "payload.heartbeat": "state/heartbeat/book-check.json"}),
+}
+# The instants and, for the routines, the slots the PR 2d journeys run at (the fixture sets' own instants).
+PR_2D_INSTANTS: Dict[str, Tuple[str, str]] = {
+    J2D_LEVELS: (harness.REGULAR_NOW, ""), J2D_CROSSED: ("2026-11-20T19:55:00Z", ""), J2D_PLAN: (harness.REGULAR_NOW, ""),
+    J2D_BRIEF: (harness.REGULAR_NOW, ""), J2D_MORNING: ("2026-11-03T12:35:00Z", ""), J2D_BARE: (harness.REGULAR_NOW, ""),
+    J2D_SENTINEL: (harness.EXPIRY_DAY_NOW, "15:35"),
+    "routine book-check 14:05 regular -> CONFIG CHANGED, WATCH": (harness.REGULAR_NOW, "14:05"),
+    "routine final-call 15:20 expiry_day -> FINAL CALL": (harness.EXPIRY_DAY_NOW, "15:20"),
+    J2D_PREOPEN: ("2026-11-03T12:35:00Z", "07:30"), J2D_EVENING: ("2026-11-03T22:10:00Z", "17:10"),
+    "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": (harness.POST_EXPIRY_NOW, "09:30"),
+    "routine book-check 10:05 on Thanksgiving -> quiet (closed day)": ("2026-11-26T15:05:00Z", "10:05"),
 }
 
 
@@ -171,7 +306,13 @@ class CatalogueTest(unittest.TestCase):
             with self.subTest(journey=journey.name):
                 self.assertTrue(journey.copy_desk_root, "a tool journey never runs inside the repository's fixture root")
                 self.assertTrue(os.path.isdir(os.path.join(ROOT, journey.desk_root)), journey.desk_root)
-                self.assertTrue(os.path.isfile(os.path.join(ROOT, journey.desk_root, "desk.toml")), journey.desk_root)
+                if journey.desk_root == harness.FIXTURE_INIT:
+                    # desk_init's own root: answers.json and the expected rendering, no desk.toml until the journey
+                    # writes one on its copy.
+                    self.assertFalse(os.path.exists(os.path.join(ROOT, journey.desk_root, "desk.toml")))
+                    self.assertTrue(os.path.isfile(os.path.join(ROOT, journey.desk_root, "answers.json")))
+                else:
+                    self.assertTrue(os.path.isfile(os.path.join(ROOT, journey.desk_root, "desk.toml")), journey.desk_root)
                 for argv, _exit in commands(journey):
                     for flag in ("--json", "--offline", "--now"):
                         self.assertIn(flag, argv, (journey.name, argv))
@@ -339,6 +480,119 @@ class CatalogueTest(unittest.TestCase):
         refused = listed["rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)"]
         self.assertEqual(step.argv[:7], refused.argv[:7])
         self.assertEqual(harness.REGULAR_NOW, instant(refused.argv))
+
+    def test_the_pr_2d_journeys_and_their_expectations_are_listed(self) -> None:
+        listed = by_name()
+        for name, (script, exit_code, desk_root, keys) in PR_2D.items():
+            with self.subTest(journey=name):
+                self.assertIn(name, listed)
+                journey = listed[name]
+                self.assertEqual((script, exit_code, desk_root), (journey.argv[0], journey.expected_exit, journey.desk_root))
+                self.assertIsNotNone(journey.expected_json)
+                for key, value in keys.items():
+                    self.assertIn(key, journey.expected_json)
+                    self.assertEqual(value, journey.expected_json[key], key)
+
+    def test_the_pr_2d_commands_instants_and_slots(self) -> None:
+        listed = by_name()
+        answers = "tests/fixtures/init/answers.json"
+        expected = {
+            J2D_LEVELS: ("trigger_levels.py", "--fixture-set", "regular"),
+            J2D_CROSSED: ("trigger_levels.py", "--fixture-set", "expiry_day"),
+            J2D_PLAN: ("trigger_levels.py", "--plan", "AG-20261020-01", "--fixture-set", "regular"),
+            J2D_BRIEF: ("eod_summary.py", "--brief"),
+            J2D_MORNING: ("eod_summary.py",),
+            J2D_BARE: ("eod_summary.py",),
+            "desk_doctor --quick regular -> PASS": ("desk_doctor.py", "--quick"),
+            "desk_doctor --selftest -> PASS": ("desk_doctor.py", "--selftest"),
+            J2D_SENTINEL: ("routine.py", "book-check", "--slot", "15:35", "--allow-dirty", "--fixture-set", "expiry_day"),
+            "routine book-check 14:05 regular -> CONFIG CHANGED, WATCH": (
+                "routine.py", "book-check", "--slot", "14:05", "--allow-dirty", "--fixture-set", "regular"),
+            "routine final-call 15:20 expiry_day -> FINAL CALL": (
+                "routine.py", "final-call", "--slot", "15:20", "--allow-dirty", "--fixture-set", "expiry_day"),
+            "routine nope -> usage": ("routine.py", "nope"),
+            "desk_init answers -> desk.toml": ("desk_init.py", "--answers", answers),
+            "desk_init on the main root -> desk_toml_exists": ("desk_init.py", "--answers", answers),
+            "opening_bell SPY regular": ("opening_bell.py", "--symbol", "SPY"),
+            "routine_audit --budget -> lean 41, active 61 runs per week": ("routine_audit.py", "--budget"),
+            "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", "--rules-text"),
+            J2D_PREOPEN: ("routine.py", "preopen", "--slot", "07:30", "--allow-dirty", "--fixture-set", "pre_open"),
+            J2D_EVENING: ("routine.py", "eod-brief", "--slot", "17:10", "--allow-dirty"),
+            "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": (
+                "routine.py", "post-expiry", "--slot", "09:30", "--allow-dirty", "--fixture-set", "post_expiry"),
+            "routine book-check 10:05 on Thanksgiving -> quiet (closed day)": (
+                "routine.py", "book-check", "--slot", "10:05", "--allow-dirty", "--fixture-set", "holiday"),
+        }
+        self.assertEqual(sorted(PR_2D), sorted(expected))
+        for name, argv in expected.items():
+            with self.subTest(journey=name):
+                now, slot = PR_2D_INSTANTS.get(name, (harness.REGULAR_NOW, ""))
+                self.assertEqual(harness.tool_argv(argv, now), listed[name].argv)
+                if slot:
+                    self.assertEqual(slot, argv[argv.index("--slot") + 1])
+
+    def test_the_pr_2d_chains_run_their_setup_steps_first_on_one_copy(self) -> None:
+        listed = by_name()
+        pre_open_snapshot = (("book.py", "--snapshot", "--fixture-set", "pre_open"), harness.PREV_EOD_NOW, 0)
+        levels_from_snapshot = (("trigger_levels.py", "--from-snapshot"), harness.PREV_EOD_NOW, 0)
+        morning = "2026-11-03T12:31:00Z"
+        chains = {
+            J2D_CROSSED: [(("book_check.py", "--post", "--next-run-utc", "2026-11-20T21:35:00Z", "--fixture-set", "expiry_day"),
+                           harness.EXPIRY_DAY_NOW, 10)],
+            J2D_BRIEF: [pre_open_snapshot, (("book.py", "--snapshot", "--fixture-set", "regular"), harness.REGULAR_NOW, 0),
+                        (("csv_recon.py", "--fixture-set", "regular"), harness.REGULAR_NOW, 0)],
+            J2D_MORNING: [pre_open_snapshot, levels_from_snapshot, (("desk_doctor.py", "--quick"), morning, 0),
+                          (("csv_recon.py", "--fixture-set", "pre_open"), morning, 0),
+                          (("expiry_checklist.py", "--week", "--fixture-set", "pre_open"), morning, 0)],
+            J2D_SENTINEL: [(("ack.py", "config", "--owner-tapped"), "2026-11-20T19:49:00Z", 0)],
+            J2D_PREOPEN: [pre_open_snapshot, levels_from_snapshot],
+            J2D_EVENING: [pre_open_snapshot, (("routine.py", "eod", "--slot", "16:35", "--allow-dirty", "--fixture-set",
+                                               "after_close"), "2026-11-03T21:35:00Z", 0)],
+        }
+        for name in PR_2D:
+            with self.subTest(journey=name):
+                steps = listed[name].steps
+                chain = chains.get(name, [])
+                self.assertEqual([harness.tool_argv(argv, now) for argv, now, _exit in chain], [step.argv for step in steps])
+                self.assertEqual([item[2] for item in chain], [step.expected_exit for step in steps])
+        self.assertEqual({"status": "fired", "payload.posted": True}, listed[J2D_CROSSED].steps[0].expected_json)
+        doctor, recon, docket = listed[J2D_MORNING].steps[2:]
+        self.assertEqual(("PASS", "state/doctor.json"), (doctor.expected_json["payload.verdict"],
+                                                         doctor.expected_json["payload.record"]))
+        self.assertEqual("CLEAN", recon.expected_json["payload.verdict"])
+        self.assertEqual(0, docket.expected_json["payload.counts.listed"])
+        eod = listed[J2D_EVENING].steps[1]
+        self.assertEqual(("state/heartbeat/eod.json", "trigger_levels"), (eod.expected_json["payload.heartbeat"],
+                                                                         eod.expected_json["payload.steps.1.tool"]))
+
+    def test_every_stage_1_routine_has_a_development_journey_at_a_named_slot(self) -> None:
+        from aegis_desk import routines
+
+        ran = set()
+        for journey in harness.JOURNEYS:
+            for argv, _exit in commands(journey):
+                if argv[0] != "routine.py" or argv[1] == "nope":
+                    continue
+                with self.subTest(journey=journey.name, argv=argv):
+                    self.assertIn("--allow-dirty", argv, "a development run: the checkout is never the release tag")
+                    self.assertIn("--slot", argv)
+                ran.add(argv[1])
+        self.assertEqual(set(routines.load_manifest().routine_ids), ran)
+
+    def test_every_tool_has_a_journey_and_the_generators_have_none(self) -> None:
+        tools = set()
+        for name in os.listdir(harness.SCRIPTS):
+            if name.endswith(".py"):
+                with open(os.path.join(harness.SCRIPTS, name), encoding="utf-8") as handle:
+                    source = handle.read()
+                if "def " + "build_parser(" in source and "def main(" in source:
+                    tools.add(name)
+        self.assertEqual(23, len(tools))
+        scripts = {argv[0] for journey in harness.JOURNEYS for argv, _exit in commands(journey)}
+        self.assertEqual(set(), tools - scripts, "every desk tool runs in at least one journey")
+        # check.sh steps 9 and 10 run the generators' --check on the tree under test; a journey without a desk root
+        # would run them against the gate fixture trees too, which hold nothing to render (decision D2-18).
+        self.assertEqual(set(), scripts & {"gen_tools_doc.py", "gen_role_skills.py"})
 
     def test_every_alert_fixture_has_its_own_journey(self) -> None:
         on_disk = sorted(os.path.basename(path)[:-len(".txt")] for path in glob.glob(os.path.join(ROOT, ALERT_FIXTURES, "*.txt")))
@@ -515,6 +769,12 @@ class TextMatchTest(unittest.TestCase):
         self.assertFalse(both.matches(["CONFIG CHANGED | pre-close | verify live"]))
         self.assertTrue(harness.TextMatch().matches(""), "no prefix and no parts: any string")
         self.assertEqual(harness.TextMatch(prefix="a"), harness.TextMatch(prefix="a"))
+
+    def test_excluded_parts_must_be_absent(self) -> None:
+        sheet = harness.TextMatch(prefix="MORNING DESK SHEET", contains=("open signals: 0",), excludes=("early close",))
+        self.assertTrue(sheet.matches("MORNING DESK SHEET 2026-11-03\nopen signals: 0"))
+        self.assertFalse(sheet.matches("MORNING DESK SHEET 2026-11-27\nearly close today at 13:00 ET\nopen signals: 0"))
+        self.assertEqual((), harness.TextMatch().excludes)
 
     def test_check_command_reports_a_text_mismatch_with_the_key(self) -> None:
         document = json.dumps({"status": "ok", "payload": {"message": "WATCH AG-20261020-01 | WMT covered call"}})

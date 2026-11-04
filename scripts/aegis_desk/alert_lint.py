@@ -41,14 +41,21 @@ Footer
 ------
 The last non-empty line must be exactly :func:`footer_line` of some instant: ``deterministic rules you adopted
 · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of HH:MM UTC``. A
-delay other than 15 minutes must be emitted.
+delay other than 15 minutes must be emitted. :func:`check` with ``footer="snapshot"`` instead requires the
+market-snapshot footer, ``public market data · posted by an AI assistant · not a signal and not personalized
+investment advice · data delayed 15 min, as of HH:MM UTC`` (:func:`snapshot_footer_line`), the accurate disclosure
+for a public quote shown before any rule exists (``opening_bell.py``). That footer closes only rule-free text: a
+rule id passed in ``rule_ids``, ``your rule``, a rulebook version ``rules X.Y.Z`` or a verdict word (``EXIT
+SIGNAL``, ``WATCH``, ``HOLD``, ``UNAVAILABLE``) under it is the finding ``footer_missing``, so the rules footer
+stays mandatory for anything a rule says. The default is the rules footer.
 
 Language
 --------
 :data:`FORBIDDEN_LANGUAGE` is the table of forbidden phrases (case-insensitive, word-bounded, any run of
 whitespace between words, line breaks included): advice phrases, trade verbs and their forms, order
-instructions, order kinds and durations, roll destinations, price objectives and order-ticket fields; the
-words of a phrase may be joined by any run of whitespace, hyphens or underscores (:data:`WORD_SEPARATOR`).
+instructions, order kinds and durations (a resting ``working order`` among them), roll destinations, price
+objectives and order-ticket fields; the words of a phrase may be joined by any run of whitespace, hyphens or
+underscores (:data:`WORD_SEPARATOR`).
 :data:`FORBIDDEN_PATTERNS` holds the same compiled patterns for other screens (``cli_journeys.py``'s
 ``FORBIDDEN_OUTPUT``). The table covers order-ticket fields however their words are joined (``limit price:``,
 ``Limit-Price:``, ``order type:``, ``quantity:``, ``price:``, ``limit 0.16``), roll destinations with up to three
@@ -82,6 +89,18 @@ FOOTER_PREFIX: str = ("deterministic rules you adopted · posted by an AI assist
 FOOTER_RE = re.compile(r"^" + re.escape(FOOTER_PREFIX)
                        + r"(?P<delay>[0-9]+) min, as of (?P<clock>(?:[01][0-9]|2[0-3]):[0-5][0-9]) UTC$")
 """The fixed footer (module notes): the delay in minutes and the data's as-of time of day in UTC."""
+SNAPSHOT_FOOTER_PREFIX: str = ("public market data · posted by an AI assistant · not a signal and not personalized "
+                               "investment advice · data delayed ")
+SNAPSHOT_FOOTER_RE = re.compile(r"^" + re.escape(SNAPSHOT_FOOTER_PREFIX)
+                                + r"(?P<delay>[0-9]+) min, as of (?P<clock>(?:[01][0-9]|2[0-3]):[0-5][0-9]) UTC$")
+"""The market-snapshot footer (module notes): only for rule-free text."""
+FOOTER_RULES: str = "rules"
+FOOTER_SNAPSHOT: str = "snapshot"
+FOOTER_KINDS: Tuple[str, ...] = (FOOTER_RULES, FOOTER_SNAPSHOT)
+_FOOTER_RES = {FOOTER_RULES: FOOTER_RE, FOOTER_SNAPSHOT: SNAPSHOT_FOOTER_RE}
+_SNAPSHOT_RULE_CONTENT_RE = re.compile(r"(?i:\byour\s+rules?\b)|\bEXIT[ _]SIGNAL\b|\bWATCH\b|\bHOLD\b|\bUNAVAILABLE\b"
+                                       r"|(?i:\brules\s+[0-9]+\.[0-9]+\.[0-9]+)")
+"""Rule content a market-snapshot footer can never close (module notes)."""
 ALLOWED_EXTRA_CHARACTERS: Tuple[str, ...] = ("\n", "\t", MIDDLE_DOT)
 
 CODE_EMPTY: str = "empty_message"
@@ -150,12 +169,15 @@ FORBIDDEN_LANGUAGE: Tuple[ForbiddenPhrase, ...] = (
             r"quantity|price|limit)\s*[:=]", "side: x"),
     _phrase("FL23", "order-field", r"@\s*\$?[0-9]", "2 @ 0.16"),
     _phrase("FL24", "order-field", r"\blimit\s+(?:at\s+|of\s+)?(?:\$[0-9]|[0-9]+\.[0-9])", "limit 0.16"),
+    _phrase("FL25", "order-kind", r"\bworking\s+orders?\b", "working order"),
 )
 """The forbidden phrases (module notes): the one table in the repository's code that spells them out."""
 FORBIDDEN_PATTERNS: Tuple["re.Pattern[str]", ...] = tuple(entry.pattern for entry in FORBIDDEN_LANGUAGE)
 
-IMPERATIVE_START_WORDS: Tuple[str, ...] = ("close", "sell", "buy", "roll", "place", "enter", "exit")
-"""Words a sentence must not start with (any case); a problem names the entry as ``IS01`` .. ``IS07``."""
+IMPERATIVE_START_WORDS: Tuple[str, ...] = ("close", "sell", "buy", "roll", "place", "enter", "exit", "execute", "fill")
+"""Words a sentence must not start with (any case); a problem names the entry as ``IS01`` .. ``IS09`` (``execute`` and
+``fill`` joined in PR 2d as starts only: as words they stay allowed, so the level sheet's warning ``a limit at this price
+executes immediately`` passes)."""
 FILLER_WORDS: Tuple[str, ...] = ("so", "then", "and", "now", "please", "just", "simply", "also", "kindly")
 """Words skipped at a sentence start before the imperative test (``so close ...`` starts with its verb)."""
 PLAN_CLOSE_PREFIX: str = "your plan: "
@@ -238,6 +260,17 @@ def footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> 
     return "%s%d min, as of %s UTC" % (FOOTER_PREFIX, delay_min, clock)
 
 
+def snapshot_footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> str:
+    """The market-snapshot footer (module notes) with the data's as-of time of day in UTC."""
+    return SNAPSHOT_FOOTER_PREFIX + footer_line(as_of, delay_min)[len(FOOTER_PREFIX):]
+
+
+def _footer_re(footer: str) -> Any:
+    if footer not in _FOOTER_RES:
+        raise ValueError("footer must be one of %s, got %r" % (", ".join(FOOTER_KINDS), footer))
+    return _FOOTER_RES[footer]
+
+
 def footer_clock(text: str) -> Optional[str]:
     """The ``HH:MM`` of the message's footer (its last non-empty line), or ``None`` without a footer."""
     match = FOOTER_RE.match(_last_line(text))
@@ -295,8 +328,11 @@ def _real_date(match: "re.Match[str]") -> bool:
     return True
 
 
-def whitelist_spans(text: str, rule_ids: Optional[Iterable[str]] = None) -> List[Tuple[int, int, str]]:
-    """``(start, end, form)`` of every identifier span (module notes, "Identifier whitelist")."""
+def whitelist_spans(text: str, rule_ids: Optional[Iterable[str]] = None, *,
+                    footer: str = FOOTER_RULES) -> List[Tuple[int, int, str]]:
+    """``(start, end, form)`` of every identifier span (module notes, "Identifier whitelist"); ``footer`` names the
+    footer whose fixed delay is whitelisted."""
+    footer_re = _footer_re(footer)
     spans: List[Tuple[int, int, str]] = []
     for form, pattern in _WHITELIST_FORMS:
         spans.extend((m.start(), m.end(), form) for m in pattern.finditer(text))
@@ -310,8 +346,8 @@ def whitelist_spans(text: str, rule_ids: Optional[Iterable[str]] = None) -> List
             spans.append((match.start(), match.end(), "rule_id"))
     offset = 0
     for line in text.split("\n"):
-        footer = FOOTER_RE.match(line)
-        if footer and footer.group("delay") == str(FOOTER_DELAY_MIN):
+        footer_match = footer_re.match(line)
+        if footer_match and footer_match.group("delay") == str(FOOTER_DELAY_MIN):
             delay = _FOOTER_DELAY_RE.search(line)
             if delay is not None:
                 spans.append((offset + delay.start("delay"), offset + delay.end("delay"), "footer_delay"))
@@ -324,10 +360,11 @@ def _covered(token: NumberToken, spans: Sequence[Tuple[int, int, str]]) -> bool:
     return any(start <= digits_start and token.end <= end for start, end, _form in spans)
 
 
-def unwhitelisted_numbers(text: str, rule_ids: Optional[Iterable[str]] = None) -> List[NumberToken]:
+def unwhitelisted_numbers(text: str, rule_ids: Optional[Iterable[str]] = None, *,
+                          footer: str = FOOTER_RULES) -> List[NumberToken]:
     """The numeric tokens of ``text`` that the whitelist does not cover: what a formatter emits for a text it
     passes through, and what :func:`check` compares with the emitted strings."""
-    spans = whitelist_spans(text, rule_ids)
+    spans = whitelist_spans(text, rule_ids, footer=footer)
     return [token for token in numeric_tokens(text) if not _covered(token, spans)]
 
 
@@ -399,12 +436,13 @@ def _imperative_exception(text: str, start: int, word: str) -> bool:
 # --------------------------------------------------------------------------------------------
 
 
-def _footer_spans(text: str) -> List[Tuple[int, int]]:
-    """``(start, end)`` of every line that is exactly the fixed footer (the only place a middle dot may stand)."""
+def _footer_spans(text: str, footer: str = FOOTER_RULES) -> List[Tuple[int, int]]:
+    """``(start, end)`` of every line that is exactly the footer in use (the only place a middle dot may stand)."""
+    footer_re = _footer_re(footer)
     offset = 0
     spans: List[Tuple[int, int]] = []
     for line in text.split("\n"):
-        if FOOTER_RE.match(line):
+        if footer_re.match(line):
             spans.append((offset, offset + len(line)))
         offset += len(line) + 1
     return spans
@@ -425,15 +463,17 @@ def _clock_of(as_of: Any) -> str:
 
 def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]] = None,
           identifiers: Optional[Iterable[str]] = None, clocks: Optional[Iterable[str]] = None,
-          as_of: Any = None) -> LintResult:
+          as_of: Any = None, footer: str = FOOTER_RULES) -> LintResult:
     """Lint ``text`` against the ``emitted`` number strings (module notes); ``rule_ids`` narrows the rule-id
     whitelist to those exact ids; ``identifiers`` and ``clocks`` narrow the id, sha, version, date and clock spans to
-    those exact texts (strict mode), and ``as_of`` pins the footer's clock."""
+    those exact texts (strict mode), ``as_of`` pins the footer's clock, and ``footer`` (``rules``, the default, or
+    ``snapshot``) names the footer the last line must be."""
+    footer_re = _footer_re(footer)
     findings: List[Finding] = []
     if not isinstance(text, str) or not text.strip():
         finding = Finding(CODE_EMPTY, 0, 0, "the message is empty")
         return LintResult(False, [finding.message], [finding], 0)
-    footer_spans = _footer_spans(text)
+    footer_spans = _footer_spans(text, footer)
     for index, char in enumerate(text):
         if (" " <= char <= "~") or char in ("\n", "\t"):
             continue
@@ -450,7 +490,7 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
     known = list(rule_ids) if rule_ids is not None else None
     allowed_ids = set(identifiers) if identifiers is not None else None
     allowed_clocks = set(clocks) if clocks is not None else None
-    for start, end, form in whitelist_spans(text, known):
+    for start, end, form in whitelist_spans(text, known, footer=footer):
         span = text[start:end]
         if (form in _IDENTIFIER_FORMS and allowed_ids is not None and span not in allowed_ids) or (
                 form == "clock" and allowed_clocks is not None and span not in allowed_clocks):
@@ -459,7 +499,7 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
                                     "printed" % (line, column, form.replace("_", " "), span)))
     allowed = _normalise_emitted(emitted)
     checked = 0
-    for token in unwhitelisted_numbers(text, known):
+    for token in unwhitelisted_numbers(text, known, footer=footer):
         checked += 1
         if token.text not in allowed:
             findings.append(Finding(CODE_NUMBER, token.line, token.column, "line %d, column %d: number %s is not in "
@@ -487,18 +527,29 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
         findings.append(Finding(CODE_IMPERATIVE, line, column, "line %d, column %d: imperative sentence start "
                                 "(IS%02d of the lint's list)" % (line, column, index)))
     findings.sort(key=lambda f: (f.line, f.column, CODES.index(f.code)))
-    footer = FOOTER_RE.match(_last_line(text))
-    if footer is None:
-        findings.append(Finding(CODE_FOOTER, 0, 0, "the last line is not the fixed footer (%sN min, as of HH:MM UTC)"
-                                % FOOTER_PREFIX))
-    elif as_of is not None and footer.group("clock") + " UTC" != _clock_of(as_of):
+    last = footer_re.match(_last_line(text))
+    if last is None:
+        prefix = FOOTER_PREFIX if footer == FOOTER_RULES else SNAPSHOT_FOOTER_PREFIX
+        name = "fixed footer" if footer == FOOTER_RULES else "market-snapshot footer"
+        findings.append(Finding(CODE_FOOTER, 0, 0, "the last line is not the %s (%sN min, as of HH:MM UTC)"
+                                % (name, prefix)))
+    elif as_of is not None and last.group("clock") + " UTC" != _clock_of(as_of):
         findings.append(Finding(CODE_FOOTER, 0, 0, "the footer's as-of time %s UTC is not the data's %s"
-                                % (footer.group("clock"), _clock_of(as_of))))
+                                % (last.group("clock"), _clock_of(as_of))))
+    if footer == FOOTER_SNAPSHOT:
+        content = _SNAPSHOT_RULE_CONTENT_RE.search(text)
+        if content is not None or (known is not None and len(known) > 0):
+            line = _position(text, content.start())[0] if content is not None else 0
+            findings.append(Finding(CODE_FOOTER, line, 0, "the market-snapshot footer cannot close rule content (a rule, "
+                                    "a verdict or a rulebook version%s): use the rules footer"
+                                    % (", line %d" % line if content is not None else ": rule ids were given")))
     return LintResult(not findings, [finding.message for finding in findings], findings, checked)
 
 
 EMITTED_DOCUMENT_KEYS: Tuple[str, ...] = ("emitted_numbers", "rule_ids", "identifiers", "clocks", "as_of")
 """The keys of an emitted document (``emitted_numbers`` required; the others select strict mode)."""
+EMITTED_DOCUMENT_OPTIONAL_KEYS: Tuple[str, ...] = ("footer",)
+"""Optional keys: ``footer`` (``rules`` when absent) names the footer the text is linted with."""
 
 
 @dataclass(frozen=True)
@@ -510,10 +561,12 @@ class EmittedDocument:
     identifiers: Optional[List[str]] = None
     clocks: Optional[List[str]] = None
     as_of: Optional[datetime.datetime] = None
+    footer: str = FOOTER_RULES
 
-    def check(self, text: str) -> LintResult:
+    def check(self, text: str, footer: Optional[str] = None) -> LintResult:
+        """Lint ``text`` against the whole document, with its own footer kind unless ``footer`` overrides it."""
         return check(text, self.emitted_numbers, rule_ids=self.rule_ids, identifiers=self.identifiers,
-                     clocks=self.clocks, as_of=self.as_of)
+                     clocks=self.clocks, as_of=self.as_of, footer=self.footer if footer is None else footer)
 
 
 def load_emitted(document: Any) -> EmittedDocument:
@@ -524,7 +577,7 @@ def load_emitted(document: Any) -> EmittedDocument:
         return EmittedDocument(_strings(document, "the emitted list"))
     if not isinstance(document, dict):
         raise ValueError("the emitted document must be a JSON list of strings or an object with emitted_numbers")
-    unknown = sorted(set(document) - set(EMITTED_DOCUMENT_KEYS))
+    unknown = sorted(set(document) - set(EMITTED_DOCUMENT_KEYS) - set(EMITTED_DOCUMENT_OPTIONAL_KEYS))
     if unknown:
         raise ValueError("unknown keys in the emitted document: %s" % ", ".join(unknown))
     if "emitted_numbers" not in document:
@@ -538,8 +591,11 @@ def load_emitted(document: Any) -> EmittedDocument:
             raise ValueError("as_of must be an ISO-8601 instant with a zone")
         _clock_of(as_of)
         moment = datetime.datetime.fromisoformat(as_of.strip().replace("Z", "+00:00")).astimezone(datetime.timezone.utc)
+    footer = document.get("footer", FOOTER_RULES)
+    if footer not in FOOTER_KINDS:
+        raise ValueError("footer must be one of %s, got %r" % (", ".join(FOOTER_KINDS), footer))
     return EmittedDocument(_strings(document["emitted_numbers"], "emitted_numbers"), lists["rule_ids"],
-                           lists["identifiers"], lists["clocks"], moment)
+                           lists["identifiers"], lists["clocks"], moment, footer)
 
 
 def load_emitted_document(document: Any) -> Tuple[List[str], Optional[List[str]]]:
@@ -566,12 +622,16 @@ __all__ = [
     "CODE_NUMBER",
     "CODE_ORDER_FIELD",
     "EMITTED_DOCUMENT_KEYS",
+    "EMITTED_DOCUMENT_OPTIONAL_KEYS",
     "EXIT_SIGNAL_HEADER",
     "EmittedDocument",
     "FILLER_WORDS",
     "FOOTER_DELAY_MIN",
+    "FOOTER_KINDS",
     "FOOTER_PREFIX",
     "FOOTER_RE",
+    "FOOTER_RULES",
+    "FOOTER_SNAPSHOT",
     "FORBIDDEN_CATEGORIES",
     "FORBIDDEN_LANGUAGE",
     "FORBIDDEN_PATTERNS",
@@ -583,12 +643,15 @@ __all__ = [
     "MIDDLE_DOT",
     "NumberToken",
     "PLAN_CLOSE_PREFIX",
+    "SNAPSHOT_FOOTER_PREFIX",
+    "SNAPSHOT_FOOTER_RE",
     "check",
     "footer_clock",
     "footer_line",
     "load_emitted",
     "load_emitted_document",
     "numeric_tokens",
+    "snapshot_footer_line",
     "unwhitelisted_numbers",
     "whitelist_spans",
 ]

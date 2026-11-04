@@ -1,0 +1,20 @@
+# Gate fixture routine manifest: a chain flag the tool's parser does not declare.
+schema_version = 1
+
+[profiles.lean]
+description = "one run per weekday"
+
+[[routine]]
+id = "book-check"
+owner = "desk-lead"
+stage = 1
+profiles = ["lean"]
+et = { lean = ["10:05"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["book_check --post --nope"]
+post = ["book_check"]
+posts = "transitions"
+quiet_rule = "Posts only a verdict change or a standing UNAVAILABLE."
+approval_boundary = "read-only; writes only under state/ and journal/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot {slot} and post its output verbatim."

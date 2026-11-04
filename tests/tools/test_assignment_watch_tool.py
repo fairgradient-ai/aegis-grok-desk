@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
 
+from aegis_desk import alert_lint, alerts, contract
+
 import assignment_watch as tool
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,6 +48,19 @@ BOUNDARY_NOTE = ("ex-dividend 2026-11-23 is the first trading day after the last
                  "exercise would come at expiration")
 GRADE_E_NOTE = "option quote grade E (wide: spread 28.57% > 25%): the bid-side arithmetic stands"
 ITM_LINE_FRIDAY = "  in the money: automatic exercise or assignment expected at the close of Fri 2026-11-20"
+
+
+def posted_lint(payload: Dict[str, Any]) -> Any:
+    """The routine's composition of a text part (PR 2d decision D2-3): the message through ``alerts.fmt_reason``, the
+    alert footer at ``payload.as_of``, then the strict lint."""
+    emitted: List[str] = []
+    rule_ids: List[str] = []
+    identifiers: List[str] = []
+    clocks: List[str] = []
+    text = alerts.fmt_reason(payload["message"], emitted, rule_ids=rule_ids, identifiers=identifiers, clocks=clocks)
+    as_of = contract.parse_utc_instant(payload["as_of"])
+    text += "\n" + alerts.fmt_footer(as_of, 15, emitted, clocks)
+    return alert_lint.check(text, emitted, rule_ids=rule_ids or None, identifiers=identifiers, clocks=clocks, as_of=as_of)
 
 
 def run_tool(argv: Sequence[str]) -> Tuple[int, str]:
@@ -357,6 +372,61 @@ class JourneysTest(DeskCopy):
         self.assertEqual(["NVDA261120C00150000", "SPY261218P00620000"], [leg["symbol"] for leg in body["payload"]["legs"]])
         code, text = run_tool(self.argv("regular", json_mode=False))
         self.assertIn("quarantined AG-20261020-01:", text)
+
+
+# (fixture set, instant, exit code, the footer's instant as payload.as_of): the newest stamp of the batch's graded
+# quotes (recomputed on a fresh copy with the landed quote cache and quote_qc), or the run instant when nothing was
+# quoted (no fetch on the Saturday after expiry or on Thanksgiving).
+MESSAGE_CASES = (
+    ("regular", REGULAR_NOW, 0, "2026-11-03T19:31:12+00:00"),
+    ("t1", T1_NOW, 10, "2026-11-19T19:31:12+00:00"),
+    ("expiry_day", EXPIRY_NOW, 10, "2026-11-20T19:31:12+00:00"),
+    ("post_expiry", POST_EXPIRY_NOW, 0, "2026-11-21T14:30:00+00:00"),
+    ("holiday", HOLIDAY_NOW, 0, "2026-11-26T15:00:00+00:00"),
+)
+
+
+class MessageTest(DeskCopy):
+    """PR 2d decision D2-15: ``payload.message`` is the human text exactly and ``payload.as_of`` the instant of its
+    footer line, so a routine posts the text from the one JSON run."""
+
+    def fresh_root(self) -> str:
+        holder = tempfile.TemporaryDirectory(prefix="aegis-assignment-watch-twin-")
+        self.addCleanup(holder.cleanup)
+        root = os.path.join(os.path.realpath(holder.name), "desk")
+        shutil.copytree(FIXTURE_DESK, root)
+        return root
+
+    def run_on(self, root: str, fixture_set: str, now: str, json_mode: bool) -> Tuple[int, str]:
+        argv = ["--offline", "--desk-root", root, "--now", now, "--fixture-set", fixture_set]
+        return run_tool(argv + (["--json"] if json_mode else []))
+
+    def test_schema_names_the_message_and_its_as_of(self) -> None:
+        code, body = run_json(["--schema"])
+        self.assertEqual(0, code)
+        payload = body["envelope"]["payload"]
+        self.assertIn("message", payload)
+        self.assertIn("as_of", payload)
+
+    def test_message_is_the_human_text_and_as_of_is_the_footer_instant(self) -> None:
+        for fixture_set, now, exit_code, as_of in MESSAGE_CASES:
+            with self.subTest(fixture_set=fixture_set):
+                code, out = self.run_on(self.fresh_root(), fixture_set, now, True)
+                body = json.loads(out)
+                human_code, text = self.run_on(self.fresh_root(), fixture_set, now, False)
+                self.assertEqual((exit_code, exit_code), (code, human_code), out)
+                self.assertEqual(text.rstrip("\n"), body["payload"]["message"])
+                self.assertFalse(body["payload"]["message"].endswith("\n"))
+                self.assertEqual(as_of, body["payload"]["as_of"])
+                lint = posted_lint(body["payload"])
+                self.assertTrue(lint.ok, lint.problems)
+                self.assertEqual([], [p.pattern for p in alert_lint.FORBIDDEN_PATTERNS if p.search(body["payload"]["message"])])
+                self.assertEqual("Tradier sandbox, delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
+
+    def test_the_watch_writes_no_record(self) -> None:
+        code, _text = self.run_on(self.root, "t1", T1_NOW, False)
+        self.assertEqual(10, code)
+        self.assertEqual([], os.listdir(os.path.join(self.root, "reports")), "assignment_watch keeps no record")
 
 
 class ErrorMappingTest(DeskCopy):

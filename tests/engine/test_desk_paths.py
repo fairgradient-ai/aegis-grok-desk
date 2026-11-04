@@ -41,7 +41,7 @@ EXPECTED = {
     "incidents_dir": "incidents",
     "fixtures_dir": "fixtures",
 }
-RUNTIME = ("state", "state/heartbeat", "data/cache", "data/book", "data/positions", "journal", "levels",
+RUNTIME = ("state", "state/heartbeat", "data/cache", "data/book", "data/positions", "journal", "levels", "plans",
            "reports", "incidents")
 
 
@@ -136,9 +136,16 @@ class EnsureRuntimeDirsTest(unittest.TestCase):
 
     def test_never_creates_owner_files_or_rules(self) -> None:
         desk_paths.ensure_runtime_dirs(self.paths)
-        for rel in ("desk.toml", "positions.csv", "rules", "research", "plans", "tickets", "fixtures",
+        for rel in ("desk.toml", "positions.csv", "rules", "research", "tickets", "fixtures",
                     "state/desk_state.json", "state/.lock", "rules/ADOPTED"):
             self.assertFalse(os.path.exists(os.path.join(self.root, *rel.split("/"))), rel)
+
+    def test_plans_is_a_runtime_directory_after_levels(self) -> None:
+        # PR 2d decisions D1-10: trigger_levels.py --plan writes plans/<group id>.md, so plans/ is created like levels/.
+        self.assertEqual(desk_paths.RUNTIME_DIRS.index("levels") + 1, desk_paths.RUNTIME_DIRS.index("plans"))
+        created = desk_paths.ensure_runtime_dirs(self.paths)
+        self.assertIn(self.paths.plans_dir, created)
+        self.assertTrue(os.path.isdir(self.paths.plans_dir))
 
     def test_idempotent_and_reports_nothing_new_the_second_time(self) -> None:
         desk_paths.ensure_runtime_dirs(self.paths)
@@ -167,7 +174,7 @@ class FixtureDeskRootTest(unittest.TestCase):
         for name in ("regular", "after_close", "stale", "pre_open", "holiday"):
             self.assertTrue(os.path.isdir(os.path.join(paths.tradier_fixtures_dir, name)), name)
         # The committed fixture root holds only owner files and recorded responses: no runtime state.
-        for rel in ("state", "data", "journal", "levels", "reports", "incidents"):
+        for rel in ("state", "data", "journal", "levels", "plans", "reports", "incidents"):
             self.assertFalse(os.path.exists(os.path.join(FIXTURE_DESK, rel)), rel)
         # Decision 2 of the PR 2c addendum: rules/ holds the adopted example rulebook and nothing else.
         self.assertEqual(["ADOPTED", "CHANGELOG.md", "exit_rules-1.0.0.toml"],
