@@ -1,0 +1,31 @@
+{
+  "emitted_numbers": [
+    "95.32",
+    "80",
+    "15",
+    "0",
+    "21",
+    "0.07",
+    "3",
+    "0",
+    "3",
+    "2.0"
+  ],
+  "rule_ids": [
+    "TP80",
+    "DTE21",
+    "PIN3",
+    "DELTA_WATCH",
+    "DELTA_SIGNAL",
+    "CAP"
+  ],
+  "identifiers": [
+    "AG-20261020-01",
+    "rules 1.0.0",
+    "sha 3f9a01bc"
+  ],
+  "clocks": [
+    "19:31 UTC"
+  ],
+  "as_of": "2026-11-20T19:31:12+00:00"
+}

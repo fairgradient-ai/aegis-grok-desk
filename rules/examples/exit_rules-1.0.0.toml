@@ -1,0 +1,456 @@
+# Aegis Desk example exit rulebook 1.0.0 (plan section 8). EXAMPLES ONLY: nothing in this file is active.
+# The owner adopts each rule individually: its origin mark moves from "example" to "example-accepted" (the
+# owner keeps the documented threshold) or "owner-entered" (the owner writes the value), and the owner-tapped
+# adoption step (rules_adopt.py) lints the file, records it in rules/ADOPTED and appends rules/CHANGELOG.md.
+# Every threshold is the owner's choice. A rule that fires reports that the owner's own rule fired and why;
+# the owner acts, or not, in the brokerage account. See rules/examples/README.md.
+schema_version = 1
+rulebook_version = "1.0.0"
+title = "Aegis Desk example exit rules"
+
+[defaults]
+mark_basis = "liq"                 # liq | mid: the basis a rule reads unless it names its own
+confirmations = 2                  # observations an M or G rule needs (1..3)
+confirmation_gap_min = 10          # minutes between the observations' quote stamps (1..60)
+confirmation_window_min = 90       # every observation within this window of the newest (gap..240)
+cooldown_min = 240                 # minimum minutes between two posts of one (group, rule) (0..1440)
+rearm = "next_trading_day"         # next_trading_day | immediate | hysteresis
+hysteresis_pct = 10                # retreat, in percent of the threshold, before a hysteresis rule re-arms
+
+# --- short premium: cash-secured puts, naked short calls, credit verticals and the short call of a covered
+# --- call or collar (short_call_leg). Take-profit reads the conservative fresh side of the quote.
+
+[[rule]]
+id = "TP50"
+title = "Take profit at half the credit"
+role = "take_profit"
+scope = "group"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "short_call_leg"]
+input_class = "M"
+when = [
+  { metric = "pct_captured", op = ">=", value = 50, unit = "percent" },
+  { metric = "dte", op = ">", value = 21, dte_unit = "trading" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "tastylive manage-winners research: half the credit captured with more than 21 trading days left (owner threshold)"
+
+[[rule]]
+id = "TP80"
+title = "Take profit at 80 percent of the credit"
+role = "take_profit"
+scope = "group"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "short_call_leg"]
+input_class = "M"
+when = [
+  { metric = "pct_captured", op = ">=", value = 80, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "tastylive manage-winners research: most of the credit captured, whatever the time left (owner threshold)"
+
+[[rule]]
+id = "LOSSX"
+title = "Loss at two times the credit"
+role = "loss"
+scope = "group"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put"]
+input_class = "M"
+when = [
+  { metric = "loss_multiple_of_credit", op = ">=", value = 2, unit = "multiple" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "owner risk control: a stop alert at loss 2.0 x credit = cost-to-close 3.0 x credit; stop alerts are risk control, not edge"
+
+[[rule]]
+id = "DTE21"
+title = "Twenty-one trading days left"
+role = "time"
+scope = "group"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "short_call_leg"]
+input_class = "E"
+when = [
+  { metric = "dte", op = "<=", value = 21, dte_unit = "trading" },
+]
+verdict = "WATCH"
+plan = "roll_review"
+origin = "example"
+source = "tastylive 21-DTE management research: the last 21 trading days carry the most gamma (owner threshold)"
+
+[[rule]]
+id = "DELTA_WATCH"
+title = "Short option delta at 0.30"
+role = "risk"
+scope = "leg"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "short_call_leg"]
+input_class = "G"
+when = [
+  { metric = "abs_delta", op = ">=", value = 0.30, unit = "delta" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+suppress_if_tag = "assign-ok"
+origin = "example"
+source = "OIC/Cboe assignment mechanics: a short option at 0.30 delta is drifting toward the money (owner threshold)"
+
+[[rule]]
+id = "DELTA_SIGNAL"
+title = "Short option delta at 0.50"
+role = "risk"
+scope = "leg"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "short_call_leg"]
+input_class = "G"
+when = [
+  { metric = "abs_delta", op = ">=", value = 0.50, unit = "delta" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "roll_review"
+suppress_if_tag = "assign-ok"
+origin = "example"
+source = "OIC/Cboe assignment mechanics: a short option at 0.50 delta is at the money (owner threshold)"
+
+[[rule]]
+id = "PIN3"
+title = "Short option pinned near the strike"
+role = "risk"
+scope = "leg"
+applies_to = ["cash_secured_put", "short_call", "vertical_credit_call", "vertical_credit_put", "vertical_debit_call", "vertical_debit_put", "short_call_leg"]
+input_class = "M"
+when = [
+  { metric = "pct_from_strike", op = "<=", value = 3, unit = "percent" },
+  { metric = "dte", op = "<=", value = 3, dte_unit = "trading" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+origin = "example"
+source = "OIC/Cboe pin mechanics: within 3 percent of the strike in the last 3 trading days, assignment is uncertain (never suppressed)"
+
+# --- short calls: the dividend watch reaches every open short call (any_short_call_leg).
+
+[[rule]]
+id = "EXDIV"
+title = "Early assignment before the ex-dividend date"
+role = "event"
+scope = "leg"
+applies_to = ["any_short_call_leg"]
+input_class = "M"
+when = [
+  { metric = "days_to_ex_dividend", op = "<=", value = 5, unit = "days" },
+  { metric = "extrinsic_minus_dividend", op = "<", value = 0, unit = "usd" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "roll_review"
+suppress_if_tag = "assign-ok"
+origin = "example"
+source = "OIC/Cboe early-exercise mechanics: a short call whose extrinsic value (bid) is below the coming dividend may be assigned early; an unknown dividend is never zero"
+
+# --- covered calls.
+
+[[rule]]
+id = "CAP"
+title = "Covered call capped"
+role = "risk"
+scope = "group"
+applies_to = ["covered_call"]
+input_class = "M"
+when = [
+  { metric = "stock_above_short_call", op = "is_true" },
+  { metric = "dte", op = "<=", value = 21, dte_unit = "trading" },
+]
+verdict = "WATCH"
+plan = "roll_review"
+suppress_if_tag = "assign-ok"
+origin = "example"
+source = "OIC/Cboe assignment mechanics: the stock above the covered call's strike in the last 21 trading days"
+
+# --- long hedges: the put of a protective put or collar (long_put_leg), and the collar's call.
+
+[[rule]]
+id = "LAPSE14"
+title = "Hedge expiring within 14 days"
+role = "time"
+scope = "leg"
+applies_to = ["long_put_leg"]
+input_class = "E"
+when = [
+  { metric = "dte", op = "<=", value = 14, dte_unit = "calendar" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "roll_review"
+origin = "example"
+source = "owner risk control: a hedge within 14 calendar days of its expiry"
+
+[[rule]]
+id = "ROLL30"
+title = "Hedge within 30 days of expiry"
+role = "time"
+scope = "leg"
+applies_to = ["long_put_leg"]
+input_class = "E"
+when = [
+  { metric = "dte", op = "<=", value = 30, dte_unit = "calendar" },
+]
+verdict = "WATCH"
+plan = "roll_review"
+origin = "example"
+source = "owner risk control: a hedge within 30 calendar days of its expiry"
+
+[[rule]]
+id = "MONETIZE"
+title = "Hedge deep in the money"
+role = "risk"
+scope = "leg"
+applies_to = ["long_put_leg"]
+input_class = "G"
+when = [
+  { metric = "abs_delta", op = ">=", value = 0.80, unit = "delta" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "hold_review"
+origin = "example"
+source = "owner risk control: a hedge deep in the money (0.80 delta) has done its work"
+
+[[rule]]
+id = "FLOOR"
+title = "Stock at the hedge's floor"
+role = "risk"
+scope = "group"
+applies_to = ["protective_put", "collar"]
+input_class = "M"
+when = [
+  { metric = "stock_below_long_put", op = "is_true" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+origin = "example"
+source = "owner risk control: the stock at or below the hedge's strike"
+
+[[rule]]
+id = "COVER"
+title = "Collar call in the money"
+role = "risk"
+scope = "group"
+applies_to = ["collar"]
+input_class = "M"
+when = [
+  { metric = "stock_above_short_call", op = "is_true" },
+]
+verdict = "WATCH"
+plan = "roll_review"
+origin = "example"
+source = "OIC/Cboe assignment mechanics: the stock above the collar's call strike"
+
+[[rule]]
+id = "AUTOEX"
+title = "Automatic exercise at expiry"
+role = "risk"
+scope = "leg"
+applies_to = ["any_option_leg"]
+input_class = "M"
+when = [
+  { metric = "auto_exercise_itm", op = "is_true" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "hold_review"
+origin = "example"
+source = "OCC exercise by exception: a long option at least 0.01 in the money on its last trading day is exercised automatically; the owner decides before the broker's cutoff"
+
+# --- long directional: long calls, long puts and debit verticals.
+
+[[rule]]
+id = "LTP100"
+title = "Long option debit doubled"
+role = "take_profit"
+scope = "group"
+applies_to = ["long_call", "long_put"]
+input_class = "M"
+when = [
+  { metric = "pct_of_debit", op = ">=", value = 100, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "owner threshold: the debit doubled (an unbounded long option has no max profit to measure against)"
+
+[[rule]]
+id = "LLOSS50"
+title = "Long option half the debit lost"
+role = "loss"
+scope = "group"
+applies_to = ["long_call", "long_put"]
+input_class = "M"
+when = [
+  { metric = "pct_of_debit", op = "<=", value = -50, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "owner risk control: half the debit lost"
+
+[[rule]]
+id = "LDTE30"
+title = "Long option within 30 days of expiry"
+role = "time"
+scope = "group"
+applies_to = ["long_call", "long_put", "vertical_debit_call", "vertical_debit_put"]
+input_class = "E"
+when = [
+  { metric = "dte", op = "<=", value = 30, dte_unit = "calendar" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+origin = "example"
+source = "owner threshold: a long option in its last 30 calendar days"
+
+# --- verticals: credit verticals take profit and stop through the short-premium rules above.
+
+[[rule]]
+id = "VTP"
+title = "Debit vertical at 60 percent of max profit"
+role = "take_profit"
+scope = "group"
+applies_to = ["vertical_debit_call", "vertical_debit_put"]
+input_class = "M"
+when = [
+  { metric = "pct_of_max_profit", op = ">=", value = 60, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "tastylive spread-management research: 60 percent of a debit spread's max profit (owner threshold)"
+
+[[rule]]
+id = "VLOSS"
+title = "Debit vertical at half its max loss"
+role = "loss"
+scope = "group"
+applies_to = ["vertical_debit_call", "vertical_debit_put"]
+input_class = "M"
+when = [
+  { metric = "pct_of_max_loss", op = ">=", value = 50, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "owner risk control: half of a debit spread's max loss (the lint refuses a value above 100)"
+
+[[rule]]
+id = "VBETWEEN"
+title = "Vertical between the strikes near expiry"
+role = "risk"
+scope = "group"
+applies_to = ["vertical_credit_call", "vertical_credit_put", "vertical_debit_call", "vertical_debit_put"]
+input_class = "M"
+when = [
+  { metric = "between_strikes", op = "is_true" },
+  { metric = "dte", op = "<=", value = 2, dte_unit = "trading" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "close"
+origin = "example"
+source = "OIC/Cboe pin mechanics: a vertical with the stock between its strikes in its last 2 trading days"
+
+# --- the underlying: the stop written in positions.csv, and the move from the desk's own snapshot.
+
+[[rule]]
+id = "USTOP"
+title = "Underlying at the stop"
+role = "risk"
+scope = "group"
+applies_to = ["any_group"]
+input_class = "M"
+when = [
+  { metric = "spot_vs_stop_pct", op = "<=", value = 0, unit = "percent" },
+]
+verdict = "EXIT_SIGNAL"
+plan = "hold_review"
+origin = "example"
+source = "owner risk control: the underlying at or below the stop written in positions.csv"
+
+[[rule]]
+id = "MOVE5_DOWN"
+title = "Underlying down 5 percent"
+role = "watch"
+scope = "underlying"
+applies_to = ["any_underlying"]
+input_class = "M"
+when = [
+  { metric = "move_pct_from_prev_eod", op = "<=", value = -5, unit = "percent" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+origin = "example"
+source = "owner risk control: a 5 percent fall from the desk's previous end-of-day snapshot"
+
+[[rule]]
+id = "MOVE5_UP"
+title = "Underlying up 5 percent"
+role = "watch"
+scope = "underlying"
+applies_to = ["any_underlying"]
+input_class = "M"
+when = [
+  { metric = "move_pct_from_prev_eod", op = ">=", value = 5, unit = "percent" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+origin = "example"
+source = "owner risk control: a 5 percent rise from the desk's previous end-of-day snapshot"
+
+# --- events.
+
+[[rule]]
+id = "EARN2"
+title = "Earnings within two trading days"
+role = "event"
+scope = "group"
+applies_to = ["cash_secured_put", "short_call", "covered_call", "collar", "vertical_credit_call", "vertical_credit_put", "vertical_debit_call", "vertical_debit_put"]
+input_class = "E"
+when = [
+  { metric = "days_to_earnings", op = "<=", value = 2, unit = "days" },
+  { metric = "days_to_earnings", op = ">=", value = 0, unit = "days" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+suppress_if_tag = "earnings-ok"
+origin = "example"
+source = "owner risk control: an earnings release within 2 trading days on a group with a short option"
+
+# --- the portfolio: the owner sets both values (owner_must_set); the numbers here are documented defaults.
+
+[[rule]]
+id = "DAILY"
+title = "Day loss on the book"
+role = "portfolio"
+scope = "portfolio"
+applies_to = ["portfolio"]
+input_class = "M"
+when = [
+  { metric = "day_pl", op = "<=", value = -1000, unit = "usd" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+owner_must_set = true
+origin = "example"
+source = "owner risk control: the book's day loss (the owner sets the amount; -1000 usd is a documented default)"
+
+[[rule]]
+id = "CONC"
+title = "Concentration in one underlying"
+role = "portfolio"
+scope = "portfolio"
+applies_to = ["portfolio"]
+input_class = "M"
+when = [
+  { metric = "max_concentration_pct", op = ">=", value = 25, unit = "percent" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+confirmations = 1                  # the share moves with the book and the declared equity: one look suffices
+owner_must_set = true
+origin = "example"
+source = "owner risk control: one underlying's share of the declared equity (the owner sets the percentage; 25 is a documented default)"

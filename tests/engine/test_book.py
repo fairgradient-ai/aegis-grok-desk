@@ -9,6 +9,7 @@ from __future__ import annotations
 import tests._path  # noqa: F401
 # isort: on
 
+import dataclasses
 import datetime
 import json
 import os
@@ -16,9 +17,9 @@ import shutil
 import tempfile
 import unittest
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from aegis_desk import book, calendar_events, desk_config, desk_paths, iv, market_clock, quote_cache, quote_qc, state, units
+from aegis_desk import book, calendar_events, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, quote_qc, state, units
 from aegis_desk.grouping import PositionGroup, group_positions
 from aegis_desk.market_types import Quote
 from aegis_desk.positions_csv import PositionsFile, parse_positions_text
@@ -56,10 +57,35 @@ PREV_PRICES = {"WMT": ("103.78", "103.84"), "NVDA": ("147.58", "147.63"), "SPY":
 RISK_FREE = 0.0412
 CLOSURE_ENTRY = '\n[[closures]]\ndate = %s\nkind = "full"\nsource = "owner-entered (test)"\n'
 """An owner-injected full closure appended to a COPY's research/calendar.toml (the date is the one argument)."""
+T1 = datetime.date(2026, 11, 19)
+T1_NOW = datetime.datetime(2026, 11, 19, 19, 50, tzinfo=UTC)
+T1_STAMP = datetime.datetime(2026, 11, 19, 19, 31, 12, tzinfo=UTC)
+T1_CLOSE_NOW = datetime.datetime(2026, 11, 19, 21, 30, tzinfo=UTC)
+T1_CLOSE_STAMP = datetime.datetime(2026, 11, 19, 20, 59, 55, tzinfo=UTC)
+EXPIRY_NOW = datetime.datetime(2026, 11, 20, 19, 50, tzinfo=UTC)
+EXPIRY_STAMP = datetime.datetime(2026, 11, 20, 19, 31, 12, tzinfo=UTC)
+T1_PRICES = {"WMT": ("106.40", "106.46"), "NVDA": ("149.20", "149.25"), "SPY": ("652.10", "652.14"),
+             WMT_CALL: ("1.52", "1.60"), NVDA_CALL: ("1.00", "1.10"), SPY_PUT: ("3.80", "4.00")}
+EXPIRY_DAY_PRICES = {"WMT": ("104.90", "104.96"), "NVDA": ("153.30", "153.36"), "SPY": ("650.00", "650.04"),
+                     WMT_CALL: ("0.12", "0.16"), NVDA_CALL: ("3.30", "3.42"), SPY_PUT: ("4.10", "4.30")}
+"""The t1 and expiry_day fixture sets' quotes (tests/fixtures/desk/fixtures/tradier), stamped 19:31:12Z."""
+EX_TUESDAY = "date = 2026-11-24, amount = 0.2350"
+EX_MONDAY = "date = 2026-11-23, amount = 0.2350"
 
 CFG = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
 PATHS = desk_paths.for_root(FIXTURE_DESK)
 CAL = calendar_events.load_calendar(os.path.join(FIXTURE_DESK, "research", "calendar.toml"))
+
+
+def ex_monday_calendar() -> calendar_events.CalendarFile:
+    """The fixture calendar (only read) with the WMT ex-dividend on Mon 2026-11-23: its last cum-dividend day is
+    then Fri 2026-11-20, the Nov-20 call's last trading day, so ``expiry.dividend_tier`` grades the call (the
+    boundary case the assignment-watch tests use)."""
+    with open(os.path.join(FIXTURE_DESK, "research", "calendar.toml"), encoding="utf-8") as handle:
+        text = handle.read()
+    if text.count(EX_TUESDAY) != 1:
+        raise AssertionError("the fixture calendar must list %r exactly once" % EX_TUESDAY)
+    return calendar_events.parse_calendar_text(text.replace(EX_TUESDAY, EX_MONDAY), path="calendar.toml")
 
 
 def positions_of(lines: Sequence[str], today: datetime.date = TODAY) -> PositionsFile:
@@ -137,11 +163,14 @@ class KeysTest(unittest.TestCase):
                     "cost_basis_total", "entry_price_per_share", "status", "quote_grade", "quote_status", "bid", "ask",
                     "bid_date", "ask_date", "as_of", "spread_pct", "mark_mid", "mark_liq", "mark_source", "tau_years", "iv",
                     "iv_status", "greeks", "position_greeks", "unrealized_pl_mid", "unrealized_pl_liq", "day_pl",
-                    "realized_day_pl", "extrinsic_bid", "itm", "warnings", "open_quantity", "remaining_cost_basis"}
+                    "realized_day_pl", "extrinsic_bid", "itm", "warnings", "open_quantity", "remaining_cost_basis",
+                    "fresh_bid", "fresh_ask"}
         self.assertEqual(7, len(self.document["legs"]), "every row, closed ones included")
         for leg in self.document["legs"]:
             self.assertEqual(expected, set(leg), leg["row_number"])
         self.assertEqual(expected, set(book.LEG_KEYS))
+        self.assertEqual(("open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask"), book.LEG_KEYS[-4:],
+                         "the fresh sides are appended after remaining_cost_basis")
 
     def test_group_keys(self) -> None:
         expected = {"group_id", "trade_id", "account", "underlying", "structure", "basis_kind", "net_cost", "max_profit",
@@ -361,8 +390,11 @@ class OptionAnalyticsTest(unittest.TestCase):
         leg = leg_by_symbol(document, WMT_CALL)
         self.assertEqual((book.IV_STATUS_SPOT_UNALIGNED, None, None), (leg["iv_status"], leg["iv"], leg["greeks"]))
         self.assertEqual("mid", leg["mark_source"])
+        self.assertIsNone(leg["extrinsic_bid"], "an unaligned spot is no spot for the extrinsic arithmetic either")
+        self.assertFalse(leg["itm"], "itm keeps its rule: the usable mid against the strike")
         aligned = build(stamps={"WMT": STAMP - datetime.timedelta(seconds=60)})
         self.assertEqual("ok", leg_by_symbol(aligned, WMT_CALL)["iv_status"], "60 seconds is inside the window")
+        self.assertEqual(D("3.35"), leg_by_symbol(aligned, WMT_CALL)["extrinsic_bid"])
 
     def test_spot_unavailable_when_the_underlying_has_no_usable_mark(self) -> None:
         prices = dict(REGULAR_PRICES)
@@ -407,6 +439,38 @@ class DataQualityTest(unittest.TestCase):
         self.assertEqual(("E", D("1.75"), None, "unavailable", None), (leg["quote_grade"], leg["mark_mid"], leg["mark_liq"],
                                                                         leg["mark_source"], leg["unrealized_pl_mid"]))
         self.assertEqual("unavailable", group_by_id(document, "AG-20261020-01")["data_quality"])
+        self.assertEqual((D("0"), D("3.50"), D("0")), (leg["fresh_bid"], leg["fresh_ask"], leg["extrinsic_bid"]),
+                         "a zero bid is a fresh side: the extrinsic is 0 - max(0, 104.23 - 105)")
+
+    def test_a_grade_d_leg_with_one_side_stale_is_no_basis(self) -> None:
+        # A usable grade is not a mark: with one side stale quote_qc computes no mid, so the leg's mark_source is
+        # "unavailable" although its grade is D and its fresh side stands (fresh_*, and mark_liq for display when it
+        # is the side the leg liquidates at). Its group is unavailable with no pct_captured: a consumer gates every
+        # P/L or loss reading on mark_source == "mid", never on quote_grade (module notes, "Marks").
+        old = NOW - datetime.timedelta(minutes=60)
+        cases = {
+            "the bid stale": (old, STAMP, None, D("3.50"), D("3.50")),
+            "the ask stale": (STAMP, old, D("3.35"), None, None),
+        }
+        for label, (bid_date, ask_date, fresh_bid, fresh_ask, mark_liq) in cases.items():
+            with self.subTest(case=label):
+                quotes = quotes_for(REGULAR_PRICES)
+                quotes[WMT_CALL] = Quote(symbol=WMT_CALL, bid=D("3.35"), ask=D("3.50"), bid_date=bid_date,
+                                         ask_date=ask_date)
+                document = build(quotes=quotes)
+                leg = leg_by_symbol(document, WMT_CALL)
+                self.assertEqual(("D", "one_side_stale", fresh_bid, fresh_ask),
+                                 (leg["quote_grade"], leg["quote_status"], leg["fresh_bid"], leg["fresh_ask"]))
+                self.assertEqual((None, mark_liq, "unavailable", None, None),
+                                 (leg["mark_mid"], leg["mark_liq"], leg["mark_source"], leg["unrealized_pl_mid"],
+                                  leg["unrealized_pl_liq"]))
+                group = group_by_id(document, "AG-20261020-01")
+                self.assertEqual(("unavailable", None, None, None, None),
+                                 (group["data_quality"], group["pct_captured_liq"], group["pct_captured_mid"],
+                                  group["unrealized_pl_liq"], group["unrealized_pl_mid"]))
+                self.assertEqual((1, 5, 1), (document["data_quality"]["grades"]["D"],
+                                             document["data_quality"]["usable_legs"],
+                                             document["data_quality"]["unavailable_legs"]))
 
     def test_a_symbol_the_cache_could_not_serve_is_unavailable(self) -> None:
         quotes = quotes_for(REGULAR_PRICES)
@@ -492,6 +556,277 @@ class DataQualityTest(unittest.TestCase):
         self.assertTrue(any("uncovered shares" in w for w in group["warnings"]),
                         "200 shares against one remaining call: the extra shares are uncovered, still valued")
         self.assertEqual((None, True), (group["max_profit"], group["unbounded_up"]))
+
+
+class FreshSidesTest(unittest.TestCase):
+    """``fresh_bid`` / ``fresh_ask`` (module notes, "Keys"): the leg's ``QuoteQC.mark_liq_long`` / ``mark_liq_short``,
+    the sides ``quote_qc`` keeps fresh for any grade A-E (a wide or zero-bid quote graded E included), on stock-like
+    legs too; ``None`` without a verdict, for a closed leg, for a leg past its last trading day and for a grade F.
+    Every case is graded independently with ``quote_qc.assess`` on the same quote and must match it side for side."""
+
+    def short_call(self, quote: Quote, now: datetime.datetime = NOW) -> Tuple[Dict[str, Any], QuoteQC]:
+        quotes = quotes_for(REGULAR_PRICES)
+        quotes[WMT_CALL] = quote
+        verdict = qcs_for(quotes, now)[WMT_CALL]
+        return leg_by_symbol(build(now=now, quotes=quotes), WMT_CALL), verdict
+
+    def test_every_grade_and_status_keeps_exactly_the_quote_qc_sides(self) -> None:
+        old = NOW - datetime.timedelta(minutes=60)  # beyond the 25-minute bound: a stale side
+        cases = [
+            # (label, bid, ask, bid_date, ask_date, grade, status, fresh_bid, fresh_ask)
+            ("A: spread 1.46 %", "3.40", "3.45", STAMP, STAMP, "A", "fresh", "3.40", "3.45"),
+            ("B: both sides fresh", "3.35", "3.50", STAMP, STAMP, "B", "fresh", "3.35", "3.50"),
+            ("C: spread 8.70 %", "3.30", "3.60", STAMP, STAMP, "C", "fresh", "3.30", "3.60"),
+            ("D: spread 18.18 %", "3.00", "3.60", STAMP, STAMP, "D", "fresh", "3.00", "3.60"),
+            ("D: the ask stale", "3.35", "3.50", STAMP, old, "D", "one_side_stale", "3.35", None),
+            ("D: the bid stale", "3.35", "3.50", old, STAMP, "D", "one_side_stale", None, "3.50"),
+            ("E: wide", "1.00", "1.40", STAMP, STAMP, "E", "fresh", "1.00", "1.40"),
+            ("E: zero bid", "0", "3.50", STAMP, STAMP, "E", "fresh", "0", "3.50"),
+            ("E: zero bid, the ask stale", "0", "3.50", STAMP, old, "E", "one_side_stale", "0", None),
+            ("E: 0/0, no bid and no offer", "0", "0", STAMP, STAMP, "E", "fresh", "0", "0"),
+            ("D: a stale zero bid beside a fresh zero ask", "0", "0", old, STAMP, "D", "one_side_stale", None, "0"),
+            ("F: both sides stale", "3.35", "3.50", old, old, "F", "stale", None, None),
+            ("F: crossed", "3.50", "3.35", STAMP, STAMP, "F", "fresh", None, None),
+            ("F: crossed, one side stale", "3.50", "3.35", STAMP, old, "F", "one_side_stale", None, None),
+            ("F: no bid price", None, "3.50", STAMP, STAMP, "F", "missing", None, None),
+            ("F: the ask undated", "3.35", "3.50", STAMP, None, "F", "undated", None, None),
+        ]
+        for label, bid, ask, bid_date, ask_date, grade, status, fresh_bid, fresh_ask in cases:
+            with self.subTest(case=label):
+                quote = Quote(symbol=WMT_CALL, bid=None if bid is None else D(bid), ask=D(ask), bid_date=bid_date,
+                              ask_date=ask_date)
+                leg, verdict = self.short_call(quote)
+                self.assertEqual((grade, status), (verdict.grade, verdict.status), "the case is what its label says")
+                self.assertEqual((grade, status), (leg["quote_grade"], leg["quote_status"]))
+                self.assertEqual((verdict.mark_liq_long, verdict.mark_liq_short), (leg["fresh_bid"], leg["fresh_ask"]))
+                self.assertEqual((None if fresh_bid is None else D(fresh_bid), None if fresh_ask is None else D(fresh_ask)),
+                                 (leg["fresh_bid"], leg["fresh_ask"]))
+
+    def test_a_grade_e_leg_keeps_its_fresh_sides_without_a_liquidation_mark(self) -> None:
+        # PR 2c: a wide spread only delays a take-profit, so the rules engine may test a short leg against the fresh
+        # ask of a grade-E quote; the book keeps it although mark_liq (grades A-D only) is None.
+        leg, _ = self.short_call(Quote(symbol=WMT_CALL, bid=D("1.00"), ask=D("1.40"), bid_date=STAMP, ask_date=STAMP))
+        self.assertEqual(("E", None, "unavailable", D("1.20"), D("1.00"), D("1.40")),
+                         (leg["quote_grade"], leg["mark_liq"], leg["mark_source"], leg["mark_mid"], leg["fresh_bid"],
+                          leg["fresh_ask"]))
+
+    def test_a_zero_ask_is_kept_as_zero_and_never_marks_the_leg(self) -> None:
+        # A naked short call quoted 0/0 is graded E ("no bid") and keeps its fresh ask of 0, exactly QuoteQC's
+        # mark_liq_short. A zero ask is no offer, not a price to close at: the book never marks the leg from it (no
+        # mid, no mark_liq, no P/L; the group unavailable, no pct_captured), and a take-profit read of the fresh ask
+        # needs fresh_ask > 0 (module notes, "Keys"). A stale zero bid beside a fresh zero ask is a grade D with the
+        # same fresh ask of 0 (and the fresh side's own mark_liq 0, display only): no basis either.
+        naked = "WMT261120C00115000"
+        lines = FIXTURE_LINES + ["option,WMT,%s,-1,,,,Brokerage (margin),AG-20261020-07,2026-10-20,-150.00,,,open,,,,,"
+                                 "naked short call" % naked]
+        cases = {
+            "E: 0/0": (STAMP, "E", "fresh", D("0"), None, "no bid"),
+            "D: the zero bid stale": (NOW - datetime.timedelta(minutes=60), "D", "one_side_stale", None, D("0"),
+                                      "one side stale: mid not computed; marks from the fresh ask only"),
+        }
+        for label, (bid_date, grade, status, fresh_bid, mark_liq, reason) in cases.items():
+            with self.subTest(case=label):
+                quotes = quotes_for(REGULAR_PRICES)
+                quotes[naked] = Quote(symbol=naked, bid=D("0"), ask=D("0"), bid_date=bid_date, ask_date=STAMP)
+                document = build(lines=lines, quotes=quotes)
+                leg = leg_by_symbol(document, naked)
+                self.assertEqual((grade, status, fresh_bid, D("0")),
+                                 (leg["quote_grade"], leg["quote_status"], leg["fresh_bid"], leg["fresh_ask"]),
+                                 "fresh_ask is QuoteQC.mark_liq_short: a zero ask stays 0, never null")
+                self.assertEqual((None, mark_liq, "unavailable", None, None),
+                                 (leg["mark_mid"], leg["mark_liq"], leg["mark_source"], leg["unrealized_pl_mid"],
+                                  leg["unrealized_pl_liq"]))
+                self.assertIn(reason, leg["warnings"])
+                group = group_by_id(document, "AG-20261020-07")
+                self.assertEqual(("short_call", D("-150.00"), "unavailable", None, None, None, None),
+                                 (group["structure"], group["net_cost"], group["data_quality"],
+                                  group["pct_captured_liq"], group["pct_captured_mid"], group["unrealized_pl_liq"],
+                                  group["unrealized_pl_mid"]),
+                                 "a zero ask never reads as a credit 100 % captured")
+                self.assertEqual(20, book.exit_code_for(document))
+
+    def test_stock_like_legs_carry_them_and_closed_or_expired_legs_do_not(self) -> None:
+        lines = FIXTURE_LINES + ["option,WMT,WMT261016C00105000,-1,,,,Brokerage (margin),AG-20261009-05,2026-10-09,"
+                                 "-150.00,,,open,,,,,expired leg"]
+        document = build(lines=lines)
+        self.assertEqual({symbol: (D(bid), D(ask)) for symbol, (bid, ask) in REGULAR_PRICES.items()},
+                         {symbol: (leg_by_symbol(document, symbol)["fresh_bid"], leg_by_symbol(document, symbol)["fresh_ask"])
+                          for symbol in REGULAR_PRICES}, "the stock and ETF legs included")
+        closed = leg_by_symbol(document, "SPY261016P00600000", status="closed")
+        expired = leg_by_symbol(document, "WMT261016C00105000")
+        self.assertEqual(book.QUOTE_STATUS_EXPIRED, expired["quote_status"])
+        self.assertEqual([(None, None), (None, None)],
+                         [(closed["fresh_bid"], closed["fresh_ask"]), (expired["fresh_bid"], expired["fresh_ask"])])
+
+    def test_no_verdict_or_a_closed_day_gives_no_fresh_side(self) -> None:
+        quotes = quotes_for(REGULAR_PRICES)
+        del quotes[NVDA_CALL]
+        nvda = leg_by_symbol(build(quotes=quotes), NVDA_CALL)
+        self.assertEqual(("F", "missing", None, None), (nvda["quote_grade"], nvda["quote_status"], nvda["fresh_bid"],
+                                                        nvda["fresh_ask"]))
+        saturday = datetime.datetime(2026, 11, 7, 15, 0, tzinfo=UTC)
+        document = build(now=saturday, stamp=datetime.datetime(2026, 11, 6, 20, 59, 55, tzinfo=UTC))
+        for symbol in REGULAR_PRICES:
+            leg = leg_by_symbol(document, symbol)
+            self.assertEqual(("F", "closed_day", None, None),
+                             (leg["quote_grade"], leg["quote_status"], leg["fresh_bid"], leg["fresh_ask"]), symbol)
+
+
+class ExtrinsicAgreementTest(unittest.TestCase):
+    """``extrinsic_bid`` is ``expiry.dividend_tier``'s geometry (module notes): the fresh bid of any grade A-E less the
+    intrinsic value at the underlying's usable mid stamped within 60 s of the option's as-of, the strike without
+    trailing zeros. With the WMT ex-dividend on Mon 2026-11-23 the assignment watch grades the WMT call, and for every
+    quote state below the book and the dividend tier print the same number from the same verdicts, or neither does."""
+
+    cal: calendar_events.CalendarFile
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.cal = ex_monday_calendar()
+
+    def both(self, quotes: Dict[str, Quote], now: datetime.datetime) -> Tuple[Dict[str, Any], Any]:
+        """The book's WMT call leg and the dividend tier of the same row, from the same verdicts."""
+        document = build(now=now, calendar=self.cal, quotes=quotes)
+        qcs = qcs_for(quotes, now)
+        today = market_clock.to_et(now).date()
+        row = [row for row in positions_of(FIXTURE_LINES, today=today).rows if row.compact_symbol == WMT_CALL][0]
+        tier = expiry.dividend_tier(row, qcs.get(WMT_CALL), qcs.get("WMT"), self.cal, today,
+                                    calendar_events.extra_closures(self.cal))
+        self.assertIsNotNone(tier, "the ex-Monday calendar grades the call")
+        return leg_by_symbol(document, WMT_CALL), tier
+
+    def test_t1_aligned_quotes_give_one_number_printed_one_way(self) -> None:
+        leg, tier = self.both(quotes_for(T1_PRICES, T1_STAMP), T1_NOW)
+        self.assertEqual((expiry.TIER_NOTED, D("1.52"), D("106.43"), D("1.43")),
+                         (tier.tier, tier.bid, tier.spot_mid, tier.intrinsic))
+        self.assertEqual(D("0.09"), leg["extrinsic_bid"], "bid 1.52 - (106.43 - 105)")
+        self.assertEqual("0.09", str(leg["extrinsic_bid"]), "the strike without trailing zeros: 0.09, never 0.090")
+        self.assertEqual((tier.extrinsic_bid, str(tier.extrinsic_bid)), (leg["extrinsic_bid"], str(leg["extrinsic_bid"])))
+        self.assertEqual((tier.bid, tier.itm, "C"), (leg["fresh_bid"], leg["itm"], leg["quote_grade"]))
+
+    def test_an_underlying_stamped_61_seconds_from_the_option_gives_no_extrinsic_in_either(self) -> None:
+        self.assertEqual(expiry.SPOT_ALIGNMENT_S, book.SPOT_ALIGNMENT_SECONDS, "one alignment constant for both")
+        for seconds in (-61, 61):
+            with self.subTest(seconds=seconds):
+                quotes = quotes_for(T1_PRICES, T1_STAMP, WMT=T1_STAMP + datetime.timedelta(seconds=seconds))
+                leg, tier = self.both(quotes, T1_NOW)
+                self.assertEqual((expiry.TIER_UNAVAILABLE, None), (tier.tier, tier.extrinsic_bid))
+                self.assertEqual("spot unaligned: WMT stamped 61 s from WMT261120C00105000 (limit 60 s)", tier.reason)
+                self.assertIsNone(leg["extrinsic_bid"])
+                self.assertEqual((book.IV_STATUS_SPOT_UNALIGNED, True, D("1.52")),
+                                 (leg["iv_status"], leg["itm"], leg["fresh_bid"]),
+                                 "itm keeps its rule (the usable mid); the fresh bid is still reported")
+        for seconds in (-60, 60):
+            with self.subTest(seconds=seconds):
+                quotes = quotes_for(T1_PRICES, T1_STAMP, WMT=T1_STAMP + datetime.timedelta(seconds=seconds))
+                leg, tier = self.both(quotes, T1_NOW)
+                self.assertEqual((D("0.09"), D("0.09")), (leg["extrinsic_bid"], tier.extrinsic_bid),
+                                 "60 s is inside the window")
+
+    def test_a_grade_e_quote_keeps_its_fresh_bid_for_the_arithmetic(self) -> None:
+        leg, tier = self.both(quotes_for(EXPIRY_DAY_PRICES, EXPIRY_STAMP), EXPIRY_NOW)
+        self.assertEqual(("E", D("0.12"), D("0.16"), None, "unavailable"),
+                         (leg["quote_grade"], leg["fresh_bid"], leg["fresh_ask"], leg["mark_liq"], leg["mark_source"]))
+        self.assertEqual((expiry.TIER_NOTED, "E", D("0")), (tier.tier, tier.option_grade, tier.intrinsic))
+        self.assertEqual((D("0.12"), "0.12", False), (leg["extrinsic_bid"], str(leg["extrinsic_bid"]), leg["itm"]),
+                         "spot 104.93 is below the strike")
+        self.assertEqual((tier.extrinsic_bid, str(tier.extrinsic_bid)), (leg["extrinsic_bid"], str(leg["extrinsic_bid"])))
+        prices = dict(T1_PRICES)
+        prices[WMT_CALL] = ("0", "0.05")  # grade E, no bid: a fresh zero bid
+        leg, tier = self.both(quotes_for(prices, T1_STAMP), T1_NOW)
+        self.assertEqual(("E", D("0"), D("-1.43")), (leg["quote_grade"], leg["fresh_bid"], leg["extrinsic_bid"]))
+        self.assertEqual((tier.extrinsic_bid, str(tier.extrinsic_bid)), (leg["extrinsic_bid"], str(leg["extrinsic_bid"])))
+
+    def test_one_stale_side_follows_the_fresh_bid(self) -> None:
+        # After the close the closing quote is the reference: the call's ask printed two minutes after the close is
+        # stale (not the closing quote) while its bid stamped 15:59:55 ET is fresh (grade D, one side stale); the
+        # option's as-of is then the bid's stamp, aligned with the underlying's closing quote.
+        quotes = quotes_for(T1_PRICES, T1_CLOSE_STAMP)
+        quotes[WMT_CALL] = Quote(symbol=WMT_CALL, bid=D("1.52"), ask=D("1.60"), bid_date=T1_CLOSE_STAMP,
+                                 ask_date=datetime.datetime(2026, 11, 19, 21, 2, tzinfo=UTC))
+        leg, tier = self.both(quotes, T1_CLOSE_NOW)
+        self.assertEqual(("D", "one_side_stale", D("1.52"), None, "unavailable"),
+                         (leg["quote_grade"], leg["quote_status"], leg["fresh_bid"], leg["fresh_ask"], leg["mark_source"]))
+        self.assertEqual((D("0.09"), D("0.09")), (leg["extrinsic_bid"], tier.extrinsic_bid))
+        # During the session a stale bid leaves only the fresh ask: no bid, so no extrinsic in either. (The option's
+        # as-of is then the stale bid's stamp, 60 min from the spot, so the alignment rule would give null as well;
+        # the case after it keeps the stamps aligned.)
+        quotes = quotes_for(T1_PRICES, T1_STAMP)
+        quotes[WMT_CALL] = Quote(symbol=WMT_CALL, bid=D("1.52"), ask=D("1.60"),
+                                 bid_date=T1_NOW - datetime.timedelta(minutes=60), ask_date=T1_STAMP)
+        leg, tier = self.both(quotes, T1_NOW)
+        self.assertEqual(("D", None, D("1.60"), None), (leg["quote_grade"], leg["fresh_bid"], leg["fresh_ask"],
+                                                         leg["extrinsic_bid"]))
+        self.assertEqual((expiry.TIER_UNAVAILABLE, None), (tier.tier, tier.extrinsic_bid))
+        # After the close a bid printed two minutes after it is stale (not the closing quote) while the ask is the
+        # closing quote: the option's as-of is the ask's 20:59:55Z, the underlying's own stamp, so only the missing
+        # fresh bid makes the extrinsic null. The raw bid 1.52 is displayed and never used.
+        quotes = quotes_for(T1_PRICES, T1_CLOSE_STAMP)
+        quotes[WMT_CALL] = Quote(symbol=WMT_CALL, bid=D("1.52"), ask=D("1.60"),
+                                 bid_date=datetime.datetime(2026, 11, 19, 21, 2, tzinfo=UTC), ask_date=T1_CLOSE_STAMP)
+        leg, tier = self.both(quotes, T1_CLOSE_NOW)
+        self.assertEqual(("D", "one_side_stale", D("1.52"), None, D("1.60"), T1_CLOSE_STAMP),
+                         (leg["quote_grade"], leg["quote_status"], leg["bid"], leg["fresh_bid"], leg["fresh_ask"],
+                          leg["as_of"]), "the option's as-of is the underlying's stamp: aligned")
+        self.assertIsNone(leg["extrinsic_bid"], "no fresh bid, no extrinsic: the raw bid is never its basis")
+        self.assertEqual((expiry.TIER_UNAVAILABLE, None), (tier.tier, tier.extrinsic_bid))
+        self.assertTrue(tier.reason.startswith("%s quote unavailable (D one_side_stale" % WMT_CALL), tier.reason)
+
+    def test_an_underlying_without_a_usable_mid_gives_no_extrinsic_in_either(self) -> None:
+        # The spot must be a usable mark (grade A-D with a mid) in both tools: a wide underlying (grade E) or one
+        # with a stale side (grade D, no mid) leaves the call's fresh bid without a spot.
+        cases = {
+            "underlying grade E (wide)": Quote(symbol="WMT", bid=D("90.00"), ask=D("120.00"), bid_date=T1_STAMP,
+                                               ask_date=T1_STAMP),
+            "underlying one side stale": Quote(symbol="WMT", bid=D("106.40"), ask=D("106.46"), bid_date=T1_STAMP,
+                                               ask_date=T1_NOW - datetime.timedelta(minutes=60)),
+        }
+        for label, under in cases.items():
+            with self.subTest(case=label):
+                quotes = quotes_for(T1_PRICES, T1_STAMP)
+                quotes["WMT"] = under
+                leg, tier = self.both(quotes, T1_NOW)
+                self.assertEqual((D("1.52"), None, None), (leg["fresh_bid"], leg["extrinsic_bid"], leg["itm"]))
+                self.assertEqual((expiry.TIER_UNAVAILABLE, None), (tier.tier, tier.extrinsic_bid))
+                self.assertTrue(tier.reason.startswith("WMT quote unavailable ("), tier.reason)
+
+    def test_puts_follow_the_same_geometry(self) -> None:
+        # No dividend tier grades a put; the arithmetic is the same: bid 9.80 - max(0, 620 - 610.02) = -0.18.
+        prices = dict(REGULAR_PRICES)
+        prices["SPY"] = ("610.00", "610.04")
+        leg = leg_by_symbol(build(prices=prices), SPY_PUT)
+        self.assertEqual((D("-0.18"), "-0.18", True), (leg["extrinsic_bid"], str(leg["extrinsic_bid"]), leg["itm"]))
+        unaligned = leg_by_symbol(build(prices=prices, stamps={"SPY": STAMP + datetime.timedelta(seconds=61)}), SPY_PUT)
+        self.assertEqual((None, True), (unaligned["extrinsic_bid"], unaligned["itm"]))
+
+    def test_a_missing_stamp_gives_no_extrinsic(self) -> None:
+        # The rule asks for both stamps (module notes). quote_qc.assess never grades a quote A-E without both side
+        # stamps, so only a hand-built verdict reaches this branch (expiry.dividend_tier, for its part, does not check
+        # the alignment when a stamp is missing; reported to the integrator). The premise is checked first, over
+        # every price and stamp shape in an open, a closed and a pre-open session.
+        old = T1_NOW - datetime.timedelta(minutes=60)
+        for now in (T1_NOW, T1_CLOSE_NOW, datetime.datetime(2026, 11, 19, 13, 0, tzinfo=UTC)):
+            for bid in (None, D("0"), D("1.52"), D("1.70")):
+                for bid_date in (None, T1_STAMP, old, T1_CLOSE_STAMP):
+                    for ask_date in (None, T1_STAMP, old, T1_CLOSE_STAMP):
+                        quote = Quote(symbol=WMT_CALL, bid=bid, ask=D("1.60"), bid_date=bid_date, ask_date=ask_date)
+                        verdict = qcs_for({WMT_CALL: quote}, now)[WMT_CALL]
+                        if verdict.mark_liq_long is not None or (verdict.usable_for_rules and verdict.mark_mid is not None):
+                            self.assertIsNotNone(verdict.as_of, (now, quote, verdict))
+        quotes = quotes_for(T1_PRICES, T1_STAMP)
+        qcs = qcs_for(quotes, T1_NOW)
+        positions = positions_of(FIXTURE_LINES, today=T1)
+        groups = group_positions(positions.rows)
+        for symbol in ("WMT", WMT_CALL):
+            with self.subTest(undated=symbol):
+                verdicts = dict(qcs)
+                verdicts[symbol] = dataclasses.replace(qcs[symbol], as_of=None)
+                built = book.build_book(now=T1_NOW, cfg=CFG, paths=PATHS, positions=positions, groups=groups, quotes=quotes,
+                                        qcs=verdicts, calendar=self.cal, prev_snapshot=None,
+                                        session=market_clock.session_at(T1_NOW),
+                                        prior_close_utc=market_clock.previous_close_utc(T1_NOW), bound_min=25)
+                leg = leg_by_symbol(book.book_to_json(built), WMT_CALL)
+                self.assertEqual((D("1.52"), None), (leg["fresh_bid"], leg["extrinsic_bid"]))
 
 
 class RequestBatchTest(unittest.TestCase):
@@ -638,6 +973,21 @@ class DayPlTest(unittest.TestCase):
     def test_day_pl_of_a_leg_in_an_unavailable_group_is_excluded(self) -> None:
         document = build(prev_snapshot=self.previous, stamps={NVDA_CALL: NOW - datetime.timedelta(minutes=60)})
         self.assertEqual(D("206.00"), document["portfolio"]["day_pl"], "400 less the NVDA group's 264 - 70")
+
+    def test_a_snapshot_written_before_the_fresh_sides_still_gives_the_same_day_pl(self) -> None:
+        # A previous snapshot of the older shape (its legs carry no fresh_bid / fresh_ask: written before the book
+        # kept the fresh sides) is still read as a basis: the day P/L matches the new-shape snapshot leg for leg.
+        self.assertTrue(all({"fresh_bid", "fresh_ask"} <= set(leg) for leg in self.previous["legs"]),
+                        "a snapshot written today carries the fresh sides")
+        old_shape = json.loads(json.dumps(self.previous))
+        for leg in old_shape["legs"]:
+            del leg["fresh_bid"]
+            del leg["fresh_ask"]
+        document = build(prev_snapshot=old_shape)
+        self.assertEqual(D("400.00"), document["portfolio"]["day_pl"])
+        self.assertEqual([leg["day_pl"] for leg in self.document["legs"]], [leg["day_pl"] for leg in document["legs"]])
+        self.assertEqual(self.document["underlyings"], document["underlyings"])
+        self.assertEqual([], [w for w in document["warnings"] if "day P/L" in w])
 
 
 class SnapshotHelpersTest(unittest.TestCase):

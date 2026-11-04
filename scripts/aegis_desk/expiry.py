@@ -45,7 +45,9 @@ calendar, no calendar file at all, or a listed ex-date that has already passed (
 not in the file) is ``UNAVAILABLE``: unknown is never zero. A quote the rules may not use (grade
 E or F, missing, unaligned) makes the leg ``UNAVAILABLE`` too, with the dividend facts kept. A
 ``none`` status (a confirmed absence), an ex-date beyond the window, or a contract gone before the
-cum-dividend day is nothing to list.
+cum-dividend day is nothing to list. The dividend facts (status, ex-date, amount, the last
+cum-dividend day and the trading days to the ex-date) come from :func:`dividend_window`, which the
+rulebook's EXDIV reads as well, so the watch and the rule never disagree on them.
 
 Pin tier (every option leg on its last or next-to-last trading day)
 -------------------------------------------------------------------
@@ -371,6 +373,65 @@ class DividendTier:
         }
 
 
+@dataclass(frozen=True)
+class DividendWindow:
+    """The dividend facts of one option leg at ``today`` (module notes, "Dividend tier"): what
+    :func:`dividend_tier` grades and the rulebook's EXDIV reads, from one function. ``known`` is false
+    when the dividend is unknown (no calendar, the symbol or its entry absent, status ``unknown``, or a
+    listed ex-date that has passed: unknown is never zero), with ``reason``; ``applicable`` is false
+    for a confirmed absence or a contract whose last trading day falls before the last cum-dividend
+    day ``cum_day`` (nothing to grade). ``trading_days_to_ex`` is set only when both hold."""
+
+    known: bool
+    applicable: bool
+    status: str
+    ex_date: Optional[datetime.date]
+    amount: Optional[Decimal]
+    cum_day: Optional[datetime.date]
+    last_trading_day: datetime.date
+    trading_days_to_ex: Optional[int]
+    reason: str
+
+
+def dividend_window(symbol: str, last_trading_day: datetime.date, cal: Optional[CalendarFile], today: datetime.date,
+                    extra_holidays: market_clock.ExtraHolidays = ()) -> DividendWindow:
+    """The dividend facts of a leg on ``symbol`` whose last trading day is ``last_trading_day`` (see
+    :class:`DividendWindow`): the cum-dividend day is ``market_clock.previous_trading_day(ex_date)`` and
+    the count ``market_clock.trading_days_between(today, ex_date)`` (exclusive of today, inclusive of the
+    ex-date), both with ``extra_holidays`` (the calendar's full closures). Pure."""
+    unknown = "dividend unknown: %s (%s)"
+
+    def unavailable(reason: str, status: str = calendar_events.STATUS_UNKNOWN, ex_date: Optional[datetime.date] = None,
+                    amount: Optional[Decimal] = None) -> DividendWindow:
+        return DividendWindow(False, False, status, ex_date, amount, None, last_trading_day, None, reason)
+
+    if cal is None:
+        return unavailable(unknown % ("no research/calendar.toml", REASON_UNKNOWN_DIVIDEND))
+    events = cal.events_for(symbol)
+    if not events.listed:
+        return unavailable(unknown % ("%s is not in calendar.toml" % symbol, REASON_UNKNOWN_DIVIDEND))
+    entry = events.ex_dividend
+    if entry is None:
+        return unavailable(unknown % ("no ex_dividend entry for %s" % symbol, REASON_UNKNOWN_DIVIDEND))
+    if entry.status == calendar_events.STATUS_NONE:
+        return DividendWindow(True, False, entry.status, None, None, None, last_trading_day, None,
+                              "no dividend: %s ex_dividend status none (a confirmed absence)" % symbol)
+    if entry.status == calendar_events.STATUS_UNKNOWN or entry.date is None or entry.amount is None:
+        return unavailable(unknown % ('%s ex_dividend status "%s"' % (symbol, entry.status), REASON_UNKNOWN_DIVIDEND),
+                           entry.status, entry.date)
+    if entry.date <= today:
+        return unavailable(
+            unknown % ("the %s ex-dividend %s has passed; the next is not in calendar.toml" % (symbol, entry.date.isoformat()),
+                       REASON_UNKNOWN_DIVIDEND), entry.status, entry.date, entry.amount)
+    cum_day = market_clock.previous_trading_day(entry.date, extra_holidays)  # the last cum-dividend day
+    if cum_day > last_trading_day:
+        return DividendWindow(True, False, entry.status, entry.date, entry.amount, cum_day, last_trading_day, None,
+                              "the last trading day %s precedes the last cum-dividend day %s of the %s ex-date"
+                              % (last_trading_day.isoformat(), cum_day.isoformat(), entry.date.isoformat()))
+    days = market_clock.trading_days_between(today, entry.date, extra_holidays)
+    return DividendWindow(True, True, entry.status, entry.date, entry.amount, cum_day, last_trading_day, days, "")
+
+
 def _dividend_unavailable(reason: str, status: str = calendar_events.STATUS_UNKNOWN, ex_date: Optional[datetime.date] = None,
                           days: Optional[int] = None, amount: Optional[Decimal] = None,
                           notes: Tuple[str, ...] = (), option_grade: Optional[str] = None) -> DividendTier:
@@ -391,39 +452,23 @@ def dividend_tier(row: PositionRow, option_qc: Optional[QuoteQC], underlying_qc:
     if not (row.is_open and row.is_option and row.is_short and row.is_call) or row.occ is None:
         return None
     symbol = row.underlying
-    unknown = "dividend unknown: %s (%s)"
-    if cal is None:
-        return _dividend_unavailable(unknown % ("no research/calendar.toml", REASON_UNKNOWN_DIVIDEND))
-    events = cal.events_for(symbol)
-    if not events.listed:
-        return _dividend_unavailable(unknown % ("%s is not in calendar.toml" % symbol, REASON_UNKNOWN_DIVIDEND))
-    entry = events.ex_dividend
-    if entry is None:
-        return _dividend_unavailable(unknown % ("no ex_dividend entry for %s" % symbol, REASON_UNKNOWN_DIVIDEND))
-    if entry.status == calendar_events.STATUS_NONE:
-        return None
-    if entry.status == calendar_events.STATUS_UNKNOWN or entry.date is None or entry.amount is None:
-        return _dividend_unavailable(unknown % ('%s ex_dividend status "%s"' % (symbol, entry.status), REASON_UNKNOWN_DIVIDEND),
-                                     entry.status, entry.date)
-    if entry.date <= today:
-        return _dividend_unavailable(
-            unknown % ("the %s ex-dividend %s has passed; the next is not in calendar.toml" % (symbol, entry.date.isoformat()),
-                       REASON_UNKNOWN_DIVIDEND), entry.status, entry.date, None, entry.amount)
-    cum_day = market_clock.previous_trading_day(entry.date, extra_holidays)  # the last cum-dividend day
-    last_day = leg_last_trading_day(row, cal)
-    if cum_day > last_day:
-        return None  # the contract is gone before the day a dividend-capture exercise happens
-    days = market_clock.trading_days_between(today, entry.date, extra_holidays)
+    window = dividend_window(symbol, leg_last_trading_day(row, cal), cal, today, extra_holidays)
+    if not window.known:
+        return _dividend_unavailable(window.reason, window.status, window.ex_date, None, window.amount)
+    if not window.applicable:
+        return None  # a confirmed absence, or the contract is gone before the day a dividend-capture exercise happens
+    assert window.ex_date is not None and window.amount is not None and window.trading_days_to_ex is not None
+    days = window.trading_days_to_ex
     if days > DIVIDEND_WINDOW_TRADING_DAYS:
         return None
     notes: List[str] = []
-    if cum_day == last_day:
-        notes.append(BOUNDARY_NOTE % (entry.date.isoformat(), last_day.isoformat()))
+    if window.cum_day == window.last_trading_day:
+        notes.append(BOUNDARY_NOTE % (window.ex_date.isoformat(), window.last_trading_day.isoformat()))
     grade = option_qc.grade if option_qc is not None else None
     if option_qc is not None and option_qc.grade not in USABLE_GRADES and option_qc.mark_liq_long is not None:
         notes.append("option quote grade %s (%s): the bid-side arithmetic stands"
                      % (option_qc.grade, "; ".join(option_qc.reasons) if option_qc.reasons else option_qc.label))
-    facts = (entry.status, entry.date, days, entry.amount, tuple(notes), grade)
+    facts = (window.status, window.ex_date, days, window.amount, tuple(notes), grade)
     if option_qc is None or option_qc.mark_liq_long is None:
         return _dividend_unavailable(_quote_reason(row.compact_symbol, option_qc), *facts)
     if not _usable(underlying_qc) or underlying_qc is None or underlying_qc.mark_mid is None:
@@ -439,7 +484,7 @@ def dividend_tier(row: PositionRow, option_qc: Optional[QuoteQC], underlying_qc:
     intrinsic = max(_ZERO, spot - strike)
     extrinsic = bid - intrinsic
     itm = in_the_money(occ.CALL, spot, strike)
-    amount = entry.amount
+    amount = window.amount
     if extrinsic < amount:
         tier = TIER_HIGH
     elif extrinsic < _TWO * amount:
@@ -449,7 +494,7 @@ def dividend_tier(row: PositionRow, option_qc: Optional[QuoteQC], underlying_qc:
     downgraded: Optional[str] = None
     if tier == TIER_HIGH and row.assign_ok:
         tier, downgraded = TIER_NOTED, TIER_HIGH
-    return DividendTier(tier, entry.status, entry.date, days, amount, bid, spot, intrinsic, extrinsic, itm, downgraded, "",
+    return DividendTier(tier, window.status, window.ex_date, days, amount, bid, spot, intrinsic, extrinsic, itm, downgraded, "",
                         tuple(notes), grade)
 
 
@@ -987,6 +1032,7 @@ __all__ = [
     "DIVIDEND_WINDOW_TRADING_DAYS",
     "ActBy",
     "DividendTier",
+    "DividendWindow",
     "EARLY_CLOSE_MARKER",
     "ExpirySheet",
     "ITM_LINE_LATER",
@@ -1029,6 +1075,7 @@ __all__ = [
     "distance_pct",
     "dividend_line",
     "dividend_tier",
+    "dividend_window",
     "docket_line",
     "extra_lines",
     "implication",

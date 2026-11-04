@@ -22,7 +22,17 @@ included (``status`` tells them apart; a closed leg has no quote and no marks); 
 and ``remaining_cost_basis`` (two keys beyond the brief's list): ``quantity`` and ``cost_basis_total`` are the
 row's record of opening, while every mark and P/L figure (``unrealized_*``, ``day_pl``, ``position_greeks``)
 applies to the OPEN part, so a consumer marks the open part from the block (``open_quantity x multiplier x
-mark - remaining_cost_basis``) without re-deriving it; a partially closed row says so in its warnings.
+mark - remaining_cost_basis``) without re-deriving it; a partially closed row says so in its warnings. Every
+leg also carries ``fresh_bid`` and ``fresh_ask`` (two more keys, after ``remaining_cost_basis``): the sides
+``quote_qc`` keeps fresh (``QuoteQC.mark_liq_long`` / ``mark_liq_short``, each present only when that side is
+fresh) for any grade A-E, on stock-like legs too; ``None`` without a verdict, for a closed leg, for a leg past
+its last trading day and for a grade F. Unlike ``mark_liq`` (a usable grade A-D only) they survive a grade E
+(a wide or zero-bid quote): PR 2c's rules may test a short leg's take-profit against the fresh ask of a wide
+quote, a wide spread only delaying a take-profit. A fresh ask of ``0`` stays ``0`` (``QuoteQC`` keeps it: a 0/0
+quote graded E, or a stale zero bid beside a fresh zero ask graded D): it is no offer, not a price to close at,
+so a take-profit read of it needs ``fresh_ask > 0``. Neither key marks a leg: only ``mark_source == "mid"``
+does ("Marks"). A snapshot written before these two keys existed is still a day-P/L basis (the match reads
+neither).
 
 The request batch (every PR 2b tool uses this rule, :func:`request_batch`)
 --------------------------------------------------------------------------
@@ -45,9 +55,12 @@ Definitions (plan section 8)
   unchanged. ``BookRun.session`` and ``BookRun.prior_close_utc`` carry that classification for the tool's
   session line and snapshot date and for PR 2c's consumers.
 * Marks: ``mark_mid`` = (bid + ask) / 2, ``mark_liq`` = bid for a long leg, ask for a short leg
-  (:func:`aegis_desk.pnl.leg_marks`). ``mark_source`` is ``"mid"`` for a usable grade (A-D) and
-  ``"unavailable"`` otherwise: a grade-E leg keeps its mid for display only; ``unrealized_*`` are then
-  ``None``. ``last`` and model prices never feed P/L.
+  (:func:`aegis_desk.pnl.leg_marks`). ``mark_source`` is ``"mid"`` exactly when the grade is usable (A-D)
+  with both sides fresh (a mid and the leg's liquidation side), ``"unavailable"`` otherwise: a grade-E leg
+  keeps its mid for display only (and its fresh sides, "Keys"), and a grade-D leg with one side stale has no
+  mid, only its fresh side (``mark_liq`` too, for display, when that is the side the leg liquidates at);
+  ``unrealized_*`` are then ``None`` and the group is unavailable. A consumer gates a P/L or loss reading on
+  ``mark_source``, never on ``quote_grade``. ``last`` and model prices never feed P/L.
 * ``tau_years`` = seconds from the option quote's as-of (``min(bid_date, ask_date)``) to
   ``market_clock.exercise_cutoff_utc(expiry, am_settled, broker_cutoff_et=None)`` (16:00 ET on the last
   trading day for PM settlement, 09:30 ET on the settlement morning for AM settlement) over
@@ -63,9 +76,16 @@ Definitions (plan section 8)
   stock legs' delta (one per share) to its option legs' position Greeks and is ``None`` when any open option
   leg lacks Greeks.
 * ``settlement`` is ``"am"`` when the OCC root is in the calendar's ``am_settled_roots`` (else ``"pm"``);
-  ``dte_*`` via ``market_clock.dte`` to the last trading day; ``extrinsic_bid = bid - intrinsic(S_mid)``
-  (``None`` without a usable bid or spot); ``itm`` by the one-cent rule (``S >= K + 0.01`` for a call,
-  ``S <= K - 0.01`` for a put).
+  ``dte_*`` via ``market_clock.dte`` to the last trading day; ``itm`` by the one-cent rule at the underlying's
+  usable mid (``S >= K + 0.01`` for a call, ``S <= K - 0.01`` for a put).
+* ``extrinsic_bid = fresh_bid - payoff.intrinsic(right, K, S)``, calls and puts alike: exactly the geometry of
+  ``expiry.dividend_tier`` (the assignment watch), so the two tools never print different numbers for one leg.
+  ``fresh_bid`` is the leg's fresh bid of any grade A-E (a wide or zero-bid quote graded E still has one),
+  ``S`` the underlying's usable mid (grade A-D) stamped within :data:`SPOT_ALIGNMENT_SECONDS` (the watch's own
+  ``expiry.SPOT_ALIGNMENT_S``, 60 s) of the option quote's as-of, ``K`` the strike without trailing zeros
+  (``expiry.plain_decimal``: ``1.52 - (106.43 - 105)`` is ``0.09`` in both tools, never ``0.090``). ``None``
+  without a fresh bid or a usable spot, when either stamp is missing, or when the stamps differ by more than
+  60 s.
 * Day P/L: ``open quantity x multiplier x (mark_now - mark_prev_eod)`` on the mid basis, the previous mark
   coming from the desk's own snapshot ``data/book/<previous trading day>.json`` (never a vendor
   ``prevclose``). A leg is matched by (group id, account, contract or ticker, quantity), the same row
@@ -111,7 +131,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import calendar_events, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
+from . import calendar_events, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
 from . import greeks as greeks_module
 from .calendar_events import CalendarFile
 from .desk_config import DeskConfig
@@ -137,7 +157,7 @@ LEG_KEYS: Tuple[str, ...] = (
     "entry_price_per_share", "status", "quote_grade", "quote_status", "bid", "ask", "bid_date", "ask_date", "as_of",
     "spread_pct", "mark_mid", "mark_liq", "mark_source", "tau_years", "iv", "iv_status", "greeks", "position_greeks",
     "unrealized_pl_mid", "unrealized_pl_liq", "day_pl", "realized_day_pl", "extrinsic_bid", "itm", "warnings",
-    "open_quantity", "remaining_cost_basis",
+    "open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask",
 )
 GROUP_KEYS: Tuple[str, ...] = (
     "group_id", "trade_id", "account", "underlying", "structure", "basis_kind", "net_cost", "max_profit", "max_loss",
@@ -168,8 +188,9 @@ SETTLEMENT_PM: str = "pm"
 DAY_CHANGE_SOURCE: str = "desk snapshot"
 EXPIRING_SECONDS: int = 3600
 """Under this many seconds to the exercise cutoff no IV is implied (``iv_status = "expiring"``)."""
-SPOT_ALIGNMENT_SECONDS: int = 60
-"""The underlying quote must be stamped within this many seconds of the option quote to be its spot."""
+SPOT_ALIGNMENT_SECONDS: int = expiry.SPOT_ALIGNMENT_S
+"""The underlying quote must be stamped within this many seconds of the option quote to be its spot, for the IV
+and for ``extrinsic_bid``: the assignment watch's own constant (``expiry.SPOT_ALIGNMENT_S``), one rule for both."""
 ONE_CENT: Decimal = Decimal("0.01")
 BETA_WEIGHTED_DELTA: Dict[str, Any] = {"value": None, "r2_flag": "unavailable"}
 WARNING_NO_CALENDAR: str = ("no research/calendar.toml: dividend yields unknown (q = 0 for every option, Stage-1 "
@@ -278,6 +299,24 @@ def _usable_spot(verdict: Optional[QuoteQC]) -> Optional[Decimal]:
     if verdict is None or not verdict.usable_for_rules:
         return None
     return verdict.mark_mid
+
+
+def _spot_aligned(option: Optional[QuoteQC], under: Optional[QuoteQC]) -> bool:
+    """Both quotes stamped and the underlying's as-of within :data:`SPOT_ALIGNMENT_SECONDS` of the option's."""
+    if option is None or under is None or option.as_of is None or under.as_of is None:
+        return False
+    return abs((under.as_of - option.as_of).total_seconds()) <= SPOT_ALIGNMENT_SECONDS
+
+
+def _extrinsic_bid(right: str, strike: Decimal, fresh_bid: Optional[Decimal], option: Optional[QuoteQC],
+                   under: Optional[QuoteQC]) -> Optional[Decimal]:
+    """``fresh_bid - intrinsic`` at the underlying's usable mid stamped within the alignment window, the strike
+    without trailing zeros as ``expiry.dividend_tier`` has it (module notes); ``None`` without a fresh bid or a
+    usable spot, when either stamp is missing, or when the stamps lie more than the window apart."""
+    spot = _usable_spot(under)
+    if fresh_bid is None or spot is None or not _spot_aligned(option, under):
+        return None
+    return fresh_bid - payoff.intrinsic(right, expiry.plain_decimal(strike), spot)
 
 
 def _leg_key(group_id: Any, account: Any, instrument: Any, quantity: Any) -> Optional[Tuple[str, str, str, Decimal]]:
@@ -442,6 +481,9 @@ class _Builder:
         else:
             rec.update({"quote_grade": verdict.grade, "quote_status": verdict.status, "bid": verdict.bid, "ask": verdict.ask,
                         "as_of": verdict.as_of, "spread_pct": verdict.spread_pct})
+            if verdict.grade != quote_qc.GRADE_F:  # the fresh sides of any grade A-E (module notes, "Keys")
+                rec["fresh_bid"] = verdict.mark_liq_long
+                rec["fresh_ask"] = verdict.mark_liq_short
             if quote is not None:
                 rec["bid_date"] = quote.bid_date
                 rec["ask_date"] = quote.ask_date
@@ -489,8 +531,7 @@ class _Builder:
                 rec["itm"] = spot >= strike + ONE_CENT
             else:
                 rec["itm"] = spot <= strike - ONE_CENT
-            if marks.basis_available and verdict is not None and verdict.bid is not None:
-                rec["extrinsic_bid"] = verdict.bid - payoff.intrinsic(right, strike, spot)
+        rec["extrinsic_bid"] = _extrinsic_bid(right, strike, rec["fresh_bid"], verdict, under)
         as_of = verdict.as_of if verdict is not None else None
         seconds: Optional[float] = None
         if as_of is not None:
@@ -506,7 +547,7 @@ class _Builder:
         if under is None or spot is None:
             rec["iv_status"] = IV_STATUS_SPOT_UNAVAILABLE
             return
-        if under.as_of is None or abs((under.as_of - as_of).total_seconds()) > SPOT_ALIGNMENT_SECONDS:
+        if not _spot_aligned(verdict, under):
             rec["iv_status"] = IV_STATUS_SPOT_UNALIGNED
             return
         dividend_yield = calendar_events.dividend_yield(self.calendar, leg.underlying)

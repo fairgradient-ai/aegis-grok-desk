@@ -1070,8 +1070,14 @@ class ReconRootTest(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(RECON, *rel.split("/"))), rel)
         for key in RECON_QUOTE_KEYS:
             self.assertTrue(os.path.isfile(os.path.join(RECON_SET, "quotes__%s.json" % key)), key)
-        for rel in ("state", "data", "journal", "rules", "levels", "reports", "incidents"):
+        for rel in ("state", "data", "journal", "levels", "reports", "incidents"):
             self.assertFalse(os.path.exists(os.path.join(RECON, rel)), rel)
+        # Decision 2 of the PR 2c addendum: the adopted example rulebook is committed, and nothing else under rules/.
+        self.assertEqual(["ADOPTED", "CHANGELOG.md", "exit_rules-1.0.0.toml"],
+                         sorted(os.listdir(os.path.join(RECON, "rules"))))
+        for name in ("ADOPTED", "CHANGELOG.md", "exit_rules-1.0.0.toml"):
+            self.assertEqual(read_bytes(os.path.join(DESK, "rules", name)), read_bytes(os.path.join(RECON, "rules", name)),
+                             name)
         # Exactly the files named by the addendum, nothing else, in the recorded set.
         found = sorted(os.path.relpath(p, RECON_SET).replace(os.sep, "/") for p in walk_files(RECON_SET))
         self.assertEqual(["clock.json", "errors/invalid_token.txt", "errors/quota_violation.txt",

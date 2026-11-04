@@ -1,0 +1,4 @@
+WATCH AG-20261022-02 | NVDA covered call | your rule DTE21 (rules 1.0.0, sha 3f9a01bc) fired: time to expiry 13 trading days (your threshold: at or below 21 trading days) | quote grade C, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
+pending confirmation: your rule DELTA_WATCH: absolute delta 0.48 (your threshold: at or above 0.30); observation 1 of 2
+suppressed by your row tags: EARN2
+deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 19:31 UTC

@@ -1,0 +1,2 @@
+pre-close | verdicts: 0 EXIT SIGNAL, 0 UNAVAILABLE, 2 WATCH, 1 HOLD | open signals: 1 | data age: 18 min | rules 1.0.0, sha 3f9a01bc | verify live quotes in your broker before acting
+deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 19:31 UTC

@@ -17,14 +17,22 @@ exit 20, never 1) and prints one line per symbol::
 
 with ``source`` ``fetch`` or ``cache`` (``stale`` for an expired copy the fetch could not refresh,
 display only), ``SYMBOL UNAVAILABLE: <reason>`` for anything not served, the chain when asked, and
-the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. On a weekend or holiday nothing is
-fetched (one ``NYSE closed`` line; cached copies are shown). ``--force`` asks for fresher copies and
-never discards a copy that is still inside the TTL. Exit 0 when every requested symbol (and the
-chain) was served, 20 when any is missing, 1 on a configuration or file error (``desk_root``,
-``config_invalid``, ``io_error``: a file where a runtime directory belongs), 2 on usage (a symbol
-that fails the client's pattern included). ``--json`` prints the shared envelope with ``payload = {"quotes": [...], "stale": [...],
-"missing": {...}, "requests_made", "budget": {"window_60s_used", "left"}, "session", "warnings",
-"fixture_set"[, "chain"]}``; ``source`` is ``tradier:sandbox`` and ``delay_min`` the feed delay.
+the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. On a weekend, a holiday or a full
+closure of ``research/calendar.toml`` nothing is fetched (one ``NYSE closed`` line; cached copies are
+shown). The session (the fetch decision, the session line and the JSON ``session``) is ``--now``
+classified with the calendar's full closures (``[[closures]] kind = "full"``, read when the file is
+present; without the file, the embedded NYSE table alone), the rule every desk tool that classifies the
+session from a desk root follows (``market_clock.py`` reads no desk file: the embedded table alone): an
+owner-injected closure on today's ET date is a closed day (``NYSE closed (calendar
+closure, ...)``; every symbol, and the chain, without a cached copy is ``market_closed``, exit 20).
+An ``early_close`` entry is never injected. ``--force`` asks for fresher copies and never discards a
+copy that is still inside the TTL. Exit 0 when every requested symbol (and the chain) was served, 20
+when any is missing, 1 on a configuration or file error (``desk_root``, ``config_invalid``,
+``calendar_invalid``: a calendar file that cannot be used, ``io_error``: a file where a runtime
+directory belongs), 2 on usage (a symbol that fails the client's pattern included). ``--json`` prints
+the shared envelope with ``payload = {"quotes": [...], "stale": [...], "missing": {...},
+"requests_made", "budget": {"window_60s_used", "left"}, "session", "warnings", "fixture_set"[,
+"chain"]}``; ``source`` is ``tradier:sandbox`` and ``delay_min`` the feed delay.
 The library (``aegis_desk.quote_cache``) never reads the wall clock: ``now`` is ``--now`` or the
 clock read once here.
 """
@@ -39,7 +47,7 @@ import datetime  # noqa: E402
 import sys  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence  # noqa: E402
 
-from aegis_desk import desk_config, desk_paths, market_clock, quote_cache, state  # noqa: E402
+from aegis_desk import calendar_events, desk_config, desk_paths, market_clock, quote_cache, state  # noqa: E402
 from aegis_desk.market_types import MarketTypesError, Quote, parse_iso_date  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
@@ -59,7 +67,8 @@ OUTPUT: Dict[str, Any] = {
     "requests_made": "integer requests this run",
     "budget": {"window_60s_used": "integer (ledger records in the window plus this run's own requests)",
                "left": "integer (60 - 5 headroom - used)"},
-    "session": "market_clock.SessionInfo.as_dict()",
+    "session": ("market_clock.SessionInfo.as_dict() (--now classified with the calendar's full closures: an "
+                "injected closure is session holiday)"),
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
     "chain": {"symbol": "string", "expiration": "YYYY-MM-DD", "served_from": "fetch | cache | null",
@@ -177,7 +186,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return fail(args, version, now, "io_error", "cannot prepare the desk runtime directories: %s" % exc,
                     contract.EXIT_ERROR)
 
-    session = market.session
+    try:
+        cal = calendar_events.load_calendar_if_present(market.paths.calendar_toml)
+    except calendar_events.CalendarError as exc:
+        return fail(args, version, now, "calendar_invalid", str(exc), contract.EXIT_ERROR)
+    # --now classified with the calendar's full closures, as in every desk tool that classifies the session
+    # from a desk root: a closure is a closed day.
+    session = market_clock.session_at(now, extra_holidays=calendar_events.extra_closures(cal))
     chain = None
     try:
         result = quote_cache.get_quotes(args.symbols, now=now, cfg=market.cache, client=market.client,

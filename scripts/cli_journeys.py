@@ -11,7 +11,10 @@ run it: as a subprocess from the repository root, in an environment that carries
 ``HOME`` and the Python UTF-8 switches (no proxy variables, no market-data token, nothing that
 could reach a network), with its exit code and JSON output checked against the contract.
 Every journey's output is also screened for order-shaped text (``FORBIDDEN_OUTPUT``): an
-adversarial input must never produce an instruction to trade.
+adversarial input must never produce an instruction to trade. The screen is the harness's own two
+patterns (order endpoints and calls) plus every forbidden phrase of the alert lint's table
+(``aegis_desk.alert_lint.FORBIDDEN_PATTERNS``, the one table in the repository that spells them out), so no
+journey's stdout or stderr can carry the language an alert may not carry.
 
 Two kinds of journey share the ``Journey`` record. The three repository gates run against the
 tree under test (``--root``). Tool journeys (``desk_root`` set) run a desk tool from this checkout
@@ -32,9 +35,21 @@ JSON keys, order-shaped text); the first failing step fails the journey and the 
 the chain are not run. One copy serves the whole chain and is removed afterwards.
 
 ``argv`` names a script under ``scripts/`` and its arguments, ``expected_exit`` the exit code and
-``expected_json`` keys that must be present (value ``ANY``) or equal; a key may be a dotted path
-into the JSON output (``payload.requests_made``, ``payload.symbols.0.label``). A JSON ``null`` is
-compared as ``None``.
+``expected_json`` keys that must be present (value ``ANY``), equal, or (a :class:`TextMatch`) a string
+that starts with a given text and contains given parts; a key may be a dotted path into the JSON output
+(``payload.requests_made``, ``payload.symbols.0.label``). A JSON ``null`` is compared as ``None``.
+
+The PR 2c journeys exercise the rules engine on the main fixture root with its adopted example rulebook
+(``rules/``): ``exit_check`` on the regular, expiry-day and stale sets (with and without a next run after
+the close, which decides whether one observation suffices), a candidate rulebook evaluated twice with
+``--dry-run`` (the second run finds no rule state), ``book_check`` (CONFIG CHANGED before ``ack.py config``;
+the pre-close line; the posting chain: ``ack.py config --owner-tapped``, ``book_check.py --post`` at 14:50 ET
+and again a minute later, which is quiet, then the heartbeat and the open signals read back), the alert
+lint on every passing and red-team fixture of ``tests/fixtures/alerts`` (paths relative to the repository
+root, the journeys' working directory), ``ack.py list`` on a fresh copy, ``rules_diff`` of the 1.1.0
+candidate, and ``rules_adopt`` after the close (read back through ``ack.py config``) and inside regular
+hours (refused). The fixture roots hold no runtime state, so every journey that needs acknowledged hashes
+runs ``ack.py config --owner-tapped`` as its first step.
 
 Usage: ``python3 scripts/cli_journeys.py [--root DIR] [--json]``. ``--root`` is the tree the
 gates are run against (default: this repository); the scripts always come from this checkout.
@@ -53,6 +68,8 @@ import sys
 import tempfile
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from aegis_desk import alert_lint
+
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPTS)
 TIMEOUT_SECONDS = 60
@@ -60,7 +77,7 @@ ANY = object()
 FORBIDDEN_OUTPUT: Tuple["re.Pattern[str]", ...] = (
     re.compile(r"\b(?:place|submit|cancel|replace)_order\b"),
     re.compile(r"\b(?:POST|PUT|PATCH|DELETE)\s+/v\d+/accounts\b"),
-)
+) + alert_lint.FORBIDDEN_PATTERNS
 FIXTURE_DESK = "tests/fixtures/desk"
 FIXTURE_DESK_RECON = "tests/fixtures/desk_recon"
 # The fixture sets' instants (tests/fixtures/desk/fixtures/tradier/README.md and the recon root's
@@ -76,6 +93,37 @@ EXPIRY_DAY_NOW = "2026-11-20T19:50:00Z"
 POST_EXPIRY_NOW = "2026-11-21T14:30:00Z"
 RECON_NOW = "2026-11-24T12:00:00Z"
 HOLIDAY_NOW = "2026-11-26T15:00:00Z"
+# PR 2c instants on the regular and expiry-day sets: the pre-close summary at 15:35 ET (the 14:31 ET quotes are
+# then past their 25-minute bound), an adoption after the 2026-11-03 close, and the next routine run after the
+# 2026-11-20 close (one observation then suffices for an M or G rule).
+PRE_CLOSE_NOW = "2026-11-03T20:35:00Z"
+ADOPT_NOW = "2026-11-03T22:00:00Z"
+EXPIRY_DAY_NEXT_RUN = "2026-11-20T21:35:00Z"
+CANDIDATE_RULES = "tests/fixtures/rules/candidate-1.1.0.toml"
+CANDIDATE_SHA256 = "131490c88814cc3a5f17823933275c53d0a68956ce928b610aa904ccc6f355e1"
+ALERT_FIXTURES = "tests/fixtures/alerts"
+ALERT_PASSES: Tuple[str, ...] = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close")
+ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
+    ("fail_2x_credit", "number_not_emitted"), ("fail_21_dte", "number_not_emitted"),
+    ("fail_pct_52_4", "number_not_emitted"), ("fail_you_should", "forbidden_language"),
+    ("fail_missing_footer", "footer_missing"), ("fail_order_field", "order_field"),
+    ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
+    ("fail_homoglyph", "non_ascii"),
+)
+"""The alert lint's fixtures (``tests/fixtures/alerts``): the passing messages, and each red-team message with the
+code of its first finding."""
+
+
+@dataclasses.dataclass(frozen=True)
+class TextMatch:
+    """A string expectation for one JSON key: the value is a string that starts with ``prefix`` and contains every
+    string of ``contains`` (a JSON null or any other type never matches)."""
+
+    prefix: str = ""
+    contains: Tuple[str, ...] = ()
+
+    def matches(self, value: Any) -> bool:
+        return isinstance(value, str) and value.startswith(self.prefix) and all(part in value for part in self.contains)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,6 +144,17 @@ class Journey:
     desk_root: Optional[str] = None
     copy_desk_root: bool = False
     steps: Tuple[Step, ...] = ()
+
+
+def alert_lint_journey(fixture: str, expected_exit: int, expected_json: Dict[str, Any]) -> "Journey":
+    """``alert_lint.py`` on one fixture message and its emitted-numbers file (relative to the repository root)."""
+    if expected_exit == 0:
+        name = "alert_lint %s -> ok" % fixture
+    else:
+        name = "alert_lint %s -> exit 1 (%s)" % (fixture, expected_json["payload.findings.0.code"])
+    argv = ("alert_lint.py", "--message-file", "%s/%s.txt" % (ALERT_FIXTURES, fixture),
+            "--emitted-file", "%s/%s.emitted.json" % (ALERT_FIXTURES, fixture))
+    return tool_journey(name, argv, expected_exit, expected_json)
 
 
 def tool_argv(argv: Sequence[str], now: str) -> Tuple[str, ...]:
@@ -208,6 +267,134 @@ JOURNEYS: Tuple[Journey, ...] = (
                  now=EXPIRY_DAY_NOW),
     tool_journey("expiry_checklist --week regular (nothing due)", ("expiry_checklist.py", "--week", "--fixture-set", "regular"), 0,
                  {"status": "ok", "payload.mode": "week", "payload.counts.listed": 0}),
+    # PR 2c: the rules engine on the main root's adopted example rulebook 1.0.0. exit_check never writes rule state;
+    # its exit code is the group verdict table (the portfolio and underlying sections never set it).
+    tool_journey("exit_check regular -> WMT and NVDA WATCH (DTE21), SPY HOLD", ("exit_check.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "exit_check", "payload.group_verdicts.AG-20261020-01": "WATCH",
+                  "payload.group_verdicts.AG-20261022-02": "WATCH", "payload.group_verdicts.AG-20261028-03": "HOLD",
+                  "payload.counts.WATCH": 2, "payload.counts.HOLD": 1, "payload.counts.UNAVAILABLE": 0,
+                  "payload.verdicts.0.fired.0.rule_id": "DTE21", "payload.verdicts.0.fired.0.value": 13,
+                  "payload.verdicts.1.fired.0.rule_id": "DTE21", "payload.verdicts.1.pending.0.rule_id": "DELTA_WATCH",
+                  "payload.portfolio.fired.0.rule_id": "CONC", "payload.portfolio.fired.0.value": "26.32",
+                  "payload.no_history.rule_ids": ["MOVE5_DOWN", "MOVE5_UP", "DAILY"], "payload.state.written": False}),
+    tool_journey("exit_check expiry_day, next run after the close -> EXIT_SIGNAL (WMT TP80 95.32 %, NVDA DELTA_SIGNAL)",
+                 ("exit_check.py", "--fixture-set", "expiry_day", "--next-run-utc", EXPIRY_DAY_NEXT_RUN), 10,
+                 {"status": "fired", "payload.group_verdicts.AG-20261028-03": "WATCH",
+                  "payload.verdicts.0.verdict": "EXIT_SIGNAL", "payload.verdicts.0.fired.0.rule_id": "TP80",
+                  "payload.verdicts.0.fired.0.value": "95.32", "payload.verdicts.0.fired.0.threshold": "80",
+                  "payload.verdicts.0.fired.0.unit": "percent", "payload.verdicts.0.fired.0.quote_grade": "E",
+                  "payload.verdicts.1.verdict": "EXIT_SIGNAL", "payload.verdicts.1.fired.2.rule_id": "DELTA_SIGNAL",
+                  "payload.verdicts.1.fired.2.value": "0.96", "payload.counts.EXIT_SIGNAL": 2, "payload.counts.WATCH": 1,
+                  "payload.single_observation": True}, now=EXPIRY_DAY_NOW),
+    tool_journey("exit_check expiry_day, no next run -> WATCH (TP80 pending: observation 1 of 2)",
+                 ("exit_check.py", "--fixture-set", "expiry_day"), 0,
+                 {"status": "ok", "payload.verdicts.0.verdict": "WATCH", "payload.verdicts.0.pending.0.rule_id": "TP80",
+                  "payload.verdicts.0.pending.0.result": "pending", "payload.verdicts.0.pending.0.value": "95.32",
+                  "payload.verdicts.0.pending.0.observations": 1, "payload.verdicts.0.pending.0.confirmations": 2,
+                  "payload.counts.WATCH": 3, "payload.counts.EXIT_SIGNAL": 0, "payload.single_observation": False,
+                  "payload.next_run_utc": None}, now=EXPIRY_DAY_NOW),
+    tool_journey("exit_check stale -> UNAVAILABLE (all three groups)", ("exit_check.py", "--fixture-set", "stale"), 20,
+                 {"status": "unavailable", "payload.counts.UNAVAILABLE": 3,
+                  "payload.group_verdicts.AG-20261028-03": "UNAVAILABLE", "payload.verdicts.0.unavailable.0.rule_id": "TP80",
+                  "payload.verdicts.0.fired.0.rule_id": "DTE21"}),
+    tool_journey("exit_check --dry-run --rules candidate-1.1.0 regular twice (no rule state written)",
+                 ("exit_check.py", "--dry-run", "--rules", CANDIDATE_RULES, "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.dry_run": True, "payload.rulebook.version": "1.1.0", "payload.rulebook.adopted": False,
+                  "payload.state.status": "missing", "payload.state.written": False, "payload.counts.WATCH": 2,
+                  "payload.counts.HOLD": 1},
+                 steps=(tool_step(("exit_check.py", "--dry-run", "--rules", CANDIDATE_RULES, "--fixture-set", "regular"), 0,
+                                  {"status": "ok", "payload.dry_run": True, "payload.state.written": False}),)),
+    # book_check: one copy for the whole posting chain. The first --post records four signals (the WMT and NVDA
+    # covered calls EXIT_SIGNAL, the SPY put WATCH, the portfolio WATCH); a minute later nothing changed and the
+    # rules' cooldown holds the re-post: quiet, no journal write. The heartbeat and the open signals are read back.
+    tool_journey("ack config, book_check --post expiry_day at 19:50 (4 signals) and 19:51 (quiet), heartbeat --list, ack list",
+                 ("ack.py", "list"), 0,
+                 {"status": "ok", "tool": "ack", "payload.count": 4, "payload.signals.0.signal_id": "SIG-20261120-001",
+                  "payload.signals.1.signal_id": "SIG-20261120-002", "payload.signals.2.signal_id": "SIG-20261120-003",
+                  "payload.signals.3.signal_id": "SIG-20261120-004", "payload.signals.0.verdict": "EXIT_SIGNAL",
+                  "payload.signals.0.posts": 1, "payload.signals.3.posts": 1},
+                 now="2026-11-20T19:52:00Z",
+                 steps=(tool_step(("ack.py", "config", "--owner-tapped"), 0,
+                                  {"status": "ok", "payload.action": "config", "payload.rulebook_version": "1.0.0"},
+                                  now="2026-11-20T19:49:00Z"),
+                        tool_step(("book_check.py", "--post", "--routine", "book-check", "--fixture-set", "expiry_day",
+                                   "--next-run-utc", EXPIRY_DAY_NEXT_RUN), 10,
+                                  {"status": "fired", "payload.posted": True, "payload.config_changed": [],
+                                   "payload.lint.ok": True, "payload.signals.0.signal_id": "SIG-20261120-001",
+                                   "payload.signals.0.verdict": "EXIT_SIGNAL", "payload.signals.1.verdict": "EXIT_SIGNAL",
+                                   "payload.signals.2.verdict": "WATCH", "payload.signals.3.signal_id": "SIG-20261120-004",
+                                   "payload.signals.3.trade_id": "portfolio", "payload.heartbeat": "state/heartbeat/book-check.json",
+                                   "payload.written": ["journal/alerts.jsonl", "journal/2026-11-20.md", "journal/signals.jsonl",
+                                                       "state/rule_state.json", "state/desk_state.json",
+                                                       "state/heartbeat/book-check.json"],
+                                   "payload.message": TextMatch(prefix="EXIT SIGNAL AG-20261020-01 | WMT covered call | "
+                                                                       "your rule TP80")},
+                                  now=EXPIRY_DAY_NOW),
+                        tool_step(("book_check.py", "--post", "--routine", "book-check", "--fixture-set", "expiry_day",
+                                   "--next-run-utc", EXPIRY_DAY_NEXT_RUN), 0,
+                                  {"status": "quiet", "payload.quiet": True, "payload.message": None, "payload.signals": [],
+                                   "payload.parts": [], "payload.open_signals": 4,
+                                   "payload.written": ["state/rule_state.json", "state/desk_state.json",
+                                                       "state/heartbeat/book-check.json"]},
+                                  now="2026-11-20T19:51:00Z"),
+                        tool_step(("heartbeat.py", "--list"), 0,
+                                  {"status": "ok", "payload.count": 1, "payload.heartbeats.0.routine_id": "book-check",
+                                   "payload.heartbeats.0.exit_code": 0, "payload.heartbeats.0.status": "quiet"},
+                                  now="2026-11-20T19:52:00Z"))),
+    tool_journey("book_check regular dry run without ack -> CONFIG CHANGED first", ("book_check.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "book_check", "payload.dry_run": True, "payload.posted": False, "payload.written": [],
+                  "payload.parts.0.kind": "config_changed", "payload.config_changed.0.name": "desk_toml",
+                  "payload.config_changed.0.old": None, "payload.config_changed.2.name": "rulebook", "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix="CONFIG CHANGED | desk.toml: not acknowledged")}),
+    tool_journey("ack config, book_check --summary regular at 20:35 -> UNAVAILABLE (quotes 63 min old), pre-close line",
+                 ("book_check.py", "--summary", "--fixture-set", "regular"), 20,
+                 {"status": "unavailable", "payload.dry_run": True, "payload.config_changed": [], "payload.counts.UNAVAILABLE": 3,
+                  "payload.quote_age_min": 63, "payload.parts.3.kind": "pre_close", "payload.lint.ok": True,
+                  "payload.message": TextMatch(contains=("pre-close | verdicts: 0 EXIT SIGNAL, 3 UNAVAILABLE, 0 WATCH, 0 HOLD",
+                                                         "verify live quotes in your broker before acting"))},
+                 now=PRE_CLOSE_NOW,
+                 steps=(tool_step(("ack.py", "config", "--owner-tapped"), 0, {"status": "ok", "payload.action": "config"},
+                                  now="2026-11-03T20:34:00Z"),)),
+    tool_journey("ack config, book_check --summary regular at 19:50 -> pre-close line",
+                 ("book_check.py", "--summary", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.dry_run": True, "payload.config_changed": [], "payload.counts.WATCH": 2,
+                  "payload.counts.HOLD": 1, "payload.parts.3.kind": "pre_close", "payload.lint.ok": True,
+                  "payload.message": TextMatch(contains=("pre-close | verdicts: 0 EXIT SIGNAL, 0 UNAVAILABLE, 2 WATCH, 1 HOLD",
+                                                         "verify live quotes in your broker before acting"))},
+                 steps=(tool_step(("ack.py", "config", "--owner-tapped"), 0, {"status": "ok", "payload.action": "config"},
+                                  now="2026-11-03T19:49:00Z"),)),
+)
+# The alert lint: every passing fixture exits 0, every red-team fixture exits 1 with its finding.
+JOURNEYS += tuple(alert_lint_journey(fixture, 0, {"status": "ok", "tool": "alert_lint", "payload.ok": True, "payload.problems": []})
+                  for fixture in ALERT_PASSES)
+JOURNEYS += tuple(alert_lint_journey(fixture, 1, {"status": "error", "tool": "alert_lint", "payload.ok": False,
+                                                  "payload.findings.0.code": code})
+                  for fixture, code in ALERT_FAILURES)
+JOURNEYS += (
+    tool_journey("ack list on a fresh copy -> 0 open signals", ("ack.py", "list"), 0,
+                 {"status": "ok", "tool": "ack", "payload.action": "list", "payload.count": 0, "payload.signals": []}),
+    tool_journey("rules_diff candidate-1.1.0 regular -> 0 verdicts changed (TP50 changed)",
+                 ("rules_diff.py", "--candidate", CANDIDATE_RULES, "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "rules_diff", "payload.verdicts_changed": 0, "payload.rules.changed": ["TP50"],
+                  "payload.changes": [], "payload.state": "scratch", "payload.candidate.version": "1.1.0"}),
+    tool_journey("rules_diff candidate-1.1.0 expiry_day -> 0 verdicts changed (TP50 changed)",
+                 ("rules_diff.py", "--candidate", CANDIDATE_RULES, "--fixture-set", "expiry_day"), 0,
+                 {"status": "ok", "tool": "rules_diff", "payload.verdicts_changed": 0, "payload.rules.changed": ["TP50"],
+                  "payload.changes": [], "payload.state": "scratch"}, now=EXPIRY_DAY_NOW),
+    tool_journey("rules_adopt 1.1.0 after the close, then ack config reads rules/ADOPTED (1.1.0)",
+                 ("ack.py", "config", "--owner-tapped"), 0,
+                 {"status": "ok", "payload.rulebook_version": "1.1.0", "payload.acknowledged_hashes.rulebook": CANDIDATE_SHA256},
+                 now="2026-11-03T22:01:00Z",
+                 steps=(tool_step(("rules_adopt.py", "--file", CANDIDATE_RULES, "--version", "1.1.0", "--owner-phrase",
+                                   "adopt rules 1.1.0"), 0,
+                                  {"status": "ok", "tool": "rules_adopt", "payload.adopted": True, "payload.version": "1.1.0",
+                                   "payload.file": "rules/exit_rules-1.1.0.toml", "payload.during_rth": False,
+                                   "payload.refusals": [], "payload.digest.text": "no snapshot: digest unavailable"},
+                                  now=ADOPT_NOW),)),
+    tool_journey("rules_adopt 1.1.0 during regular hours without --allow-rth -> refused (regular_trading_hours)",
+                 ("rules_adopt.py", "--file", CANDIDATE_RULES, "--version", "1.1.0", "--owner-phrase", "adopt rules 1.1.0"), 1,
+                 {"status": "error", "tool": "rules_adopt", "payload.adopted": False, "payload.during_rth": True,
+                  "payload.refusals.0.code": "regular_trading_hours", "payload.written": []}),
 )
 
 
@@ -268,6 +455,9 @@ def check_command(argv: Sequence[str], expected_exit: int, expected_json: Option
                     found, value = lookup(payload, key)
                     if not found:
                         problems.append(f"JSON key '{key}' missing")
+                    elif isinstance(expected, TextMatch):
+                        if not expected.matches(value):
+                            problems.append(f"JSON key '{key}' is {value!r:.400}, expected {expected!r}")
                     elif expected is not ANY and value != expected:
                         problems.append(f"JSON key '{key}' is {value!r}, expected {expected!r}")
     for pattern in FORBIDDEN_OUTPUT:

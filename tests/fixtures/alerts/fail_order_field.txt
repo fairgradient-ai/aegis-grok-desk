@@ -1,0 +1,6 @@
+EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha 3f9a01bc) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
+also fired: your rule DTE21: time to expiry 0 trading days (your threshold: at or below 21 trading days) | your plan: review a roll
+also fired: your rule PIN3: distance from the strike 0.07 % (your threshold: at or below 3 %) and time to expiry 0 trading days (your threshold: at or below 3 trading days) | your plan: review and decide
+ticket with buy_to_close, side: x, 2 @ 0.16
+suppressed by your row tags: DELTA_WATCH, DELTA_SIGNAL, CAP
+deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 19:31 UTC

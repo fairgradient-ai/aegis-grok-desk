@@ -27,6 +27,19 @@ REGULAR_NOW = "2026-11-03T19:50:00Z"
 AFTER_CLOSE_NOW = "2026-11-03T21:25:00Z"
 PRE_OPEN_NOW = "2026-11-03T13:00:00Z"
 HOLIDAY_NOW = "2026-11-26T15:00:00Z"
+CLOSURE_ENTRY = '\n[[closures]]\ndate = %s\nkind = "%s"\nsource = "owner-entered (test)"\n'
+CLOSED_TODAY_SESSION = {"session": "holiday", "trading_day": False, "close_utc": None, "minutes_to_close": None,
+                        "holiday_name": "calendar closure", "as_of_utc": "2026-11-03T19:50:00+00:00",
+                        "et_date": "2026-11-03", "open_utc": None, "product": "equity", "table_status": "ok"}
+SIX_SYMBOLS = ("NVDA", "NVDA261120C00150000", "SPY", "SPY261218P00620000", "WMT", "WMT261120C00105000")
+
+
+def closed_day_missing(symbol: str) -> Dict[str, Any]:
+    """The verdict on a symbol with no cached copy on a closed day: nothing was fetched, nothing is usable."""
+    return {"symbol": symbol, "grade": "F", "status": "missing", "label": "NYSE closed", "age_min_bid": None,
+            "age_min_ask": None, "spread_pct": None, "mark_mid": None, "mark_liq_long": None, "mark_liq_short": None,
+            "usable_for_rules": False, "reasons": ["cache: market_closed"], "bid": None, "ask": None, "as_of": None,
+            "served_from": None}
 
 
 def now_flag_present() -> bool:
@@ -241,6 +254,123 @@ class GradingJourneysTest(DeskCopy):
         self.assertEqual(0, code)
         self.assertEqual(["cache", "cache"], [s["served_from"] for s in body["payload"]["symbols"]])
         self.assertEqual(1, len(self.ledger()))
+
+
+class CalendarClosureTest(DeskCopy):
+    """The session and the prior close follow research/calendar.toml's full closures, as in the six
+    book-of-record tools: an owner-injected closure on today's ET date is a closed day (nothing fetched, grade F
+    ``NYSE closed``, exit 20); a closure on the previous trading day moves the prior close that pre-open quotes
+    are graded and labelled against; a closure on another date, an early close (never injected) or no calendar
+    file leave the regular grades unchanged; a calendar that cannot be read is exit 1 ``calendar_invalid`` and
+    nothing is fetched."""
+
+    def add_to_calendar(self, text: str, root: str = "") -> None:
+        with open(os.path.join(root or self.root, "research", "calendar.toml"), "a", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def copy_desk(self, label: str) -> str:
+        root = os.path.join(os.path.realpath(self._tmp.name), label)
+        shutil.copytree(FIXTURE_DESK, root)
+        return root
+
+    def run_on(self, root: str, *symbols: str) -> Tuple[int, Dict[str, Any]]:
+        return run_json(list(symbols) + ["--offline", "--desk-root", root, "--now", REGULAR_NOW,
+                                         "--fixture-set", "regular", "--json"])
+
+    def test_a_full_closure_today_is_a_closed_day_without_a_fetch(self) -> None:
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-03", "full"))
+        code, body = run_json(self.argv("SPY", "WMT", fixture_set="regular"))
+        self.assertEqual((20, "unavailable"), (code, body["status"]))
+        self.assertEqual({"symbols": [closed_day_missing("SPY"), closed_day_missing("WMT")], "bound_min": 25,
+                          "session": CLOSED_TODAY_SESSION, "missing": {"SPY": "market_closed", "WMT": "market_closed"},
+                          "warnings": [], "fixture_set": "regular"}, body["payload"])
+        self.assertEqual([], self.ledger(), "nothing is fetched on a closed day")
+        code, text = run_tool(self.argv("SPY", "WMT", fixture_set="regular", json_mode=False))
+        self.assertEqual(20, code, text)
+        self.assertEqual(["SPY F missing -/- - - - - NYSE closed", "WMT F missing -/- - - - - NYSE closed",
+                          "NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today",
+                          "Tradier sandbox, delayed 15 min, as of 19:50 UTC"], text.splitlines())
+        self.assertEqual([], self.ledger())
+
+    def test_a_cached_copy_on_a_closure_day_is_graded_closed_day(self) -> None:
+        code, _body = run_json(self.argv("SPY", fixture_set="regular"))
+        self.assertEqual((0, 1), (code, len(self.ledger())))
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-03", "full"))
+        code, body = run_json(self.argv("SPY", fixture_set="regular", now="2026-11-03T20:30:00Z"))
+        self.assertEqual((20, "unavailable"), (code, body["status"]))
+        spy = body["payload"]["symbols"][0]
+        self.assertEqual(("F", "closed_day", "NYSE closed", ["market closed"], False, "cache", "648.1", "648.14"),
+                         (spy["grade"], spy["status"], spy["label"], spy["reasons"], spy["usable_for_rules"],
+                          spy["served_from"], spy["bid"], spy["ask"]))
+        self.assertEqual((None, None, None), (spy["mark_mid"], spy["mark_liq_long"], spy["mark_liq_short"]))
+        self.assertEqual(1, len(self.ledger()), "the expired copy is not refetched on a closed day")
+        code, text = run_tool(self.argv("SPY", fixture_set="regular", now="2026-11-03T20:30:00Z", json_mode=False))
+        self.assertEqual(20, code, text)
+        self.assertEqual(["SPY F closed_day 648.10/648.14 0.01% - - - NYSE closed",
+                          "warning: SPY served from a cache copy 40 min old (TTL 5 min): no fetch on a non-trading day",
+                          "NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today",
+                          "Tradier sandbox, delayed 15 min, as of 19:31 UTC"], text.splitlines())
+        self.assertEqual(1, len(self.ledger()))
+
+    def test_a_closure_on_the_previous_trading_day_moves_the_prior_close(self) -> None:
+        # Monday 2026-11-02 closed by the owner: Tuesday's pre-open is judged against Friday's close (16:00 ET, still
+        # daylight time: 20:00 UTC), and the recorded print of Monday 15:59:55 ET is not that close's quote.
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-02", "full"))
+        code, body = run_json(self.argv("SPY", fixture_set="pre_open", now=PRE_OPEN_NOW))
+        self.assertEqual((20, "unavailable", "pre"), (code, body["status"], body["payload"]["session"]["session"]))
+        spy = body["payload"]["symbols"][0]
+        self.assertEqual(("F", "stale", "as of prior close 2026-10-30 16:00 ET", False),
+                         (spy["grade"], spy["status"], spy["label"], spy["usable_for_rules"]))
+        self.assertEqual(["bid stamped 4379 min after the prior close: not the closing quote",
+                          "ask stamped 4379 min after the prior close: not the closing quote"], spy["reasons"])
+        self.assertEqual((None, None, None), (spy["mark_mid"], spy["mark_liq_long"], spy["mark_liq_short"]))
+        self.assertEqual(1, len(self.ledger()), "a pre-open run on a trading day still fetches")
+
+    def test_the_moved_prior_close_also_labels_an_expired_copy_that_could_not_be_refreshed(self) -> None:
+        code, first = run_json(self.argv("SPY", fixture_set="pre_open", now="2026-11-03T12:00:00Z"))
+        self.assertEqual((0, "fetch"), (code, first["payload"]["symbols"][0]["served_from"]))
+        self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-02", "full"))
+        # SPY's copy has expired by 13:00 UTC and the QQQ,SPY batch has no recorded answer: SPY is shown from its copy.
+        code, body = run_json(self.argv("SPY", "QQQ", fixture_set="pre_open", now=PRE_OPEN_NOW))
+        self.assertEqual(20, code, body)
+        spy, qqq = body["payload"]["symbols"]
+        self.assertEqual(("F", "missing", "as of prior close 2026-10-30 16:00 ET", ["cache: fetch_failed:network"],
+                          "645.88", None), (spy["grade"], spy["status"], spy["label"], spy["reasons"], spy["bid"],
+                                            spy["served_from"]))
+        self.assertEqual(("F", "missing", "no quote"), (qqq["grade"], qqq["status"], qqq["label"]))
+
+    def test_a_closure_elsewhere_an_early_close_or_no_calendar_leave_the_regular_grades_unchanged(self) -> None:
+        code, baseline = self.run_on(self.root, *SIX_SYMBOLS)
+        self.assertEqual((0, "open", ["A", "C", "A", "B", "A", "B"]),
+                         (code, baseline["payload"]["session"]["session"],
+                          [s["grade"] for s in baseline["payload"]["symbols"]]))
+        for label, entry in (("closure-on-2026-11-10", CLOSURE_ENTRY % ("2026-11-10", "full")),
+                             ("early-close-today", CLOSURE_ENTRY % ("2026-11-03", "early_close")),
+                             ("no-calendar-file", None)):
+            with self.subTest(variant=label):
+                root = self.copy_desk(label)
+                if entry is None:
+                    os.remove(os.path.join(root, "research", "calendar.toml"))
+                else:
+                    self.add_to_calendar(entry, root)
+                self.assertEqual((0, baseline), self.run_on(root, *SIX_SYMBOLS))
+
+    def test_a_calendar_that_cannot_be_read_is_exit_1_calendar_invalid(self) -> None:
+        for label, text, reason in (("toml-syntax", "\nnot = [toml\n", "invalid TOML"),
+                                    ("unknown-key", "\nunknown_key = 1\n", "unknown key 'unknown_key'")):
+            with self.subTest(calendar=label):
+                root = self.copy_desk(label)
+                self.add_to_calendar(text, root)
+                code, body = self.run_on(root, "SPY", "WMT")
+                self.assertEqual((1, "error"), (code, body["status"]), body)
+                self.assertEqual("calendar_invalid", body["error"]["code"])
+                message = body["error"]["message"]
+                self.assertTrue(message.startswith(os.path.join(root, "research", "calendar.toml") + ": "), message)
+                self.assertIn(reason, message)
+                self.assertNotIn("payload", body)
+                code, text_out = run_tool(["SPY", "--offline", "--desk-root", root, "--now", REGULAR_NOW])
+                self.assertEqual((1, "error: " + message), (code, text_out.strip()))
+                self.assertFalse(os.path.exists(os.path.join(root, "data", "cache", "ledger.jsonl")), "nothing is fetched")
 
 
 if __name__ == "__main__":
