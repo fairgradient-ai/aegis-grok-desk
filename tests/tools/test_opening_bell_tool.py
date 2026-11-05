@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 from unittest import mock
 
 import opening_bell as tool  # the tool scripts/opening_bell.py
-from aegis_desk import alert_lint, contract, tradier_client
+from aegis_desk import alert_lint, contract, tradier_client, version
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -235,7 +235,7 @@ class LiveTest(DeskCopy):
         self.assertEqual(["quotes", "options/expirations", "options/chains"],
                          [url.split("/v1/markets/")[1].split("?")[0] for url in urls])
         agents = {headers.get("User-Agent") for _url, headers in recording.calls}
-        self.assertEqual({"aegis-desk/0.1.0 opening_bell (read-only market data)"}, agents)
+        self.assertEqual({"aegis-desk/%s opening_bell (read-only market data)" % version.release_version()}, agents)
 
     def test_a_live_run_reads_no_desk_file(self) -> None:
         recording = Recording()

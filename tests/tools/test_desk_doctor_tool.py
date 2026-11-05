@@ -297,7 +297,7 @@ class FullModeTest(DeskCopy):
             code, body = self.run_json()
         self.assertEqual((0, "PASS"), (code, body["payload"]["verdict"]))
         checks = self.checks(body)
-        self.assertEqual(("PASS", "release v0.1.0 at 971186c6, clean"),
+        self.assertEqual(("PASS", "release v%s at 971186c6, clean" % version.release_version()),
                          (checks["release_pin"]["status"], checks["release_pin"]["reason"]))
         self.assertEqual(("PASS", "connected apps and MCP servers confirmed 2026-10-20 (14 days ago)"),
                          (checks["connector_readback"]["status"], checks["connector_readback"]["reason"]))

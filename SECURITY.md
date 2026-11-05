@@ -127,5 +127,5 @@ proxy that would hold the production token outside the Bots' reach, md_proxy, is
 
 ## Supported versions
 
-The latest release. A release is a tag of this repository (`v0.1.0` is the first); every manifest, pin and template
-hash names exactly one release.
+The latest release. A release is a tag of this repository: the letter v followed by its version.
+The first release is 0.1.0. Every manifest, pin and template hash names exactly one release.

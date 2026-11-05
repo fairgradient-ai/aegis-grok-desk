@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Release tooling:
+  - `scripts/release_bump.py <next> [--check]` moves the version in `plugin.json`, every mirrored manifest, the
+    marketplace refs, the template's release and skill hashes, every pin `check.sh` step 4 checks, the role skills
+    and the tool versions in `docs/TOOLS.md`, in one pass, writing every file or none; it refuses a version that is
+    not plain or not greater, a tag that already exists (read from `.git` as files, worktrees included; a `.git` it
+    cannot read refuses the run) and a tree that is not consistent at its version, never edits `CHANGELOG.md` or
+    `docs/RELEASE.md`, and lists plain mentions of the old version for review;
+  - the stub MCP server of the release deny check, `tests/fixtures/release/blackhole_mcp.py` (one tool that does
+    nothing), and its `--mcp-config` file;
+  - `docs/RELEASE.md`, the 0.1.0 checklist and receipt, with who does each step and empty evidence rows;
+  - 82 more tests, 2584 in all (floor 2584).
 - Stage-1 content:
   - three role profiles (`agents/desk-lead.md`, `agents/exit-sentinel.md`, `agents/position-control.md`) and their
     three generated role skills; fifteen Stage-1 skills, each with its `LICENSE` and `ATTRIBUTION.md` (one adapted:

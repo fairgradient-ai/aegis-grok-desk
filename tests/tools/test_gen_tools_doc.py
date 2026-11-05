@@ -28,7 +28,7 @@ import unittest
 from typing import List, Optional, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import contract
+from aegis_desk import contract, version
 
 import check_no_write_paths
 import gen_tools_doc as gen
@@ -253,7 +253,9 @@ class CheckAndWriteTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_check_fails_on_drift_with_a_bounded_diff(self) -> None:
-        text = RenderCache.get().replace("- tool version: 0.1.0", "- tool version: 0.0.9", 1) + "stray\n" * 100
+        release = version.release_version()
+        self.assertNotEqual("0.0.9", release, "the stand-in must differ from the release")
+        text = RenderCache.get().replace("- tool version: %s" % release, "- tool version: 0.0.9", 1) + "stray\n" * 100
         with open(self.doc, "w", encoding="utf-8") as handle:
             handle.write(text)
         code, output = run_main(["--check"])
@@ -265,7 +267,7 @@ class CheckAndWriteTest(unittest.TestCase):
         self.assertTrue(lines[1].startswith("--- docs/TOOLS.md"), lines[1])
         self.assertTrue(lines[2].startswith("+++ docs/TOOLS.md (rendered)"), lines[2])
         self.assertIn("-- tool version: 0.0.9", output)
-        self.assertIn("+- tool version: 0.1.0", output)
+        self.assertIn("+- tool version: %s" % release, output)
 
     def test_check_fails_when_the_doc_is_missing(self) -> None:
         code, output = run_main(["--check"])
