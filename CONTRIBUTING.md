@@ -94,7 +94,7 @@ means at each phase, because some steps have nothing to check until their inputs
 | 2c | rules (`exit_rules`, `rule_state`, `alerts`, `alert_lint`, `signals`, the example rulebook and the fixture roots' adopted rulebooks, the tools `exit_check.py`, `rules_diff.py`, `rules_adopt.py`, `book_check.py`, `ack.py`, `alert_lint.py`) | freshness and verdict goldens; Kleene truth tables and verdict precedence; the rule-state machine (confirmations, re-arm, cooldown, carry-forward); `alert_lint` red-team fixtures; twenty-eight more tool journeys covering verdicts including UNAVAILABLE, posting, the ladder, adoption and acknowledgement; floor raised |
 | 2d | levels (`levels`, `trigger_levels.py`), the routine manifest and audit (`routines`, `routines/manifest.toml`, `routines/autoreview.toml`, `routine_audit.py`), `routine.py`, the doctor (`doctor`, `desk_doctor.py`) with the pin check and the stricter no-write gate, `summaries` and `eod_summary.py`, `desk_init.py`, `opening_bell.py`, `gen_tools_doc.py` and `gen_role_skills.py`, the two placeholder agents | steps 9 and 10 active (`docs/TOOLS.md` and the role skills generated and drift-checked); level arithmetic re-evaluated against the rules at every printed level; every new gate rule has a failing fixture; full Stage-1 routine journeys offline; floor raised |
 | 3 | Stage-1 content: the three agents and their generated role skills, the Stage-1 skills, the desk rule, the broker-write gate (`hooks/broker_write_gate.py`) with `hooks/hooks.json` and `hooks/cursor-hooks.json`, the hook-wiring rules in `check_manifests.py`, the adapted-skill notice check, `ack.py connectors`, the manifest descriptions, the template hashes (status `unpublished`), `SETUP.md`, README, `SECURITY.md`, the docs and runtime pages, attribution | all ten steps on the real content: zero writers, every skill indexed and attributed, the bootstrap skill's notice line, the hook wiring asserted, the template claiming every skill and role skill with matching hashes, the prose scanner clean with the runtime pages' counter-examples allow-listed and documented; the gate's deny and no-opinion vectors in every event shape; floor raised |
-| 4 | release 0.1.0 | all of the above plus the observed deny tests (Claude Code and Grok Build), then the tag; after the tag `check_grok_template.py` compares claimed bytes with `v0.1.0` instead of skipping |
+| 4 | release 0.1.0 | all of the above plus the observed deny tests (Claude Code and Grok Build), then the tag; after the tag `check_grok_template.py` compares claimed bytes with the release tag instead of skipping |
 
 ## Branch mechanics
 
@@ -118,14 +118,18 @@ marketplace refs (`v<version>`), the template's `source.release` and every docum
 agree, and `check_manifests.py` fails the build when they do not. Pre-release suffixes such as
 `0.1.0-dev` are rejected: a reader installs exactly one reviewed tag.
 
-The release sequence (from the plan, section 12):
+The release sequence (from the plan, section 12; [docs/RELEASE.md](docs/RELEASE.md) is the checklist, with
+who does each step and the evidence rows):
 
 1. Offline gates green: `bash scripts/check.sh` on every CI interpreter, the QuantLib oracle,
    the command journeys.
-2. Claude Code install verified (`/plugin marketplace add fairgradient-ai/aegis-grok-desk`,
-   `/plugin install aegis-desk@aegis-desk`).
+2. Claude Code: the plugin loaded from a clean clone with `--plugin-dir`, and the deny checks
+   observed. The marketplace install (`/plugin marketplace add fairgradient-ai/aegis-grok-desk`,
+   `/plugin install aegis-desk@aegis-desk`) is checked after the tag, because the marketplace
+   entry points at the tag ([docs/RELEASE.md](docs/RELEASE.md) step 2).
 3. Grok Build local-path install with the deny tests **observed**: the hook refuses the shell
-   sample and the stub MCP tool `blackhole__place_order`.
+   sample and the stub MCP tool `blackhole__place_order` (the stub server is
+   `tests/fixtures/release/blackhole_mcp.py`, which does nothing).
 4. **Tag** `vX.Y.Z` (pushed by the owner). From this point `check_grok_template.py` compares the
    template's claimed skill bytes with the tag.
 5. The owner's Grok Bot bootstrap from the tag, ending with the receipt line
@@ -137,10 +141,16 @@ The release sequence (from the plan, section 12):
 Counsel sign-off on the alert, level and ticket templates is a Done-when item before the public
 release; templates stay order-shape-free until then.
 
-**After any tag, the first pull request runs `python3 scripts/release_bump.py <next>`** (not yet in the tree; it lands with the release tooling in PR 4)
+**After any tag, the first pull request runs `python3 scripts/release_bump.py <next>`**
 before touching skills or template-claimed files, so the manifests, pins and template hashes
-move to the next version together and the tagged release is never edited in place. Until the
-tool lands, the bump is the same edit made by hand and checked by `check_manifests.py`.
+move to the next version together and the tagged release is never edited in place. Run it with
+`--check` first: it lists every file that would change and writes nothing. The tool writes every
+file or none; refuses a version that is not plain `X.Y.Z`, not greater than the current one or
+already tagged; never edits `CHANGELOG.md` or the release record `docs/RELEASE.md`; and lists the
+lines that name the old version without the leading `v` for a person to review. Until the next
+tag exists, `main` then names a tag that does not exist yet; how `main` behaves in that window is
+the owner's decision, recorded before the tag in step 8 of [docs/RELEASE.md](docs/RELEASE.md), the
+checklist and receipt of a release.
 
 ## Credit and reuse
 

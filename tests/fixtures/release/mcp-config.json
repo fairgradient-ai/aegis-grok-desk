@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "blackhole": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["tests/fixtures/release/blackhole_mcp.py"]
+    }
+  }
+}

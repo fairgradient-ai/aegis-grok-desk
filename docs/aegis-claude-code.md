@@ -61,8 +61,12 @@ tools run a shell command is checked at release: a new one that the matcher does
 
 ## Release checks
 
-These are observed at release, before the tag. Until then, nothing on this page claims that Claude Code ran the hook
-or honoured a deny.
+These are observed at release, before the tag. Observed on 2026-11-05 with Claude Code 2.1.318, headless
+(`claude -p`), with the plugin loaded by `--plugin-dir` from a clean clone of the release candidate: checks 2 and 3
+were refused with exactly the reasons below, the commands never ran, and a read (`git status --short`) ran with no
+opinion from the hook. Check 1 is interactive and was not observed; both `PreToolUse` groups ran (`PreToolUse:Bash`
+for the sample, `PreToolUse:mcp__blackhole__place_order` for the stub). The marketplace install is checked after the
+tag ([docs/RELEASE.md](RELEASE.md), step 2).
 
 1. `/plugin` shows the plugin with no error, such as a duplicate hooks file; `/hooks` lists the two `PreToolUse`
    groups, and the shell matcher names every Claude Code tool that runs a shell command.
