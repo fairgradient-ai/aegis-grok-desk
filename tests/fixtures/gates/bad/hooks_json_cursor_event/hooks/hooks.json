@@ -1,0 +1,34 @@
+{
+  "description": "Gate fixture: the broker write gate for the shell group and the MCP group.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Monitor|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": ".+__.+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/hooks/broker_write_gate.py\" --runtime cursor",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ]
+  }
+}

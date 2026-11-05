@@ -33,6 +33,10 @@ SEATS = ("desk-lead", "exit-sentinel", "position-control")
 BOUNDARY = ("This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules "
             "fired and why; you act in your brokerage account.")
 TREE_PARTS = ("agents", "skills", "SETUP.md", "LICENSE", "plugin.json")
+# Content-independent anchors (PR 3 decision R-16): the tests insert these lines themselves instead of matching the
+# agents' own wording, so a rewrite of a profile regenerates its role skill without breaking a test.
+SENTINEL = "Sentinel line the test inserts as the first line of the System prompt section."
+HAND_EDIT = "A hand edit the generator did not write."
 
 
 def read(root: str, rel: str) -> str:
@@ -50,6 +54,15 @@ def write(root: str, rel: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(text)
+
+
+def with_sentinel(agent_text: str) -> str:
+    """``agent_text`` with :data:`SENTINEL` as the first line of its ``## System prompt`` section (the heading line
+    is found by the generator's own constant; the gate requires it in every agent)."""
+    heading = gen.SYSTEM_PROMPT_HEADING + "\n"
+    if agent_text.count(heading) != 1:
+        raise AssertionError("expected exactly one %r line" % heading)
+    return agent_text.replace(heading, heading + "\n" + SENTINEL + "\n", 1)
 
 
 def run_main(argv: Sequence[str]) -> Tuple[int, str]:
@@ -237,21 +250,22 @@ class CopyTest(unittest.TestCase):
 
     def test_a_hand_edit_of_a_generated_file_is_drift(self) -> None:
         rel = "skills/aegis-role-exit-sentinel/SKILL.md"
-        write(self.root, rel, read(self.root, rel).replace("post the routine output", "post the output", 1))
+        # The anchor is a line the test itself adds, so the agents' wording can change freely (R-16).
+        write(self.root, rel, read(self.root, rel) + HAND_EDIT + "\n")
         code, lines = gen.run(self.root, check=True)
         self.assertEqual((1, ["error: %s: differs from its rendering from agents/exit-sentinel.md" % rel,
                               "1 problem(s); run python3 scripts/gen_role_skills.py"]), (code, lines))
 
     def test_an_agent_edit_changes_the_skill_and_its_source_hash(self) -> None:
         rel = "agents/position-control.md"
-        write(self.root, rel, read(self.root, rel).replace("Placeholder. The full", "Placeholder, revised. The full", 1))
+        write(self.root, rel, with_sentinel(read(self.root, rel)))
         code, lines = gen.run(self.root, check=True)
         self.assertEqual(1, code)
         self.assertIn("error: skills/aegis-role-position-control/SKILL.md: differs from its rendering from "
                       "agents/position-control.md", lines)
         self.assertEqual(0, gen.run(self.root, check=False)[0])
         skill = read(self.root, "skills/aegis-role-position-control/SKILL.md")
-        self.assertIn("Placeholder, revised. The full", skill)
+        self.assertIn(SENTINEL, skill)
         self.assertIn("source_sha256: %s" % hashlib.sha256(read_bytes(self.root, rel)).hexdigest(), skill)
 
     def test_a_missing_marker_pair_fails_both_modes_and_nothing_is_written(self) -> None:
@@ -288,12 +302,12 @@ class CopyTest(unittest.TestCase):
 
     def test_the_system_prompt_ends_at_the_next_section_but_not_inside_a_code_fence(self) -> None:
         rel = "agents/desk-lead.md"
-        text = read(self.root, rel).rstrip("\n")
+        text = with_sentinel(read(self.root, rel)).rstrip("\n")
         write(self.root, rel, text + "\n\n```text\n## not a heading\n```\n\n### kept\n\n## Notes\n\nnot in the skill\n")
         prompt = gen.read_agent(self.root, rel).system_prompt
         self.assertTrue(prompt.endswith("```text\n## not a heading\n```\n\n### kept"), prompt)
         self.assertNotIn("not in the skill", prompt)
-        self.assertTrue(prompt.startswith("Placeholder. The full standing instructions"))
+        self.assertTrue(prompt.startswith(SENTINEL + "\n"), prompt)
 
 
 if __name__ == "__main__":

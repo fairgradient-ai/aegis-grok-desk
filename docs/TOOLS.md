@@ -34,7 +34,7 @@ One exit-code table for every tool:
 - script: `scripts/ack.py`
 - tool version: 0.1.0
 - mode: read-only
-- description: the owner's acknowledgements: list and show the open signals with their re-post ladder, ack, snooze or record acted on a signal, and acknowledge the configuration hashes book_check compares
+- description: the owner's acknowledgements: list and show the open signals with their re-post ladder, ack, snooze or record acted on a signal, acknowledge the configuration hashes book_check compares, and record the owner's readback of the connected apps and MCP servers
 - network access: none
 
 | Flag | Value | Help |
@@ -46,21 +46,22 @@ One exit-code table for every tool:
 | `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
-| `action` (positional) | `list \| show \| ack \| snooze \| acted \| config` (optional) | list \| show \| ack \| snooze \| acted \| config (required except with --schema) |
+| `action` (positional) | `list \| show \| ack \| snooze \| acted \| config \| connectors` (optional) | list \| show \| ack \| snooze \| acted \| config \| connectors (required except with --schema) |
 | `signal_id` (positional) | `SIGNAL_ID` (optional) | SIG-YYYYMMDD-NNN (show, ack, snooze, acted) |
 | `--until` | `ISO-8601-UTC\|HH:MM ET` | snooze until this instant: ISO-8601 UTC, or HH:MM ET on today's America/New_York date |
-| `--owner-tapped` | none | the owner tapped the Ask-first card (required by snooze, acted and config) |
+| `--owner-tapped` | none | the owner tapped the Ask-first card (required by snooze, acted, config and connectors) |
 
 Payload (`--json` envelope key `payload`):
 
 - `acknowledged_hashes`: `"(config) {desk_toml, positions_csv, rulebook: sha256 | null}"`
 - `acks`: `["(show) the signal's acks.jsonl records"]`
-- `action`: `"list | show | ack | snooze | acted | config"`
+- `action`: `"list | show | ack | snooze | acted | config | connectors"`
 - `alerts`: `["(show) {signal_id, text, posted_at, lint_ok}: the signal's alerts.jsonl records"]`
+- `connector_readback_utc`: `"(connectors) ISO-8601 UTC: the run instant, written to state/desk_state.json"`
 - `count`: `"(list) integer: the open signals"`
 - `path`: `"(writes) state/acks.jsonl"`
 - `posts`: `"(show) integer"`
-- `record`: `{"action": "ack | snooze | acted | config", "hashes": "{desk_toml, positions_csv, rulebook: sha256 | null} | null (config)", "rows_sha": "sha256 of the group's positions.csv lines | null (acted)", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null", "until": "ISO-8601 UTC | null (snooze)", "utc": "ISO-8601 UTC"}`
+- `record`: `{"action": "ack | snooze | acted | config | connectors", "hashes": "{desk_toml, positions_csv, rulebook: sha256 | null} | null (config)", "rows_sha": "sha256 of the group's positions.csv lines | null (acted)", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null", "until": "ISO-8601 UTC | null (snooze)", "utc": "ISO-8601 UTC"}`
 - `rulebook_version`: `"(config) X.Y.Z | null"`
 - `signal`: `{"ack_state": "open | snoozed", "data_quality": "string", "ladder": {"applies": "boolean (EXIT_SIGNAL only)", "cooldown_min": "integer | null", "done": "boolean", "next_repost_after_runs": "integer runs after the first post | null", "not_before": "ISO-8601 UTC | null (the last post plus the primary rule's cooldown_min: book_check counts the ladder's runs only outside it)", "of": "4 | null", "posts": "integer", "rule_id": "the primary EXIT rule | null"}, "last_posted_at": "ISO-8601 UTC | null", "plan": "close | roll_review | hold_review | null", "posted_at": "ISO-8601 UTC (first post)", "posts": "integer (linted alerts.jsonl records of the signal)", "quote_age_at_post": "integer | null", "reasons": ["the signal record's reasons"], "run_lateness_min": "integer | null", "signal_id": "SIG-YYYYMMDD-NNN", "snoozed_until": "ISO-8601 UTC | null", "structure": "string", "trade_id": "string (AG-..., ROW-n or portfolio)", "verdict": "EXIT_SIGNAL | WATCH | UNAVAILABLE"}`
 - `signals`: `["(list) the open signal: see signal"]`
@@ -725,7 +726,7 @@ Payload (`--json` envelope key `payload`):
 | `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
 | `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
 | `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
-| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: /workspace/aegis-desk, never the current directory; a desk root inside this checkout, or the checkout itself, is refused. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `routine_id` (positional) | `ROUTINE` (optional) | a routine id of routines/manifest.toml (preopen, book-check, final-call, ...) |

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Stage-1 content:
+  - three role profiles (`agents/desk-lead.md`, `agents/exit-sentinel.md`, `agents/position-control.md`) and their
+    three generated role skills; fifteen Stage-1 skills, each with its `LICENSE` and `ATTRIBUTION.md` (one adapted:
+    the bootstrap skill, which carries its notice line in its body);
+  - the broker-write gate `hooks/broker_write_gate.py`, a backstop that denies a shell command or MCP tool call that
+    looks like a broker write and gives no opinion on reads, registered by `hooks/hooks.json` (Claude Code and Grok
+    Build) and `hooks/cursor-hooks.json` (Cursor, fail-closed, answering `ask` when it has no opinion);
+    `check_manifests.py` asserts the wiring exactly, with no other key at any level;
+  - `check.sh` step 2 requires an adapted skill's in-body notice line; `ack.py connectors --owner-tapped` records the
+    owner's readback of connected apps and MCP servers, which the doctor re-asks after 30 days; `routine.py`'s
+    `--desk-root` help names its `/workspace/aegis-desk` default;
+  - manifest descriptions of the Stage-1 desk without counts; the Cursor manifest's `rules` names
+    `rules/aegis-desk.mdc`;
+  - `template/grok-bot.json` claims every skill and role skill by its full-file sha256 and exports the bootstrap skill;
+    its status stays `unpublished` until the owner publishes it after the tag;
+  - `SETUP.md` (the Stage-1 runbook), the README, `SECURITY.md`, the architecture, FAQ, positions, monitoring and
+    provenance pages, the page on your exit rules, the runtime pages for Grok Bot, Grok Build (with copy-paste
+    `[permission]` deny rules for `~/.grok/config.toml`), Claude Code, Cursor, Codex and Gemini CLI, the template
+    page, the skill index and the attribution table;
+  - 2502 tests (floor 2502).
+- Counsel review before the public release (an owner action; nothing here is signed off):
+  - the alert texts (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, the pre-close and watch-alive lines) and both
+    fixed footers;
+  - the threshold-level sheet and the exit-plan card, which carry no order shape (`[levels] order_shape_enabled` stays
+    `false`);
+  - quoting diagnostic output: a Bot quotes it only when the owner asks, unchanged, in a fenced block headed by the
+    exact command, and the proposed `positions.csv` lines of `csv_recon.py --diff` appear only in Aegis Position
+    Control's chat;
+  - ticket templates are planned for Stage 2 (not in this release); their review comes with them.
 - Levels, routines and the doctor:
   - the threshold-level sheet (`levels.py`, `trigger_levels.py`): each adopted rule as an option or spread
     price, an underlying level, a band or a date, with its arithmetic shown, rounded on the class's tick grid in

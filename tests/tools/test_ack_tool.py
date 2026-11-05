@@ -430,5 +430,92 @@ class ConfigTest(DeskCopy):
         self.assertEqual([], self.acks())
 
 
+
+class ConnectorsTest(DeskCopy):
+    """``connectors --owner-tapped`` (PR 3 decision P1): the owner read back Connected apps and MCP servers."""
+
+    def config_bytes(self) -> Dict[str, bytes]:
+        found = {}
+        for rel in ("desk.toml", "positions.csv", os.path.join("rules", "ADOPTED"),
+                    os.path.join("rules", "exit_rules-1.0.0.toml")):
+            with open(os.path.join(self.root, rel), "rb") as handle:
+                found[rel] = handle.read()
+        return found
+
+    def test_connectors_records_the_readback_instant(self) -> None:
+        before = self.config_bytes()
+        code, body = self.run_json("connectors", "--owner-tapped")
+        self.assertEqual(0, code, body)
+        payload = body["payload"]
+        self.assertEqual(("connectors", "2026-11-20T19:55:00+00:00", "state/acks.jsonl", []),
+                         (payload["action"], payload["connector_readback_utc"], payload["path"], payload["warnings"]))
+        self.assertEqual("2026-11-20T19:55:00+00:00", self.desk_state()[tool.CONNECTOR_KEY])
+        record = {"utc": "2026-11-20T19:55:00+00:00", "signal_id": None, "trade_id": None, "action": "connectors",
+                  "until": None, "rows_sha": None, "hashes": None}
+        self.assertEqual([record], self.acks())
+        self.assertEqual(record, payload["record"])
+        self.assertEqual(before, self.config_bytes(), "the readback never touches the configuration")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "journal", "signals.jsonl")))
+
+    def test_the_line_names_the_time_and_the_re_ask(self) -> None:
+        code, text = self.run_text("connectors", "--owner-tapped")
+        self.assertEqual((0, "connector readback recorded at 19:55 UTC; desk_doctor re-asks after 30 days\n"), (code, text))
+
+    def test_the_key_and_the_age_are_the_doctor_s(self) -> None:
+        from aegis_desk import doctor
+        self.assertEqual(doctor.CONNECTOR_KEY, tool.CONNECTOR_KEY)
+        self.assertEqual(doctor.CONNECTOR_MAX_AGE_DAYS, tool.CONNECTOR_REASK_DAYS)
+
+    def test_doctor_check_10_passes_for_30_days_after_the_readback(self) -> None:
+        from aegis_desk import doctor
+        self.assertEqual("WARN", doctor.connector_readback_check(self.paths, POSTED).status)
+        self.assertEqual(0, self.run_json("connectors", "--owner-tapped")[0])
+        recorded = datetime.datetime(2026, 11, 20, 19, 55, tzinfo=datetime.timezone.utc)
+        for days, status in ((0, "PASS"), (30, "PASS"), (31, "WARN")):
+            with self.subTest(days=days):
+                item = doctor.connector_readback_check(self.paths, recorded + datetime.timedelta(days=days))
+                self.assertEqual(status, item.status, item.reason)
+
+    def test_connectors_keeps_the_other_desk_state_keys(self) -> None:
+        desk_paths.ensure_runtime_dirs(self.paths)
+        hashes = {"desk_toml": "0" * 64, "positions_csv": None, "rulebook": None}
+        state.atomic_write_json(self.paths.desk_state_json, {"verdicts": {WMT_TRADE: "WATCH"},
+                                                             "acknowledged_hashes": hashes,
+                                                             "connector_readback_utc": "2026-10-01T12:00:00Z"})
+        self.assertEqual(0, self.run_json("connectors", "--owner-tapped")[0])
+        document = self.desk_state()
+        self.assertEqual(({WMT_TRADE: "WATCH"}, hashes, "2026-11-20T19:55:00+00:00"),
+                         (document["verdicts"], document["acknowledged_hashes"], document["connector_readback_utc"]))
+
+    def test_corrupt_desk_state_is_replaced_with_a_warning(self) -> None:
+        desk_paths.ensure_runtime_dirs(self.paths)
+        with open(self.paths.desk_state_json, "w", encoding="utf-8") as handle:
+            handle.write("{broken")
+        code, body = self.run_json("connectors", "--owner-tapped")
+        self.assertEqual(0, code)
+        self.assertIn("state/desk_state.json was corrupt", " ".join(body["payload"]["warnings"]))
+        self.assertEqual("2026-11-20T19:55:00+00:00", self.desk_state()["connector_readback_utc"])
+
+    def test_connectors_needs_the_owner_tap_and_takes_no_signal_id(self) -> None:
+        for words in (("connectors",), ("connectors", "SIG-20261120-001", "--owner-tapped")):
+            with self.subTest(words=words):
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    with self.assertRaises(SystemExit) as ctx:
+                        tool.main(self.argv(*words))
+                self.assertEqual(2, ctx.exception.code)
+                message = json.loads(buffer.getvalue())["error"]["message"]
+                self.assertIn("--owner-tapped" if len(words) == 1 else "takes no signal id", message)
+        self.assertFalse(os.path.exists(self.paths.acks_jsonl))
+        self.assertFalse(os.path.exists(self.paths.desk_state_json))
+        self.assertIn("connectors", tool.OWNER_TAPPED_ACTIONS)
+
+    def test_schema_describes_the_action(self) -> None:
+        code, out = run_tool(["--schema"])
+        payload = json.loads(out)["envelope"]["payload"]
+        self.assertIn("connectors", payload["action"])
+        self.assertIn("connector_readback_utc", payload)
+        self.assertIn("connectors", payload["record"]["action"])
+
 if __name__ == "__main__":
     unittest.main()

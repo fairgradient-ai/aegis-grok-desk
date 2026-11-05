@@ -18,8 +18,8 @@
 #                          .md files under agents/; at least one agent and one skill
 #   2. skills/*/SKILL.md   aegis- prefix, name == directory, description <= 1024, license MIT,
 #                          metadata version/author/category, body <= 320 lines, LICENSE and
-#                          ATTRIBUTION.md (origin: new|adapted) beside it, indexed in
-#                          skills/README.md and SETUP.md
+#                          ATTRIBUTION.md (origin: new|adapted) beside it, an adapted skill's
+#                          in-body notice line, indexed in skills/README.md and SETUP.md
 #   3. links/emoji/scripts markdown links resolve; no emoji in instruction files; every
 #                          scripts/<name>.py named in agents, skills, rules, docs, SETUP, README,
 #                          CONTRIBUTING, AGENTS, GEMINI, CLAUDE and the routine manifest
@@ -153,7 +153,18 @@ def frontmatter(path):
     return data, body
 
 
+def visible(text):
+    """The body as a Bot reads it: HTML comments and fenced code blocks removed, so a boundary
+    sentence hidden in a comment nobody sees, or quoted inside a code block, does not count."""
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return re.sub(r"(```|~~~).*?\1", "", text, flags=re.S)
+
+
 # --- 2. skills --------------------------------------------------------------------------------
+# A skill adapted from the reference repository carries this notice in its visible body, so the
+# credit travels with the SKILL.md body itself, for example through a Grok Bot template export
+# (plan section 12).
+ADAPTED_NOTICE = "Adapted from HyperGrok Trading Desk (Galleon Labs, MIT), commit 75a4c79; see ATTRIBUTION.md."
 skill_dirs = sorted(d for d in os.listdir("skills") if os.path.isdir(os.path.join("skills", d))) if os.path.isdir("skills") else []
 skill_names = set()
 for name in skill_dirs:
@@ -198,16 +209,12 @@ for name in skill_dirs:
             err(f"{attribution}: needs a line 'origin: new' or 'origin: adapted'")
         elif origin.group(1) == "adapted" and "Galleon Labs" not in text:
             err(f"{attribution}: adapted material must credit Galleon Labs")
+        if origin and origin.group(1) == "adapted" and ADAPTED_NOTICE not in visible(body):
+            err(f"{path}: ATTRIBUTION.md says origin: adapted, so the body must carry the notice line "
+                f"{ADAPTED_NOTICE!r} outside HTML comments and code fences")
 
 if not skill_dirs:
     err("skills/: at least one aegis- skill is required")
-
-
-def visible(text):
-    """The body as a Bot reads it: HTML comments and fenced code blocks removed, so a boundary
-    sentence hidden in a comment nobody sees, or quoted inside a code block, does not count."""
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    return re.sub(r"(```|~~~).*?\1", "", text, flags=re.S)
 
 
 # --- 1. agents --------------------------------------------------------------------------------

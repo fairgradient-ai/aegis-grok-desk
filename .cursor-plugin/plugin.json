@@ -9,6 +9,6 @@
   "keywords": ["grok-bot", "options", "position-monitoring", "agents"],
   "skills": "./skills/",
   "agents": "./agents/",
-  "rules": "./rules/",
+  "rules": "./rules/aegis-desk.mdc",
   "hooks": "./hooks/cursor-hooks.json"
 }

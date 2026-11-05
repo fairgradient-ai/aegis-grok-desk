@@ -177,8 +177,9 @@ class RenderTest(unittest.TestCase):
         self.assertIn("| `-h`, `--help` | none | show this help message and exit |", book_check)
         ack = section(self.text, "ack")
         self.assertIn("| `--until` | `ISO-8601-UTC\\|HH:MM ET` |", ack)
-        self.assertIn("| `action` (positional) | `list \\| show \\| ack \\| snooze \\| acted \\| config` (optional) | "
-                      "list \\| show \\| ack \\| snooze \\| acted \\| config (required except with --schema) |", ack)
+        self.assertIn("| `action` (positional) | `list \\| show \\| ack \\| snooze \\| acted \\| config \\| connectors` "
+                      "(optional) | list \\| show \\| ack \\| snooze \\| acted \\| config \\| connectors (required except "
+                      "with --schema) |", ack)
         quote_cache = section(self.text, "quote_cache")
         self.assertIn("| `symbols` (positional) | `SYMBOL` (zero or more) |", quote_cache)
         heartbeat = section(self.text, "heartbeat")

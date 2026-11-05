@@ -11,6 +11,8 @@ tests are one smoke test) and therefore always run, including inside check.sh.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -34,9 +36,18 @@ EXPECTED_OK_LINES = (
     "skip: scripts/gen_role_skills.py not present",
     "ok: all repository gates passed",
 )
+ADAPTED_NOTICE = "Adapted from HyperGrok Trading Desk (Galleon Labs, MIT), commit 75a4c79; see ATTRIBUTION.md."
 # A generator stub for a fixture tree: check.sh steps 9 and 10 run the tree's own generator with --check.
 GENERATOR_STUB = ('"""A stand-in generator for the gate test."""\nfrom __future__ import annotations\n\nimport sys\n\n'
                   'print(%r)\nsys.exit(%d)\n')
+
+
+def write_charter(root: str, text: str) -> None:
+    """Rewrite the fixture tree's one skill and re-pin its sha256 in template/grok-bot.json (the template check)."""
+    write(root, "skills/aegis-desk-charter/SKILL.md", text)
+    template = json.loads(read(root, "template/grok-bot.json"))
+    template["skills"]["aegis-desk-charter"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    write(root, "template/grok-bot.json", json.dumps(template, indent=2) + "\n")
 
 
 def run_check(root: str) -> Tuple[int, str]:
@@ -160,6 +171,29 @@ class CheckShTests(unittest.TestCase):
             code, output = run_check(root)
         self.assertEqual(1, code, output)
         self.assertIn("agents/desk-lead.md: body must contain the boundary sentence verbatim", output)
+
+    def test_adapted_skill_without_the_in_body_notice_fails(self) -> None:
+        self.assert_fails("adapted_skill_without_notice",
+                          "skills/aegis-desk-charter/SKILL.md: ATTRIBUTION.md says origin: adapted, so the body must "
+                          "carry the notice line " + repr(ADAPTED_NOTICE))
+
+    def test_adapted_skill_notice_must_be_visible(self) -> None:
+        for wrap in ("<!-- %s -->", "```text\n%s\n```"):
+            with self.subTest(wrap=wrap):
+                with fixture_tree("adapted_skill_without_notice") as root:
+                    skill = read(root, "skills/aegis-desk-charter/SKILL.md")
+                    write_charter(root, skill + "\n" + wrap % ADAPTED_NOTICE + "\n")
+                    code, output = run_check(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("skills/aegis-desk-charter/SKILL.md: ATTRIBUTION.md says origin: adapted", output)
+
+    def test_adapted_skill_with_the_notice_passes(self) -> None:
+        with fixture_tree("adapted_skill_without_notice") as root:
+            skill = read(root, "skills/aegis-desk-charter/SKILL.md")
+            write_charter(root, skill + "\n" + ADAPTED_NOTICE + "\n")
+            code, output = run_check(root)
+        self.assertEqual(0, code, output)
+        self.assertIn("ok: all repository gates passed", output)
 
     def test_agents_subdirectory_fails(self) -> None:
         self.assert_fails("agents_subdirectory", "agents/sub: agents/ may hold only agent .md files at its top level")

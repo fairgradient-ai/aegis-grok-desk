@@ -1,0 +1,27 @@
+{
+  "description": "Gate fixture: the broker write gate for the shell group and the MCP group.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": ".+__.+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
