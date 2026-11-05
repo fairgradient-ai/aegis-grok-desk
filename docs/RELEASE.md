@@ -76,11 +76,11 @@ Check 1 is interactive: start `claude --plugin-dir .`, then type `/plugin` and `
 
 | Check | Date (UTC) | Claude Code version | Observed output |
 | --- | --- | --- | --- |
-| `claude plugin validate .` passes. Two warnings are accepted: `CLAUDE.md` is not loaded as project context, and the plugin directory check finds no icon (`ICON_MISSING`). The icon matters only for a listing in the Claude plugin directory, which this release does not use. | | | |
-| `/plugin` shows the plugin with no error. `/hooks` lists the two `PreToolUse` groups. | | | |
-| The shell sample is denied with the reason on the Claude Code page. | | | |
-| The stub MCP tool is denied with the reason on the Claude Code page. | | | |
-| The read runs. The hook gives no opinion. | | | |
+| `claude plugin validate .` passes. Two warnings are accepted: `CLAUDE.md` is not loaded as project context, and the plugin directory check finds no icon (`ICON_MISSING`). The icon matters only for a listing in the Claude plugin directory, which this release does not use. | 2026-11-05 | 2.1.318 | `Validation passed with warnings`: exactly the two accepted warnings. |
+| `/plugin` shows the plugin with no error. `/hooks` lists the two `PreToolUse` groups. | 2026-11-05 | 2.1.318 | Not observed interactively. The session's init lists `aegis-desk` 0.1.0 (source `aegis-desk@inline`), and both groups ran in the next two checks (`PreToolUse:Bash`, `PreToolUse:mcp__blackhole__place_order`). |
+| The shell sample is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Hook exit 2. Tool result: `PreToolUse:Bash hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.` The command never ran. |
+| The stub MCP tool is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Server `blackhole` connected. Hook exit 2. Tool result: `PreToolUse:mcp__blackhole__place_order hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an MCP tool named blackhole__place_order (order)). This desk never places, modifies or cancels orders; you act in your brokerage account.` |
+| The read runs. The hook gives no opinion. | 2026-11-05 | 2.1.318 | Hook exit 0 with no output; `git status --short` ran and printed nothing (a clean clone). |
 | After the tag, and before step 8 merges: `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`, installs the tagged release. | | | |
 
 ## 3. The Grok Build observation
