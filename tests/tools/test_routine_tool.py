@@ -408,6 +408,30 @@ class SchemaAndUsageTest(RoutineCopy):
         self.assertIn("nope", err)
 
 
+class DeskRootHelpTest(unittest.TestCase):
+    """The --desk-root help (and so docs/TOOLS.md) names routine.py's own default, never the current directory (PR 3
+    decision P13)."""
+
+    def help_of(self, flag: str) -> str:
+        actions = [action for action in tool.build_parser(RELEASE)._actions if flag in action.option_strings]
+        self.assertEqual(1, len(actions), flag)
+        return actions[0].help or ""
+
+    def test_the_help_names_the_routine_default(self) -> None:
+        text = self.help_of("--desk-root")
+        self.assertIn("default: %s" % tool.DEFAULT_DESK_ROOT, text)
+        self.assertEqual("/workspace/aegis-desk", tool.DEFAULT_DESK_ROOT)
+        self.assertIn("never the current directory", text)
+        self.assertNotIn("default: the current directory", text)
+        self.assertIn("inside this checkout", text)
+        self.assertIn("--offline runs and fixture runs must pass it explicitly", text)
+
+    def test_other_tools_keep_the_shared_help(self) -> None:
+        parser = ack_tool.build_parser(RELEASE)
+        shared = [action.help for action in parser._actions if "--desk-root" in action.option_strings][0]
+        self.assertIn("default: the current directory", shared)
+
+
 class DefaultDeskRootTest(RoutineCopy):
     def test_without_desk_root_the_default_is_used_never_the_current_directory(self) -> None:
         cwd = os.getcwd()

@@ -34,6 +34,23 @@ the skills, agents, rules and hooks checked in here.
   ``.cursor-plugin/plugin.json`` must declare ``"hooks": "./hooks/cursor-hooks.json"`` and
   that file must exist with ``"version": 1``. ``hooks/hooks.json`` must be valid JSON with a
   top-level ``hooks`` object.
+* The hooks wire the broker write gate, and nothing else, exactly once per runtime.
+  ``hooks/hooks.json`` (Claude Code and Grok Build) holds only the ``PreToolUse`` event (a Cursor
+  event name there would run the gate twice in Grok Build), with exactly two groups whose
+  matchers are ``Bash|PowerShell|Monitor|run_terminal_command`` and ``.+__.+``; each group holds
+  exactly one handler of ``type`` ``command`` whose ``command`` is exactly
+  ``python3 "${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py"`` (shell form with the plugin
+  root quoted: Grok Build substitutes it literally and has no exec form, so ``args`` is
+  refused). ``hooks/cursor-hooks.json`` declares exactly the events ``beforeShellExecution``
+  and ``beforeMCPExecution``, each with exactly one flat entry (no nested ``hooks`` list) whose
+  ``command`` is exactly
+  ``python3 "${CURSOR_PLUGIN_ROOT}/hooks/broker_write_gate.py" --runtime cursor`` and whose
+  ``failClosed`` is ``true``. A ``timeout``, where given, is a positive whole number of seconds.
+  Every key is allow-listed, so no extra key can narrow or switch off the gate: ``hooks/hooks.json``
+  holds only ``description`` and ``hooks``, each group only ``matcher`` and ``hooks``, each handler
+  only ``type``, ``command`` and ``timeout``; ``hooks/cursor-hooks.json`` holds only ``version``
+  and ``hooks``, and each entry only ``command``, ``timeout`` and ``failClosed`` (a Cursor
+  ``matcher`` would filter which calls run the gate). ``hooks/broker_write_gate.py`` exists.
 * ``template/grok-bot.json`` ``source.release`` equals the version (written without a ``v``).
 * The desk-rule paragraph (the paragraph of ``rules/aegis-desk.mdc`` that begins "This desk
   never places") appears verbatim in ``GEMINI.md`` and ``AGENTS.md``, which are loaded on every
@@ -99,6 +116,21 @@ URL_PINNED_MARKETPLACES = (GROK_MARKETPLACE, CODEX_MARKETPLACE)
 CURSOR_MANIFEST = ".cursor-plugin/plugin.json"
 CURSOR_HOOKS_DECLARATION = "./hooks/cursor-hooks.json"
 HOOKS_FILE = "hooks/hooks.json"
+CURSOR_HOOKS_FILE = "hooks/cursor-hooks.json"
+HOOK_GATE = "hooks/broker_write_gate.py"
+HOOK_EVENT = "PreToolUse"
+SHELL_MATCHER = "Bash|PowerShell|Monitor|run_terminal_command"
+MCP_MATCHER = ".+__.+"
+HOOK_MATCHERS = (SHELL_MATCHER, MCP_MATCHER)
+GATE_COMMAND = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py"'
+CURSOR_GATE_EVENTS = ("beforeShellExecution", "beforeMCPExecution")
+CURSOR_GATE_COMMAND = 'python3 "${CURSOR_PLUGIN_ROOT}/hooks/broker_write_gate.py" --runtime cursor'
+# The only keys each level of the two hook files may hold; any other key could narrow or disable the gate.
+HOOKS_FILE_KEYS = ("description", "hooks")
+HOOK_GROUP_KEYS = ("matcher", "hooks")
+HOOK_HANDLER_KEYS = ("type", "command", "timeout")
+CURSOR_HOOKS_FILE_KEYS = ("version", "hooks")
+CURSOR_ENTRY_KEYS = ("command", "timeout", "failClosed")
 GEMINI_MANIFEST = "gemini-extension.json"
 TEMPLATE = "template/grok-bot.json"
 DESK_RULE = "rules/aegis-desk.mdc"
@@ -296,15 +328,116 @@ def check_hooks(root: str, manifests: Dict[str, Any], errors: List[str]) -> None
                 f"{CURSOR_MANIFEST}: hooks must be '{CURSOR_HOOKS_DECLARATION}' (found {declared!r})"
             )
         else:
-            cursor_hooks = load_json(root, "hooks/cursor-hooks.json", errors)
+            cursor_hooks = load_json(root, CURSOR_HOOKS_FILE, errors)
             if cursor_hooks is not None:
                 if not isinstance(cursor_hooks, dict) or cursor_hooks.get("version") != 1:
-                    errors.append("hooks/cursor-hooks.json: must declare \"version\": 1")
+                    errors.append(f"{CURSOR_HOOKS_FILE}: must declare \"version\": 1")
                 elif not isinstance(cursor_hooks.get("hooks"), dict):
-                    errors.append("hooks/cursor-hooks.json: 'hooks' must be an object")
+                    errors.append(f"{CURSOR_HOOKS_FILE}: 'hooks' must be an object")
+                else:
+                    check_top_level_keys(CURSOR_HOOKS_FILE, cursor_hooks, CURSOR_HOOKS_FILE_KEYS, errors)
+                    check_cursor_gate_wiring(cursor_hooks["hooks"], errors)
     hooks = load_json(root, HOOKS_FILE, errors)
     if hooks is not None and (not isinstance(hooks, dict) or not isinstance(hooks.get("hooks"), dict)):
         errors.append(f"{HOOKS_FILE}: must be an object with a top-level 'hooks' object")
+    elif hooks is not None:
+        check_top_level_keys(HOOKS_FILE, hooks, HOOKS_FILE_KEYS, errors)
+        check_gate_wiring(hooks["hooks"], errors)
+    if not os.path.isfile(os.path.join(root, HOOK_GATE)):
+        errors.append(f"{HOOK_GATE}: missing; {HOOKS_FILE} and {CURSOR_HOOKS_FILE} run it")
+
+
+def allowed_names(names: Sequence[str]) -> str:
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+
+
+def check_keys(where: str, entry: Dict[str, Any], allowed: Sequence[str], errors: List[str],
+               skip: Sequence[str] = ()) -> None:
+    """Report every key of ``entry`` outside ``allowed`` (``skip`` names keys another rule already reports)."""
+    for key in entry:
+        if key not in allowed and key not in skip:
+            errors.append(f"{where} has key {key!r}, which is not allowed (only {allowed_names(allowed)})")
+
+
+def check_top_level_keys(rel: str, data: Dict[str, Any], allowed: Sequence[str], errors: List[str]) -> None:
+    for key in data:
+        if key not in allowed:
+            errors.append(f"{rel}: top-level key {key!r} is not allowed (only {allowed_names(allowed)})")
+
+
+def check_timeout(where: str, entry: Dict[str, Any], errors: List[str]) -> None:
+    if "timeout" in entry:
+        timeout = entry["timeout"]
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+            errors.append(f"{where}.timeout must be a positive whole number of seconds")
+
+
+def check_gate_wiring(events: Dict[str, Any], errors: List[str]) -> None:
+    """``hooks/hooks.json``: only PreToolUse, the two exact groups, one shell-form gate handler each (module notes)."""
+    for event in events:
+        if event != HOOK_EVENT:
+            errors.append(f"{HOOKS_FILE}: event {event!r} is not allowed; only {HOOK_EVENT} belongs here (Cursor events "
+                          f"go in {CURSOR_HOOKS_FILE}, and Grok Build would run them as a second {HOOK_EVENT})")
+    groups = events.get(HOOK_EVENT)
+    if not isinstance(groups, list) or not groups:
+        errors.append(f"{HOOKS_FILE}: must register the gate under {HOOK_EVENT} (a list of the shell group and the MCP "
+                      "group)")
+        return
+    matchers = [group.get("matcher") if isinstance(group, dict) else None for group in groups]
+    if len(groups) != len(HOOK_MATCHERS) or sorted(map(str, matchers)) != sorted(HOOK_MATCHERS):
+        errors.append(f"{HOOKS_FILE}: {HOOK_EVENT} must hold exactly two groups with the matchers {SHELL_MATCHER!r} and "
+                      f"{MCP_MATCHER!r} (found {matchers!r}, {len(groups)} group(s))")
+    for index, group in enumerate(groups):
+        where = f"{HOOKS_FILE}: {HOOK_EVENT}[{index}]"
+        if isinstance(group, dict):
+            check_keys(where, group, HOOK_GROUP_KEYS, errors)
+        handlers = group.get("hooks") if isinstance(group, dict) else None
+        if not isinstance(handlers, list) or len(handlers) != 1:
+            count = len(handlers) if isinstance(handlers, list) else 0
+            errors.append(f"{where} must hold exactly one handler (found {count})")
+            continue
+        handler = handlers[0]
+        where = f"{where}.hooks[0]"
+        if not isinstance(handler, dict):
+            errors.append(f"{where} must be an object")
+            continue
+        if handler.get("type") != "command":
+            errors.append(f"{where}.type must be 'command' (found {handler.get('type')!r})")
+        if handler.get("command") != GATE_COMMAND:
+            errors.append(f"{where}.command must be exactly {GATE_COMMAND!r} (shell form, plugin root quoted; found "
+                          f"{handler.get('command')!r})")
+        if "args" in handler:
+            errors.append(f"{where} must not declare 'args' (Grok Build's handler has no exec form)")
+        check_keys(where, handler, HOOK_HANDLER_KEYS, errors, skip=("args",))
+        check_timeout(where, handler, errors)
+
+
+def check_cursor_gate_wiring(events: Dict[str, Any], errors: List[str]) -> None:
+    """``hooks/cursor-hooks.json``: the two Cursor events, one flat fail-closed gate entry each (module notes)."""
+    for event in events:
+        if event not in CURSOR_GATE_EVENTS:
+            errors.append(f"{CURSOR_HOOKS_FILE}: event {event!r} is not allowed (only {CURSOR_GATE_EVENTS[0]} and "
+                          f"{CURSOR_GATE_EVENTS[1]})")
+    for event in CURSOR_GATE_EVENTS:
+        entries_of = events.get(event)
+        if not isinstance(entries_of, list) or not entries_of:
+            errors.append(f"{CURSOR_HOOKS_FILE}: must register the gate for {event}")
+            continue
+        if len(entries_of) != 1:
+            errors.append(f"{CURSOR_HOOKS_FILE}: {event} must hold exactly one entry (found {len(entries_of)})")
+        entry = entries_of[0]
+        where = f"{CURSOR_HOOKS_FILE}: {event}[0]"
+        if not isinstance(entry, dict) or "hooks" in entry:
+            errors.append(f"{where} must be a flat entry (no nested 'hooks'): Cursor reads command, matcher, timeout "
+                          "and failClosed on the entry itself")
+            continue
+        if entry.get("command") != CURSOR_GATE_COMMAND:
+            errors.append(f"{where}.command must be exactly {CURSOR_GATE_COMMAND!r} (--runtime cursor reads Cursor's "
+                          f"event shapes; found {entry.get('command')!r})")
+        if entry.get("failClosed") is not True:
+            errors.append(f"{where}.failClosed must be true (found {entry.get('failClosed')!r})")
+        check_keys(where, entry, CURSOR_ENTRY_KEYS, errors)
+        check_timeout(where, entry, errors)
 
 
 def check_template_release(root: str, version: Optional[str], errors: List[str]) -> None:
@@ -604,7 +737,8 @@ def run(root: str) -> Dict[str, Any]:
         "errors": errors,
         "checked": {
             "manifests": len(MANIFESTS),
-            "hooks_files": [HOOKS_FILE, "hooks/cursor-hooks.json"],
+            "hooks_files": [HOOKS_FILE, CURSOR_HOOKS_FILE],
+            "hook_gate": HOOK_GATE,
             "desk_rule_mirrors": list(DESK_RULE_MIRRORS),
             "template": TEMPLATE,
             "routines_manifest": ROUTINES_MANIFEST,

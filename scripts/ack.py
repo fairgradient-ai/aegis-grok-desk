@@ -9,6 +9,7 @@ Usage::
     python3 scripts/ack.py snooze SIGNAL_ID --until ISO-8601-UTC|"HH:MM ET" --owner-tapped [--json]
     python3 scripts/ack.py acted SIGNAL_ID --owner-tapped [--json]
     python3 scripts/ack.py config --owner-tapped [--json]
+    python3 scripts/ack.py connectors --owner-tapped [--json]
         (every form also takes --desk-root DIR, --offline, --now ISO-8601-UTC, --schema and --timeout)
 
 The signals are the records ``book_check.py --post`` appends to ``journal/signals.jsonl`` (``SIG-YYYYMMDD-NNN``);
@@ -39,12 +40,18 @@ their posts are the ``journal/alerts.jsonl`` records (``aegis_desk.signals``). A
   lock, every other key kept; a corrupt file is replaced and said so). ``book_check.py`` prints CONFIG CHANGED
   first on every run until these hashes match the files it evaluates. An unreadable ``rules/ADOPTED`` is
   ``adopted_invalid`` (exit 1, nothing written).
+* ``connectors`` records that the owner read back the account's Connected apps and MCP servers and confirmed that none
+  can place or change an order: the run instant is written to ``state/desk_state.json["connector_readback_utc"]``
+  (atomically, under the desk lock, every other key kept; a corrupt file is replaced and said so), the key that
+  ``desk_doctor`` check 10 reads (it asks again once the record is more than 30 days old). It prints
+  ``connector readback recorded at HH:MM UTC; desk_doctor re-asks after 30 days``.
 
-``snooze``, ``acted`` and ``config`` require ``--owner-tapped``: the flag is the signature of the owner's tap on the
-Ask-first card that runs them; routines never run them. ``ack`` does not need it. Every write appends exactly one
-record to ``state/acks.jsonl``: ``{utc, signal_id|null, trade_id|null, action (ack|snooze|acted|config),
-until|null, rows_sha|null, hashes|null}`` (``config`` carries the acknowledged ``hashes``). The tool never reads
-quotes and never touches ``positions.csv``, ``desk.toml``, the rulebook or the journals.
+``snooze``, ``acted``, ``config`` and ``connectors`` require ``--owner-tapped``: the flag is the signature of the
+owner's tap on the Ask-first card that runs them; routines never run them. ``ack`` does not need it. Every write
+appends exactly one record to ``state/acks.jsonl``: ``{utc, signal_id|null, trade_id|null, action
+(ack|snooze|acted|config|connectors), until|null, rows_sha|null, hashes|null}`` (``config`` carries the acknowledged
+``hashes``). The tool never reads quotes and never touches ``positions.csv``, ``desk.toml``, the rulebook or the
+journals.
 
 Exit 0 on success, 1 on an error (``desk_root``, ``unknown_signal``, ``signal_not_open``, ``adopted_invalid``,
 ``io_error``, ``lock_busy``), 2 on usage. ``--json`` payload: ``{action, ...}`` as ``--schema`` describes.
@@ -75,12 +82,17 @@ from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "ack"
 DESCRIPTION = ("the owner's acknowledgements: list and show the open signals with their re-post ladder, ack, snooze "
-               "or record acted on a signal, and acknowledge the configuration hashes book_check compares")
+               "or record acted on a signal, acknowledge the configuration hashes book_check compares, and record the "
+               "owner's readback of the connected apps and MCP servers")
 NETWORK_ACCESS = "none"
-ACTIONS: Tuple[str, ...] = ("list", "show", "ack", "snooze", "acted", "config")
+ACTIONS: Tuple[str, ...] = ("list", "show", "ack", "snooze", "acted", "config", "connectors")
 SIGNAL_ACTIONS: Tuple[str, ...] = ("show", "ack", "snooze", "acted")
-OWNER_TAPPED_ACTIONS: Tuple[str, ...] = ("snooze", "acted", "config")
-WRITE_ACTIONS: Tuple[str, ...] = ("ack", "snooze", "acted", "config")
+OWNER_TAPPED_ACTIONS: Tuple[str, ...] = ("snooze", "acted", "config", "connectors")
+WRITE_ACTIONS: Tuple[str, ...] = ("ack", "snooze", "acted", "config", "connectors")
+CONNECTOR_KEY: str = "connector_readback_utc"
+"""The ``state/desk_state.json`` key ``connectors`` writes and ``desk_doctor`` check 10 reads (``doctor.CONNECTOR_KEY``)."""
+CONNECTOR_REASK_DAYS: int = 30
+"""The age after which ``desk_doctor`` asks for the readback again (``doctor.CONNECTOR_MAX_AGE_DAYS``)."""
 ACK_RECORD_KEYS: Tuple[str, ...] = ("utc", "signal_id", "trade_id", "action", "until", "rows_sha", "hashes")
 HASH_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook")
 """The acknowledged files, in the order CONFIG CHANGED lists them: ``desk.toml``, ``positions.csv`` and the adopted
@@ -118,13 +130,14 @@ OUTPUT: Dict[str, Any] = {
     "alerts": ["(show) {signal_id, text, posted_at, lint_ok}: the signal's alerts.jsonl records"],
     "acks": ["(show) the signal's acks.jsonl records"],
     "record": {"utc": "ISO-8601 UTC", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null",
-               "action": "ack | snooze | acted | config", "until": "ISO-8601 UTC | null (snooze)",
+               "action": "ack | snooze | acted | config | connectors", "until": "ISO-8601 UTC | null (snooze)",
                "rows_sha": "sha256 of the group's positions.csv lines | null (acted)",
                "hashes": "{desk_toml, positions_csv, rulebook: sha256 | null} | null (config)"},
     "state_before": "(ack, snooze, acted) the signal's state before the record",
     "state_after": "(ack, snooze, acted) the signal's state after it",
     "acknowledged_hashes": "(config) {desk_toml, positions_csv, rulebook: sha256 | null}",
     "rulebook_version": "(config) X.Y.Z | null",
+    "connector_readback_utc": "(connectors) ISO-8601 UTC: the run instant, written to state/desk_state.json",
     "path": "(writes) state/acks.jsonl",
     "warnings": ["string"],
 }
@@ -133,13 +146,13 @@ OUTPUT: Dict[str, Any] = {
 def build_parser(version: str) -> contract.ReadOnlyParser:
     parser = contract.ReadOnlyParser(tool=TOOL, tool_version=version, description=DESCRIPTION)
     parser.add_argument("action", nargs="?", default=None, choices=ACTIONS,
-                        help="list | show | ack | snooze | acted | config (required except with --schema)")
+                        help="list | show | ack | snooze | acted | config | connectors (required except with --schema)")
     parser.add_argument("signal_id", nargs="?", default=None, metavar="SIGNAL_ID",
                         help="SIG-YYYYMMDD-NNN (show, ack, snooze, acted)")
     parser.add_argument("--until", default=None, metavar="ISO-8601-UTC|HH:MM ET",
                         help="snooze until this instant: ISO-8601 UTC, or HH:MM ET on today's America/New_York date")
     parser.add_argument("--owner-tapped", action="store_true",
-                        help="the owner tapped the Ask-first card (required by snooze, acted and config)")
+                        help="the owner tapped the Ask-first card (required by snooze, acted, config and connectors)")
     return parser
 
 
@@ -390,6 +403,12 @@ def write_acknowledged_hashes(paths: desk_paths.DeskPaths, hashes: Mapping[str, 
                               now: datetime.datetime) -> List[str]:
     """Write ``acknowledged_hashes`` (and ``acknowledged_utc``) into ``state/desk_state.json`` under the desk lock,
     keeping every other key; returns warnings."""
+    return update_desk_state(paths, {"acknowledged_hashes": dict(hashes), "acknowledged_utc": now})
+
+
+def update_desk_state(paths: desk_paths.DeskPaths, values: Mapping[str, Any]) -> List[str]:
+    """Set ``values`` in ``state/desk_state.json`` atomically under the desk lock, keeping every other key (a corrupt
+    or non-object file is written afresh); returns warnings."""
     warnings: List[str] = []
     with state.locked(paths.lock_path):
         document, status = state.read_json(paths.desk_state_json)
@@ -402,8 +421,7 @@ def write_acknowledged_hashes(paths: desk_paths.DeskPaths, hashes: Mapping[str, 
         elif document is None:
             document = {}
         document = dict(document)
-        document["acknowledged_hashes"] = dict(hashes)
-        document["acknowledged_utc"] = now
+        document.update(values)
         state.atomic_write_json(paths.desk_state_json, document)
     return warnings
 
@@ -524,6 +542,19 @@ def do_config(paths: desk_paths.DeskPaths, now: datetime.datetime) -> Tuple[Dict
     return payload, lines
 
 
+def do_connectors(paths: desk_paths.DeskPaths, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
+    desk_paths.ensure_runtime_dirs(paths)
+    warnings = update_desk_state(paths, {CONNECTOR_KEY: now})
+    entry = ack_record(now, "connectors")
+    signals.append_record(paths.acks_jsonl, entry)
+    lines = ["connector readback recorded at %s; desk_doctor re-asks after %d days"
+             % (now.astimezone(datetime.timezone.utc).strftime("%H:%M UTC"), CONNECTOR_REASK_DAYS)]
+    lines.extend("warning: %s" % warning for warning in warnings)
+    payload = {"action": "connectors", "record": entry, "connector_readback_utc": now,
+               "path": paths.relative(paths.acks_jsonl), "warnings": warnings}
+    return payload, lines
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     version = release_version()
     parser = build_parser(version)
@@ -544,6 +575,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload, lines = do_show(paths, args.signal_id)
         elif args.action == "config":
             payload, lines = do_config(paths, now)
+        elif args.action == "connectors":
+            payload, lines = do_connectors(paths, now)
         else:
             payload, lines = do_signal_write(paths, args.action, args.signal_id, now, args.until_utc)
     except ToolError as exc:

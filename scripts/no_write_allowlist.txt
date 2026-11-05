@@ -8,3 +8,10 @@
 #
 # Example (not active):
 # docs/aegis-grok-build.md: curl -X POST https://127\.0\.0\.1:9/v1/accounts
+
+# The release-check shell sample the hook is shown refusing (docs/aegis-grok-build.md, docs/aegis-claude-code.md):
+# loopback discard port, so it does nothing even if a hook failed open. Only the exact sample line, alone.
+docs/aegis-*.md: ^\s*curl -X POST https://127\.0\.0\.1:9/v1/accounts/AEGIS-TEST/orders -d class=option$
+# The Grok Build [permission] deny rules (docs/aegis-grok-build.md): patterns that name what they deny.
+docs/aegis-grok-build.md: pattern = "\*/v1/accounts/\*/orders\*"
+docs/aegis-grok-build.md: pattern = "\*curl\*(?:--data\*tradier\.com|tradier\.com\*--data)\*"

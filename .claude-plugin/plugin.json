@@ -1,6 +1,6 @@
 {
   "name": "aegis-desk",
-  "description": "Turn your agent into a read-only options desk: eight roles with full system prompts and twenty-one skills for position monitoring, P/L and rule-driven exit alerts.",
+  "description": "A read-only options desk, Stage 1: the Aegis Desk Lead, Exit Sentinel and Position Control role profiles and their skills for position monitoring, P/L and alerts from the exit rules you adopt. The desk never places, modifies or cancels an order.",
   "version": "0.1.0",
   "author": {"name": "FairGradient", "url": "https://github.com/fairgradient-ai"},
   "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",

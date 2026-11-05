@@ -1,4 +1,19 @@
 {
-  "description": "Aegis Desk: deny any shell command or MCP tool call that looks like a broker order write (gate ships in release 0.1.0)",
-  "hooks": {}
+  "description": "Aegis Desk: deny any shell command or MCP tool call that looks like a broker order write",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Monitor|run_terminal_command",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"", "timeout": 10}
+        ]
+      },
+      {
+        "matcher": ".+__.+",
+        "hooks": [
+          {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py\"", "timeout": 10}
+        ]
+      }
+    ]
+  }
 }

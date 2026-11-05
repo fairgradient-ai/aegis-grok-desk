@@ -1,0 +1,2 @@
+# The gate script that hooks/hooks.json and hooks/cursor-hooks.json run.
+hooks/broker_write_gate.py

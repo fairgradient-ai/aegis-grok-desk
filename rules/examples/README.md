@@ -47,9 +47,10 @@ has no loss rule on its short call, and that no `pct_of_max_loss` threshold exce
 | Events | `EARN2` | an earnings release within 2 trading days on a group with a short option |
 | Portfolio | `DAILY`, `CONC` | the whole book |
 
-Two row tags switch rules off for one group: `#assign-ok` (the owner accepted assignment) silences `EXDIV`,
-`DELTA_WATCH`, `DELTA_SIGNAL` and `CAP`; `#earnings-ok` silences `EARN2`. `PIN3` is never switched off:
-whether assignment happens stays uncertain near the strike, tag or not.
+Two row tags switch rules off for one group, through each rule's `suppress_if_tag`: in this example
+rulebook `#assign-ok` (the owner accepted assignment) silences `EXDIV`, `DELTA_WATCH`, `DELTA_SIGNAL` and `CAP`,
+and `#earnings-ok` silences `EARN2`. The example gives `PIN3` no `suppress_if_tag`, because whether assignment
+happens stays uncertain near the strike; an owner's own rulebook decides this rule by rule.
 
 ## Thresholds are the owner's choices
 

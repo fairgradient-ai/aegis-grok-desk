@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -219,6 +220,193 @@ class ManifestContractTests(unittest.TestCase):
         payload = json.loads(proc.stdout)
         self.assertTrue(payload["ok"])
         self.assertEqual("0.1.0", payload["version"])
+
+
+GATE_COMMAND = 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/broker_write_gate.py"'
+CURSOR_GATE_COMMAND = 'python3 "${CURSOR_PLUGIN_ROOT}/hooks/broker_write_gate.py" --runtime cursor'
+
+
+class HookWiringTests(unittest.TestCase):
+    """The gate's registration (decision R-8): hooks/hooks.json for Claude Code and Grok Build, hooks/cursor-hooks.json
+    for Cursor, and the gate script both run. Each bad fixture breaks exactly one rule."""
+
+    def assert_fails(self, result: dict, *needles: str) -> None:
+        self.assertFalse(result["ok"], joined(result["errors"]))
+        text = joined(result["errors"])
+        for needle in needles:
+            self.assertIn(needle, text)
+
+    def run_case(self, case: str) -> dict:
+        with fixture_tree(case) as root:
+            return check_manifests.run(root)
+
+    def test_good_tree_wires_the_gate(self) -> None:
+        with fixture_tree() as root:
+            result = check_manifests.run(root)
+            self.assertTrue(result["ok"], joined(result["errors"]))
+            self.assertEqual("hooks/broker_write_gate.py", result["checked"]["hook_gate"])
+            hooks = json.loads(read(root, "hooks/hooks.json"))
+        self.assertEqual(["Bash|PowerShell|Monitor|run_terminal_command", ".+__.+"],
+                         [group["matcher"] for group in hooks["hooks"]["PreToolUse"]])
+
+    def test_the_repository_wires_the_gate(self) -> None:
+        result = check_manifests.run(tests._path._ROOT)
+        self.assertEqual([], [error for error in result["errors"] if "hooks/" in error])
+
+    def test_an_empty_hook_set_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_empty"),
+                          "hooks/hooks.json: must register the gate under PreToolUse")
+
+    def test_cursor_events_in_hooks_json_are_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_cursor_event"),
+                          "hooks/hooks.json: event 'beforeShellExecution' is not allowed; only PreToolUse")
+
+    def test_the_two_matchers_are_exact(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_wrong_matcher"),
+                          "hooks/hooks.json: PreToolUse must hold exactly two groups",
+                          "'Bash|PowerShell|Monitor|run_terminal_command' and '.+__.+'", "found ['Bash', '.+__.+']")
+
+    def test_exec_form_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_exec_form"),
+                          "hooks/hooks.json: PreToolUse[0].hooks[0] must not declare 'args'",
+                          "hooks/hooks.json: PreToolUse[0].hooks[0].command must be exactly %r" % GATE_COMMAND)
+
+    def test_an_unquoted_plugin_root_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_unquoted_root"),
+                          "hooks/hooks.json: PreToolUse[1].hooks[0].command must be exactly %r" % GATE_COMMAND,
+                          "shell form, plugin root quoted")
+
+    def test_the_gate_script_must_exist(self) -> None:
+        self.assert_fails(self.run_case("hooks_gate_missing"),
+                          "hooks/broker_write_gate.py: missing; hooks/hooks.json and hooks/cursor-hooks.json run it")
+
+    def test_cursor_entries_fail_closed(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_not_fail_closed"),
+                          "hooks/cursor-hooks.json: beforeMCPExecution[0].failClosed must be true")
+
+    def test_cursor_entries_run_the_cursor_runtime(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_without_runtime"),
+                          "hooks/cursor-hooks.json: beforeShellExecution[0].command must be exactly %r"
+                          % CURSOR_GATE_COMMAND, "--runtime cursor")
+
+    def test_unknown_cursor_events_are_rejected(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_unknown_event"),
+                          "hooks/cursor-hooks.json: event 'preToolUse' is not allowed (only beforeShellExecution and "
+                          "beforeMCPExecution)")
+
+    def test_cursor_entries_are_flat(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_nested"),
+                          "hooks/cursor-hooks.json: beforeShellExecution[0] must be a flat entry (no nested 'hooks')")
+
+    def test_cursor_covers_shell_and_mcp(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_missing_mcp"),
+                          "hooks/cursor-hooks.json: must register the gate for beforeMCPExecution")
+
+    def test_handler_type_timeout_and_counts(self) -> None:
+        def mutate(change: Callable[[Any], None]) -> dict:
+            with fixture_tree() as root:
+                edit_json(root, "hooks/hooks.json", change)
+                return check_manifests.run(root)
+
+        self.assert_fails(mutate(lambda d: d["hooks"]["PreToolUse"][0]["hooks"][0].update(type="http")),
+                          "hooks/hooks.json: PreToolUse[0].hooks[0].type must be 'command'")
+        self.assert_fails(mutate(lambda d: d["hooks"]["PreToolUse"][1]["hooks"][0].update(timeout="10")),
+                          "hooks/hooks.json: PreToolUse[1].hooks[0].timeout must be a positive whole number of seconds")
+        self.assert_fails(mutate(lambda d: d["hooks"]["PreToolUse"][0]["hooks"].append(
+            {"type": "command", "command": GATE_COMMAND})),
+            "hooks/hooks.json: PreToolUse[0] must hold exactly one handler (found 2)")
+        self.assert_fails(mutate(lambda d: d["hooks"]["PreToolUse"].append(dict(d["hooks"]["PreToolUse"][1]))),
+                          "hooks/hooks.json: PreToolUse must hold exactly two groups", "3 group(s)")
+        self.assert_fails(mutate(lambda d: d["hooks"].update(PreToolUse={"matcher": ".+__.+"})),
+                          "hooks/hooks.json: must register the gate under PreToolUse")
+        with fixture_tree() as root:
+            edit_json(root, "hooks/cursor-hooks.json",
+                      lambda d: d["hooks"]["beforeShellExecution"][0].update(timeout=0))
+            result = check_manifests.run(root)
+        self.assert_fails(result, "hooks/cursor-hooks.json: beforeShellExecution[0].timeout must be a positive whole "
+                                  "number of seconds")
+
+    def test_a_cursor_matcher_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("cursor_hooks_matcher"),
+                          "hooks/cursor-hooks.json: beforeShellExecution[0] has key 'matcher', which is not allowed "
+                          "(only command, timeout and failClosed)")
+
+    def test_an_unknown_handler_key_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_async"),
+                          "hooks/hooks.json: PreToolUse[1].hooks[0] has key 'async', which is not allowed (only type, "
+                          "command and timeout)")
+
+    def test_an_unknown_group_key_is_rejected(self) -> None:
+        self.assert_fails(self.run_case("hooks_json_group_key"),
+                          "hooks/hooks.json: PreToolUse[0] has key 'enabled', which is not allowed (only matcher and "
+                          "hooks)")
+
+    def test_unknown_top_level_keys_are_rejected(self) -> None:
+        with fixture_tree() as root:
+            edit_json(root, "hooks/hooks.json", lambda d: d.update(disableAllHooks=True))
+            edit_json(root, "hooks/cursor-hooks.json", lambda d: d.update(enabled=False))
+            result = check_manifests.run(root)
+        self.assert_fails(result, "hooks/hooks.json: top-level key 'disableAllHooks' is not allowed (only description "
+                                  "and hooks)",
+                          "hooks/cursor-hooks.json: top-level key 'enabled' is not allowed (only version and hooks)")
+
+    def test_exec_form_args_is_reported_once(self) -> None:
+        errors = self.run_case("hooks_json_exec_form")["errors"]
+        self.assertEqual(1, sum("'args'" in error for error in errors), errors)
+
+    def test_the_landed_files_match_the_exact_wiring(self) -> None:
+        with open(os.path.join(tests._path._ROOT, "hooks", "cursor-hooks.json"), encoding="utf-8") as handle:
+            cursor = json.load(handle)
+        self.assertEqual(CURSOR_GATE_COMMAND, check_manifests.CURSOR_GATE_COMMAND)
+        self.assertEqual(GATE_COMMAND, check_manifests.GATE_COMMAND)
+        for event in check_manifests.CURSOR_GATE_EVENTS:
+            self.assertEqual(CURSOR_GATE_COMMAND, cursor["hooks"][event][0]["command"])
+
+
+COUNT_RE = re.compile(r"(?i)\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen|"
+                      r"twenty(?:[- ][a-z]+)?)\s+(?:roles?|skills?|agents?|seats?|bots?)\b")
+
+
+def landed(rel: str) -> Any:
+    with open(os.path.join(tests._path._ROOT, rel), encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+class LandedManifestTests(unittest.TestCase):
+    """The repository's own manifests: the Cursor rule path (PR 3 decision P14) and descriptions without the counts
+    nothing checks (decision R-11); names, versions, refs and paths are the contract tests' business above."""
+
+    def test_cursor_reads_the_desk_rule_file(self) -> None:
+        cursor = landed(".cursor-plugin/plugin.json")
+        self.assertEqual("./rules/aegis-desk.mdc", cursor["rules"])
+        self.assertTrue(os.path.isfile(os.path.join(tests._path._ROOT, "rules", "aegis-desk.mdc")))
+
+    def test_a_rule_file_path_is_checked_like_a_directory(self) -> None:
+        with fixture_tree() as root:
+            edit_json(root, ".cursor-plugin/plugin.json", lambda d: d.update(rules="./rules/aegis-desk.mdc"))
+            self.assertTrue(check_manifests.run(root)["ok"])
+            edit_json(root, ".cursor-plugin/plugin.json", lambda d: d.update(rules="./rules/absent.mdc"))
+            result = check_manifests.run(root)
+        self.assertFalse(result["ok"])
+        self.assertIn(".cursor-plugin/plugin.json: rules './rules/absent.mdc' does not exist", joined(result["errors"]))
+
+    def test_descriptions_claim_no_counts_and_keep_the_boundary(self) -> None:
+        for rel in ("plugin.json", ".claude-plugin/plugin.json", "gemini-extension.json", ".grok-plugin/plugin.json",
+                    ".cursor-plugin/plugin.json"):
+            description = landed(rel)["description"]
+            with self.subTest(manifest=rel):
+                self.assertIsNone(COUNT_RE.search(description), description)
+                self.assertIsNone(re.search(r"\bv\d+\.\d+\.\d+\b", description))
+        for rel in ("plugin.json", ".claude-plugin/plugin.json", "gemini-extension.json"):
+            with self.subTest(manifest=rel):
+                description = landed(rel)["description"]
+                self.assertIn("never places, modifies or cancels an order", description)
+                self.assertIn("Stage 1", description)
+
+    def test_the_count_pattern_catches_the_old_claims(self) -> None:
+        for claim in ("Eight roles and twenty-one skills", "eight roles with full system prompts and twenty-one skills",
+                      "twenty-one skills and the desk rule", "3 agents", "15 skills"):
+            self.assertIsNotNone(COUNT_RE.search(claim), claim)
 
 
 STUB_TOOL = '''"""Gate fixture tool: only its parser matters to the manifest check (read by AST, never imported)."""
@@ -479,7 +667,7 @@ class RoutinesManifestTests(unittest.TestCase):
         self.assertEqual({"--week": False, "--tomorrow": False, "--final-call": False, "--fixture-set": True},
                          check_manifests.read_parser_spec(os.path.join(scripts, "expiry_checklist.py")).flags)
         ack = check_manifests.read_parser_spec(os.path.join(scripts, "ack.py"))
-        self.assertEqual(("list", "show", "ack", "snooze", "acted", "config"), ack.positionals[0].choices)
+        self.assertEqual(("list", "show", "ack", "snooze", "acted", "config", "connectors"), ack.positionals[0].choices)
         self.assertEqual("signal_id", ack.positionals[1].name)
         self.assertIsNone(ack.positionals[1].choices)
         for tool in LANDED_STEP_TOOLS:

@@ -143,6 +143,9 @@ NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/... only, through 
 STEP_MODULES: Dict[str, Any] = {}
 """The step tools by name, filled by :func:`step_modules` (``set(step_modules()) == set(routines.STEP_TOOLS)``)."""
 DEFAULT_DESK_ROOT = "/workspace/aegis-desk"
+DESK_ROOT_HELP = ("desk directory (desk.toml, positions.csv, state/); default: %s, never the current directory; a desk "
+                  "root inside this checkout, or the checkout itself, is refused. --offline runs and fixture runs must "
+                  "pass it explicitly" % DEFAULT_DESK_ROOT)
 CHECKOUT_RUN: Optional[Callable[[str, List[str]], Any]] = None
 """The ``run`` seam of ``check_grok_template.checkout_state``; ``None`` is git itself."""
 LOCK_FILE = ".routine.%s.lock"
@@ -912,6 +915,10 @@ def build_parser(release: str) -> contract.ReadOnlyParser:
                              "the run record and printed first)")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
                         help="recorded fixture set passed to the steps that read one (--offline only)")
+    # The shared --desk-root help says the default is the current directory; this tool's default is its own.
+    for action in parser._actions:
+        if "--desk-root" in action.option_strings:
+            action.help = DESK_ROOT_HELP
     return parser
 
 
