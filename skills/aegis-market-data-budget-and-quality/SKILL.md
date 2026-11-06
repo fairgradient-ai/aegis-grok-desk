@@ -196,9 +196,12 @@ requests and 4 chains and to the desk-wide ledger:
 - a ticket: one quotes batch, and for a ROLL the one chain of the replacement's expiration (2 requests in the
   fixture);
 - an expiration of the window that cannot be served (the quota, the cap, a vendor failure) makes the answer
-  UNAVAILABLE, never a best candidate on partial data;
-- a new leg is priced only from a two-sided fresh quote with a mid, at grade A to D, within the owner's
-  `max_spread_pct`; a held leg being closed needs only its conservative fresh side.
+  UNAVAILABLE, never a best candidate on partial data; an empty expiration list from the vendor is never cached and
+  counts as missing;
+- a new leg is priced only when both sides are fresh with a mid, at quote grade A to D, and it is a standard contract
+  of the underlying; a spread above `max_spread_pct` is still priced and falls OUTSIDE_BANDS `max_spread_pct`. A
+  contract the chain lists more than once with different quotes is not priced. A held leg being closed needs only its
+  conservative fresh side.
 
 The sandbox serves no index quotes, no Greeks and no implied volatility. The desk computes IV and Greeks itself from
 the quotes it has. An index underlying in `positions.csv` is reported by `csv_recon.py` as the warning

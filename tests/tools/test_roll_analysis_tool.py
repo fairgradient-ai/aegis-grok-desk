@@ -34,7 +34,7 @@ from unittest import mock
 import ack as ack_tool
 import desk_init as desk_init_tool
 import roll_analysis as tool  # the tool scripts/roll_analysis.py
-from aegis_desk import alert_lint, contract, desk_paths, state, structuring, structuring_text, tradier_client
+from aegis_desk import alert_lint, contract, desk_paths, quote_cache, state, structuring, structuring_text, tradier_client
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -88,7 +88,7 @@ NVDA_EX = "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 202
 NVDA_TEXT = [
     "STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | "
     "Tradier sandbox, 15-min delayed, as of 19:31 UTC",
-    "replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 20 failed",
+    "replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced",
     "no candidate passed every criterion: the desk names no best candidate",
     "the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
     "candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | "
@@ -97,7 +97,7 @@ NVDA_TEXT = [
     "extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | " + NVDA_EX,
     "candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | "
     "extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | " + NVDA_EX,
-    "failed your criteria: 20 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18, unpriced 2)",
+    "failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)",
     "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike",
     "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not "
     "modelled",
@@ -106,7 +106,7 @@ NVDA_TEXT = [
 SPY_NOT_APPLICABLE = [
     "NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the "
     "short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll "
-    "analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)",
+    "analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)",
     footer("19:50"),
 ]
 DISABLED_TEXT = ["NOT_APPLICABLE | AG-20261020-01 roll analysis | the roll section is disabled in your structuring.toml",
@@ -354,8 +354,8 @@ class GoldenTest(DeskCopy):
     def test_nvda_roll_is_none_qualifies_with_the_full_text(self) -> None:
         self.assertEqual(NVDA_TEXT, self.run_text(NVDA))
         payload = self.run_json(NVDA)["payload"]
-        self.assertEqual(("NONE_QUALIFIES", None, 0, 20), (payload["verdict"], payload["best"], payload["passed"],
-                                                           payload["failed"]))
+        self.assertEqual(("NONE_QUALIFIES", None, 0, 18, 2), (payload["verdict"], payload["best"], payload["passed"],
+                                                              payload["failed"], payload["unpriced"]))
         self.assertIsNone(payload["after"])
         top = payload["candidates"][0]
         self.assertEqual(("NVDA270115C00160000", "FAILS_CRITERION", "0.0299", "-0.05", "-10.00"),
@@ -375,7 +375,10 @@ class GoldenTest(DeskCopy):
         self.assertEqual(0, payload["requests"]["made"])
         self.assertIsNone(payload["approval"])
         self.assertEqual([], self.ledger())
-        self.assertEqual(2, len(self.reports()), "a complete answer (exit 0) is a report")
+        # BD6: only BEST and NONE_QUALIFIES (a complete evaluation) write a report; the journal record stays
+        self.assertEqual([], self.reports())
+        self.assertIsNone(payload["files"])
+        self.assertEqual(2, len(self.journal()))
 
     def test_roll_disabled_is_not_applicable(self) -> None:
         self.edit("structuring.toml", "[roll]\nenabled = true", "[roll]\nenabled = false")
@@ -674,6 +677,109 @@ class RecordTest(DeskCopy):
         self.assertIsNone(payload["files"])
         self.assertEqual([], self.reports())
         self.assertEqual([], self.journal())
+
+
+QUARANTINED_ROW = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,open,"
+                   ",,,,")
+WMT_CALL_ROW = ("option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,-684.00,,3.42,open,,,,,"
+                "covered call #assign-ok")
+
+
+class FixerTest(DeskCopy):
+    """The PR 3b review, through the tool: BD5, BD6, L1-4, L2-1/L3-1, L3-2, L3-3, L3-6, L4-1 and BD4."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.init_structuring()
+
+    def test_one_source_of_the_disabled_words(self) -> None:
+        self.assertFalse(hasattr(tool, "DISABLED_WORDS"), "BD5: the library's words are the only source")
+
+    def test_a_quarantined_group_fails_closed(self) -> None:
+        self.edit("positions.csv", WMT_CALL_ROW, WMT_CALL_ROW + "\n" + QUARANTINED_ROW)
+        self.ack()
+        body = self.run_json(expected=20)
+        payload = body["payload"]
+        self.assertEqual(("UNAVAILABLE", "positions_quarantined", 0), (payload["verdict"], payload["cause"],
+                                                                      payload["requests"]["made"]))
+        self.assertEqual(["UNAVAILABLE | AG-20261020-01 roll analysis | positions.csv has a quarantined group "
+                          "(positions_check.py shows why): the desk cannot count the account's coverage", footer("19:50")],
+                         self.run_text(expected=20))
+        self.assertEqual([], self.reports())
+        self.assertEqual(["positions_quarantined", "positions_quarantined"], [r["refused_code"] for r in self.journal()])
+
+    def test_every_candidate_unpriced_is_unavailable_without_a_report(self) -> None:
+        for name in ("chains__WMT__2026-12-18.json", "chains__WMT__2027-01-15.json"):
+            path = os.path.join(self.root, "fixtures", "tradier", "regular", name)
+            with open(path, encoding="utf-8") as handle:
+                document = json.load(handle)
+            for entry in document["options"]["option"]:
+                entry["bid_date"] -= 120000
+                entry["ask_date"] -= 120000
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(document, handle)
+        self.ack()
+        lines = self.run_text(expected=20)
+        self.assertEqual("UNAVAILABLE | AG-20261020-01 roll analysis | no candidate in your window could be priced: the "
+                         "underlying's quote is stamped too far from the option's", lines[0])
+        self.assertEqual([], self.reports())
+
+    def test_a_window_without_a_listed_monthly_is_not_applicable_without_a_report(self) -> None:
+        self.edit("structuring.toml", "[roll]\nenabled = true\ndte = [40, 75]", "[roll]\nenabled = true\ndte = [80, 100]")
+        self.ack()
+        self.assertEqual(["NOT_APPLICABLE | AG-20261020-01 roll analysis | no listed standard monthly expiration lies "
+                          "inside your roll window of 80 to 100 calendar days", footer("19:50")], self.run_text())
+        payload = self.run_json()["payload"]
+        self.assertEqual(("NOT_APPLICABLE", "no_expiration_in_window", None), (payload["verdict"], payload["cause"],
+                                                                               payload["files"]))
+        self.assertEqual([], self.reports())
+
+    def test_accounts_named_with_the_desk_words_print_the_analysis(self) -> None:
+        for name in ("options", "brokerage"):
+            with self.subTest(name=name):
+                for relative in ("desk.toml", "positions.csv"):
+                    path = os.path.join(self.root, relative)
+                    with open(path, encoding="utf-8") as handle:
+                        text = handle.read()
+                    with open(path, "w", encoding="utf-8") as handle:
+                        handle.write(text.replace("Roth IRA", name))
+                self.ack()
+                lines = self.run_text()
+                self.assertTrue(lines[0].startswith("STRUCTURING | AG-20261020-01 roll analysis"), lines[0])
+                for relative in ("desk.toml", "positions.csv"):
+                    shutil.copyfile(os.path.join(FIXTURE_DESK, relative), os.path.join(self.root, relative))
+
+    def test_two_runs_in_one_second_write_one_report(self) -> None:
+        self.ack()
+        first = self.run_json(now="2026-11-03T19:50:00.100000Z")
+        second = self.run_json(now="2026-11-03T19:50:00.900000Z")
+        self.assertEqual((True, False), (first["payload"]["files"]["written"], second["payload"]["files"]["written"]))
+        self.assertEqual("2026-11-03T19:50:00+00:00", second["generated_at"])
+        self.assertEqual(2, len(self.journal()))
+
+    def test_refused_market_data_is_journaled(self) -> None:
+        self.ack()
+        error = quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        with mock.patch.object(tool.quote_cache, "open_market_data", side_effect=error):
+            code, out = call(tool.main, self.argv(json_mode=False))
+        self.assertEqual((20, "UNAVAILABLE: no market-data token: add the Tradier sandbox token\n"), (code, out))
+        (record,) = self.journal()
+        self.assertEqual(("UNAVAILABLE", "no_token", CRITERIA_SHA, hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+                         (record["verdict"], record["refused_code"], record["criteria_sha256"], record["text_sha256"]))
+
+    def test_a_replacement_below_the_stock_cost_reads_below(self) -> None:
+        self.edit("positions.csv", "AG-20261020-01,2026-10-20,,98.50,", "AG-20261020-01,2026-10-20,,120.00,")
+        self.ack()
+        lines = self.run_text()
+        (reasons,) = [line for line in lines if line.startswith("reasons: ")]
+        self.assertTrue(reasons.endswith("; strike 115 below your stock cost 120.00 and not below the held strike 105"),
+                        reasons)
+
+    def test_fractional_shares_are_analysed(self) -> None:
+        self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,200.5,")
+        self.ack()
+        payload = self.run_json()["payload"]
+        self.assertEqual(("BEST", "WMT270115C00115000", "200.5"), (payload["verdict"], payload["best"], payload["shares"]))
 
 
 if __name__ == "__main__":

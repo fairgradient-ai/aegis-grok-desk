@@ -36,6 +36,9 @@ cutoff is 16:30 ET).
 - On an early-close day (13:00 ET) the act-by is the earlier of the broker cutoff and 13:00 ET, marked
   `early close 13:00 ET: confirm your broker's cutoff`. The desk does not know the broker's own early-close cutoff.
 - The OCC's 17:30 ET exercise deadline is never the desk's act-by.
+- The Structuring Desk's LET_ASSIGN ticket prints a short option's act-by as the session close of its last trading
+  day (16:00 ET, 13:00 ET on an early close), or this cutoff when it is earlier, because a short option can be closed
+  only while the session trades (`aegis-ticket-and-unwind-order`). Each Bot quotes its own tool's time.
 - `market_clock.py` prints the exchange's instant as a reference. A synthetic run,
   `market_clock.py --at 2026-11-27T17:00:00Z --expiry 2026-11-27`, ends with:
 

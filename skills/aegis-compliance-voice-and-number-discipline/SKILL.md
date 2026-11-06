@@ -108,15 +108,18 @@ keeps every row above and adds `STRUCTURING_FORBIDDEN_LANGUAGE`, again named her
 
 | Codes | Category | What it catches |
 | --- | --- | --- |
-| SL01 to SL07, SL11 | advice | advice from any subject and in any modal form; a candidate singled out for the owner; praise of a choice; a statement that a trade fits the owner |
-| SL08, SL09, SL13 | claims | words that rate how probable an outcome is; assurances against loss; claims that a choice carries no risk |
-| SL10 | urgency | a call to act at once |
-| SL12 | order instruction | the bare verb for putting an order in, in any form |
-| SL14 | order field | a price with a decimal point after the words for a price condition |
+| SL01 to SL07, SL11, SL17 | advice | advice from any subject and in any modal form, a first-person view included; a candidate singled out or preferred, by anyone, the desk and its tools included; praise of a choice; a statement that a trade fits the owner or matches their situation |
+| SL08, SL09, SL13, SL15, SL16, SL18, SL22 | claims | words that rate how probable an outcome is, in any form; assurances against loss, and claims that a choice carries no risk; claims of what a choice earns; a claim that the text is not advice; words of certainty; words that praise a price as good value, or a stated confidence |
+| SL10 | urgency | a call to act at once, in any wording |
+| SL12, SL21 | order instruction | the bare verb for putting an order in, and a trade verb outside the base table, in any form |
+| SL14, SL20 | order field | a price with a decimal point after the words for a price condition, or a few words after a limit, a payment or a price |
+| SL19 | order kind | the abbreviations of order types, durations and routes, a one-session duration in capitals or in words, and the verb for routing |
 
-It also refuses a line that starts like a leg (`leg 1 of 2:`) outside the fixed leg grammar, rule content (a rule,
-a verdict word, a rulebook version) under the structuring footer, and the sentence starts IS10 to IS34: the
-imperatives of choosing, opening, keeping, hedging and adding.
+It also refuses a line with a leg reference anywhere (`leg 2 of 2`, `leg 2/2`, the numbers in words, any case or
+joining) or a leg's effect words, unless the line is exactly the fixed leg grammar with only the quote segments the
+tools print; rule content (a rule, a plan word, a verdict word, a rulebook version) under the structuring footer, the
+plan word included (`your plan: close`); and the sentence starts IS10 to IS42: the imperatives of choosing, opening,
+keeping, hedging and adding, and the trade verbs.
 
 ## Sentence starts the lint refuses
 
@@ -197,7 +200,8 @@ threshold-level sheet or the group's plan card.
   stands), a route and an account number. None of them appears in any message, file or chat line of any Bot.
 - No alert, level sheet, plan card, brief or routine output carries a strike or expiry to move to, or alternatives
   in ranked order. Only the Structuring Desk, only on request, posts candidates in score order and one best
-  candidate. The rules and snapshot footers refuse a leg or a candidate, and routines refuse the structuring tools.
+  candidate. The rules and snapshot footers refuse a leg reference, a ranked candidate, an action tag and the first
+  line of a structuring answer, and routines refuse the structuring tools.
 - A ticket's leg names the contract and its effect on the holdings (`closes your short`, `opens a new long`) in the
   fixed leg grammar: no order field, and never an OCC symbol or a cell the owner typed.
 - The threshold-level sheet prints levels, never orders. A loss-side line says

@@ -32,11 +32,15 @@ the WITHHELD line and the footer (exit 1 ``lint_failed``; ``--json`` shows the t
 writes ``tickets/TK-<trade_id>-<ACTION>-<YYYYMMDDTHHMMSSZ>.json`` (the standard envelope around the payload without
 the run's own keys) and ``.md`` atomically under the desk lock (the directory created at the first write; identical
 bytes are a no-op, different bytes exit 1 ``ticket_exists`` and nothing is written or recorded); no other answer
-writes a ticket. Every run that prints a text (exit 0 or 20) appends
-one record to ``journal/structuring.jsonl``; the tool writes nothing else (the quote cache and its ledger aside).
+writes a ticket. Every run that prints a text (exit 0 or 20, an UNAVAILABLE printed through the error envelope
+included) appends one record to ``journal/structuring.jsonl``; the tool writes nothing else (the quote cache and its
+ledger aside). ``--now`` (or the clock) is read to the whole second, the ticket id's resolution: two requests in one
+second for the same action are one ticket (a second ROLL ticket for another replacement in that second is exit 1
+``ticket_exists``).
 
 Exit codes: 0 TICKET or NOT_APPLICABLE (a ROLL replacement that fails a criterion is still a TICKET: its labels
-print); 20 UNAVAILABLE (``market_closed``, ``group_quarantined``, ``spot_unusable``, ``held_leg_unusable``,
+print); 20 UNAVAILABLE (``market_closed``, ``group_quarantined``, ``positions_quarantined``, ``spot_unusable``,
+``held_leg_unusable``,
 ``chain_not_served``, ``replacement_not_listed``, ``replacement_unpriced``, ``config_unacknowledged``,
 ``criteria_missing``; and, with an error envelope, ``no_token``, ``production_host``, ``token_file_mode`` and
 ``holiday_table_expired``) and REFUSED; 1 ``desk_root``, ``config_invalid``, ``unknown_trade``, ``positions_invalid``,
@@ -97,7 +101,7 @@ PAYLOAD_KEYS: Tuple[str, ...] = tickets.TICKET_KEYS + EXTRA_KEYS
 FILE_EXCLUDED: Tuple[str, ...] = ("requests", "warnings", "files", "journal", "exit_code")
 """The run's own keys, left out of the ticket file so that a rerun at the same instant writes the same bytes."""
 
-_HOLDINGS = {"shares": "integer", "long_calls": "integer", "short_calls": "integer", "long_puts": "integer",
+_HOLDINGS = {"shares": "integer | decimal string (a fractional share count)", "long_calls": "integer", "short_calls": "integer", "long_puts": "integer",
              "short_puts": "integer"}
 OUTPUT: Dict[str, Any] = {
     "ticket_id": "TK-<trade_id>-<ACTION>-<YYYYMMDDTHHMMSSZ> | null (no ticket)",
@@ -122,7 +126,8 @@ OUTPUT: Dict[str, Any] = {
     "criteria": "structuring.toml echoed (StructuringConfig.as_dict, its sha256 included) | null",
     "legs": [{"step": "integer (1-based, the order the owner enters them)",
               "intent": " | ".join(tickets.INTENTS), "effect": "open | close", "side": "long | short",
-              "instrument": "call | put | shares", "quantity": "integer (contracts or shares)",
+              "instrument": "call | put | shares",
+              "quantity": "integer (contracts or shares) | decimal string (a fractional share count)",
               "row_number": "integer (the positions.csv row) | null (the new leg of a ROLL)",
               "contract": "the contract's symbol (JSON only) or the share symbol", "root": "string",
               "right": "CALL | PUT | null", "strike": "decimal string | null", "expiration": "YYYY-MM-DD | null",
@@ -356,7 +361,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(contract.json_dumps(parser.schema(OUTPUT, NETWORK_ACCESS)))
         return contract.EXIT_QUIET
     validate(parser, args)
-    now = args.now or state.utc_now()
+    now = (args.now or state.utc_now()).replace(microsecond=0)  # the ticket id's resolution (review L3-3)
     payload = empty_payload(args.trade, args.action, now)
     market: Optional[quote_cache.MarketData] = None
     try:
@@ -401,11 +406,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return printed(args, version, now, payload, rendered, paths, criteria.sha256, market,
                        ticket.ticket_id if ticket.verdict == tickets.VERDICT_TICKET else None)
     except ToolError as exc:
+        if exc.exit_code == contract.EXIT_UNAVAILABLE:
+            journal_refusal(args, now, exc)
         return fail(args, version, now, exc.error, exc.message, exc.exit_code)
     except structuring_text.ReportExists as exc:
         return fail(args, version, now, ERROR_TICKET_EXISTS, str(exc))
     except (OSError, state.LockBusy, state.LockUnsupported) as exc:
         return fail(args, version, now, "io_error", "cannot read or write the desk files: %s" % exc)
+
+
+def journal_refusal(args: Any, now: datetime.datetime, exc: "ToolError") -> None:
+    """S5: an UNAVAILABLE printed through the error envelope (market data refused, an expired holiday table) is a
+    printed text too: one journal record with its code (review L3-6). A journal that cannot be written does not turn
+    the refusal into a second failure."""
+    try:
+        paths = desk_paths.for_root(args.desk_root)
+        structuring_text.append_unavailable_record(paths, now=now, tool=TOOL, trade_id=args.trade, code=exc.error,
+                                                   text="UNAVAILABLE: %s" % exc.message,
+                                                   hashes=exit_check.config_hashes(paths), action=args.action)
+    except (desk_paths.DeskPathsError, OSError, state.LockBusy, state.LockUnsupported):
+        pass
 
 
 def printed(args: Any, version: str, now: datetime.datetime, payload: Dict[str, Any],

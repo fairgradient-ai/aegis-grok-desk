@@ -22,6 +22,7 @@ import csv
 import dataclasses
 import datetime
 import io
+import json
 import os
 import random
 import shutil
@@ -369,7 +370,8 @@ class StatusAndOrderTest(unittest.TestCase):
                          [format(c.legs[0].strike, "f") for c in ranking.candidates])
         self.assertEqual(list(range(1, 8)), [c.rank for c in ranking.candidates])
         self.assertEqual("115", format(ranking.best.legs[0].strike, "f"))
-        self.assertEqual((2, 5), (ranking.passed, ranking.failed))
+        # the two UNPRICED candidates were never judged against the criteria: counted apart (review L1-4)
+        self.assertEqual((2, 3, 2), (ranking.passed, ranking.failed, ranking.unpriced))
         self.assertIsNone(ranking.candidates[0].lost_because)
         self.assertEqual({"by": "extrinsic_per_day", "value": D("0.0300"), "best": D("0.0448")},
                          ranking.candidates[1].lost_because)
@@ -813,9 +815,10 @@ class RollGoldenTest(unittest.TestCase):
     def test_nvda_none_qualifies(self) -> None:
         answer = self.nvda
         self.assertEqual((S.VERDICT_NONE_QUALIFIES, None), (answer.verdict, answer.ranking.best))
-        self.assertEqual((0, 20), (answer.ranking.passed, answer.ranking.failed))
-        self.assertEqual({"abs_delta": 14, "min_credit": 1, "credit_only": 6, "strike_floor": 6, "ex_dividend": 18,
-                          "unpriced": 2}, answer.ranking.failure_counts)
+        # the zero-bid and too-wide calls were not priced: counted apart, never as failing the criteria (review L1-4)
+        self.assertEqual((0, 18, 2), (answer.ranking.passed, answer.ranking.failed, answer.ranking.unpriced))
+        self.assertEqual({"abs_delta": 14, "min_credit": 1, "credit_only": 6, "strike_floor": 6, "ex_dividend": 18},
+                         answer.ranking.failure_counts)
         table = [(c.id, c.status, None if c.score is None else format(c.score, "f")) for c in answer.ranking.candidates]
         self.assertEqual([
             ("NVDA270115C00160000", "FAILS_CRITERION", "0.0299"), ("NVDA261218C00160000", "FAILS_CRITERION", "0.0276"),
@@ -1421,6 +1424,28 @@ class PropertyTest(unittest.TestCase):
                 with self.subTest(kind=answer.kind, extra=extra.symbol):
                     self.assertEqual(answer.ranking.best.id, ranking.best.id)
 
+    def test_a_conflicting_copy_of_the_top_contract_gives_one_answer_wherever_it_stands(self) -> None:
+        # review L1-1: the vendor may list a contract twice; the answer never depends on where the copies stand
+        for answer in self.answers:
+            top = answer.ranking.candidates[0].legs[0].occ
+            expiration = next(day for day, entries in answer.chains.items() if any(q.symbol == top for q in entries))
+            original = next(q for q in answer.chains[expiration] if q.symbol == top)
+            copy = dataclasses.replace(original, bid=original.bid + D("0.05"), ask=original.ask + D("0.05"))
+            seen = []
+            for seed in range(8):
+                rng = random.Random(100 + seed)
+                chains = {key: list(value) for key, value in answer.chains.items()}
+                chains[expiration].insert(rng.randrange(len(chains[expiration]) + 1), copy)
+                rng.shuffle(chains[expiration])
+                ranking = self.rerun(answer, chains)
+                seen.append((table(ranking), None if ranking.best is None else ranking.best.id))
+            with self.subTest(kind=answer.kind):
+                self.assertEqual([seen[0]] * len(seen), seen)
+                conflicted = [c for c in self.rerun(answer, {**answer.chains, expiration: answer.chains[expiration]
+                                                             + [copy]}).candidates if top in c.id]
+                self.assertTrue(conflicted)
+                self.assertTrue(all(c.status == "UNPRICED" and codes(c.reasons) == ["quote_conflict"] for c in conflicted))
+
     def test_raising_a_bid_never_lowers_the_score(self) -> None:
         rng = random.Random(7)
         checked = 0
@@ -1446,6 +1471,239 @@ class PropertyTest(unittest.TestCase):
                         self.assertGreaterEqual(again.score, candidate.score, (leg.occ, bump))
                         checked += 1
         self.assertGreater(checked, 50)
+
+
+# ------------------------------------------------------------------------------------------------
+# The fixer pass (PR 3b review): duplicates in a chain, event edges, counts, coverage and shares
+# ------------------------------------------------------------------------------------------------
+
+
+def edit_chains(root: str, symbol: str, edit) -> None:
+    """Rewrite every regular-set chain of ``symbol`` in a desk copy: ``edit(options)`` changes the entries in place."""
+    folder = os.path.join(root, "fixtures", "tradier", "regular")
+    for name in sorted(os.listdir(folder)):
+        if not name.startswith("chains__%s__" % symbol):
+            continue
+        path = os.path.join(folder, name)
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        edit(document["options"]["option"])
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+
+
+def conflicting(entry: Quote) -> Quote:
+    """A second copy of ``entry`` with other quotes (5 cents higher on both sides)."""
+    return dataclasses.replace(entry, bid=entry.bid + D("0.05"), ask=entry.ask + D("0.05"))
+
+
+def table(ranking: "S.Ranking") -> List[Tuple[str, int, str, Optional[Decimal], Tuple[str, ...]]]:
+    return [(c.id, c.rank, c.status, c.score, tuple(codes(c.reasons))) for c in ranking.candidates]
+
+
+class DuplicateQuoteTest(unittest.TestCase):
+    """Q D17: permuting a chain never changes the best. A contract the vendor lists twice with the same quote is one
+    contract; listed twice with different quotes it is UNPRICED ``quote_conflict`` wherever the copies stand."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.wmt = S.run_roll_analysis(Desk(cls).market(), "AG-20261020-01", CRITERIA)
+
+    def rerun(self, chains: Dict[datetime.date, List[Quote]]) -> "S.Ranking":
+        answer = self.wmt
+        built = S.candidates_for(answer.kind, chains, answer.pricing, answer.group_context, answer.section,
+                                 answer.events, held=answer.held)
+        return S.rank_candidates(built.candidates, answer.kind)
+
+    def test_identical_copies_are_one_contract(self) -> None:
+        chains = {day: list(entries) + list(reversed(entries)) for day, entries in self.wmt.chains.items()}
+        self.assertEqual(table(self.wmt.ranking), table(self.rerun(chains)))
+
+    def test_a_conflicting_copy_is_unpriced_wherever_it_stands(self) -> None:
+        best = self.wmt.ranking.best.id
+        rankings = []
+        for where in ("first", "last"):
+            chains = {day: list(entries) for day, entries in self.wmt.chains.items()}
+            entries = chains[JAN15]
+            copy = conflicting(next(entry for entry in entries if entry.symbol == best))
+            entries.insert(0, copy) if where == "first" else entries.append(copy)
+            rankings.append(self.rerun(chains))
+        self.assertEqual(table(rankings[0]), table(rankings[1]))
+        unpriced = next(c for c in rankings[0].candidates if c.id == best)
+        self.assertEqual(("UNPRICED", ["quote_conflict"]), (unpriced.status, codes(unpriced.reasons)))
+        self.assertEqual(S.KEY_UNPRICED, unpriced.reasons[0].key)
+        self.assertEqual(2, unpriced.reasons[0].value)   # the number of copies
+        self.assertEqual((None, None, None, None), (unpriced.legs[0].bid, unpriced.legs[0].ask, unpriced.legs[0].iv,
+                                                    unpriced.legs[0].delta))
+        self.assertIsNone(rankings[0].best)               # the 115 call was the only one that passed
+        self.assertEqual(1, rankings[0].unpriced)
+
+    def test_the_named_replacement_with_conflicting_copies_is_unpriced(self) -> None:
+        desk = Desk(self)
+
+        def duplicate(options: List[Dict]) -> None:
+            for entry in list(options):
+                if entry["symbol"] == "WMT270115C00115000":
+                    twin = dict(entry, bid=3.4, ask=3.7)
+                    options.insert(0, twin)
+        edit_chains(desk.root, "WMT", duplicate)
+        answer = S.run_replacement(desk.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
+        self.assertEqual(S.VERDICT_PRICED, answer.verdict)
+        self.assertEqual(["quote_conflict"], codes(answer.candidate.reasons))
+
+
+class EventEdgeTest(unittest.TestCase):
+    """A release after the close on a last trading day belongs to the call expiring that day: its holders can still
+    exercise until the OCC 17:30 ET cutoff after the move. So the life of a call runs to and including its last
+    trading day's close, and a replacement's window is (the held call's close, the new call's close]."""
+
+    def reasons(self, day: str, time: str, new: datetime.date, held: Optional[datetime.date]) -> List[str]:
+        text = CALENDAR_TEXT.replace('date = 2026-11-17, time = "pre"', 'date = %s, time = "%s"' % (day, time))
+        cal = calendar_events.parse_calendar_text(text)
+        return codes(S.short_call_event_reasons(events(calendar=cal), new_expiration=new, held_expiration=held))
+
+    def test_a_post_close_release_on_the_new_call_last_trading_day_is_inside_its_life(self) -> None:
+        self.assertEqual(["crosses_earnings", "crosses_ex_dividend"], self.reasons("2026-12-18", "post", DEC18, None))
+        self.assertEqual(["crosses_earnings", "crosses_ex_dividend"],
+                         self.reasons("2026-12-18", "post", DEC18, datetime.date(2026, 11, 20)))
+        self.assertEqual(["crosses_earnings", "crosses_ex_dividend"], self.reasons("2026-12-18", "pre", DEC18, None))
+
+    def test_a_post_close_release_on_the_held_call_last_trading_day_is_the_held_call(self) -> None:
+        held = datetime.date(2026, 11, 20)
+        self.assertEqual(["crosses_ex_dividend"], self.reasons("2026-11-20", "post", JAN15, held))
+        self.assertEqual(["crosses_earnings", "crosses_ex_dividend"], self.reasons("2026-11-20", "post", DEC18, None))
+        # a release after the held call's last trading day is the new call's alone
+        self.assertEqual(["crosses_earnings", "crosses_ex_dividend"], self.reasons("2026-11-23", "pre", JAN15, held))
+
+
+class CountsAndWindowTest(unittest.TestCase):
+    """A candidate that was never priced is counted apart (review L1-4); no priced candidate at all is UNAVAILABLE
+    ``no_candidate_priced``; a window holding no listed standard monthly is NOT_APPLICABLE ``no_expiration_in_window``."""
+
+    def test_unpriced_candidates_are_counted_apart_in_the_payload(self) -> None:
+        answer = S.run_roll_analysis(Desk(self).market(), "AG-20261022-02", CRITERIA)
+        body = answer.as_dict()
+        self.assertEqual((0, 18, 2), (body["passed"], body["failed"], body["unpriced"]))
+        self.assertNotIn("unpriced", body["failure_counts"])
+        self.assertIn("unpriced", S.ANSWER_KEYS)
+        self.assertEqual(2, answer.ranking.as_dict()["unpriced"])
+
+    def test_every_candidate_unpriced_is_unavailable(self) -> None:
+        desk = Desk(self)
+
+        def shift(options: List[Dict]) -> None:   # every option stamped 120 s before the underlying
+            for entry in options:
+                entry["bid_date"] -= 120000
+                entry["ask_date"] -= 120000
+        edit_chains(desk.root, "WMT", shift)
+        answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_NO_CANDIDATE_PRICED), (answer.verdict, answer.cause))
+        self.assertEqual("no candidate in your window could be priced: the underlying's quote is stamped too far from "
+                         "the option's", answer.reason)
+        self.assertIsNone(answer.best)
+        self.assertIn(S.CAUSE_NO_CANDIDATE_PRICED, S.CAUSES)
+
+    def test_a_window_without_a_listed_monthly_is_not_applicable(self) -> None:
+        criteria = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, dte=(80, 100)))
+        answer = S.run_roll_analysis(Desk(self).market(), "AG-20261020-01", criteria)
+        self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_NO_EXPIRATION), (answer.verdict, answer.cause))
+        self.assertEqual("no listed standard monthly expiration lies inside your roll window of 80 to 100 calendar days",
+                         answer.reason)
+        self.assertEqual(([], [], []), (answer.expirations.listed_in_window, answer.expirations.evaluated,
+                                        answer.expirations.not_evaluated))
+        covered = dataclasses.replace(CRITERIA, covered_call=dataclasses.replace(CRITERIA.covered_call, dte=(80, 100)))
+        proposal = S.run_proposal(Desk(self, drop_row=4).market(), "AG-20261020-01", "covered_call", covered)
+        self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_NO_EXPIRATION), (proposal.verdict, proposal.cause))
+        self.assertIn("your covered_call window of 80 to 100 calendar days", proposal.reason)
+
+    def test_an_empty_cached_expirations_list_is_never_served(self) -> None:
+        desk = Desk(self)
+        folder = os.path.join(desk.root, "data", "cache", "expirations")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "WMT.json"), "w", encoding="utf-8") as handle:
+            json.dump({"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00Z", "dates": []}, handle)
+        answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
+        self.assertEqual((S.VERDICT_BEST, "WMT270115C00115000"), (answer.verdict, answer.best.id))
+
+
+QUARANTINED_ROW = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,open,"
+                   ",,,,")
+
+
+class CoverageQuarantineTest(unittest.TestCase):
+    """Reviews L2-1 and L3-1: the rows of a quarantined group are not loaded, so the account's coverage cannot be
+    counted while one exists: every structuring answer fails closed (UNAVAILABLE ``positions_quarantined``) before
+    any quote."""
+
+    def desk(self, drop_row: Optional[int] = None) -> Desk:
+        tail = ("option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,-684.00,,3.42,open,,,,,"
+                "covered call #assign-ok")
+        if drop_row == 4:
+            return Desk(self, drop_row=None, replace=(tail, QUARANTINED_ROW))
+        return Desk(self, replace=(tail, tail + "\n" + QUARANTINED_ROW))
+
+    def test_every_answer_fails_closed(self) -> None:
+        desk = self.desk()
+        positions = positions_csv.load_positions(os.path.join(desk.root, "positions.csv"), today=TODAY)
+        self.assertIn("AG-20261030-05", positions.quarantined)
+        roll = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_POSITIONS_QUARANTINED, 0),
+                         (roll.verdict, roll.cause, roll.requests["made"]))
+        self.assertEqual("positions.csv has a quarantined group (positions_check.py shows why): the desk cannot count "
+                         "the account's coverage", roll.reason)
+        shares_only = self.desk(drop_row=4)
+        for structure in ("covered_call", "protective_put", "collar"):
+            answer = S.run_proposal(shares_only.market(), "AG-20261020-01", structure, CRITERIA)
+            with self.subTest(structure=structure):
+                self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_POSITIONS_QUARANTINED, 0),
+                                 (answer.verdict, answer.cause, answer.requests["made"]))
+        replacement = S.run_replacement(desk.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_POSITIONS_QUARANTINED), (replacement.verdict, replacement.cause))
+        self.assertIn(S.CAUSE_POSITIONS_QUARANTINED, S.CAUSES)
+
+
+class PartlyFreeSharesTest(unittest.TestCase):
+    """Review L3-4: 300 shares and one short call held in another group of the account leave 200 free shares; the
+    desk proposes no overlay on part of a group's shares and says how many are free."""
+
+    def test_the_reason_counts_the_free_shares(self) -> None:
+        moved = ("equity,WMT,,200,,,,Brokerage (margin),AG-20261020-01,2026-10-20,,98.50,,open,,,,92.00,core holding "
+                 "#horizon:2027-03\noption,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,"
+                 "-684.00,,3.42,open,,,,,covered call #assign-ok",
+                 "equity,WMT,,300,,,,Brokerage (margin),AG-20261020-01,2026-10-20,,98.50,,open,,,,92.00,core holding "
+                 "#horizon:2027-03\noption,WMT,WMT261120C00105000,-1,,,,Brokerage (margin),AG-20261030-01,2026-10-30,"
+                 "-342.00,,3.42,open,,,,,one call")
+        desk = Desk(self, replace=moved)
+        for structure, words in (("covered_call", "covered call"), ("collar", "collar")):
+            answer = S.run_proposal(desk.market(), "AG-20261020-01", structure, CRITERIA)
+            with self.subTest(structure=structure):
+                self.assertEqual((S.VERDICT_NOTHING_TO_PROPOSE, S.NOTHING_NOT_ENOUGH_FREE_SHARES, 0),
+                                 (answer.verdict, answer.cause, answer.requests["made"]))
+                self.assertEqual("200 of the 300 WMT shares are free: 1 short call held in another group of this "
+                                 "account relies on the rest; the desk proposes no %s on part of a group's shares"
+                                 % words, answer.reason)
+
+
+class FractionalSharesTest(unittest.TestCase):
+    """BD4: positions_csv accepts a fractional share quantity; coverage counts whole hundreds and only short shares
+    are refused."""
+
+    def test_fractional_shares_are_counted_exactly(self) -> None:
+        desk = Desk(self, replace=("equity,WMT,,200,", "equity,WMT,,200.5,"))
+        answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
+        self.assertEqual((S.VERDICT_BEST, "WMT270115C00115000"), (answer.verdict, answer.best.id))
+        holdings = S.approval_state(answer)
+        self.assertEqual((D("200.5"), 2, 0), (holdings.shares, holdings.short_calls, holdings.uncovered_calls))
+        shares_only = Desk(self, drop_row=4, replace=("equity,WMT,,200,", "equity,WMT,,250.5,"))
+        call = S.run_proposal(shares_only.market(), "AG-20261020-01", "covered_call", CRITERIA)
+        self.assertEqual((S.VERDICT_NONE_QUALIFIES, 2, D("250.5")),
+                         (call.verdict, call.contracts, call.group_context.shares))
+        # the protective put and the collar are priced too (no error); the fixture holds no WMT chain in their window
+        for structure in ("protective_put", "collar"):
+            proposal = S.run_proposal(shares_only.market(), "AG-20261020-01", structure, CRITERIA)
+            with self.subTest(structure=structure):
+                self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_CHAIN_NOT_SERVED, 2),
+                                 (proposal.verdict, proposal.cause, proposal.contracts))
 
 
 if __name__ == "__main__":  # pragma: no cover

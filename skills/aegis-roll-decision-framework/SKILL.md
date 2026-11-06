@@ -47,7 +47,7 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
   too.
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
 ```
 
 ## The replacement set
@@ -58,7 +58,10 @@ NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective p
 - The window spans at most 90 days, so at most four monthly chains are needed. One run makes at most 20 requests
   and fetches at most 4 chains. The WMT run above made 4 requests: the quotes, the expirations and two chains.
 - If an expiration in the window cannot be served, the analysis is UNAVAILABLE: no best candidate is named on
-  partial data.
+  partial data. If not one candidate can be priced, it is UNAVAILABLE too: `no candidate in your window could be
+  priced`, with the reason.
+- A window that holds no listed standard monthly is NOT_APPLICABLE. Synthetic, a copy whose `[roll] dte` is
+  `[80, 100]`: `no listed standard monthly expiration lies inside your roll window of 80 to 100 calendar days`.
 
 ## The objective and the score
 
@@ -81,17 +84,18 @@ Each candidate gets one status, with every reason listed (the JSON's `status` an
 | `ELIGIBLE` | it passed every criterion |
 | `FAILS_CRITERION` | it fails `credit_only`, `strike_floor`, `earnings` or `ex_dividend` |
 | `OUTSIDE_BANDS` | it falls outside `dte`, `abs_delta`, `min_credit` or `max_spread_pct` |
-| `UNPRICED` | its quote cannot price it: missing, stale, one side stale, crossed, a zero bid, too wide, or no implied volatility |
+| `UNPRICED` | its quote cannot price it: missing, stale, one side stale, crossed, a zero bid, too wide, listed more than once with different quotes, or no implied volatility |
 
 The precedence is UNPRICED, then OUTSIDE_BANDS, then FAILS_CRITERION, then ELIGIBLE. The table lists ELIGIBLE first,
 then FAILS_CRITERION and OUTSIDE_BANDS (each by score and tie-breaks), then UNPRICED. In the text both failing tiers
-print alike, `FAILS_CRITERION <key>: <words>`, and an unpriced quote prints `not priced: <words>`.
+print alike, `FAILS_CRITERION <key>: <words>`, and an unpriced quote prints `not priced: <words>`. The counts keep the
+unpriced apart (`<n> not priced`): a candidate the desk could not price was never judged against the criteria.
 
 | Key | Fails when (the fixture's value) | Its words in the text |
 | --- | --- | --- |
 | `credit_only` | the roll is a net debit; a zero net passes (`true`) | `a net debit of <x>` |
 | `strike_floor` | the new strike is below the held strike and below the stock cost (`cost_basis`) | `strike <K> below your stock cost <cost>` |
-| `earnings` | an earnings date falls between the held call's cutoff and the new call's (`exclude`) | `earnings on <date> (<time>) fall inside the new call's life` |
+| `earnings` | an earnings release falls after the held call's cutoff and no later than the new call's; a release after the close on the new call's last trading day counts (`exclude`) | `earnings on <date> (<time>) fall inside the new call's life` |
 | `ex_dividend` | a cum-dividend day falls inside the new call's life and not the held call's (`exclude`) | `the ex-dividend date <date> (cum <date>) falls inside the new call's life` |
 | `dte` | outside the window (`[40, 75]` calendar days) | `<n> calendar days outside your window <lo> to <hi>` |
 | `abs_delta` | outside the band, read at 2 decimals (`[0.15, 0.35]`) | `absolute delta <d> outside your band <lo> to <hi>` |
@@ -141,14 +145,15 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 ## When no candidate passes
 
 ```text
-replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 20 failed
+replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
 candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-failed your criteria: 20 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18, unpriced 2)
+failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
 ```
 
-(Lines 2 to 5 and 8 of AG-20261022-02, the NVDA covered call, whose rows carry `#earnings-ok` but no `#assign-ok`.)
+(Lines 2 to 5 and 8 of AG-20261022-02, the NVDA covered call, whose rows carry `#earnings-ok` but no `#assign-ok`.
+The `2 not priced` are its two 180 calls, a zero bid and a spread too wide.)
 
 - NONE_QUALIFIES is a complete answer (exit 0). The desk names no best candidate, and the Bot never picks one from
   the failed list or says which failure "matters less".
@@ -176,15 +181,16 @@ prints. The ticket skill has the convention table.
   never runs in a routine`. No alert, sheet, card, brief or routine message carries a candidate or a leg; the lint's
   rules and snapshot footers refuse them.
 - Each run raises an Ask-first card; the owner's tap is the record of the request. Every run that printed a text
-  appends one record to `journal/structuring.jsonl`; an answer (exit 0) also writes
-  `reports/rolls/<trade id>-<YYYYMMDDTHHMMSSZ>.md` and `.json`.
+  appends one record to `journal/structuring.jsonl`. A complete evaluation (BEST or NONE_QUALIFIES) also writes
+  `reports/rolls/<trade id>-<YYYYMMDDTHHMMSSZ>.md` and `.json`; a NOT_APPLICABLE answer writes no report, only its
+  journal record.
 
 ## The exit codes
 
 | Code | Answer |
 | --- | --- |
 | 0 | BEST, NONE_QUALIFIES or NOT_APPLICABLE |
-| 20 | UNAVAILABLE (market data, `criteria_missing`, `config_unacknowledged`) or REFUSED |
+| 20 | UNAVAILABLE (market data, `no_candidate_priced`, `positions_quarantined`, `criteria_missing`, `config_unacknowledged`) or REFUSED |
 | 1 | an error, such as `unknown_trade`, `structuring_invalid` or `lint_failed` |
 | 2 | usage |
 

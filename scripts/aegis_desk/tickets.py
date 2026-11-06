@@ -37,7 +37,9 @@ is missing); :func:`cash_summary` sums them and names the most cash the steps ne
 sum)``). :func:`realized_estimate` is ``pnl.realized_for_row``'s arithmetic on the open quantity at either price.
 
 LET_ASSIGN and MONETIZE_PUT: :func:`let_assign_leg` reads the moneyness at the spot mid by the one-cent rule
-(``expiry.in_the_money``), the act-by from ``desk.toml``'s broker cutoff (``expiry.act_by``, ``expiry.act_by_text``), the
+(``expiry.in_the_money``), the act-by of the alternative (closing the short leg, which only the session allows: the
+last trading day's close, 16:00 ET or 13:00 ET on an early close, or ``desk.toml``'s broker cutoff when earlier; the
+broker's exercise cutoff itself stays in the OCC line, reviews L1-2 and L2-5), the
 cash if assigned (``+/- strike x 100 x contracts``), the realized amount if assigned (:func:`assignment_realized`: the
 premium kept, plus for a call the shares delivered FIFO at the strike) and, for a call, the dividend window;
 :func:`put_moneyness` the put's moneyness and the intrinsic and time value of its bid. A ticket is computed only
@@ -99,12 +101,15 @@ _INTENT_PARTS: Dict[str, Tuple[str, str, int]] = {
 
 UNAVAILABLE_WORDS: Dict[str, str] = {
     structuring.CAUSE_GROUP_QUARANTINED: "the group is quarantined in positions.csv (positions_check.py shows why)",
+    structuring.CAUSE_POSITIONS_QUARANTINED: structuring._UNAVAILABLE_WORDS[structuring.CAUSE_POSITIONS_QUARANTINED],
     structuring.CAUSE_SPOT_UNUSABLE: "no usable quote of the underlying",
     structuring.CAUSE_HELD_LEG_UNUSABLE: "no fresh conservative side for a leg the ticket closes",
     structuring.CAUSE_MARKET_CLOSED: structuring.TICKET_CLOSED_WORDS,
 }
 """The reason words of the UNAVAILABLE causes this module decides (a ROLL's own come from ``run_replacement``)."""
 NO_MID_WORDS: str = "no mid: a quote side is stale"
+SESSION_CLOSE_WORDS: str = "a short option left to expiry can be closed only while the session trades"
+"""Why a LET_ASSIGN ticket's act-by is the session close: the alternative to assignment is closing the leg."""
 SHARE_TICK: Decimal = levels.STOCK_TICK
 
 _ZERO = Decimal(0)
@@ -137,13 +142,14 @@ class Replacement:
 @dataclass(frozen=True)
 class PlanLeg:
     """One step of an action plan, in the order the owner enters them: ``intent`` (:data:`INTENTS`), ``instrument``
-    (``approval.INSTRUMENTS``), whole ``quantity`` (contracts or shares) and the held ``row_number`` (``None`` for the
-    new leg of a ROLL). ``symbol`` is the contract's symbol for the JSON only (the text prints the leg grammar)."""
+    (``approval.INSTRUMENTS``), ``quantity`` (whole contracts, or the exact open shares: a ``Decimal`` when the
+    holding is fractional) and the held ``row_number`` (``None`` for the new leg of a ROLL). ``symbol`` is the
+    contract's symbol for the JSON only (the text prints the leg grammar)."""
 
     step: int
     intent: str
     instrument: str
-    quantity: int
+    quantity: Any
     row_number: Optional[int]
     symbol: Optional[str]
     root: str
@@ -174,13 +180,22 @@ class PlanLeg:
 def _whole(value: Decimal, row: PositionRow) -> int:
     quantity = abs(value)
     if quantity != quantity.to_integral_value() or quantity <= 0:
-        raise ValueError("row %d holds %s: a ticket counts whole shares and contracts" % (row.row_number, value))
+        raise ValueError("row %d holds %s: a ticket counts whole contracts" % (row.row_number, value))
     return int(quantity)
+
+
+def _shares_of(row: PositionRow) -> Any:
+    """The exact open share quantity a ticket closes (BD4: positions.csv accepts fractional shares): an ``int`` when
+    whole, else the exact ``Decimal``."""
+    quantity = abs(row.open_quantity)
+    if quantity <= 0:
+        raise ValueError("row %d holds no shares to close" % row.row_number)
+    return int(quantity) if quantity == quantity.to_integral_value() else quantity
 
 
 def _row_leg(step: int, intent: str, row: PositionRow) -> PlanLeg:
     if row.is_stock_like:
-        return PlanLeg(step, intent, approval.INSTRUMENT_SHARES, _whole(row.open_quantity, row), row.row_number,
+        return PlanLeg(step, intent, approval.INSTRUMENT_SHARES, _shares_of(row), row.row_number,
                        row.compact_symbol, row.underlying, None, None, None, row.multiplier)
     assert row.occ is not None
     instrument = approval.INSTRUMENT_CALL if row.is_call else approval.INSTRUMENT_PUT
@@ -489,7 +504,12 @@ def let_assign_leg(row: PositionRow, group: PositionGroup, spot_mid: Decimal, *,
         raise ValueError("row %d is not a short option" % row.row_number)
     strike = expiry.plain_decimal(row.occ.strike)
     last_day = expiry.leg_last_trading_day(row, calendar)
-    act = expiry.act_by(last_day, cutoff_et, now, extra_holidays)
+    # The alternative to assignment for a short option is closing it, which only the session allows: the last
+    # trading day's close (16:00 ET, 13:00 ET on an early close), or desk.toml's broker cutoff when that is earlier.
+    # The broker's exercise cutoff itself governs a long holder's instruction (the OCC line keeps it; reviews L1-2
+    # and L2-5).
+    close_et = market_clock.session_close_et(last_day, extra_holidays=extra_holidays)
+    act = replace(expiry.act_by(last_day, min(close_et, cutoff_et), now, extra_holidays), early_close=False)
     text = expiry.act_by_text(act, today, market_clock.next_trading_day(today, extra_holidays))
     contracts = _whole(row.open_quantity, row)
     shares = contracts * row.multiplier
@@ -666,6 +686,8 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
     ticket.target, ticket.group = target, target.group
     if target.unusable or target.group is None:
         return _close(ticket, market, VERDICT_UNAVAILABLE, structuring.CAUSE_GROUP_QUARANTINED)
+    if target.others_quarantined:  # the account's coverage cannot be counted (reviews L2-1, L3-1)
+        return _close(ticket, market, VERDICT_UNAVAILABLE, structuring.CAUSE_POSITIONS_QUARANTINED)
     group = target.group
     applicability = structuring.ticket_applicability(group, action, criteria)
     if applicability is not None:
@@ -888,7 +910,7 @@ def _let_assign_lines(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
         lines.append("the %s %s %s is %s the money now: %s" % (w.date(leg.expiration), w.strike(leg.strike), right,
                                                               "in" if leg.itm else "out of",
                                                               _relation(w, leg.right, leg.spot_mid, leg.strike, leg.itm)))
-        lines.append("if you decide otherwise, you %s" % w.words(leg.act_by_text))
+        lines.append("if you decide otherwise, you %s: %s" % (w.words(leg.act_by_text), SESSION_CLOSE_WORDS))
         shares = "%s %s shares" % (w.count(leg.shares), group.underlying)
         if leg.right == "CALL":
             text = "if assigned: %s are called away at the strike, cash %s" % (shares, w.signed_money(leg.cash_if_assigned))
@@ -1008,9 +1030,8 @@ def render_ticket(ticket: Ticket, rulebook_changes: Sequence[Mapping[str, Option
     the owner typed screened, the WITHHELD line on any finding)."""
     w = structuring_text.Writer()
     lines = ticket_lines(w, ticket, rulebook_changes)
-    owner_texts = [] if ticket.group is None else [ticket.group.account]
-    return structuring_text.finish(w, lines, ticket_as_of(ticket), structuring.TOOL_EXIT_TICKET, owner_texts=owner_texts,
-                                   delay_min=delay_min)
+    return structuring_text.finish(w, lines, ticket_as_of(ticket), structuring.TOOL_EXIT_TICKET,
+                                   owner_texts=structuring.owner_texts(ticket.target), delay_min=delay_min)
 
 
 __all__ = [

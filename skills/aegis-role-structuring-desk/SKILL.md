@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: bff8dd3984ef292f312f7e56bc471aeffbefc880ee59f7785000f274d687ada4
+  source_sha256: 02f9a922379afa9dffc7c5ce896c2b88442a6dfad7113ddd3d448783ff47ca67
 ---
 
 # Aegis Structuring Desk: role skill
@@ -39,15 +39,16 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 | File (under `/workspace/aegis-desk`) | Written by |
 | --- | --- |
 | `tickets/TK-<trade id>-<ACTION>-<stamp>.md` and `.json`, on a TICKET only | `scripts/exit_ticket.py` |
-| `reports/rolls/<trade id>-<stamp>.md` and `.json`, on exit 0 only | `scripts/roll_analysis.py` |
-| `reports/proposals/<trade id>-<structure>-<stamp>.md` and `.json`, on exit 0 only | `scripts/propose.py` |
+| `reports/rolls/<trade id>-<stamp>.md` and `.json`, only for BEST and NONE_QUALIFIES | `scripts/roll_analysis.py` |
+| `reports/proposals/<trade id>-<structure>-<stamp>.md` and `.json`, only for BEST and NONE_QUALIFIES | `scripts/propose.py` |
 | `journal/structuring.jsonl`, one record per printed text (exit 0 or 20) | all three |
 | `structuring.toml`, the owner's criteria | `desk_init.py`, after the owner's tap |
 | `data/cache/` (quotes, chains, expirations, the request ledger) | the quote cache, through all three |
 
-The stamp is the run instant, `YYYYMMDDTHHMMSSZ`. The tools create `tickets/`, `reports/rolls/` and
-`reports/proposals/` at their first write. A file never holds `positions.csv` lines. You never write or edit any of
-these files yourself.
+The stamp is the run instant, `YYYYMMDDTHHMMSSZ`. A report is written only for a complete evaluation;
+NOT_APPLICABLE and NOTHING_TO_PROPOSE write no report, only their journal record. The tools create `tickets/`,
+`reports/rolls/` and `reports/proposals/` at their first write. A file never holds `positions.csv` lines. You never
+write or edit any of these files yourself.
 
 ### When you run
 
@@ -146,7 +147,7 @@ BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per 
 An answer that prices nothing is one line and the footer (exit 0):
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
 NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask for a roll analysis
 ```
 
@@ -247,7 +248,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 | Code | Meaning for a structuring tool |
 | --- | --- |
 | 0 | an answer: BEST, NONE_QUALIFIES, NOTHING_TO_PROPOSE, NOT_APPLICABLE or TICKET |
-| 20 | UNAVAILABLE (market data, `criteria_missing`, `config_unacknowledged`) or REFUSED |
+| 20 | UNAVAILABLE (market data, `positions_quarantined`, `criteria_missing`, `config_unacknowledged`) or REFUSED |
 | 1 | an error, such as `unknown_trade`, `structuring_invalid`, `ticket_exists` or `lint_failed` |
 | 2 | usage: invalid arguments |
 
@@ -261,6 +262,9 @@ Follow the incident playbooks skill. Post each line as printed:
 - Market data: `UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the underlying` (stale quotes),
   `an option chain in your window was not served`, `the market is closed today`. A ticket needs an open session:
   `a ticket needs quotes live enough to act on: the session is not open`.
+- A quarantined group anywhere in `positions.csv`: `positions.csv has a quarantined group (positions_check.py shows
+  why): the desk cannot count the account's coverage`. Hand off to Aegis Position Control, which owns the file's
+  checks; nothing is priced until the group is fixed and acknowledged.
 - No criteria: `UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)`.
   Offer the interview.
 - Unacknowledged files: the line starts `UNAVAILABLE | CONFIG CHANGED:` and names each file. Ask the owner whether

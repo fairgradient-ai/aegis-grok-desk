@@ -34,15 +34,17 @@ The order of designer C's D3.6, each step before the next:
 The text is built only through ``aegis_desk.structuring_text`` (every number emitted, no OCC symbol, no cell the owner
 typed) and ends with the structuring footer; it is linted strictly before anything prints (``structuring_text.finish``),
 and a text that fails is replaced by the WITHHELD line (exit 1 ``lint_failed``; ``--json`` carries the withheld text).
-Exit 0 (BEST, NONE_QUALIFIES, NOT_APPLICABLE) writes ``reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json`` and ``.md``
-(the directory created at the first write under the desk lock; identical bytes are a no-op, different bytes are exit 1
-``ticket_exists`` and nothing is written); every run that printed a text (exit 0 or 20) appends one record to
-``journal/structuring.jsonl``; exit 1 and 2 write nothing.
+BEST and NONE_QUALIFIES (a complete evaluation; BD6) write ``reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json`` and
+``.md`` (the directory created at the first write under the desk lock; identical bytes are a no-op, different bytes are
+exit 1 ``ticket_exists`` and nothing is written); NOT_APPLICABLE writes no report. Every run that printed a text (exit 0
+or 20, an UNAVAILABLE printed through the error envelope included) appends one record to ``journal/structuring.jsonl``;
+exit 1 and 2 write nothing. ``--now`` (or the clock) is read to the whole second, the report stem's resolution.
 
 Exit codes (S5): 0 BEST, NONE_QUALIFIES or NOT_APPLICABLE; 20 UNAVAILABLE (the market data the answer needs:
-``market_closed``, ``group_quarantined``, ``spot_unusable``, ``held_leg_unusable``, ``expirations_not_served``,
-``chain_not_served``; ``criteria_missing``; ``config_unacknowledged``; market data refused: ``no_token``,
-``production_host``, ``holiday_table_expired``), REFUSED (``approval_level``, or ``intermediate_exposure``); 1
+``market_closed``, ``group_quarantined``, ``positions_quarantined``, ``spot_unusable``, ``held_leg_unusable``,
+``expirations_not_served``, ``chain_not_served``, ``no_candidate_priced``; ``criteria_missing``;
+``config_unacknowledged``; market data refused: ``no_token``, ``production_host``, ``token_file_mode``,
+``holiday_table_expired``), REFUSED (``approval_level``, or ``intermediate_exposure``); 1
 ``unknown_trade``, ``desk_root``, ``config_invalid``, ``positions_invalid``, ``calendar_invalid``,
 ``structuring_invalid``, ``io_error``, ``ticket_exists``, ``lint_failed``; 2 usage. It never exits 10: it fires
 nothing. ``--json`` payload: as ``--schema`` describes.
@@ -94,14 +96,14 @@ STAGE_BEST_CANDIDATE = "best_candidate"
 QUIET_VERDICTS: Tuple[str, ...] = (structuring.VERDICT_BEST, structuring.VERDICT_NONE_QUALIFIES,
                                    structuring.VERDICT_NOT_APPLICABLE, structuring.VERDICT_NOTHING_TO_PROPOSE)
 """Complete answers: exit 0. UNAVAILABLE and REFUSED are exit 20."""
+REPORT_VERDICTS: Tuple[str, ...] = (structuring.VERDICT_BEST, structuring.VERDICT_NONE_QUALIFIES)
+"""BD6: only a complete evaluation writes a report; NOT_APPLICABLE and NOTHING_TO_PROPOSE write only their
+journal record."""
 VERDICTS: Tuple[str, ...] = QUIET_VERDICTS + (structuring.VERDICT_UNAVAILABLE, VERDICT_REFUSED)
 BLOCKING_CONFIG: Tuple[str, ...] = ("desk_toml", "positions_csv", "structuring_toml")
 """The acknowledged files that block a structuring text (designer C's D3.6); an unacknowledged rulebook alone does not."""
 REASON_CRITERIA_MISSING = "no structuring.toml: the Structuring Desk shows nothing until you set your criteria"
 REASON_CONFIG_UNACKNOWLEDGED = "desk.toml, positions.csv or structuring.toml differ from what you acknowledged"
-DISABLED_WORDS = "the %s section is " + structuring_config.DISABLED_REASON
-"""A disabled section's NOT_APPLICABLE reason in the text (``structuring_text``'s ``"roll: disabled ..."`` starts its
-segment with a word the strict lint reads as an imperative, so the tool words the line itself)."""
 EXTRA_KEYS: Tuple[str, ...] = ("approval", "config_changed", "message", "emitted", "lint", "withheld", "files", "journal")
 PAYLOAD_KEYS: Tuple[str, ...] = tuple(structuring.ANSWER_KEYS) + EXTRA_KEYS
 REPORT_OMITTED_KEYS: Tuple[str, ...] = ("requests", "files", "journal")
@@ -152,7 +154,8 @@ OUTPUT: Dict[str, Any] = {
     "account_type": "cash | margin | ira | null (desk.toml [[owner.accounts]])",
     "verdict": " | ".join(VERDICTS),
     "cause": ("null | the UNAVAILABLE cause (%s, criteria_missing, config_unacknowledged) | the NOT_APPLICABLE code "
-              "(structure, index_underlying, disabled, no_open_legs) | the REFUSED code (approval_level, "
+              "(structure, index_underlying, disabled, no_open_legs, no_expiration_in_window) | the REFUSED code "
+              "(approval_level, "
               "intermediate_exposure)" % ", ".join(cause for cause in structuring.CAUSES
                          if cause not in ('replacement_not_listed',))),
     "reason": "string | null (the desk's own words for a verdict that prices nothing)",
@@ -172,7 +175,9 @@ OUTPUT: Dict[str, Any] = {
     "candidates": [dict(_CANDIDATE_SHAPE)],
     "best": "candidate id | null (rank 1 when ELIGIBLE)",
     "tie_break": "string | null (the rule that separated the best from an ELIGIBLE runner-up of the same score)",
-    "passed": "integer | null", "failed": "integer | null", "failure_counts": "{structuring.toml key: n} | null",
+    "passed": "integer | null", "failed": "integer | null (candidates that failed a criterion)",
+    "unpriced": "integer | null (candidates never priced, so never judged against the criteria)",
+    "failure_counts": "{structuring.toml key: n} | null (the failing candidates; the unpriced apart)",
     "outside_bands": "null", "after": dict(_AFTER_SHAPE),
     "model_note": "string (European Black-Scholes-Merton; early exercise not modelled)",
     "requests": "{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)",
@@ -190,7 +195,7 @@ OUTPUT: Dict[str, Any] = {
     "lint": {"ok": "boolean (false: exit 1 lint_failed)", "problems": ["string"], "numbers_checked": "integer"},
     "withheld": "{codes: [string], text: string (the text that failed)} | null",
     "files": ("{json: reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json, md: ....md, written: boolean (false: the same "
-              "bytes were already there)} | null (written only on exit 0)"),
+              "bytes were already there)} | null (written only for BEST and NONE_QUALIFIES, a complete evaluation)"),
     "journal": "journal/structuring.jsonl | null (one record per printed text: exit 0 or 20)",
 }
 
@@ -325,7 +330,7 @@ def precheck(target: structuring.Target, criteria: structuring_config.Structurin
     """The approval-level check before any market data (step 3), or ``None`` when the answer prices nothing anyway
     (a quarantined group, NOT_APPLICABLE) and the analysis says so itself."""
     group = target.group
-    if target.unusable or group is None or structuring.roll_applicability(group, criteria) is not None:
+    if target.unusable or target.others_quarantined or group is None or structuring.roll_applicability(group, criteria) is not None:
         return None
     legs = roll_legs(group)
     if legs is None:
@@ -359,13 +364,11 @@ def skeleton(trade_id: str, verdict: str, cause: Optional[str], reason: Optional
 
 
 def owner_texts(market: Optional[quote_cache.MarketData], target: Optional[structuring.Target]) -> List[str]:
-    """The cells the owner typed that a structuring text must never print: the account names."""
-    texts = set()
-    if market is not None:
-        texts.update(entry.name for entry in market.cfg.owner.accounts)
+    """The cells the owner typed that a structuring text must never print: every account name of desk.toml and of
+    positions.csv (``structuring.owner_texts``, the set all three tools screen)."""
     if target is not None:
-        texts.update(row.account for row in target.positions.rows if row.account)
-    return sorted(texts)
+        return structuring.owner_texts(target)
+    return sorted({entry.name for entry in market.cfg.owner.accounts if entry.name}) if market is not None else []
 
 
 def analyse(args: Any, now: datetime.datetime, version: str) -> Outcome:
@@ -428,9 +431,7 @@ def analyse(args: Any, now: datetime.datetime, version: str) -> Outcome:
         if verdict == VERDICT_REFUSED:
             body.update({key: None for key in HIDDEN_ON_REFUSAL}, candidates=[], verdict=verdict, cause=cause,
                         reason=refusal_reason(result))
-    if verdict == structuring.VERDICT_NOT_APPLICABLE and cause == structuring.NA_DISABLED:
-        lines.append(structuring_text.not_applicable_line(w, trade_id, WHAT, DISABLED_WORDS % SECTION))
-    elif verdict != VERDICT_REFUSED:
+    if verdict != VERDICT_REFUSED:
         lines.extend(structuring_text.roll_analysis_lines(w, answer))
     body["approval"] = approval_record
     as_of = structuring_text.data_as_of(answer) or now
@@ -534,13 +535,26 @@ def record(outcome: Outcome, version: str, now: datetime.datetime) -> None:
     if outcome.exit_code == contract.EXIT_ERROR:
         return
     try:
-        if outcome.exit_code == contract.EXIT_QUIET:
+        if outcome.exit_code == contract.EXIT_QUIET and outcome.verdict in REPORT_VERDICTS:
             write_files(outcome, version, now)
         append_journal(outcome, now)
     except structuring_text.ReportExists as exc:
         raise ToolError(exc.code, str(exc)) from None
     except (OSError, state.LockBusy, state.LockUnsupported) as exc:
         raise ToolError("io_error", "cannot write the report or the journal: %s" % exc) from None
+
+
+def journal_refusal(args: Any, now: datetime.datetime, exc: ToolError) -> None:
+    """S5: an UNAVAILABLE printed through the error envelope (market data refused, an expired holiday table) is a
+    printed text too: one journal record with its code (review L3-6). A journal that cannot be written does not turn
+    the refusal into a second failure."""
+    try:
+        paths = desk_paths.for_root(args.desk_root)
+        structuring_text.append_unavailable_record(paths, now=now, tool=TOOL, trade_id=args.trade, code=exc.code,
+                                                   text="UNAVAILABLE: %s" % exc.message,
+                                                   hashes=exit_check.config_hashes(paths), structure=None)
+    except (desk_paths.DeskPathsError, OSError, state.LockBusy, state.LockUnsupported):
+        pass
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -551,11 +565,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(contract.json_dumps(parser.schema(OUTPUT, NETWORK_ACCESS)))
         return contract.EXIT_QUIET
     validate(parser, args)
-    now = args.now or state.utc_now()
+    now = (args.now or state.utc_now()).replace(microsecond=0)  # the stems' resolution (review L3-3)
     try:
         outcome = analyse(args, now, version)
         record(outcome, version, now)
     except ToolError as exc:
+        if exc.exit_code == contract.EXIT_UNAVAILABLE:
+            journal_refusal(args, now, exc)
         return fail(args, version, now, exc.code, exc.message, exc.exit_code)
     if args.json:
         print(contract.json_dumps(envelope(outcome, version, now, outcome.payload)))

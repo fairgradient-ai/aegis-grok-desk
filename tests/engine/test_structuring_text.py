@@ -305,18 +305,18 @@ prices: European Black-Scholes-Merton on the quotes' mids; early exercise of the
 FOOTER_NOW = alert_lint.structuring_footer_line(NOW)
 
 NVDA_ROLL = """STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 20 failed
+replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
 candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-failed your criteria: 20 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18, unpriced 2)
+failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
 a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 """ + FOOTER
 
-SPY_ROLL_NA = """NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)
+SPY_ROLL_NA = """NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
 """ + FOOTER_NOW
 
 PUT_NOTHING = """NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
@@ -533,6 +533,99 @@ class GoldenTextTest(unittest.TestCase):
 # ------------------------------------------------------------------------------------------------
 
 
+class FixerTextTest(unittest.TestCase):
+    """The PR 3b review: the reasons line below the stock cost (L4-1), the owner-text screen (L3-2), the counts of
+    candidates never priced (L1-4) and the new reason words."""
+
+    def test_a_replacement_below_the_stock_cost_says_so(self) -> None:
+        desk = DeskCopy(self, replace=("AG-20261020-01,2026-10-20,,98.50,", "AG-20261020-01,2026-10-20,,120.00,"))
+        answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
+        self.assertEqual("WMT270115C00115000", answer.best.id)
+        w = T.Writer()
+        rendered = T.finish(w, T.roll_analysis_lines(w, answer), T.data_as_of(answer), answer.tool)
+        self.assertTrue(rendered.ok, rendered.lint.problems)
+        reasons = [line for line in rendered.text.split("\n") if line.startswith("reasons: ")]
+        self.assertEqual(1, len(reasons))
+        self.assertTrue(reasons[0].endswith("; strike 115 below your stock cost 120.00 and not below the held strike 105"),
+                        reasons[0])
+        # at the cost exactly: "at"; above it: "above"
+        best = answer.best
+        for cost, words in (("115", "strike 115 at your stock cost 115.00"), ("98.50", "strike 115 above your stock "
+                                                                                       "cost 98.50")):
+            line = T.reasons_line(T.Writer(), best, answer.section, D("25"), D(cost), D("105"))
+            self.assertTrue(line.endswith(words), line)
+        with self.assertRaises(ValueError):   # below both: the floor would have failed it
+            T.reasons_line(T.Writer(), best, answer.section, D("25"), D("120"), D("117.5"))
+
+    def test_the_owner_text_screen_reads_the_desk_dynamic_text_only(self) -> None:
+        accounts = ["options", "brokerage", "positions", "desk", "criteria", "sandbox", "Brokerage (margin)", "Roth IRA"]
+        w = T.Writer()
+        lines = [T.account_words(w, "Brokerage (margin)", ACCOUNTS, 4), T.account_words(w, "My Joint", ACCOUNTS, 3),
+                 T.MODEL_LINE, T.ACT_LINE, T.LIMIT_LINE, T.AFTER_FILL_LINE,
+                 T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP)]
+        rendered = T.finish(w, lines, STAMP, "roll_analysis", owner_texts=accounts)
+        self.assertTrue(rendered.ok, (rendered.codes, rendered.lint.problems))
+        for leak, texts in (("held in Brokerage (margin)", ["Brokerage (margin)"]),
+                            ("the Joint acct ZZACCT holds it", ["Joint acct ZZACCT"]),
+                            ("held in Optionsville", ["Optionsville"])):
+            w = T.Writer()
+            rendered = T.finish(w, [leak], STAMP, "roll_analysis", owner_texts=texts)
+            with self.subTest(leak=leak):
+                self.assertFalse(rendered.ok)
+                self.assertIn(T.CODE_OWNER_TEXT, rendered.codes)
+        # a token inside a longer word is not the owner's text
+        w = T.Writer()
+        self.assertTrue(T.finish(w, ["the Rothschild row"], STAMP, "roll_analysis", owner_texts=["Roth"]).ok)
+
+    def test_the_lexicon_holds_every_word_the_golden_texts_print(self) -> None:
+        # an account named after any word the desk itself prints must not withhold the text: every lower-case word
+        # of four letters or more in the golden texts is in the desk's lexicon
+        missing = set()
+        for text in (WMT_ROLL, NVDA_ROLL, SPY_ROLL_NA, PUT_NOTHING, WMT_CALL, SPY_PUT, SPY_COLLAR, EXPIRY_DAY):
+            for word in __import__("re").findall(r"(?<![A-Za-z_])[a-z]{4,}(?![A-Za-z_])", text):
+                if word not in T.DESK_LEXICON:
+                    missing.add(word)
+        self.assertEqual(set(), missing)
+
+    def test_counts_name_the_candidates_never_priced(self) -> None:
+        held = structuring.HeldLeg(4, "WMT261120C00105000", "WMT", "CALL", "short", 2, D("105"), datetime.date(2026, 11, 20),
+                                   datetime.date(2026, 11, 20), D("3.35"), D("3.50"), D("3.425"), D("4.38"), "B", "fresh",
+                                   18, STAMP, None, None, D("3.42"), D("-684.00"), D("3.50"), "ask", None, D("-16.00"))
+        w = T.Writer()
+        self.assertEqual("replacement candidates for the short 2026-11-20 105 call: 0 passed your criteria, 18 failed, 2 "
+                         "not priced", T.roll_summary_line(w, held, 0, 18, 2))
+        self.assertEqual("replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed",
+                         T.roll_summary_line(T.Writer(), held, 1, 19))
+        self.assertEqual("candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed, 1 not priced",
+                         T.proposal_summary_line(T.Writer(), "collar", D("100"), "SPY", 4, 6, 1))
+
+    def test_the_new_reason_words_lint(self) -> None:
+        conflict = structuring.Reason(structuring.KEY_UNPRICED, structuring.CODE_QUOTE_CONFLICT, 2, None)
+        self.assertEqual("the chain lists the contract more than once with different quotes",
+                         T.reason_words(T.Writer(), conflict))
+        self.assertEqual(structuring.UNPRICED_WORDS, T._UNPRICED_WORDS)
+        reasons = ["no listed standard monthly expiration lies inside your roll window of 80 to 100 calendar days",
+                   "200 of the 300 WMT shares are free: 1 short call held in another group of this account relies on "
+                   "the rest; the desk proposes no covered call on part of a group's shares",
+                   "no candidate in your window could be priced: the underlying's quote is stamped too far from the "
+                   "option's", "no candidate in your window could be priced (the reasons differ; the JSON lists each)",
+                   "no candidate in your window could be priced: the chains list none"]
+        for reason in reasons:
+            for line_of in (T.not_applicable_line, T.unavailable_line):
+                w = T.Writer()
+                result = lint(closed(w, [line_of(w, "AG-20261020-01", "roll analysis", reason)]), w)
+                with self.subTest(reason=reason):
+                    self.assertTrue(result.ok, result.problems)
+        w = T.Writer()
+        line = T.candidate_line(w, structuring.Candidate(
+            id="WMT270115C00115000", kind=structuring.KIND_COVERED_CALL, expiration=JAN15,
+            legs=(structuring.PricedLeg("WMT270115C00115000", "WMT", "CALL", D("115"), JAN15, unpriced=conflict),),
+            contracts=2, score=None, status="UNPRICED", reasons=(conflict,), rank=3))
+        self.assertEqual("candidate 3: the 2027-01-15 115 call | not priced: the chain lists the contract more than once "
+                         "with different quotes", line)
+        self.assertTrue(lint(closed(w, [line]), w).ok)
+
+
 def read(path: str) -> bytes:
     with open(path, "rb") as handle:
         return handle.read()
@@ -587,6 +680,27 @@ class RecordTest(unittest.TestCase):
     def test_report_markdown(self) -> None:
         self.assertEqual("# AG-20261020-01 roll analysis\n\n```text\nline one\nline two\n```\n",
                          T.report_markdown("AG-20261020-01 roll analysis", "line one\nline two"))
+
+
+class VerifierTest(unittest.TestCase):
+    """The PR 3b verifier: review L3-2 for an account named with a phrase of the desk's own words."""
+
+    def test_an_account_named_with_a_desk_phrase_does_not_withhold_the_text(self) -> None:
+        for name in ("covered call", "Tradier", "Tradier sandbox", "roll analysis", "the shares"):
+            w = T.Writer()
+            lines = [T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP),
+                     "the shares of the group are free"]
+            rendered = T.finish(w, lines, STAMP, "roll_analysis", owner_texts=[name, "Brokerage (margin)"])
+            with self.subTest(name=name):
+                self.assertTrue(rendered.ok, (rendered.codes, rendered.lint.problems))
+        # a phrase with one word of its own is still the owner's text
+        for leak, texts in (("held in covered call ZZACCT", ["covered call ZZACCT"]), ("held in Roth IRA", ["Roth IRA"]),
+                            ("held in my covered calls", ["my covered calls"])):
+            w = T.Writer()
+            rendered = T.finish(w, [leak], STAMP, "roll_analysis", owner_texts=texts)
+            with self.subTest(leak=leak):
+                self.assertFalse(rendered.ok)
+                self.assertIn(T.CODE_OWNER_TEXT, rendered.codes)
 
 
 if __name__ == "__main__":  # pragma: no cover

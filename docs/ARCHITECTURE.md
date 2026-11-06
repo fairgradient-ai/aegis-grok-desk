@@ -62,10 +62,11 @@ you: "what are my choices for the WMT covered call?"  ->  an Ask-first card  -> 
   -> python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-01 --desk-root /workspace/aegis-desk
      1. acknowledgement: desk.toml, positions.csv or structuring.toml changed?   yes -> UNAVAILABLE line, exit 20
      2. your criteria: structuring.toml present and valid?                        no  -> UNAVAILABLE or exit 1
-     3. the group in positions.csv; the approval-level check of the roll's legs   above your level -> REFUSED, exit 20
-     4. the group's quotes, the expiration list, the chains in your window       (GET only, through the quote cache)
-     5. every candidate priced, labelled against your criteria, ranked by your objective; one best candidate or none
-     6. the text, linted with the structuring footer --> reports/rolls/, journal/structuring.jsonl
+     3. positions.csv: any group quarantined?                                    yes -> UNAVAILABLE line, exit 20
+     4. the group in positions.csv; the approval-level check of the roll's legs   above your level -> REFUSED, exit 20
+     5. the group's quotes, the expiration list, the chains in your window       (GET only, through the quote cache)
+     6. every candidate priced, labelled against your criteria, ranked by your objective; one best candidate or none
+     7. the text, linted with the structuring footer --> reports/rolls/ (BEST or NONE_QUALIFIES), journal/structuring.jsonl
   -> the Structuring Desk posts the printed text verbatim
 ```
 
@@ -98,7 +99,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `reports/routines/<date>/` | `routine.py` | each run's record and a copy of each step's output |
 | `incidents/` | `routine.py` | one file per incident |
 | `tickets/` | `exit_ticket.py` | each ticket, `.json` and `.md` |
-| `reports/rolls/`, `reports/proposals/` | `roll_analysis.py`, `propose.py` | each roll analysis and proposal, `.json` and `.md` |
+| `reports/rolls/`, `reports/proposals/` | `roll_analysis.py`, `propose.py` | each complete roll analysis and proposal (BEST or NONE_QUALIFIES), `.json` and `.md` |
 | `journal/structuring.jsonl` | `exit_ticket.py`, `roll_analysis.py`, `propose.py` | one record per structuring text printed (append-only) |
 
 Writes are atomic (a reader sees the old or the new file, never half of one), under a file lock. A state file that is

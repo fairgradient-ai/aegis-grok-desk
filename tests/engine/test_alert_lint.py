@@ -156,13 +156,15 @@ LEG_CLOSE = "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.3
 LEG_OPEN = "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60"
 STRUCTURING_IMPERATIVES = ("open", "write", "take", "go", "consider", "choose", "pick", "use", "let", "keep", "hold", "set",
                            "type", "act", "do", "try", "hedge", "protect", "cover", "collar", "unwind", "monetize",
-                           "replace", "lock", "add")
+                           "replace", "lock", "add", "pur" + "chase", "liquidate", "exercise", "short", "trade", "acquire",
+                           "dump", "unload")
 # (code, texts the entry refuses, texts it leaves alone): the regex of each entry re-derived against both lists.
 STRUCTURING_PHRASE_CASES: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ...] = (
     ("SL01", ("you might want to", "one may wish to", "you would like to", "you could want to"),
      ("you might see", "one would expect", "you may")),
     ("SL02", ("I'd", "we would", "I would", "we'd"), ("it would", "we will", "Id")),
-    ("SL03", ("I suggest", "we advise", "I prefer", "we favour", "we favor", "I propose", "we like"),
+    ("SL03", ("I suggest", "we advise", "I prefer", "we favour", "we favor", "I propose", "we like", "we think",
+              "I believe"),
      ("it proposes", "the suggestion", "I see")),
     ("SL04", ("go with", "goes with", "going with"), ("go without", "gone with")),
     ("SL05", ("the one to pick", "the one to choose", "the one to take", "the one to use", "the one to open"),
@@ -171,19 +173,43 @@ STRUCTURING_PHRASE_CASES: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ..
      ("best score", "go" + "od till", "a better level")),
     ("SL07", ("you must", "you need to", "you have to", "you ought to", "you will need to", "you really must"),
      ("you need a", "the steps need at once", "you have a ticket")),
-    ("SL08", ("probability", "probabilities", "chance", "chances", "likely", "likelihood", "odds", "pop"),
-     ("popular", "chancellor", "oddsmaker")),
+    ("SL08", ("probability", "probabilities", "chance", "chances", "likely", "likelihood", "odds", "pop", "unlikely",
+              "probably", "probable", "improbable", "likelier", "probability_of_profit", "likely_outcome"),
+     ("popular", "chancellor", "oddsmaker", "unlikeable")),
     ("SL09", ("guarantee", "guarantees", "guaranteed", "risk-free", "risk free", "cannot lose", "can't lose",
-              "sure thing"), ("risky", "unsure")),
-    ("SL10", ("act now", "move fast", "act quickly", "move today", "don't miss", "dont miss", "urgent", "urgently"),
+              "sure thing", "no risk", "zero risk", "without risk", "riskless", "guaranteed_income", "risk_free"),
+     ("risky", "unsure", "the risk of assignment")),
+    ("SL10", ("act now", "move fast", "act quickly", "move today", "don't miss", "dont miss", "urgent", "urgently",
+              "hurry", "hurrying", "immediately"),
      ("act in your brokerage account", "the move of the stock", "missing")),
     ("SL11", ("suit", "suits", "suited", "suitable", "suitability", "right for you", "best fit for you",
-              "ideal for you", "appropriate for you"), ("suite", "pursuit", "right for the call")),
-    ("SL12", tuple("pl" + "ac" + ending for ending in ("e", "es", "ed", "ing")),
+              "ideal for you", "appropriate for you", "appropriate", "fits you", "fit you"),
+     ("suite", "pursuit", "right for the call", "it fits the window")),
+    ("SL12", tuple("pl" + "ac" + ending for ending in ("e", "es", "ed", "ing", "e_it")),
      ("re" + "pl" + "ace", "re" + "pl" + "acement", "pl" + "acement")),
-    ("SL13", ("safe", "safer", "safest", "safely", "safety"), ("unsafe", "safeguard")),
-    ("SL14", ("at 1.90", "for 3.50", "at $1.90", "at 1,640.00", "for +0.05", "at -0.70", "at .50"),
+    ("SL13", ("safe", "safer", "safest", "safely", "safety", "safe_bet"), ("unsafe", "safeguard")),
+    ("SL14", ("at 1.90", "for 3.50", "at $1.90", "at 1,640.00", "for +0.05", "at -0.70", "at .50", "at~3.50", "at ~ 3.50"),
      ("at 19:31 UTC", "for 2 contracts", "at or above 0.50", "for 2,000 shares", "at 15 min", "for the 105 call")),
+    ("SL15", ("return", "returns", "yield", "yields", "yielding", "income", "gain", "gains", "daily_yield"),
+     ("again", "bargain", "the outcome")),
+    ("SL16", ("not investment advice", "not personalized investment advice", "not advice", "non-advice", "nonadvice"),
+     ("not an order", "a personalized suggestion", "advice")),
+    ("SL17", ("my pick", "our choice", "the top pick", "a clear winner", "my favourite", "it is best to",
+              "it would be wise to", "you had better", "you'd better", "the desk suggests", "the desk prefers",
+              "the desk favors", "the tool advises", "a no-brainer", "no brainer", "the desk's suggestion"),
+     ("the desk proposes no covered call", "the desk proposes overlays on shares you hold", "a picked strike",
+      "it is best known")),
+    ("SL18", ("sure", "surely", "a sure gain"), ("unsure", "insured", "measure")),
+    ("SL19", ("L" + "MT", "m" + "kt", "g" + "td", "i" + "oc", "f" + "ok", "a" + "on", "s" + "to", "b" + "tc", "D" + "AY",
+              "good for the day", "rou" + "te", "rou" + "ting"),
+     ("the day", "a day", "today", "routine", "stock", "lock", "atone")),
+    ("SL20", ("lim" + "it of about 3.50", "lim" + "it at or below 3.50", "lim" + "it no higher than 3.50",
+              "pay at most 3.50", "the lim" + "it (3.50)", "price 3.50"),
+     ("stressed price 518.496", "the share price): 0.0467", "pay the strike, cash -62000.00",
+      "the conservative prices (mid +35.00)", "you supply the lim" + "it; the desk prints none")),
+    ("SL21", ("pur" + "chase", "pur" + "chases", "pur" + "chased", "pur" + "chasing"), ("purse", "chase")),
+    ("SL22", ("attractive", "cheap", "cheaper", "a bargain", "undervalued", "overvalued", "with confidence", "confident"),
+     ("attraction", "the cheapside", "a confidential note")),
 )
 
 
@@ -281,7 +307,8 @@ class StructuringFooterTest(unittest.TestCase):
                   ("an opening line\nleg 2 of 2 : opens a new short 2 x WMT 2027-01-15 115 call", 2),
                   ("BEST CANDIDATE 1 of 20", 1), ("the best candidate", 1), ("the best-candidate line", 1),
                   ("best_candidates", 1), ("x\ncandidate 2: closes the 2026-11-20 105 call", 2),
-                  ("candidates 3 of 7", 1), ("candidate 3 of 7 shown", 1), ("Candidate 2 :", 1))
+                  ("candidates 3 of 7", 1), ("candidate 3 of 7 shown", 1), ("Candidate 2 :", 1),
+                  ("the call is leg 1 of 2: in a roll", 1), ("candidate-2: x", 1))
         numbers = ["1", "2", "105", "115", "3.35", "3.50", "3.425", "20", "3", "7"]
         for kind, name, line in ((alert_lint.FOOTER_RULES, "fixed footer", FOOTER),
                                  (alert_lint.FOOTER_SNAPSHOT, "market-snapshot footer",
@@ -293,8 +320,8 @@ class StructuringFooterTest(unittest.TestCase):
                     self.assertEqual(["the %s cannot close a structuring text (a leg or a candidate, line %d): use the "
                                       "structuring footer" % (name, number)], result.problems)
             for body in ("rules/candidate-1.1.0.toml", "the candidate rulebook candidate-1.1.0.toml", "candidate 1.1.0",
-                         "a candidate", "the candidates", "the call is leg 1 of 2: in a roll", "legs 1 of 2: shown",
-                         "the leg 1 quote", "candidate-2: x", "best of the candidates"):
+                         "a candidate", "the candidates", "legs 1 of 2: shown", "the leg 1 quote",
+                         "best of the candidates"):
                 with self.subTest(kind=kind, narrowed=body):
                     result = alert_lint.check(body + "\n" + line, ["1.1.0", "1", "2"], footer=kind)
                     self.assertTrue(result.ok, result.problems)
@@ -307,7 +334,7 @@ class StructuringFooterTest(unittest.TestCase):
         self.assertEqual(["number_not_emitted"], codes(late), "a delay other than 15 minutes must be emitted")
         self.assertTrue(structuring_check(LEG_CLOSE, footer=structuring_line(delay_min=20),
                                           emitted=emitted_of(LEG_CLOSE) + ["20"]).ok)
-        dotted = structuring_check(LEG_CLOSE + " · extra")
+        dotted = structuring_check("the held call · extra")
         self.assertEqual(["non_ascii"], codes(dotted), "the middle dot belongs to the footer line only")
         strict = structuring_check(LEG_CLOSE, "on 2026-11-23", identifiers=["2026-11-20"], clocks=["19:31 UTC"],
                                    as_of=AS_OF)
@@ -318,9 +345,10 @@ class StructuringFooterTest(unittest.TestCase):
 
     def test_the_structuring_phrase_table(self) -> None:
         table = alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE
-        self.assertEqual(["SL%02d" % index for index in range(1, 15)], [entry.code for entry in table])
+        self.assertEqual(["SL%02d" % index for index in range(1, 23)], [entry.code for entry in table])
         self.assertEqual(["advice", "advice", "advice", "advice", "advice", "advice", "advice", "claim", "claim",
-                          "urgency", "advice", "order-instruction", "claim", "order-field"],
+                          "urgency", "advice", "order-instruction", "claim", "order-field", "claim", "claim", "advice",
+                          "claim", "order-kind", "order-field", "trade-verb", "claim"],
                          [entry.category for entry in table])
         for entry in table:
             with self.subTest(entry=entry.code):
@@ -344,7 +372,7 @@ class StructuringFooterTest(unittest.TestCase):
 
     def test_every_phrase_is_refused_in_structuring_mode_only(self) -> None:
         for entry in alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE:
-            code = "order_field" if entry.code == "SL14" else "forbidden_language"
+            code = "order_field" if entry.code in ("SL14", "SL20") else "forbidden_language"
             self.assertEqual(code, "order_field" if entry.category == "order-field" else "forbidden_language")
             for variant in (entry.example, entry.example.upper(), entry.example.title(), entry.example.lower()):
                 body = "the desk says " + variant + " here"
@@ -438,13 +466,12 @@ class StructuringFooterTest(unittest.TestCase):
                    "leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80",
                    "leg 2 of 3: closes 200 of your long WMT shares | bid 104.20, ask 104.26",
                    "leg 3 of 3: closes 100 of your long BRK.B shares",
-                   "leg 1 of 2: opens a new short 1 x WMT1 2026-12-18 110 call",
-                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ")
+                   "leg 1 of 2: opens a new short 1 x WMT1 2026-12-18 110 call")
         for line in passing:
             with self.subTest(line=line):
                 result = structuring_check(line)
                 self.assertTrue(result.ok, result.problems)
-        failing = ("leg 1 of 2: short 2 x WMT 2026-12-18 110 call to close",
+        failing = ("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ",
                    "leg 1 of 2: closes your short 2 WMT 2026-11-20 105 call",
                    "Leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
                    "  leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
@@ -465,6 +492,8 @@ class StructuringFooterTest(unittest.TestCase):
                 result = structuring_check(line)
                 self.assertEqual(["order_field"], codes(result), result.problems)
                 self.assertEqual(["line 1, column 1: a leg line outside the fixed leg grammar"], result.problems)
+        side = structuring_check("leg 1 of 2: short 2 x WMT 2026-12-18 110 call to close")
+        self.assertEqual(["order_field", "imperative_start"], codes(side), "a side word at a segment start is IS38")
         both = structuring_check(LEG_CLOSE, "leg 2 of 2: opens 2 new WMT calls")
         self.assertEqual(["line 2, column 1: a leg line outside the fixed leg grammar"], both.problems)
         written = structuring_check("leg 1 of 2: " + STRUCTURING_IMPERATIVES[1] + " 2 WMT calls")
@@ -472,6 +501,148 @@ class StructuringFooterTest(unittest.TestCase):
         rules = alert_lint.check(failing[0] + "\n" + FOOTER, emitted_of(failing[0]))
         self.assertEqual(["footer_missing"], codes(rules), "the grammar is a structuring rule; the rules footer refuses "
                          "the leg line outright")
+
+
+# The PR 3b review of structuring mode (L2-2, L2-3, L2-4, L2-7, BD7): every line below passed the lint before the
+# fixer pass. Order-shaped words among them are assembled from pieces, as everywhere in this file.
+ROLL_LEG_1 = "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call"
+ROLL_LEG_2 = "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call"
+REVIEW_ORDER_SHAPED = (
+    ROLL_LEG_1 + " | " + "LM" + "T 3.50 " + "DA" + "Y",
+    ROLL_LEG_2 + " | " + "LM" + "T 3.55 " + "GT" + "D " + "IO" + "C",
+    ROLL_LEG_1 + " | 3.50 debit, " + "DA" + "Y, " + "rou" + "te SMART",
+    ROLL_LEG_2 + " | " + "ST" + "O, " + "BT" + "C",
+    ROLL_LEG_1 + " | good for the day",
+    "- leg 1 of 2: short 2 x WMT 2027-01-15 115 call to open",
+    "leg one of two: short 2 x WMT 2027-01-15 115 call to open",
+    "leg 1 of 2 - short 2 x WMT 2027-01-15 115 call to open",
+    "leg_1_of_2: short 2 x WMT 2027-01-15 115 call to open",
+    "1. leg 2 of 2: short 2 x WMT 2027-01-15 115 call to open",
+    "> leg 2/2: short 2 x WMT 2027-01-15 115 call to open",
+    "the plan: leg 2 of 2: short 2 x WMT 2027-01-15 115 call to open",
+    "step 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call",
+    "a " + "lim" + "it at or below 3.50 on leg 1",
+    "a " + "lim" + "it no higher than 3.50",
+    "a " + "lim" + "it of about 3.50",
+    "pay at most 3.50",
+    "the " + "lim" + "it (3.50) on leg 1",
+    "pur" + "chase 1 x WMT 2027-01-15 115 call",
+    "liquidate the 200 WMT shares",
+    "exercise the 2026-11-20 105 call",
+    "short 2 x WMT 2027-01-15 115 calls",
+    "trade the 2027-01-15 115 call",
+    "acquire 100 SPY shares",
+    "dump the 200 WMT shares",
+    "unload the 200 WMT shares",
+)
+REVIEW_CLAIMS = (
+    "this is not investment advice", "this is not personalized investment advice",
+    "not advice: the 2027-01-15 115 call ranks first", "a non-advice note",
+    "the 2027-01-15 115 call is unlikely to be assigned", "the 2027-01-15 115 call will probably expire worthless",
+    "assignment is improbable", "the roll carries no risk", "zero risk to the 200 shares", "a riskless credit of 10.00",
+    "my pick is the 2027-01-15 115 call", "the top pick: the 2027-01-15 115 call", "it is best to open the 115 call",
+    "it would be wise to roll now", "you had better roll before 20:20 UTC", "hurry: the ticket is valid until 20:20 UTC",
+    "the desk suggests the 2027-01-15 115 call", "the desk prefers the 2027-01-15 115 call",
+    "the desk favors the 2027-01-15 115 call", "the desk advises the 2027-01-15 115 call",
+    "the 115 call is appropriate for your account", "the 115 call fits you", "this is a no-brainer",
+    "a 0.0467 % return per calendar day", "the 115 call yields 0.0467 % a day", "a 0.0467 % daily yield on your shares",
+    "income of 10.00 from the roll", "a sure gain of 10.00", "gains of 10.00",
+    # BD7: underscore-joined forms of the claim and instruction words
+    "probability_of_profit 0.62", "the likely_outcome", "pl" + "ace_it", "a safe_bet", "guaranteed_income",
+)
+REVIEW_RULE_CONTENT = ("your adopted rule fired: your plan: close", "your plan: close", "your_rule fired",
+                       "Watch: the 2026-11-20 105 call", "the rulebook verdict is Hold", "an exit signal stands",
+                       "Exit-Signal stands", "your own adopted rules say so")
+REVIEW_STRUCTURING_UNDER_RULES = (
+    "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call", "> leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call",
+    "1. leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call", "step 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call",
+    "leg 2/2: opens a new short 2 x WMT 2027-01-15 115 call",
+    "candidate #1: the 2027-01-15 115 call, extrinsic_per_day 0.0467", "1st candidate: the 2027-01-15 115 call",
+    "rank 1: the 2027-01-15 115 call, extrinsic_per_day 0.0467; rank 2: the 2026-12-18 112.5 call",
+    "candidate_2: the 2026-12-18 112.5 call", "candidate-2: the 2026-12-18 112.5 call",
+    "BEST: the 2027-01-15 115 call (extrinsic_per_day 0.0467)",
+    "TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL)",
+    "replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed",
+    "no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception",
+    "FAILS_CRITERION credit_only: a net debit of 0.05", "the account holds 200 of your long WMT shares",
+    "STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c)",
+    "UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the underlying",
+    "NOT_APPLICABLE | AG-20261028-03 collar proposal | the 100 SPY shares already carry 1 long put",
+    "NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put",
+    "PROPOSAL SPY collar | on 100 SPY shares you hold",
+    "REFUSED AG-20261020-01 | WMT covered call | closing your 2 short calls needs level 1 by the desk's convention; "
+    "desk.toml records your self-attested level 0",
+    "WITHHELD | the text of roll_analysis.py failed the alert lint (owner_text) and is withheld",
+    "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)",
+    "UNAVAILABLE | CONFIG CHANGED: positions.csv: sha aaaaaaaa -> sha bbbbbbbb | the desk names no candidate and prints "
+    "no ticket while desk.toml, positions.csv or structuring.toml differ from what you acknowledged",
+)
+
+
+class StructuringReviewTest(unittest.TestCase):
+    """The PR 3b review findings L2-2, L2-3, L2-4, L2-7 and BD7, each string the reviewers showed passing."""
+
+    def test_order_shapes_and_leg_lookalikes_are_refused(self) -> None:
+        for body in REVIEW_ORDER_SHAPED:
+            with self.subTest(body=body):
+                result = structuring_check(body)
+                self.assertFalse(result.ok, result.problems)
+
+    def test_the_tools_own_lines_still_pass(self) -> None:
+        for body in ("reasons: 73 calendar days inside your window 40 to 75; bid 3.55 at or above your minimum 0.50",
+                     ROLL_LEG_1 + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, "
+                     "as of 19:31 UTC",
+                     ROLL_LEG_1 + " | ask 3.50 | quote grade B, 18 min old",
+                     ROLL_LEG_1 + " | ask 0.16 | quote grade E, 18 min old | quote grade E: the conservative side stands",
+                     ROLL_LEG_1 + " | bid 0.12, ask 0.16, mid 0.14 | quote grade E, Tradier sandbox, 15-min delayed, as "
+                     "of 19:31 UTC | quote grade E: the conservative side stands",
+                     ROLL_LEG_2 + " | bid 3.55 | quote grade B, 18 min old",
+                     "leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade "
+                     "A, Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+                     "leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option",
+                     "after leg 2 of this order you would hold 2 uncovered calls (level 4)",
+                     "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00",
+                     "it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496)",
+                     "if assigned: you receive 100 SPY shares and pay the strike, cash -62000.00",
+                     "if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to "
+                     "expiry can be closed only while the session trades",
+                     "you hold 200 WMT shares and 2 short calls", "the held call; the open interest and the hold period"):
+            with self.subTest(body=body):
+                result = structuring_check(body)
+                self.assertTrue(result.ok, result.problems)
+
+    def test_claims_preferences_and_non_advice_are_refused(self) -> None:
+        for body in REVIEW_CLAIMS:
+            with self.subTest(body=body):
+                result = structuring_check(body)
+                self.assertIn("forbidden_language", codes(result), result.problems)
+
+    def test_rule_content_cannot_close_with_the_structuring_footer(self) -> None:
+        for body in REVIEW_RULE_CONTENT:
+            with self.subTest(body=body):
+                result = structuring_check(body)
+                self.assertIn("footer_missing", codes(result), result.problems)
+        self.assertTrue(structuring_check("you hold 200 shares; the hold period; a watch list").ok)
+
+    def test_the_rules_and_snapshot_footers_never_close_structuring_content(self) -> None:
+        for kind, line in ((alert_lint.FOOTER_RULES, FOOTER), (alert_lint.FOOTER_SNAPSHOT,
+                                                               alert_lint.snapshot_footer_line(AS_OF))):
+            for body in REVIEW_STRUCTURING_UNDER_RULES:
+                with self.subTest(kind=kind, body=body):
+                    result = alert_lint.check(body + "\n" + line, emitted_of(body), footer=kind)
+                    self.assertIn("footer_missing", codes(result), result.problems)
+            narrowed = ["rules/candidate-1.1.0.toml", "the candidate rulebook candidate-1.1.0.toml", "candidate 1.1.0",
+                        "a candidate", "the candidates", "legs 1 of 2: shown", "the leg 1 quote", "best of the candidates",
+                        "rank and file", "the structuring.toml sha"]
+            if kind == alert_lint.FOOTER_RULES:
+                narrowed.append("your rule TP50 fired")
+                # the routine's own WITHHELD line closes with the fixed footer (routine.py WITHHELD_LINE)
+                narrowed.append("WITHHELD | book_check: the text failed the alert lint (imperative_start) and is "
+                                "withheld; book_check.py shows it")
+            for body in narrowed:
+                with self.subTest(kind=kind, narrowed=body):
+                    result = alert_lint.check(body + "\n" + line, ["1.1.0", "1", "2", "50"], footer=kind)
+                    self.assertTrue(result.ok, result.problems)
 
 
 class NumericTokenTest(unittest.TestCase):
@@ -807,11 +978,12 @@ def structuring_fail_fixture_table() -> Dict[str, tuple]:
     return {
         "fail_structuring_under_rules_footer": ("pass_structuring_ticket", [(structuring, rules)], {"footer": "rules"},
                                                 ["footer_missing"]),
+        # "your plan: close" is no exception under the structuring footer (review L2-7): an imperative start too
         "fail_rules_text_under_structuring_footer": ("pass_exit_signal", [(rules, structuring)],
-                                                     {"footer": "structuring"}, ["footer_missing"]),
+                                                     {"footer": "structuring"}, ["imperative_start", "footer_missing"]),
         "fail_structuring_leg_grammar": ("pass_structuring_ticket", [(
             "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
-            "leg 1 of 2: short 2 x WMT 2026-11-20 105 call to close")], {}, ["order_field"]),
+            "leg 1 of 2: short 2 x WMT 2026-11-20 105 call to close")], {}, ["order_field", "imperative_start"]),
         "fail_structuring_go_with": ("pass_structuring_roll", [(caveat, caveat + ", and owners often " + "go wi" + "th it")],
                                      {}, ["forbidden_language"]),
         "fail_structuring_at_price": ("pass_structuring_ticket", [("you supply the limit; the desk prints none",

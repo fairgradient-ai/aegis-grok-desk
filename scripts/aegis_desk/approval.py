@@ -48,6 +48,7 @@ order for a passing check, :func:`refusal_line` the REFUSED line of a refused on
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import grouping
@@ -123,6 +124,21 @@ custom and invalid groups, and short stock (a margin matter, outside the options
 
 MULTI_LEG_NOTE: str = ("entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
                        "level")
+MULTI_LEG_ROLL: str = "roll"
+MULTI_LEG_COLLAR: str = "collar"
+MULTI_LEG_CLOSING: str = "closing"
+MULTI_LEG_COMBINATION: str = "combination"
+MULTI_LEG_NOTES: Dict[str, str] = {
+    MULTI_LEG_ROLL: MULTI_LEG_NOTE,
+    MULTI_LEG_COLLAR: ("entered as one multi-leg order, some brokers class a collar as a spread, which can need a "
+                       "higher level"),
+    MULTI_LEG_CLOSING: ("entered as one multi-leg order, some brokers class closing option legs as a spread, which can "
+                        "need a higher level"),
+    MULTI_LEG_COMBINATION: ("entered as one multi-leg order, some brokers class shares and options together as a "
+                            "combination, which can need a higher level"),
+}
+"""The multi-leg note by what the order is (:func:`multi_leg_kind`): a roll (an option closed and one opened), a
+collar (a put and a call opened), closing option legs, or shares with options (an unwind)."""
 _CONVENTION_SUFFIX = " by the desk's convention"
 
 
@@ -138,6 +154,33 @@ def _count(value: Any, what: str, positive: bool = False) -> int:
     return value
 
 
+def _shares(value: Any, what: str, positive: bool = False) -> Any:
+    """A share quantity: a whole ``int`` or an exact finite ``Decimal`` (positions.csv accepts fractional shares;
+    BD4), at least zero (more than zero for a leg)."""
+    if isinstance(value, Decimal):
+        if not value.is_finite() or value < 0 or (positive and value == 0):
+            raise ValueError("%s must be a %s finite number of shares, got %r"
+                             % (what, "positive" if positive else "non-negative", value))
+        return value
+    return _count(value, what, positive)
+
+
+def _share_text(value: Any) -> str:
+    """A share quantity as written: ``200``, ``200.5`` (no trailing zeros, no exponent)."""
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return str(int(value))
+        return format(value.normalize(), "f")
+    return str(value)
+
+
+def _whole_if_integral(value: Any) -> Any:
+    """A share count that is whole as an ``int`` (``Decimal("0.0")`` is ``0``); a fractional one stays exact."""
+    if isinstance(value, Decimal) and value == value.to_integral_value():
+        return int(value)
+    return value
+
+
 def _level(value: Any, what: str) -> int:
     low, high = LEVEL_RANGE
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
@@ -145,8 +188,8 @@ def _level(value: Any, what: str) -> int:
     return value
 
 
-def _emit(emitted: Optional[List[str]], value: int) -> str:
-    text = str(value)
+def _emit(emitted: Optional[List[str]], value: Any) -> str:
+    text = _share_text(value)
     if emitted is not None:
         emitted.append(text)
     return text
@@ -170,49 +213,56 @@ _FIELDS: Dict[Tuple[str, str], str] = {
 
 @dataclass(frozen=True)
 class Holdings:
-    """What one account holds of one underlying: whole shares and option contracts (non-negative integers)."""
+    """What one account holds of one underlying: the shares (a whole ``int``, or an exact ``Decimal`` when
+    positions.csv holds a fractional quantity; BD4) and whole option contracts (non-negative integers). Coverage reads
+    whole hundreds of shares."""
 
-    shares: int = 0
+    shares: Any = 0
     long_calls: int = 0
     short_calls: int = 0
     long_puts: int = 0
     short_puts: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("shares", "long_calls", "short_calls", "long_puts", "short_puts"):
+        _shares(self.shares, "Holdings.shares")
+        for name in ("long_calls", "short_calls", "long_puts", "short_puts"):
             _count(getattr(self, name), "Holdings.%s" % name)
 
     @property
     def uncovered_calls(self) -> int:
-        """Short calls beyond what the shares cover (100 shares per contract)."""
-        return max(0, self.short_calls - self.shares // SHARES_PER_CONTRACT)
+        """Short calls beyond what the shares cover (100 whole shares per contract)."""
+        return max(0, self.short_calls - int(self.shares // SHARES_PER_CONTRACT))
 
     @property
-    def free_shares(self) -> int:
+    def free_shares(self) -> Any:
         """``shares - 100 x short calls already open`` (never below zero): what a new short call may be covered by."""
-        return max(0, self.shares - SHARES_PER_CONTRACT * self.short_calls)
+        free = self.shares - SHARES_PER_CONTRACT * self.short_calls
+        return free if free > 0 else 0
 
     def apply(self, leg: "Leg") -> "Holdings":
-        """The holdings after ``leg`` (``ValueError`` when it closes more than is held)."""
+        """The holdings after ``leg`` (``ValueError`` when it closes more than is held); a share count that comes out
+        whole is a whole ``int`` again, as :func:`holdings_of` gives it (BD4)."""
         name = _FIELDS[(leg.side, leg.instrument)]
         held = getattr(self, name)
         if leg.effect == EFFECT_CLOSE:
             if leg.quantity > held:
-                raise ValueError("the leg closes %d %s but %d %s held" % (
-                    leg.quantity, _leg_noun(leg, leg.quantity), held, "is" if held == 1 else "are"))
-            return replace(self, **{name: held - leg.quantity})
-        return replace(self, **{name: held + leg.quantity})
+                raise ValueError("the leg closes %s %s but %s %s held" % (
+                    _share_text(leg.quantity), _leg_noun(leg, leg.quantity), _share_text(held),
+                    "is" if held == 1 else "are"))
+            return replace(self, **{name: _whole_if_integral(held - leg.quantity)})
+        return replace(self, **{name: _whole_if_integral(held + leg.quantity)})
 
 
 @dataclass(frozen=True)
 class Leg:
     """One leg: ``effect`` (open | close), ``side`` (long | short), ``instrument`` (call | put | shares) and
-    ``quantity`` (contracts, or shares). Shares are only ever closed, and only long (the desk opens no shares)."""
+    ``quantity`` (whole contracts, or shares: an exact ``Decimal`` when the holding is fractional). Shares are only
+    ever closed, and only long (the desk opens no shares)."""
 
     effect: str
     side: str
     instrument: str
-    quantity: int
+    quantity: Any
 
     def __post_init__(self) -> None:
         if self.effect not in EFFECTS:
@@ -221,7 +271,10 @@ class Leg:
             raise ValueError("a leg's side must be one of %s, got %r" % (", ".join(SIDES), self.side))
         if self.instrument not in INSTRUMENTS:
             raise ValueError("a leg's instrument must be one of %s, got %r" % (", ".join(INSTRUMENTS), self.instrument))
-        _count(self.quantity, "a leg's quantity", positive=True)
+        if self.instrument == INSTRUMENT_SHARES:
+            _shares(self.quantity, "a leg's quantity", positive=True)
+        else:
+            _count(self.quantity, "a leg's quantity", positive=True)
         if self.instrument == INSTRUMENT_SHARES and (self.effect != EFFECT_CLOSE or self.side != SIDE_LONG):
             raise ValueError("a shares leg only closes long shares: the desk opens no shares and holds no short shares")
 
@@ -234,22 +287,25 @@ def _leg_noun(leg: Leg, count: int) -> str:
 
 def holdings_of(rows: Iterable[Any], account: str, underlying: str) -> Holdings:
     """The :class:`Holdings` of every OPEN ``positions_csv.PositionRow`` of ``account`` and ``underlying`` (whatever
-    its group). ``ValueError`` for short shares or a quantity that is not whole."""
-    counts = {"shares": 0, "long_calls": 0, "short_calls": 0, "long_puts": 0, "short_puts": 0}
+    its group): the exact share quantity (positions.csv accepts fractional shares; coverage reads whole hundreds)
+    and whole contracts. ``ValueError`` for short shares or an option quantity that is not whole."""
+    counts: Dict[str, Any] = {"long_calls": 0, "short_calls": 0, "long_puts": 0, "short_puts": 0}
+    shares = Decimal(0)
     for row in rows:
         if not row.is_open or row.account != account or row.underlying != underlying:
             continue
         quantity = abs(row.open_quantity)
-        if quantity != quantity.to_integral_value():
-            raise ValueError("row %d holds %s: the approval-level check counts whole shares and contracts"
-                             % (row.row_number, row.open_quantity))
         if row.is_stock_like:
             if row.is_short:
                 raise ValueError("row %d holds short shares: outside the desk's convention" % row.row_number)
-            counts["shares"] += int(quantity)
+            shares += quantity
         elif row.is_option:
+            if quantity != quantity.to_integral_value():
+                raise ValueError("row %d holds %s contracts: the approval-level check counts whole contracts"
+                                 % (row.row_number, row.open_quantity))
             side = SIDE_LONG if row.is_long else SIDE_SHORT
             counts[_FIELDS[(side, INSTRUMENT_CALL if row.is_call else INSTRUMENT_PUT)]] += int(quantity)
+    counts["shares"] = _whole_if_integral(shares)
     return Holdings(**counts)
 
 
@@ -439,9 +495,28 @@ def approval_line(required_level: int, owner_level: int, emitted: Optional[List[
             % (_emit(emitted, required), _emit(emitted, owner)))
 
 
-def multi_leg_note(leg_count: int) -> Optional[str]:
-    """:data:`MULTI_LEG_NOTE` for a ticket with more than one leg, else ``None``."""
-    return MULTI_LEG_NOTE if _count(leg_count, "the leg count", positive=True) > 1 else None
+def multi_leg_note(leg_count: int, kind: str = MULTI_LEG_ROLL) -> Optional[str]:
+    """The multi-leg note of ``kind`` (:data:`MULTI_LEG_NOTES`; a roll's by default) for an order with more than one
+    leg, else ``None``."""
+    if kind not in MULTI_LEG_NOTES:
+        raise ValueError("kind must be one of %s, got %r" % (", ".join(MULTI_LEG_NOTES), kind))
+    return MULTI_LEG_NOTES[kind] if _count(leg_count, "the leg count", positive=True) > 1 else None
+
+
+def multi_leg_kind(legs: Sequence[Leg]) -> Optional[str]:
+    """What an order of more than one leg is, for its note: ``combination`` when it closes shares with options,
+    ``closing`` when it only closes options, ``collar`` when it only opens (a put and a call), else ``roll`` (an
+    option closed and one opened); ``None`` for one leg."""
+    if len(legs) < 2:
+        return None
+    if any(leg.instrument == INSTRUMENT_SHARES for leg in legs):
+        return MULTI_LEG_COMBINATION
+    effects = {leg.effect for leg in legs}
+    if effects == {EFFECT_CLOSE}:
+        return MULTI_LEG_CLOSING
+    if effects == {EFFECT_OPEN}:
+        return MULTI_LEG_COLLAR
+    return MULTI_LEG_ROLL
 
 
 def refused_line(subject: str, underlying: str, structure_words: str, words: str, level: int, owner_level: int,
@@ -469,8 +544,9 @@ def refusal_line(result: ApprovalResult, subject: str, underlying: str, structur
 def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, underlying: str,
                    emitted: Optional[List[str]] = None) -> List[str]:
     """The approval block of a passing order, in the order a ticket prints it: the leg-order line, the other-order
-    line (when the reversed order would exceed the owner's level), the multi-leg note (more than one leg) and the
-    approval line. ``ValueError`` when the check is refused (print :func:`refusal_line`)."""
+    line (when the reversed order would exceed the owner's level), the multi-leg note of what the order is (more
+    than one leg: :func:`multi_leg_kind`) and the approval line. ``ValueError`` when the check is refused (print
+    :func:`refusal_line`)."""
     result = check_legs(state, legs, owner_level)
     if not result.ok:
         raise ValueError("the check is refused at level %d: print the REFUSED line" % result.required_level)
@@ -479,9 +555,9 @@ def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, under
     breach = reverse_breach(state, legs, owner_level)
     if breach is not None:
         lines.append(other_order_line(breach.leg_index, breach.uncovered_calls, breach.level, emitted))
-    note = multi_leg_note(len(result.steps))
-    if note is not None:
-        lines.append(note)
+    kind = multi_leg_kind(legs)
+    if kind is not None:
+        lines.append(MULTI_LEG_NOTES[kind])
     lines.append(approval_line(result.required_level, result.owner_level, emitted))
     return lines
 
@@ -502,7 +578,12 @@ __all__ = [
     "INSTRUMENT_SHARES",
     "LEVEL_RANGE",
     "Leg",
+    "MULTI_LEG_COLLAR",
+    "MULTI_LEG_CLOSING",
+    "MULTI_LEG_COMBINATION",
     "MULTI_LEG_NOTE",
+    "MULTI_LEG_NOTES",
+    "MULTI_LEG_ROLL",
     "ReverseBreach",
     "SHARES_PER_CONTRACT",
     "SIDES",
@@ -525,6 +606,7 @@ __all__ = [
     "holdings_of",
     "holdings_words",
     "leg_order_line",
+    "multi_leg_kind",
     "multi_leg_note",
     "other_order_line",
     "refusal_line",

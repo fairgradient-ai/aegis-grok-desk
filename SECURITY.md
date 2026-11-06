@@ -93,12 +93,16 @@ and refused in this release.
 
    The Structuring Desk's outputs (its tickets, its roll analyses and its proposals) come only on your request, never
    from a routine: `routine.py` refuses `exit_ticket`, `roll_analysis` and `propose` as steps, and the alert lint
-   refuses a leg line or a candidate under the rules and market-snapshot footers. They carry no order fields: no
-   trade-side word, no order type, no limit or stop price field, no duration, no route and no account number. A leg line
-   names only the effect, the count and the contract (`leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call`), and
-   you supply the limit. They pass the alert lint in its structuring mode, which adds a third footer, a fixed leg
-   grammar, and refusals of advice, claim and urgency language and of a price after "at" or "for". They never print an
-   OCC symbol or a cell you typed, such as an account name or a note. The details are in
+   refuses a leg reference, a ranked candidate, an action tag or the first line of a structuring answer under the rules
+   and market-snapshot footers. They carry no order fields: no trade-side word, no order type, no limit or stop price
+   field, no duration, no route and no account number. A leg line names only the effect, the count and the contract
+   (`leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call`), and you supply the limit. They pass the alert lint in
+   its structuring mode, which adds a third footer and a fixed leg grammar, and refuses advice, preference, urgency,
+   suitability, probability, risk, return and valuation language, any claim that a text is not advice, order-type and
+   duration abbreviations, a price after "at", "for", "limit", "pay" or "price", and any line with a leg reference or a
+   leg's effect words outside the fixed grammar. The lint is a pattern screen that refuses the forms it names; the
+   tools' fixed wording is for counsel to sign ([docs/RELEASE.md](docs/RELEASE.md), step 4). They never print an OCC
+   symbol or a cell you typed, such as an account name or a note. The details are in
    [docs/STRUCTURING.md](docs/STRUCTURING.md).
 8. **Red-team tests.** `scripts/cli_journeys.py` screens the output of every command journey for order-shaped text.
    The alert lint has red-team fixtures (`tests/fixtures/alerts/`: invented numbers, advice, order fields, order kinds
@@ -116,6 +120,8 @@ The Structuring Desk names a best candidate from three inputs it does not check 
 - **Coverage tampering.** An edit to `positions.csv` that adds shares could make an uncovered call look covered,
   and an edit to `desk.toml` could raise the approval level. The same fail-closed rule applies: while `desk.toml`,
   `positions.csv` or `structuring.toml` differ from what you acknowledged, the structuring tools print nothing else.
+  A quarantined group anywhere in `positions.csv` could hide a short call that relies on your shares, so while one
+  exists every structuring answer is UNAVAILABLE (`positions_quarantined`).
 - **Out of scope.** The approval level is self-attested, and the desk does not see your broker's approval, your cash
   or your other holdings. Your broker's own checks decide what you can enter.
 

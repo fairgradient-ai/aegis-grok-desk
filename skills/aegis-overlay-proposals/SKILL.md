@@ -29,7 +29,11 @@ python3 /workspace/aegis-grok-desk/scripts/propose.py --trade AG-20261028-03 --s
   shares divided by 100, rounded down. When the owner records the fills with Aegis Position Control, the new legs
   join the same trade id, so the group becomes a covered call, a protective put or a collar.
 - A covered call needs free shares in the same account: shares that no short call of that account already relies on.
-  Shares in one account never cover a call in another.
+  Shares in one account never cover a call in another. Every share of the group must be free: the desk proposes
+  nothing on part of a group's shares.
+- While any group of `positions.csv` is quarantined, the desk cannot count which shares are free, and every proposal
+  is UNAVAILABLE: `positions.csv has a quarantined group (positions_check.py shows why): the desk cannot count the
+  account's coverage`.
 - A collar is one unit: a long put and a short call of one expiration, the put opened first.
 - Never a new symbol, a spread, an uncovered short or a cash-secured put. Chains are fetched only for the group's own
   underlying; an index underlying, which the sandbox cannot quote, is NOT_APPLICABLE.
@@ -43,6 +47,13 @@ WMT call row was moved to another trade id:
 NOTHING_TO_PROPOSE | AG-20261028-03 covered call proposal | the 100 SPY shares already carry 1 long put
 NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask for a roll analysis
 NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | no free shares: 200 WMT shares are covered by 2 short calls; the desk proposes no covered call
+```
+
+A copy whose WMT group holds 300 shares while one short call of another WMT group in the same account relies on 100
+of them:
+
+```text
+NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | 200 of the 300 WMT shares are free: 1 short call held in another group of this account relies on the rest; the desk proposes no covered call on part of a group's shares
 ```
 
 A covered call added to shares that already carry a long put would change the group: a collar when the call shares
@@ -83,7 +94,8 @@ most 2 decimals, and every `dte` window is calendar days with 7 <= lo < hi <= 40
 | | `objective` | `"cap_within_budget"` | the one objective of the section |
 
 An earnings or ex-dividend date that `research/calendar.toml` lists as unknown, or does not list at all, counts as
-inside the window; it is never treated as none. The labels and their acceptance by `#earnings-ok`, `#assign-ok` or
+inside the window; it is never treated as none. A listed date that has already passed counts as unknown and inside
+the window too, because the next one is not known. The labels and their acceptance by `#earnings-ok`, `#assign-ok` or
 `allow` are in `aegis-roll-decision-framework`.
 
 ## The interview and the acknowledgement
@@ -212,10 +224,12 @@ REFUSED AG-20261028-03 | SPY protective put | opening 1 new long put needs level
 
 ## Files and exit codes
 
-- An answer (exit 0) writes `reports/proposals/<trade id>-<structure>-<YYYYMMDDTHHMMSSZ>.md` and `.json`; every run
-  that printed a text (exit 0 or 20) appends one record to `journal/structuring.jsonl`.
-- 0: BEST, NONE_QUALIFIES, NOTHING_TO_PROPOSE or NOT_APPLICABLE. 20: UNAVAILABLE (market data, `criteria_missing`,
-  `config_unacknowledged`) or REFUSED. 1: an error, such as `unknown_trade`, `structuring_invalid` or `lint_failed`.
-  2: usage, for example a `--structure` outside the three. Never 10.
+- A complete evaluation (BEST or NONE_QUALIFIES) writes `reports/proposals/<trade id>-<structure>-<YYYYMMDDTHHMMSSZ>.md`
+  and `.json`; NOT_APPLICABLE and NOTHING_TO_PROPOSE write no report. Every run that printed a text (exit 0 or 20)
+  appends one record to `journal/structuring.jsonl`.
+- 0: BEST, NONE_QUALIFIES, NOTHING_TO_PROPOSE or NOT_APPLICABLE. 20: UNAVAILABLE (market data, `no_candidate_priced`,
+  `positions_quarantined`, `criteria_missing`, `config_unacknowledged`) or REFUSED. 1: an error, such as
+  `unknown_trade`, `structuring_invalid` or `lint_failed`. 2: usage, for example a `--structure` outside the three.
+  Never 10.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

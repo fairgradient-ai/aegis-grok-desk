@@ -35,6 +35,14 @@ The examples are synthetic: runs on copies of `tests/fixtures/desk` with the fix
   `[protective_put]`. A replacement that fails a criterion is still a TICKET (exit 0): its `FAILS_CRITERION` lines
   print, because the owner named the contract.
 - A contract the chain does not list is UNAVAILABLE: `the chain does not list that contract`.
+- A listed replacement the desk cannot price is UNAVAILABLE too (exit 20, `replacement_unpriced`), with its reason.
+  Synthetic, two ROLL tickets of the NVDA covered call (AG-20261022-02):
+
+```text
+UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2026-12-18 180 call cannot be priced: no bid
+UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2027-01-15 180 call cannot be priced: the spread is wider than the quote grades allow
+```
+
 - Every other replacement is NOT_APPLICABLE with its reason. Replacing a collar's legs as a unit, a short put or a
   vertical is planned for Stage 2 (not in this release).
 
@@ -71,7 +79,8 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 2. One line per leg, in the canonical order, each with its bid, ask, mid and quote grade, the source, the delay and
    the quote time. A quote of grade E adds `quote grade E: the conservative side stands`.
 3. The leg-order line names the holdings after each leg and each step's level. The other-order line appears when the
-   reverse order would need a level above the owner's; the multi-leg note appears on every ticket with two legs or more.
+   reverse order would need a level above the owner's; the multi-leg note appears on every ticket with two legs or more,
+   worded by what the order is.
 4. The approval line: the highest step's level against the owner's self-attested level.
 5. The cash line and the realized estimate of the closing legs.
 6. On a ROLL ticket: the replacement's criteria labels (`accepted` or `FAILS_CRITERION`), the state after both legs
@@ -85,10 +94,12 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
   strike and right, never by an OCC symbol.
 - It carries no trade verb, no side, no order type, no price field, no duration and no route. The owner turns the
   effect into the broker's own terms when entering it; the desk never does.
-- The structuring lint refuses any line that starts like a leg and leaves the fixed grammar (`order_field`), and it
-  refuses the structuring categories of words: advice from any subject, claims, urgency, the bare order-instruction
-  verb and a price after a preposition (SL01 to SL14), and the imperative starts IS10 to IS34. The compliance skill
-  has the categories; this skill never spells them out.
+- The structuring lint refuses any line with a leg reference anywhere (any case, any joining, the numbers in words or
+  with a slash) or a leg's effect words, unless the line is exactly the fixed grammar with only the quote segments the
+  tools print (`order_field`). It refuses the structuring categories of words: advice and preference from any subject,
+  claims, urgency, suitability, order-kind abbreviations, the bare order-instruction verb, a trade verb and a price
+  after a price word (SL01 to SL22), and the imperative starts IS10 to IS42. The compliance skill has the categories;
+  this skill never spells them out.
 
 ## The canonical leg order and intermediate exposure
 
@@ -102,7 +113,10 @@ The tool builds every plan in one fixed order, so that no step leaves a short ca
 
 The approval-level check reads every prefix of the plan: the holdings before leg 1, after leg 1, and so on. Shares
 cover a short call only in the same account, 100 shares per contract. The line `in the other order, after leg 2 you
-would hold 2 uncovered calls (level 4)` shows why the order is fixed.
+would hold 2 uncovered calls (level 4)` shows why the order is fixed. The holdings are every open row of that
+account and underlying, whatever its group. While any group of `positions.csv` is quarantined, those rows cannot be
+counted, so every ticket is UNAVAILABLE: `positions.csv has a quarantined group (positions_check.py shows why): the
+desk cannot count the account's coverage`.
 
 A plan that would ever leave a short call uncovered is REFUSED with the code `intermediate_exposure` (exit 20). The
 canonical orders never cause it, so it marks an invariant breach.
@@ -139,7 +153,10 @@ A copy whose `desk.toml` says level 0, asked for the same ROLL:
 REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs level 1 by the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing above your level; your broker's own approval decides what you can enter
 ```
 
-The multi-leg note is printed because a broker may class a two-leg order differently from its legs:
+The multi-leg note is printed because a broker may class a multi-leg order differently from its legs. It is worded
+by what the order is: a roll (`some brokers class a roll as a spread`), a collar (`a collar as a spread`), closing
+option legs (`closing option legs as a spread`) or shares with options (`shares and options together as a
+combination`), each ending `which can need a higher level`. The roll ticket's line:
 `entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level`.
 
 ## Cash and the realized estimate
@@ -179,6 +196,7 @@ leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, 
 leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
 leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold no WMT shares and no option (level 0)
 in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
+entered as one multi-leg order, some brokers class shares and options together as a combination, which can need a higher level
 ```
 
 The shares go only after the call that relies on them. On a protective put the shares go first and the put last.
@@ -191,7 +209,7 @@ A LET_ASSIGN ticket lists no leg. It states the facts of leaving the short optio
 TICKET AG-20261020-01 | WMT covered call | the short option left to expiry (action LET_ASSIGN) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
 the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike
-if you decide otherwise, you act by Fri 2026-11-20 16:30 ET (21:30 UTC)
+if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
 if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares +1984.00
 the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
 valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
@@ -199,8 +217,11 @@ after expiry, the post-expiry check of Aegis Position Control proposes the posit
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
-- OCC exercises an option at least 0.01 in the money at expiry by exception. The act-by time is the owner's broker
-  cutoff, `broker_exercise_cutoff_et` in `desk.toml`, on the last trading day.
+- OCC exercises an option at least 0.01 in the money at expiry by exception. The broker's cutoff in that line,
+  `broker_exercise_cutoff_et` in `desk.toml`, is for an exercise instruction on a long option.
+- A short option left to expiry can be closed only while the session trades, so the act-by is the last trading day's
+  session close (16:00 ET, 13:00 ET on an early close), or the broker's cutoff when that is earlier. On the last
+  trading day `[today]` follows the time.
 - The expiry and assignment skill of Aegis Position Control has the protocol; the outcome after expiry is an
   inference the owner confirms with the broker.
 
@@ -240,7 +261,8 @@ after both legs: group delta 69.69, max loss 4700.00, max profit unbounded, brea
 
 - A TICKET (exit 0) writes `tickets/TK-<trade id>-<ACTION>-<YYYYMMDDTHHMMSSZ>.md` and `.json`, for example
   `tickets/TK-AG-20261020-01-ROLL-20261103T195000Z.md`. Nothing else writes a ticket file. The same bytes again at the
-  same instant are a no-op; different bytes are exit 1 `ticket_exists`.
+  same instant are a no-op; different bytes are exit 1 `ticket_exists`. The instant is read to the whole second, so a
+  second ROLL ticket of the group for another replacement in the same second is `ticket_exists` too.
 - Every run that printed a text (exit 0 or 20) appends one record to `journal/structuring.jsonl`: the instant, the
   tool, the action, the trade id, the verdict, the shas of `structuring.toml`, `desk.toml` and `positions.csv`, a
   refusal code if any, and the sha of the printed text. No other tool reads it.

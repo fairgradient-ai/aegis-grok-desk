@@ -39,17 +39,19 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
   looks at a symbol you do not hold. Chains are fetched only for that group's underlying.
 - A ROLL ticket needs both `--new-expiration` and `--new-strike`, and any other action refuses them (exit 2, usage).
   The replacement keeps the held leg's root and right, and its expiration must be later than the held leg's. A
-  contract the chain does not list answers UNAVAILABLE: `the chain does not list that contract`.
+  contract the chain does not list answers UNAVAILABLE: `the chain does not list that contract`; a listed one the
+  desk cannot price answers UNAVAILABLE with its reason ([A ticket](#a-ticket) below).
 - A ticket never depends on an earlier report: you name the replacement by its expiration and strike, as the roll
   analysis prints them.
 - Every answer is the tool's own text, linted, which the Structuring Desk posts verbatim, footer included.
 
 What the desk never does: it proposes no new symbol, no spread, no uncovered short option and no cash-secured put. A
-group that already holds an option leg, or fewer than 100 shares, gets NOTHING_TO_PROPOSE with its reason; index
-underlyings are NOT_APPLICABLE, because the sandbox cannot quote them. The roll analysis of long puts, short puts and
-collars, weekly expirations, the American lattice, scenario and iv_snapshot, a cash-balance check and per-account
-approval levels are planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also
-planned for Stage 2 (not in this release); a ROLL of either collar leg is NOT_APPLICABLE.
+group that already holds an option leg, or fewer than 100 shares, or whose shares a short call of another group in the
+same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index underlyings are NOT_APPLICABLE, because
+the sandbox cannot quote them. The roll analysis of long puts, short puts and collars, weekly expirations, the American
+lattice, scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for Stage 2 (not in
+this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
+ROLL of either collar leg is NOT_APPLICABLE.
 
 ## Only when you ask
 
@@ -59,8 +61,9 @@ planned for Stage 2 (not in this release); a ROLL of either collar leg is NOT_AP
   `roll_analysis.py` and `propose.py`, and your tap on its card is the record of your request.
 - They never run in a routine. `routine.py` refuses them as routine steps with the reason
   `owner-requested only: a structuring text names candidates and never runs in a routine`.
-- No alert, level sheet, plan card, brief or routine message can carry a leg or a candidate: the alert lint refuses a
-  leg line or a candidate under the rules footer and the market-snapshot footer.
+- No alert, level sheet, plan card, brief or routine message can carry a leg or a candidate: under the rules footer
+  and the market-snapshot footer, the alert lint refuses a leg reference, a ranked candidate, an action tag and the
+  first line of a structuring answer.
 - The Structuring Desk never fires an alert and owns no routine. The Aegis Exit Sentinel, which fires the signals,
   never prices the choices.
 
@@ -127,7 +130,7 @@ examples on this page assume.
 Every decimal carries at most 2 decimal places. The reader is strict: every section and key is required, an unknown
 key is an error, and a boolean is never a number. One rule is fixed, not a key: an earnings or ex-dividend date that
 `research/calendar.toml` lists as unknown, or does not list at all, counts as inside the window; it is never treated
-as none.
+as none. A listed date that has already passed counts the same way, because the next one is not known.
 
 The file the fixture answers render, byte for byte (`tests/fixtures/init/expected_structuring.toml`):
 
@@ -207,6 +210,15 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:52 UTC
   ```
 
+- A quarantined group anywhere in `positions.csv` (a row `positions_check.py` refuses): the desk cannot count which
+  shares are free, so every structuring answer is UNAVAILABLE (exit 20) until the file is fixed. Synthetic, a copy
+  whose `positions.csv` gained a WMT call row of another trade id, its cost and its premium in disagreement:
+
+  ```text
+  UNAVAILABLE | AG-20261020-01 roll analysis | positions.csv has a quarantined group (positions_check.py shows why): the desk cannot count the account's coverage
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
+  ```
+
 - An unacknowledged rulebook alone does not block: its CONFIG CHANGED line prints first, and the answer follows.
 - A `structuring.toml` the reader refuses is exit 1 (`structuring_invalid`) with the reader's reason.
 
@@ -216,22 +228,31 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
 
 - **Expirations.** Standard monthly expirations whose calendar days to expiry lie in your `dte` window and, for a
   replacement, that expire after the held leg. The window is at most 90 days wide, so a run needs at most four chains.
-- **Prices.** A new leg is priced only when both sides of its quote are fresh at grade A to D, its spread is within
-  `max_spread_pct`, and it is a standard contract of the underlying. Its implied volatility is solved from the mid with
-  the European Black-Scholes-Merton model and the dividend yield of `research/calendar.toml` (0 with a warning). A
-  held leg you would close is priced at its conservative fresh side, which is the ask for a short and the bid for a
-  long. At grade E that side still stands, with the note `quote grade E: the conservative side stands`.
+  A window that holds no listed standard monthly is NOT_APPLICABLE and writes no report. Synthetic, the fixture with
+  `[roll] dte = [80, 100]`: `no listed standard monthly expiration lies inside your roll window of 80 to 100 calendar
+  days`.
+- **Prices.** A new leg is priced only when both sides of its quote are fresh, with a mid, at quote grade A to D, and it
+  is a standard contract of the underlying; a spread above `max_spread_pct` is still priced and falls OUTSIDE_BANDS
+  `max_spread_pct`. A contract the chain lists more than once with different quotes is not priced (`the chain lists the
+  contract more than once with different quotes`); identical copies count once. Its implied volatility is solved from
+  the mid with the European Black-Scholes-Merton model and the dividend yield of `research/calendar.toml` (0 with a
+  warning). A held leg you would close is priced at its conservative fresh side, which is the ask for a short and the
+  bid for a long. At grade E that side still stands, with the note `quote grade E: the conservative side stands`.
 - **Statuses.** Each candidate gets every reason that applies and one status, in this precedence:
 
   | Status | Means |
   | --- | --- |
-  | `UNPRICED` | no usable quote, no implied volatility, or less than an hour to the exercise cutoff |
+  | `UNPRICED` | no usable quote, conflicting copies in the chain, no implied volatility, or less than an hour to the exercise cutoff |
   | `OUTSIDE_BANDS` | outside a band or window: `dte`, `abs_delta`, `min_credit`, `max_spread_pct`, `floor_pct`, `cap_pct`, `stress_drop_pct` (no cover at the stress), `max_net_debit` |
   | `FAILS_CRITERION` | fails `strike_floor`, `credit_only`, `earnings` or `ex_dividend` |
   | `ELIGIBLE` | passes every criterion |
 
   In the text, both failing tiers print as `FAILS_CRITERION <key>: <words>` with the value and your band. The JSON
   carries each reason as `{key, code, value, threshold}`.
+- **Not priced.** An UNPRICED candidate prints `not priced: <words>` and is counted apart, as `<n> not priced`: it was
+  never judged against your criteria, so it never counts as failing them. When not one candidate of the window could
+  be priced, the answer is UNAVAILABLE (exit 20, no report): `no candidate in your window could be priced`, followed by
+  the reason they share or by `(the reasons differ; the JSON lists each)`.
 
 ### The objectives
 
@@ -269,11 +290,22 @@ collar pairs a put and a call of the same expiration; a leg outside its band is 
 A short call (a covered call, a replacement call, a collar's call) is checked against the dates in
 `research/calendar.toml`; a long put never is.
 
-- An earnings date inside the call's life fails `earnings`. `#earnings-ok` on any open row of the group, or
-  `earnings = "allow"`, accepts it.
+- An earnings date inside the call's life fails `earnings`. A release before the open, or at an unknown time, counts
+  at 09:30 ET; a release after the close counts at 16:00 ET, so one on a call's last trading day falls inside that
+  call's life (holders decide whether to exercise after the close). For a replacement, a release after the close on
+  the held call's last trading day belongs to the held call. `#earnings-ok` on any open row of the group, or
+  `earnings = "allow"`, accepts the label.
 - An ex-dividend date whose last cum-dividend day falls inside the call's life fails `ex_dividend` (for a replacement,
   only when the held call's life did not already include it). `#assign-ok` on any open row of the group, or
   `ex_dividend = "allow"`, accepts it.
+- A listed earnings or ex-dividend date that has already passed counts as unknown and inside the call's life,
+  because the next one is not known. Synthetic, the expiry-day ROLL ticket of AG-20261020-01 for the 2027-01-15 115
+  call (`--fixture-set expiry_day` at 2026-11-20 19:50 UTC):
+
+  ```text
+  FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
+  ```
+
 - The calendar holds one next ex-date per symbol. When a call's last trading day is at least 80 calendar days after
   that date, a second ex-date may fall inside its life, so the call also gets `a second ex-date may fall before the
   call's last trading day; the calendar holds one`.
@@ -300,7 +332,9 @@ By the desk's convention, a closing transaction needs no approval (level 0); the
 
 - A ticket or a proposal is checked step by step, against the holdings before each leg, in the same account and
   underlying. A short call is covered only by 100 shares per contract in the same account; shares in another account
-  never cover it.
+  never cover it. The holdings are every open row of that account and underlying, whatever its group; while any group
+  of `positions.csv` is quarantined, the answer is UNAVAILABLE `positions_quarantined` (above). Coverage counts whole
+  hundreds of shares, and an UNWIND_STOCK ticket closes the exact open quantity, fractional shares included.
 
   | Step | Level |
   | --- | --- |
@@ -318,8 +352,14 @@ By the desk's convention, a closing transaction needs no approval (level 0); the
   A collar opens its put, then its call. MONETIZE_PUT closes the put.
 - When the reverse order would leave an uncovered call, the text says so, for example `in the other order, after leg
   2 you would hold 2 uncovered calls (level 4)`. A ticket or a proposal with more than one leg adds the multi-leg
-  note, for example `entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher
-  level`.
+  note, worded by what the order is. Its four forms, the tools' fixed words:
+  - a roll: `entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level`;
+  - a collar proposal: `entered as one multi-leg order, some brokers class a collar as a spread, which can need a
+    higher level`;
+  - a CLOSE of two option legs or more: `entered as one multi-leg order, some brokers class closing option legs as a
+    spread, which can need a higher level`;
+  - an UNWIND_STOCK of shares and options: `entered as one multi-leg order, some brokers class shares and options
+    together as a combination, which can need a higher level`.
 - A step above your level refuses the answer (exit 20): the desk shows nothing above your level. Synthetic, the
   fixture with `approval_level = 0`:
 
@@ -371,17 +411,20 @@ candidate:
 
 ```text
 STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 20 failed
+replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
 candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-failed your criteria: 20 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18, unpriced 2)
+failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
 a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
+
+The `2 not priced` are the two 180 calls, whose quotes the desk cannot price (a zero bid, a spread too wide); they
+are never counted as failing your criteria.
 
 ### A ticket
 
@@ -417,6 +460,14 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 - A ticket is computed only while the session is open. It stays valid for 30 minutes, or until the close if that
   comes first; after that its quotes are too old, and a new ticket needs a new request.
 - A replacement that fails a criterion is still a ticket (exit 0), with its `FAILS_CRITERION` lines: you named it.
+- A replacement the desk cannot price is UNAVAILABLE (exit 20, `replacement_unpriced`), with the reason. Synthetic,
+  two ROLL tickets of the NVDA group:
+
+  ```text
+  UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2026-12-18 180 call cannot be priced: no bid
+  UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2027-01-15 180 call cannot be priced: the spread is wider than the quote grades allow
+  ```
+
 - Only a ROLL ticket prints the model line, because only its replacement carries model numbers (implied volatility,
   delta and the after-state). The other tickets print quotes and cash only.
 
@@ -426,13 +477,19 @@ A LET_ASSIGN ticket has no leg to enter:
 TICKET AG-20261020-01 | WMT covered call | the short option left to expiry (action LET_ASSIGN) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
 the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike
-if you decide otherwise, you act by Fri 2026-11-20 16:30 ET (21:30 UTC)
+if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
 if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares +1984.00
 the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
 valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
 after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
+
+- A short option left to expiry can be closed only while the session trades, so its act-by is the last trading day's
+  session close (16:00 ET, 13:00 ET on an early close), or your broker's cutoff when that is earlier. On the last
+  trading day `[today]` follows the time.
+- The broker's cutoff in the OCC line is for an exercise instruction on a long option; OCC exercises an option at least
+  0.01 in the money at expiry by exception.
 
 ### A proposal
 
@@ -497,7 +554,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 - NOT_APPLICABLE names the reason, for example the roll analysis of the SPY protective put:
 
   ```text
-  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)
+  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
   ```
 
@@ -515,8 +572,8 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 | Code | Answers | Files | Journal record |
 | --- | --- | --- | --- |
-| 0 | BEST, NONE_QUALIFIES, NOT_APPLICABLE and NOTHING_TO_PROPOSE (roll analyses and proposals); TICKET and NOT_APPLICABLE (tickets) | a roll analysis or a proposal writes its report on every exit 0; a ticket writes its file only on TICKET | yes |
-| 20 | UNAVAILABLE (a quote, an expiration list or a chain the answer needs is missing or stale, a closed session for a ticket, `replacement_not_listed`, `criteria_missing`, `config_unacknowledged`) and REFUSED (`approval_level`, or `intermediate_exposure`, which the fixed leg order rules out) | none | yes |
+| 0 | BEST, NONE_QUALIFIES, NOT_APPLICABLE and NOTHING_TO_PROPOSE (roll analyses and proposals); TICKET and NOT_APPLICABLE (tickets) | a roll analysis or a proposal writes its report only for BEST and NONE_QUALIFIES (a complete evaluation); NOT_APPLICABLE and NOTHING_TO_PROPOSE write no report, only their journal record; a ticket writes its file only on TICKET | yes |
+| 20 | UNAVAILABLE (a quote, an expiration list or a chain the answer needs is missing or stale, `no_candidate_priced`, a quarantined group in `positions.csv` (`positions_quarantined`), a closed session for a ticket, `replacement_not_listed`, `replacement_unpriced`, `criteria_missing`, `config_unacknowledged`, and the market-data refusals `no_token`, `production_host`, `token_file_mode` and `holiday_table_expired`) and REFUSED (`approval_level`, or `intermediate_exposure`, which the fixed leg order rules out) | none | yes |
 | 1 | `unknown_trade`, `desk_root`, `config_invalid`, `positions_invalid`, `calendar_invalid`, `structuring_invalid`, `io_error`, `ticket_exists`, `lint_failed` (the WITHHELD line) | none | none |
 | 2 | usage: a missing or malformed flag | none | none |
 
@@ -530,7 +587,9 @@ These tools never exit 10: "fired" belongs to the alerts. An answer printed with
 | `journal/structuring.jsonl` | all three, one record per printed text |
 
 Each tool creates its folder at its first write. A rerun at the same instant with the same bytes writes nothing new; a
-different text under the same name is exit 1 (`ticket_exists`). The journal is the audit trail of what was suggested
+different text under the same name is exit 1 (`ticket_exists`). The run instant is read to the whole second, so a
+rerun within the same second is the same instant, and a second ROLL ticket of one group for another replacement in
+that second is exit 1 `ticket_exists`: ask again a second later. The journal is the audit trail of what was suggested
 and when: each record carries `utc`, `tool`, `action`, `structure`, `trade_id`, `verdict`, the sha256 of
 `structuring.toml`, `desk.toml` and `positions.csv`, `best_candidate`, `candidates_passed`, `candidates_failed`,
 `refused_code` and the sha256 of the printed text. No book check, brief or routine reads it.
@@ -545,9 +604,11 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 The desk has three footers, and the alert lint keeps them apart: the rules footer closes every alert, sheet and brief;
 the market-snapshot footer closes only the Opening Bell; the structuring footer closes only the Structuring Desk's
-tickets, its roll analyses and its proposals. It refuses rule content under the structuring footer and a leg or a
-candidate under the other two. In structuring mode it also refuses advice, urgency and claim language, a price after
-"at" or "for", and every leg line outside the fixed grammar.
+tickets, its roll analyses and its proposals. It refuses rule content under the structuring footer, and a leg
+reference, a ranked candidate, an action tag or the first line of a structuring answer under the other two. In
+structuring mode it also refuses advice, preference, urgency, suitability, probability, risk, return and valuation
+language, any claim that a text is not advice, order-type and duration abbreviations, a price after "at", "for",
+"limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed grammar.
 
 The one-time disclosure, `structuring-suggestions-1`, which the interview shows last and `structuring.toml` records as
 acknowledged:
@@ -574,9 +635,12 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
   your other holdings, your objectives or your taxes, and it makes no cash check.
 - **Expirations.** Standard monthly expirations only; weekly expirations are planned for Stage 2 (not in this
   release).
-- **Dates.** One next earnings date and one next ex-dividend date per symbol, from `research/calendar.toml`.
+- **Dates.** One next earnings date and one next ex-dividend date per symbol, from `research/calendar.toml`. A date
+  that is unknown, not listed or already passed counts as inside a call's life, and a call whose last trading day is
+  at least 80 calendar days after the known ex-date also gets the second-ex-date label.
 - **Budget.** At most 20 requests and 4 chains per run, inside the desk-wide 60 requests per minute. A chain the run
-  cannot get makes the answer UNAVAILABLE: no best candidate is named on partial data.
+  cannot get makes the answer UNAVAILABLE: no best candidate is named on partial data. An empty expiration list from
+  the vendor is never cached; it counts as missing, and the answer is UNAVAILABLE.
 
 ## For counsel
 

@@ -130,6 +130,9 @@ REASON_UNMATCHED: str = "unmatched"
 REASON_QUOTA_GUARD: str = "quota_guard"
 REASON_PER_RUN_CAP: str = "per_run_cap"
 REASON_MARKET_CLOSED: str = "market_closed"
+REASON_EMPTY_LIST: str = "empty_list"
+"""An expirations answer that lists nothing: no data, so it is reported missing and never cached (PR 3b review L3-5:
+a cached empty list would make every later run that ET date evaluate nothing as if it were complete)."""
 REASON_NO_BARS: str = "no_bars"
 """A history answer without bars (the vendor's ``{"history": null}``): served, cached under the TTL."""
 FETCH_FAILED_PREFIX: str = "fetch_failed:"
@@ -1047,7 +1050,8 @@ def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, cl
     budget guard, the run's stop reason, the ``quota`` / credential stop rules, the no-send statuses and the warning
     words are :func:`get_chain`'s; the request counts against ``per_run_max_requests`` and never against
     ``per_run_max_chains``; every request the client sent is in the ledger through the client's :func:`ledger_hook`.
-    An empty answer is served and cached with a warning. ``OSError`` from the cache directory propagates.
+    An empty answer is no data: it is reported missing (:data:`REASON_EMPTY_LIST`) with a warning and never cached,
+    and a cached empty copy is never served (refetched, or missing). ``OSError`` from the cache directory propagates.
     """
     now = _require_utc(now)
     if not isinstance(symbol, str) or not symbol.strip():
@@ -1060,6 +1064,9 @@ def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, cl
         warnings.append("%s is not a valid symbol (%s): nothing sent" % (symbol, SYMBOL_RE.pattern))
         return ExpirationsCacheResult(symbol, [], None, REASON_BAD_SYMBOL, 0, None, warnings)
     cached = _load_expirations(paths, symbol, warnings)
+    if cached is not None and not cached[0]:
+        warnings.append("expirations cache %s ignored: an empty list is never served" % symbol)
+        cached = None
     fallback: Optional[Tuple[List[datetime.date], datetime.datetime]] = None
     if cached is not None:
         dates, stamp = cached
@@ -1111,7 +1118,8 @@ def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, cl
     receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
     dates = list(result.dates)
     if not dates:
-        warnings.append("%s is empty: no listed expirations" % label)
+        warnings.append("%s is empty: no listed expirations (not cached)" % label)
+        return not_fetched(REASON_EMPTY_LIST, 1)
     _store_expirations(paths, symbol, now, dates, warnings)
     return ExpirationsCacheResult(symbol, dates, SERVED_FETCH, None, 1, receipt_utc, warnings, now)
 
@@ -1122,6 +1130,7 @@ __all__ = [
     "ChainCacheResult",
     "DEFAULT_FIXTURE_SET",
     "EXPIRATIONS_SUBDIR",
+    "REASON_EMPTY_LIST",
     "ExpirationsCacheResult",
     "FETCH_FAILED_PREFIX",
     "HISTORY_SUBDIR",

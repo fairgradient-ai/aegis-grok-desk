@@ -207,8 +207,14 @@ UNAVAILABLE | AG-20261020-01 roll analysis | an option chain in your window was 
 - **Withheld.** The structuring text failed its lint and was not printed. Nobody retypes it; `--json` of the same
   tool shows it as a diagnostic when the owner asks.
 - **A chain not served.** The quota, the per-run cap of 20 requests or 4 chains, or a vendor failure left an
-  expiration of the window unpriced, so the answer is UNAVAILABLE: no best candidate on partial data. The owner
-  asks again later; no Bot repeats the run in a loop.
+  expiration of the window unpriced, so the answer is UNAVAILABLE: no best candidate on partial data. An empty
+  expiration list from the vendor counts as missing too. The owner asks again later; no Bot repeats the run in a loop.
+- **No candidate priced.** `no candidate in your window could be priced`, with the reason the candidates share: the
+  answer is UNAVAILABLE, never NONE_QUALIFIES, because no candidate was judged against the criteria.
+- **A quarantined group.** `positions.csv has a quarantined group (positions_check.py shows why): the desk cannot
+  count the account's coverage`. While any group of `positions.csv` is quarantined, every structuring answer is
+  UNAVAILABLE. Aegis Position Control shows the row errors with `positions_check.py`; the owner fixes the rows and
+  acknowledges the file again.
 - **A closed session.** A ticket needs live quotes: `a ticket needs quotes live enough to act on: the session is not
   open`. A roll analysis or a proposal after the close reads the closing quotes, labelled as of the close.
 

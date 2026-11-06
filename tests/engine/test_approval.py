@@ -17,6 +17,7 @@ import dataclasses
 import datetime
 import os
 import unittest
+from decimal import Decimal
 from typing import List, Sequence, Tuple
 
 from aegis_desk import alert_lint, approval, grouping, positions_csv
@@ -343,7 +344,9 @@ class LinesTest(unittest.TestCase):
             "convention); after leg 2 you hold no SPY shares and 1 long put (level 0); after leg 3 you hold no SPY "
             "shares and no option (level 0)",
             "in the other order, after leg 2 you would hold 1 uncovered call (level 4)",
-            approval.MULTI_LEG_NOTE,
+            # an unwind is neither a roll nor a spread: shares and options together (reviews L1-5, L2-6, L4-5)
+            "entered as one multi-leg order, some brokers class shares and options together as a combination, which "
+            "can need a higher level",
             "approval: the highest step needs level 0 by the desk's convention, within your self-attested level 2 "
             "(desk.toml); your broker's own approval for this account decides",
         ], lines)
@@ -420,6 +423,87 @@ class LinesTest(unittest.TestCase):
                 self.assertNotIn(word, line.lower())
             for start in ("collar", "hedge", "cover", "roll", "close", "exit"):
                 self.assertFalse(line.lower().startswith(start), line)
+
+
+class FixerTest(unittest.TestCase):
+    """The PR 3b review: fractional shares (BD4) and the multi-leg note worded by what the order is (L1-5)."""
+
+    def test_fractional_shares_are_held_exactly_and_cover_whole_hundreds(self) -> None:
+        with open(FIXTURE_POSITIONS, encoding="utf-8") as handle:
+            text = handle.read().replace("equity,WMT,,200,", "equity,WMT,,200.5,")
+        rows = positions_csv.parse_positions_text(text, today=datetime.date(2026, 11, 3)).rows
+        holdings = approval.holdings_of(rows, "Brokerage (margin)", "WMT")
+        self.assertEqual(H(shares=Decimal("200.5"), short_calls=2), holdings)
+        self.assertEqual((0, Decimal("0.5")), (holdings.uncovered_calls, holdings.free_shares))
+        self.assertIsInstance(holdings.uncovered_calls, int)
+        self.assertEqual(1, H(shares=Decimal("199.9"), short_calls=2).uncovered_calls)
+        # the unwind closes the exact open quantity; coverage reads whole hundreds
+        result = approval.check_legs(holdings, [CLOSE_SHORT_CALL_2, close_shares(Decimal("200.5"))], 2)
+        self.assertEqual((True, 0, H()), (result.ok, result.required_level, result.steps[-1].after))
+        self.assertEqual("closing 200.5 of your shares", result.steps[-1].words)
+        emitted: List[str] = []
+        self.assertEqual("you hold 200.5 WMT shares and 2 short calls", approval.holdings_words(holdings, "WMT", emitted))
+        self.assertEqual(["200.5", "2"], emitted)
+        short = text.replace("equity,WMT,,200.5,", "equity,WMT,,-200,")
+        with self.assertRaises(ValueError):
+            approval.holdings_of(positions_csv.parse_positions_text(short, today=datetime.date(2026, 11, 3)).rows,
+                                 "Brokerage (margin)", "WMT")
+        for bad in (Decimal("-1"), Decimal("NaN"), Decimal("Infinity")):
+            with self.subTest(shares=bad):
+                with self.assertRaises(ValueError):
+                    H(shares=bad)
+        with self.assertRaises(ValueError):
+            open_("short", "call", Decimal("1.5"))   # contracts stay whole
+        with self.assertRaises(ValueError):
+            close_shares(Decimal("0"))
+
+    def test_the_multi_leg_note_names_what_the_order_is(self) -> None:
+        notes = approval.MULTI_LEG_NOTES
+        self.assertEqual(approval.MULTI_LEG_NOTE, notes["roll"])
+        cases = (
+            ("roll", WMT, [CLOSE_SHORT_CALL_2, OPEN_SHORT_CALL_2]),
+            ("roll", SPY, [open_("long", "put", 1), close("long", "put", 1)]),
+            ("collar", SPY_SHARES, [open_("long", "put", 1), open_("short", "call", 1)]),
+            ("closing", COLLAR, [close("short", "call", 1), close("long", "put", 1)]),
+            ("combination", WMT, [CLOSE_SHORT_CALL_2, close_shares(200)]),
+            ("combination", SPY, [close_shares(100), close("long", "put", 1)]),
+        )
+        for kind, state, legs in cases:
+            with self.subTest(kind=kind):
+                self.assertEqual(kind, approval.multi_leg_kind(legs))
+                lines = approval.approval_lines(state, legs, 2, "SPY")
+                self.assertIn(notes[kind], lines)
+                self.assertEqual([note for note in notes.values() if note in lines], [notes[kind]])
+        self.assertEqual("entered as one multi-leg order, some brokers class closing option legs as a spread, which can "
+                         "need a higher level", notes["closing"])
+        self.assertEqual("entered as one multi-leg order, some brokers class shares and options together as a "
+                         "combination, which can need a higher level", notes["combination"])
+        self.assertEqual("entered as one multi-leg order, some brokers class a collar as a spread, which can need a "
+                         "higher level", notes["collar"])
+        self.assertNotIn("roll", notes["combination"] + notes["closing"])
+        for note in notes.values():
+            result = lint([note], [])
+            self.assertTrue(result.ok, (note, result.problems))
+        self.assertIsNone(approval.multi_leg_kind([CLOSE_SHORT_CALL_2]))
+
+
+class VerifierTest(unittest.TestCase):
+    """The PR 3b verifier: a fractional holding (BD4) keeps the whole-share form wherever the count is whole, and its
+    refusal words print the exact count."""
+
+    def test_a_whole_count_after_a_fractional_leg_is_an_int(self) -> None:
+        after = H(shares=Decimal("200.5"), short_calls=2).apply(CLOSE_SHORT_CALL_2).apply(close_shares(Decimal("200.5")))
+        self.assertEqual((0, int), (after.shares, type(after.shares)))
+        partial = H(shares=Decimal("250.5")).apply(close_shares(Decimal("50.5")))
+        self.assertEqual((200, int), (partial.shares, type(partial.shares)))
+        self.assertEqual(Decimal("0.5"), H(shares=Decimal("200.5")).apply(close_shares(200)).shares)
+        whole = H(shares=150).apply(close_shares(50))
+        self.assertEqual((100, int), (whole.shares, type(whole.shares)))
+
+    def test_closing_more_shares_than_held_names_the_exact_counts(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            H(shares=Decimal("200.5")).apply(close_shares(Decimal("250.5")))
+        self.assertEqual("the leg closes 250.5 shares but 200.5 are held", str(caught.exception))
 
 
 if __name__ == "__main__":

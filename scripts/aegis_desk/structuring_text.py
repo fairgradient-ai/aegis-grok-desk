@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, alerts, approval, expiry, signals, state, structuring
+from . import alert_lint, alerts, approval, desk_paths, expiry, signals, state, structuring
 from .desk_paths import DeskPaths
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
@@ -390,18 +390,27 @@ def proposal_header(w: Writer, symbol: str, structure: str, shares: Decimal, acc
         w.sha(criteria_sha), _source(w, as_of))
 
 
-def roll_summary_line(w: Writer, held: "structuring.HeldLeg", passed: int, failed: int) -> str:
-    """``replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed``."""
-    return "replacement candidates for the short %s %s %s: %s passed your criteria, %s failed" % (
-        w.date(held.expiration), w.strike(held.strike), _right(held.right), w.count(passed), w.count(failed))
+def _unpriced_tail(w: Writer, unpriced: int) -> str:
+    return ", %s not priced" % w.count(unpriced) if unpriced else ""
 
 
-def proposal_summary_line(w: Writer, structure: str, shares: Decimal, symbol: str, passed: int, failed: int) -> str:
-    """``candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed``."""
+def roll_summary_line(w: Writer, held: "structuring.HeldLeg", passed: int, failed: int, unpriced: int = 0) -> str:
+    """``replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed`` and, when some
+    candidates were never priced (never judged against the criteria), ``, 2 not priced``."""
+    return "replacement candidates for the short %s %s %s: %s passed your criteria, %s failed%s" % (
+        w.date(held.expiration), w.strike(held.strike), _right(held.right), w.count(passed), w.count(failed),
+        _unpriced_tail(w, unpriced))
+
+
+def proposal_summary_line(w: Writer, structure: str, shares: Decimal, symbol: str, passed: int, failed: int,
+                          unpriced: int = 0) -> str:
+    """``candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed`` (``, N not priced`` as in
+    :func:`roll_summary_line`)."""
     if structure not in ARTICLE_WORDS:
         raise ValueError("unknown proposal structure %r" % (structure,))
-    return "candidates for %s on the %s %s shares: %s passed your criteria, %s failed" % (
-        ARTICLE_WORDS[structure], w.number(expiry.plain(shares)), _root(symbol), w.count(passed), w.count(failed))
+    return "candidates for %s on the %s %s shares: %s passed your criteria, %s failed%s" % (
+        ARTICLE_WORDS[structure], w.number(expiry.plain(shares)), _root(symbol), w.count(passed), w.count(failed),
+        _unpriced_tail(w, unpriced))
 
 
 def best_line(w: Writer, rank: int, total: int, objective: Any, score: Decimal, passed: int) -> str:
@@ -430,16 +439,8 @@ def tie_line(w: Writer, objective_id: str, key: str, kind: Optional[str] = None)
 # --------------------------------------------------------------------------------------------
 
 _TIME_WORDS: Dict[str, str] = {"pre": "before the open", "post": "after the close", "unknown": "time unknown"}
-_UNPRICED_WORDS: Dict[str, str] = {
-    structuring.CODE_MARKET_CLOSED: "the market is closed", structuring.CODE_QUOTE_MISSING: "a quote side is missing",
-    structuring.CODE_QUOTE_UNDATED: "a quote side is undated", structuring.CODE_QUOTE_STALE: "the quote is stale",
-    structuring.CODE_QUOTE_ONE_SIDE_STALE: "one quote side is stale", structuring.CODE_QUOTE_CROSSED: "the quote is crossed",
-    structuring.CODE_ZERO_BID: "no bid", structuring.CODE_QUOTE_WIDE: "the spread is wider than the quote grades allow",
-    structuring.CODE_NONSTANDARD_CONTRACT: "not a standard 100-share contract",
-    structuring.CODE_SPOT_UNAVAILABLE: "no usable quote of the underlying",
-    structuring.CODE_SPOT_UNALIGNED: "the underlying's quote is stamped too far from the option's",
-    structuring.CODE_EXPIRING: "it expires too soon for a per-day score",
-}
+_UNPRICED_WORDS: Dict[str, str] = structuring.UNPRICED_WORDS
+"""The UNPRICED words: one source, :data:`aegis_desk.structuring.UNPRICED_WORDS`."""
 
 
 def _life(replacement: bool) -> str:
@@ -497,10 +498,8 @@ def reason_words(w: Writer, reason: "structuring.Reason", candidate: Optional["s
             return ("the listed ex-dividend date %s has passed, so the next one is unknown and counts as inside %s life"
                     % (w.date(value["ex_date"]), _life(replacement)))
         return "the dividend is unknown in research/calendar.toml, which counts as inside %s life" % _life(replacement)
-    if code in _UNPRICED_WORDS:
-        return _UNPRICED_WORDS[code]
-    if reason.code.startswith(structuring.IV_CODE_PREFIX):
-        return "no implied volatility from its mid"
+    if code in _UNPRICED_WORDS or reason.code.startswith(structuring.IV_CODE_PREFIX):
+        return structuring.unpriced_words(reason)
     raise ValueError("unknown reason code %r" % (code,))
 
 
@@ -523,8 +522,10 @@ def accepted_line(w: Writer, label: "structuring.Accepted", replacement: bool = 
 
 
 def reasons_line(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal,
-                 s0: Decimal) -> str:
-    """``reasons: <each criterion the candidate passed, with its value and the owner's band>; ...``."""
+                 s0: Decimal, held_strike: Optional[Decimal] = None) -> str:
+    """``reasons: <each criterion the candidate passed, with its value and the owner's band>; ...``; a replacement's
+    strike reads above, at, or below the stock cost and not below the held strike (``held_strike``), as the
+    replacement's strike floor reads."""
     leg = candidate.legs[0]
     parts: List[str] = []
     kind = candidate.kind
@@ -537,9 +538,17 @@ def reasons_line(w: Writer, candidate: "structuring.Candidate", section: Any, ma
             net = candidate.net_credit
             parts.append("a net credit of %s (%s in all) passes credit_only" % (w.price(net), w.money(candidate.net_credit_total)))
         if section.strike_floor == "cost_basis":
-            relation = "above" if leg.strike > s0 else "at"
-            parts.append("strike %s %s your stock cost %s" % (w.strike(leg.strike), relation,
-                                                             w.price(structuring.payoff.quantize_price(s0))))
+            cost = w.price(structuring.payoff.quantize_price(s0))
+            if leg.strike > s0:
+                parts.append("strike %s above your stock cost %s" % (w.strike(leg.strike), cost))
+            elif leg.strike == s0:
+                parts.append("strike %s at your stock cost %s" % (w.strike(leg.strike), cost))
+            elif kind == structuring.KIND_REPLACEMENT_CALL and held_strike is not None and leg.strike >= held_strike:
+                # the replacement floor fails only below both the held strike and the stock cost (review L4-1)
+                parts.append("strike %s below your stock cost %s and not below the held strike %s"
+                             % (w.strike(leg.strike), cost, w.strike(held_strike)))
+            else:
+                raise ValueError("a candidate below the stock cost passed strike_floor = cost_basis")
     elif kind in (structuring.KIND_PROTECTIVE_PUT, structuring.KIND_REPLACEMENT_PUT):
         parts.append("floor %s inside your band %s" % (w.pct(candidate.floor_pct), _band_words(w, section.floor_pct)))
         parts.append("it covers %s per share (%s in all) at your stress drop of %s (stressed price %s)"
@@ -556,6 +565,8 @@ def reasons_line(w: Writer, candidate: "structuring.Candidate", section: Any, ma
         parts.append("spreads %s and %s within your maximum %s" % (w.pct(put.spread_pct), w.pct(call.spread_pct),
                                                                     w.pct(max_spread_pct)))
         if section.strike_floor == "cost_basis":
+            if call.strike < s0:
+                raise ValueError("a collar call below the stock cost passed strike_floor = cost_basis")
             relation = "above" if call.strike > s0 else "at"
             parts.append("call strike %s %s your stock cost %s" % (w.strike(call.strike), relation,
                                                                   w.price(structuring.payoff.quantize_price(s0))))
@@ -792,12 +803,11 @@ def refused_line(w: Writer, answer: "structuring.Answer", result: "approval.Appr
 
 
 def multi_leg_line(structure: str = "roll") -> str:
-    """The multi-leg note (``approval.MULTI_LEG_NOTE`` for a roll; a collar's names the collar)."""
-    if structure == "roll":
-        return approval.MULTI_LEG_NOTE
-    if structure == "collar":
-        return approval.MULTI_LEG_NOTE.replace("class a roll as", "class a collar as")
-    raise ValueError("unknown multi-leg structure %r" % (structure,))
+    """The multi-leg note of ``structure`` (``approval.MULTI_LEG_NOTES``: ``roll``, ``collar``, ``closing``,
+    ``combination``)."""
+    if structure not in approval.MULTI_LEG_NOTES:
+        raise ValueError("unknown multi-leg structure %r" % (structure,))
+    return approval.MULTI_LEG_NOTES[structure]
 
 
 def approval_block(w: Writer, answer: "structuring.Answer", candidate: "structuring.Candidate",
@@ -807,11 +817,8 @@ def approval_block(w: Writer, answer: "structuring.Answer", candidate: "structur
     group = answer.group_context
     if group is None:
         raise ValueError("the answer loaded no group")
-    lines = approval.approval_lines(structuring.approval_state(answer), structuring.approval_legs(answer, candidate),
-                                    owner_level, _root(group.underlying), w.emitted)
-    if candidate.kind == structuring.KIND_COLLAR:
-        lines = [multi_leg_line("collar") if line == approval.MULTI_LEG_NOTE else line for line in lines]
-    return lines
+    return approval.approval_lines(structuring.approval_state(answer), structuring.approval_legs(answer, candidate),
+                                   owner_level, _root(group.underlying), w.emitted)
 
 
 # --------------------------------------------------------------------------------------------
@@ -883,7 +890,8 @@ def _best_head(w: Writer, answer: "structuring.Answer", best: "structuring.Candi
 def _best_tail(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate", replacement: bool) -> List[str]:
     group = answer.group_context
     assert group is not None and answer.pricing is not None and best.after is not None
-    lines = [reasons_line(w, best, answer.section, answer.pricing.max_spread_pct, group.s0)]
+    lines = [reasons_line(w, best, answer.section, answer.pricing.max_spread_pct, group.s0,
+                          None if answer.held is None else answer.held.strike)]
     lines.extend(accepted_line(w, label, replacement) for label in best.accepted)
     legs = len(best.legs) + (1 if answer.held is not None else 0)
     lines.append(after_line(w, best.after, answer.before, legs))
@@ -905,7 +913,7 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     assert target is not None and target.group is not None and ranking is not None and held is not None
     assert group is not None
     lines = [roll_header(w, subject, group.underlying, group.structure, answer.criteria.sha256, as_of),
-             roll_summary_line(w, held, ranking.passed, ranking.failed)]
+             roll_summary_line(w, held, ranking.passed, ranking.failed, ranking.unpriced)]
     shown = answer.criteria.general.max_candidates_shown
     rest = list(ranking.candidates)
     best = ranking.best
@@ -951,7 +959,8 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
     account = account_words(w, group.account, target.market.cfg.owner.accounts,
                             stock[0].row_number if stock else target.group.legs[0].row_number)
     lines = [proposal_header(w, group.underlying, structure, group.shares, account, answer.criteria.sha256, as_of),
-             proposal_summary_line(w, structure, group.shares, group.underlying, ranking.passed, ranking.failed)]
+             proposal_summary_line(w, structure, group.shares, group.underlying, ranking.passed, ranking.failed,
+                                   ranking.unpriced)]
     shown = answer.criteria.general.max_candidates_shown
     rest = list(ranking.candidates)
     if best is not None:
@@ -994,6 +1003,70 @@ def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
 # --------------------------------------------------------------------------------------------
 
 _DESK_WORDS = ("cash", "margin", "ira", "account", "call", "put", "shares")
+_TEMPLATE_WORDS: str = (
+    "above absent absolute acceptance accepted account accounts acknowledge acknowledged across action advanced "
+    "after alert allow already american among amount analysis another answer applicable apply approval assign "
+    "assigned assignment attested away balance band bands before below best both break breakeven breakevens "
+    "broken broker brokerage brokers budget cache calendar call called calls candidate candidates cannot carry "
+    "cash cause chain chains change check chose class clock clocks close closed closes closing code codes collar "
+    "collars combination computed config configuration conservative contents continuous contract contracts "
+    "convention cost could count counts coverage covered covers credit credits criteria criterion crossed cutoff "
+    "date days debit decide decides deep define defined delayed delivers delta desk differ different differently "
+    "digest direction disabled dividend does downside drop each earlier early earnings effect empty enough enter "
+    "entered equity estimated evaluated every exception exercise exercises exists expiration expirations expires "
+    "expiring expiry failed fall falls fewer file files fill finish finite first fixed floor footer forecast "
+    "formula found free fresh from gamma give grade grades grammar greeks group grouping groups held higher "
+    "highest hold holds identifiers implied index inside instrument integer intent into intrinsic json kind known "
+    "last later lattice least leaves left legs less level levels lies life limit line lines lint list listed "
+    "lists live loaded long loss lower lowest made margin market maximum mids minimum missing model modelled "
+    "money monthly more most multi multiplier must name named names need needed needs negative never next none "
+    "note nothing number objective once only open opening opens option options order other otherwise outside "
+    "overlay overlays overwrites owner paired part passed passes plain plan planned plus positions positive "
+    "possible post prefix price priced prices print prints problems profit proposal proposals propose proposes "
+    "protective puts quantity quarantined quote quotes rank ranks reads realized reason reasons receive records "
+    "refusal refused release remaining replaced replacement replacements replaces report reports request "
+    "requested requests required research rest right risk roll rolls root rules same sandbox says score second "
+    "section secured self sequence served session share shares short shows side some soon split spot spread "
+    "spreads stale stamp stamped standard stands state states status stays stem step steps stock strategies "
+    "stress stressed strike structure structuring style subject supply symbol takes tapped tell text than that "
+    "their these theta they this threshold tick ticket tickets time today together toml tool trade trading "
+    "transaction type unavailable unbounded uncovered undated underlying underlyings unhedged unit unknown "
+    "unlisted unpriced until usable used valid value vega verdict volatility warnings were what which while whole "
+    "wider window with withheld within without words worth would yield your yours yourself "
+)
+"""The words of the desk's own templates (every string literal of this module, ``tickets``, ``approval`` and
+``structuring`` but the docstrings, four letters or more): with the module constants and the footer they make
+:data:`DESK_LEXICON`."""
+
+
+def _words_of(*texts: str) -> List[str]:
+    return [word for text in texts for word in re.findall(r"[a-z]+", text.lower()) if len(word) >= 4]
+
+
+_LEXICON_SOURCES: Tuple[str, ...] = (
+    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, *alerts.STRUCTURE_WORDS.values(),
+    *ACTION_WORDS.values(), ROLL_PUT_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
+    *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
+    *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),
+    structuring.structuring_config.DISABLED_REASON)
+DESK_LEXICON: frozenset = frozenset(_words_of(*_LEXICON_SOURCES))
+"""The desk's own vocabulary: an owner text that is one of these words (an account named ``options`` or
+``brokerage``) is the desk's word wherever it stands, so the owner-text screen does not compare it (review L3-2)."""
+_DESK_SHORT_WORDS: frozenset = frozenset(word for text in _LEXICON_SOURCES for word in re.findall(r"[a-z]+", text.lower())
+                                         if len(word) < 4)
+"""The words under four letters of the same sources (``the``, ``of``, ``a``): with :data:`DESK_LEXICON` they make the
+phrases the desk itself prints (an account named ``covered call``), which the screen does not compare either."""
+_OWNER_WORD_RE = re.compile(r"[A-Za-z]+")
+_OWNER_PHRASE_RE = re.compile(r"[A-Za-z]+(?: [A-Za-z]+)+")
+
+
+def _desk_phrase(value: str) -> bool:
+    """``value`` is two or more words, each a word of the desk's own templates (:data:`DESK_LEXICON`,
+    ``_DESK_WORDS`` or :data:`_DESK_SHORT_WORDS`)."""
+    if not _OWNER_PHRASE_RE.fullmatch(value):
+        return False
+    return all(word in DESK_LEXICON or word in _DESK_WORDS or word in _DESK_SHORT_WORDS
+               for word in value.lower().split(" "))
 
 
 @dataclass(frozen=True)
@@ -1016,12 +1089,27 @@ class Rendered:
         return {"ok": self.lint.ok, "problems": list(self.lint.problems), "numbers_checked": self.lint.numbers_checked}
 
 
+def _dynamic_text(text: str) -> str:
+    """The lines of ``text`` the desk composed from data: every fixed line (:data:`FIXED_LINES`) and the footer out."""
+    fixed = set(FIXED_LINES)
+    return "\n".join(line for line in text.split("\n")
+                     if line not in fixed and not alert_lint.STRUCTURING_FOOTER_RE.match(line))
+
+
 def _owner_text_found(text: str, owner_texts: Sequence[str]) -> bool:
+    """An owner text printed in the composed lines, matched case-sensitively as a whole token (``Roth`` is not in
+    ``Rothschild``); a text under four characters, one word of the desk's own vocabulary (:data:`DESK_LEXICON`) or a
+    phrase made only of the desk's own words is the desk's wording wherever it stands and is not compared."""
+    dynamic = _dynamic_text(text)
     for raw in owner_texts:
         value = (raw or "").strip()
         if len(value) < 4 or value.lower() in _DESK_WORDS:
             continue  # too short to tell apart from the desk's own words
-        if value in text:
+        if _OWNER_WORD_RE.fullmatch(value) and value.lower() in DESK_LEXICON:
+            continue  # one word the desk's own templates use
+        if _desk_phrase(value):
+            continue  # a phrase of the desk's own words (an account named "covered call")
+        if re.search(r"(?<![A-Za-z0-9])" + re.escape(value) + r"(?![A-Za-z0-9])", dynamic):
             return True
     return False
 
@@ -1084,6 +1172,20 @@ def append_journal_record(paths: DeskPaths, record: Mapping[str, Any], *, lock: 
             signals.append_record(paths.structuring_journal, dict(record))
     else:
         signals.append_record(paths.structuring_journal, dict(record))
+
+
+def append_unavailable_record(paths: DeskPaths, *, now: datetime.datetime, tool: str, trade_id: str, code: str,
+                              text: str, hashes: Mapping[str, Optional[str]], action: Optional[str] = None,
+                              structure: Optional[str] = None) -> None:
+    """The record of an UNAVAILABLE answer a tool printed through its error envelope (market data refused, an expired
+    holiday table): S5 journals every printed text (exit 0 or 20), these too (review L3-6). ``text`` is the line the
+    text mode prints; ``hashes`` are the files' current sha256 (``exit_check.config_hashes``)."""
+    desk_paths.ensure_runtime_dirs(paths)  # the lock and journal/ live in the runtime directories
+    record = journal_record(now=now, tool=tool, trade_id=trade_id, verdict=structuring.VERDICT_UNAVAILABLE, text=text,
+                            criteria_sha256=hashes.get("structuring_toml"), desk_toml_sha256=hashes.get("desk_toml"),
+                            positions_csv_sha256=hashes.get("positions_csv"), action=action, structure=structure,
+                            refused_code=code)
+    append_journal_record(paths, record)
 
 
 def stamp(now: datetime.datetime) -> str:
@@ -1182,7 +1284,8 @@ __all__ = [
     "FIXED_LINES", "FOOTER_KIND", "JOURNAL_KEYS", "LIMIT_LINE", "MODEL_LINE", "NONE_QUALIFIES_LINE", "OCC_RE",
     "POINTER_LINE", "PRECHECK_CODES", "ROLL_PUT_WORDS", "Rendered", "ReportExists", "ReportFiles", "SOURCE_WORDS",
     "TIE_BREAK_WORDS", "WHAT_WORDS", "Writer", "accepted_line", "account_words", "after_line", "american_line",
-    "append_journal_record", "approval_block", "best_line", "candidate_line", "cash_line", "config_changed_line",
+    "append_journal_record", "append_unavailable_record", "approval_block", "best_line", "candidate_line", "cash_line",
+    "config_changed_line",
     "config_unacknowledged_line", "contract_words", "criteria_missing_line", "criterion_line", "data_as_of",
     "exposure_refused_line", "failure_counts_line", "finish", "held_line", "journal_record", "leg_line", "let_assign_line",
     "multi_leg_line", "not_applicable_line", "outside_bands_line", "proposal_header", "proposal_lines",

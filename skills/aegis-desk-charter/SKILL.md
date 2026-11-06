@@ -64,7 +64,7 @@ write the files; a Bot never writes or edits one by hand. Each file has one Bot 
 | `state/heartbeat/`, `reports/routines/`, `incidents/` | `routine.py` (book-check's heartbeat: `book_check.py --post`) | each routine's owner; liveness: Aegis Desk Lead |
 | `structuring.toml` (the owner's criteria) | `desk_init.py`, after the owner's tap | Aegis Structuring Desk |
 | `tickets/TK-<trade id>-<ACTION>-<stamp>.md`, `.json` | the ticket tool `exit_ticket.py`, on a TICKET | Aegis Structuring Desk |
-| `reports/rolls/`, `reports/proposals/` | the tools `roll_analysis.py` and `propose.py`, on an answer | Aegis Structuring Desk |
+| `reports/rolls/`, `reports/proposals/` | the tools `roll_analysis.py` and `propose.py`, only for BEST and NONE_QUALIFIES (a complete evaluation) | Aegis Structuring Desk |
 | `journal/structuring.jsonl` (one record per structuring text) | the three structuring tools | Aegis Structuring Desk |
 | `data/cache/` (quotes, chains, expirations and the request ledger) | every market tool, through the quote cache | nobody posts it |
 
@@ -82,7 +82,8 @@ Every desk message follows one grammar:
 1. It starts with its verdict or its kind, such as EXIT SIGNAL, WATCH, UNAVAILABLE, HOLD, CONFIG CHANGED, FINAL
    CALL, T-1 PREVIEW, MORNING DESK SHEET, EOD DESK BRIEF, THRESHOLD LEVELS, PLAN CARD, `pre-close` or `watch alive`.
    The Structuring Desk's answers start with TICKET, STRUCTURING, PROPOSAL, REFUSED, NOT_APPLICABLE,
-   NOTHING_TO_PROPOSE or UNAVAILABLE.
+   NOTHING_TO_PROPOSE or UNAVAILABLE, or with the rulebook's CONFIG CHANGED line when only the adopted rulebook is
+   unacknowledged (the answer follows it), or with WITHHELD when the text failed its lint.
 2. A rule is cited as the owner's, with the rulebook version and the first 8 hex digits of its sha:
    `your rule TP80 (rules 1.0.0, sha cc09859c)`.
 3. Every number carries its source, delay and UTC time, in the quote segment, for example
@@ -105,8 +106,8 @@ public market data · posted by an AI assistant · not a signal and not personal
 ```
 
 The structuring footer ends only the Structuring Desk's tickets, its roll analyses and its proposals. The lint refuses it
-under rule content, and refuses the other two footers under a leg or a candidate. There are three footers, and no
-Bot invents one of its own.
+under rule content, and refuses the other two footers under a leg reference, a ranked candidate, an action tag or the
+first line of a structuring answer. There are three footers, and no Bot invents one of its own.
 
 ```text
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of HH:MM UTC

@@ -1065,13 +1065,28 @@ class GetExpirationsTest(CacheTestCase):
         self.assertEqual(([], "fetch_failed:bad_symbol", 0), (client.calls, bad.missing_reason, bad.requests_made))
         self.assertTrue(any("nothing sent" in w for w in bad.warnings), bad.warnings)
 
-    def test_an_empty_list_is_served_and_cached_with_a_warning(self) -> None:
+    def test_an_empty_list_is_neither_served_nor_cached(self) -> None:
+        # review L3-5: an empty answer is no data; cached for the ET date it would make every later run evaluate
+        # nothing as if complete. It is reported missing (``empty_list``) and never stored.
         result = self.expirations(self.client(), symbol="AAPL")
-        self.assertEqual(([], "fetch", None), (result.dates, result.served_from, result.missing_reason))
+        self.assertEqual(([], None, quote_cache.REASON_EMPTY_LIST, 1),
+                         (result.dates, result.served_from, result.missing_reason, result.requests_made))
+        self.assertEqual("empty_list", quote_cache.REASON_EMPTY_LIST)
         self.assertTrue(any("empty" in w for w in result.warnings), result.warnings)
-        self.assertEqual([], self.read_expirations("AAPL")["dates"])
+        self.assertFalse(os.path.exists(quote_cache.expirations_path(self.paths, "AAPL")))
         again = self.expirations(self.client(), symbol="AAPL")
-        self.assertEqual(("cache", []), (again.served_from, again.dates))
+        self.assertEqual((None, quote_cache.REASON_EMPTY_LIST, 1),
+                         (again.served_from, again.missing_reason, again.requests_made))
+
+    def test_an_empty_cached_copy_is_never_served(self) -> None:
+        path = quote_cache.expirations_path(self.paths, "WMT")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00Z", "dates": []}, handle)
+        result = self.expirations(self.client(expirations=self.listed()), symbol="WMT")
+        self.assertEqual(("fetch", 1), (result.served_from, result.requests_made))
+        self.assertTrue(result.dates)
+        self.assertTrue(any("empty" in w for w in result.warnings), result.warnings)
 
     def test_unusable_cache_files_are_refetched(self) -> None:
         path = quote_cache.expirations_path(self.paths, "WMT")

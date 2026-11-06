@@ -24,6 +24,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
@@ -342,8 +343,11 @@ class WmtGoldenTest(unittest.TestCase):
         self.assertEqual((4, "CALL", D("105"), NOV20, 2, 200, D("104.23"), False, D("21000.00"), D("1984.00")),
                          (leg.row_number, leg.right, leg.strike, leg.expiration, leg.contracts, leg.shares,
                           leg.spot_mid, leg.itm, leg.cash_if_assigned, leg.realized_if_assigned))
-        self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC)", leg.act_by_text)
-        self.assertEqual(datetime.datetime(2026, 11, 20, 21, 30, tzinfo=UTC), leg.act_by.utc)
+        # a short option left to expiry can be closed only while the session trades: its last trading day's close
+        # (16:00 ET), not the broker's exercise cutoff of desk.toml (16:30 ET, which governs a long holder's
+        # instruction; reviews L1-2 and L2-5)
+        self.assertEqual("act by Fri 2026-11-20 16:00 ET (21:00 UTC)", leg.act_by_text)
+        self.assertEqual(datetime.datetime(2026, 11, 20, 21, 0, tzinfo=UTC), leg.act_by.utc)
         self.assertEqual((True, False, datetime.date(2026, 11, 24)), (leg.dividend.known, leg.dividend.applicable,
                                                                       leg.dividend.ex_date))
         self.assertEqual(1, ticket.requests["made"])
@@ -604,6 +608,82 @@ class TextTest(unittest.TestCase):
         self.assert_lints(rendered)
         self.assertTrue(rendered.text.startswith("CONFIG CHANGED: adopted rulebook: sha aaaaaaaa -> sha bbbbbbbb | the "
                                                  "structuring text below reads the files as they are now"))
+
+
+QUARANTINED_GROUP = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,"
+                     "open,,,,,")
+WMT_CALL_ROW = ("option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,-684.00,,3.42,open,,,,,"
+                "covered call #assign-ok")
+
+
+class FixerTicketTest(unittest.TestCase):
+    """The PR 3b review: the LET_ASSIGN deadline of a short leg (L1-2, L2-5), the multi-leg note by what the order is
+    (L1-5), a quarantined group (L2-1, L3-1), fractional shares (BD4) and the owner-text set (L3-2)."""
+
+    def test_the_let_assign_line_gives_the_session_close(self) -> None:
+        rendered = tickets.render_ticket(run(self, WMT, "LET_ASSIGN"))
+        assert_lints(self, rendered)
+        lines = rendered.text.split("\n")
+        self.assertIn("no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by "
+                      "exception; your broker's cutoff is 16:30 ET (desk.toml)", lines)
+        self.assertIn("if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left "
+                      "to expiry can be closed only while the session trades", lines)
+        self.assertNotIn("21:30 UTC", rendered.text)
+
+    def test_an_early_close_last_trading_day(self) -> None:
+        row = positions_csv.parse_positions_text(
+            "\n".join((HEADER, SHARES, "option,WMT,WMT261127C00110000,-2,,,,Brokerage (margin),AG-20261101-01,"
+                       "2026-10-20,-200.00,,,open,,,,,")) + "\n", today=TODAY).rows[1]
+        group = group_of(SHARES, "option,WMT,WMT261127C00110000,-2,,,,Brokerage (margin),AG-20261101-01,2026-10-20,"
+                                 "-200.00,,,open,,,,,")
+        leg = tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY, cutoff_et=datetime.time(16, 30),
+                                     calendar=None, extra_holidays={})
+        self.assertEqual(("act by Fri 2026-11-27 13:00 ET (18:00 UTC)", datetime.datetime(2026, 11, 27, 18, 0, tzinfo=UTC)),
+                         (leg.act_by_text, leg.act_by.utc))
+        earlier = tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY, cutoff_et=datetime.time(12, 0),
+                                         calendar=None, extra_holidays={})
+        self.assertEqual("act by Fri 2026-11-27 12:00 ET (17:00 UTC)", earlier.act_by_text)
+
+    def test_the_multi_leg_note_names_the_order(self) -> None:
+        unwind = tickets.render_ticket(run(self, WMT, "UNWIND_STOCK"))
+        assert_lints(self, unwind)
+        self.assertIn(approval.MULTI_LEG_NOTES["combination"], unwind.text)
+        self.assertNotIn("class a roll", unwind.text)
+        roll = tickets.render_ticket(run(self, WMT, "ROLL", expiration=JAN15, strike="115"))
+        self.assertIn(approval.MULTI_LEG_NOTE, roll.text)
+
+    def test_a_quarantined_group_fails_every_ticket_closed(self) -> None:
+        replace = (WMT_CALL_ROW, WMT_CALL_ROW + "\n" + QUARANTINED_GROUP)
+        for action, extra in (("UNWIND_STOCK", {}), ("CLOSE", {}), ("LET_ASSIGN", {}),
+                              ("ROLL", {"expiration": JAN15, "strike": "115"})):
+            ticket = run(self, WMT, action, replace=replace, **extra)
+            with self.subTest(action=action):
+                self.assertEqual(("UNAVAILABLE", structuring.CAUSE_POSITIONS_QUARANTINED, 0),
+                                 (ticket.verdict, ticket.cause, ticket.requests["made"]))
+                self.assertEqual("positions.csv has a quarantined group (positions_check.py shows why): the desk cannot "
+                                 "count the account's coverage", ticket.reason)
+                rendered = tickets.render_ticket(ticket)
+                assert_lints(self, rendered)
+                self.assertNotIn("after leg", rendered.text)
+
+    def test_an_unwind_closes_the_exact_fractional_quantity(self) -> None:
+        ticket = run(self, WMT, "UNWIND_STOCK", replace=("equity,WMT,,200,", "equity,WMT,,200.5,"))
+        self.assertEqual("TICKET", ticket.verdict)
+        shares = ticket.legs[1]
+        self.assertEqual((D("200.5"), D("20892.10")), (shares.plan.quantity, shares.cash_conservative))
+        rendered = tickets.render_ticket(ticket)
+        assert_lints(self, rendered)
+        self.assertIn("leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote "
+                      "grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC", rendered.text.split("\n"))
+        roll = run(self, WMT, "ROLL", expiration=JAN15, strike="115", replace=("equity,WMT,,200,", "equity,WMT,,200.5,"))
+        self.assertEqual("TICKET", roll.verdict)
+
+    def test_the_owner_texts_are_every_account_name(self) -> None:
+        ticket = run(self, WMT, "CLOSE")
+        self.assertEqual(["Brokerage (margin)", "Roth IRA"], structuring.owner_texts(ticket.target))
+        with unittest.mock.patch.object(structuring_text, "finish", wraps=structuring_text.finish) as finish:
+            tickets.render_ticket(ticket)
+        self.assertEqual(["Brokerage (margin)", "Roth IRA"], finish.call_args.kwargs["owner_texts"])
 
 
 if __name__ == "__main__":

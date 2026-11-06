@@ -63,7 +63,8 @@ FAIL_FIXTURE_CODES = {
     "fail_imperative_execute": "imperative_start", "fail_imperative_fill": "imperative_start",
     "fail_order_kind": "forbidden_language",
     # PR 3b: the structuring footer and its cross-refusals, the leg grammar, the SL table.
-    "fail_structuring_under_rules_footer": "footer_missing", "fail_rules_text_under_structuring_footer": "footer_missing",
+    # "your plan: close" is no exception under the structuring footer (PR 3b review L2-7): its first finding
+    "fail_structuring_under_rules_footer": "footer_missing", "fail_rules_text_under_structuring_footer": "imperative_start",
     "fail_structuring_leg_grammar": "order_field", "fail_structuring_go_with": "forbidden_language",
     "fail_structuring_at_price": "order_field",
 }
@@ -319,7 +320,8 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
                       "(now 1984.00), breakeven 95.03 (now 95.08)",
                       STRUCTURING_FOOTER_1931))}),
     J3B_ROLL_NVDA: ("roll_analysis.py", 0, {
-        "status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0, "payload.failed": 20,
+        "status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0, "payload.failed": 18,
+        "payload.unpriced": 2,
         "payload.candidates.0.id": "NVDA270115C00160000", "payload.candidates.0.status": "FAILS_CRITERION",
         "payload.candidates.0.score": "0.0299", "payload.requests.made": 4, "payload.lint.ok": True,
         "payload.message": harness.TextMatch(

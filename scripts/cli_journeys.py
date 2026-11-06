@@ -130,7 +130,8 @@ ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
     ("fail_homoglyph", "non_ascii"), ("fail_imperative_execute", "imperative_start"),
     ("fail_imperative_fill", "imperative_start"), ("fail_order_kind", "forbidden_language"),
-    ("fail_structuring_under_rules_footer", "footer_missing"), ("fail_rules_text_under_structuring_footer", "footer_missing"),
+    ("fail_structuring_under_rules_footer", "footer_missing"),
+    ("fail_rules_text_under_structuring_footer", "imperative_start"),
     ("fail_structuring_leg_grammar", "order_field"), ("fail_structuring_go_with", "forbidden_language"),
     ("fail_structuring_at_price", "order_field"),
 )
@@ -651,7 +652,7 @@ JOURNEYS += (
     tool_journey("desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES",
                  ("roll_analysis.py", "--trade", "AG-20261022-02"), 0,
                  {"status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0,
-                  "payload.failed": 20, "payload.candidates.0.id": "NVDA270115C00160000",
+                  "payload.failed": 18, "payload.unpriced": 2, "payload.candidates.0.id": "NVDA270115C00160000",
                   "payload.candidates.0.status": "FAILS_CRITERION", "payload.candidates.0.score": "0.0299",
                   "payload.requests.made": 4, "payload.lint.ok": True,
                   "payload.message": TextMatch(

@@ -92,6 +92,60 @@ standard:
 - after the close, the session's closing quotes; before the open, the prior close;
 - the last trade is never a mark.
 
+## Structuring criteria and objectives: the desk's design choices
+
+The Structuring Desk's criteria defaults and its three objectives are the desk's own design choices, set in the
+design of this release and the code (`scripts/aegis_desk/structuring_config.py`, `scripts/aegis_desk/structuring.py`).
+No study or paper is behind them, and none is claimed: they say what is measured, never that a candidate will turn
+out well. [STRUCTURING.md](STRUCTURING.md) has every key and its bounds.
+
+The defaults, which the interview shows and the synthetic examples assume, are starting points for you to keep or
+change, not a judgment that they fit any account:
+
+| Default | Why the desk starts there |
+| --- | --- |
+| `max_spread_pct = 25` | the top of quote grade D, the widest spread the desk's own grades treat as usable (above it a quote is grade E, display only) |
+| `max_candidates_shown = 3` | a short text; the JSON lists every candidate |
+| `dte` windows at most 90 days wide | four consecutive standard monthly expirations span at least 84 days and five at least 112, so a window never needs more than the per-run cap of 4 chains |
+| `dte = [40, 75]` for a covered call and a roll, `[120, 210]` for a protective put and a collar | starting points: a call window of about one to two and a half months, and a longer window for protection, so that it is not renewed every month and starts well above the hedge rules' 30-calendar-day review and 14-calendar-day lapse (`ROLL30`, `LAPSE14`); on the synthetic fixture at 2026-11-03 they hold two monthlies each for WMT and NVDA and one for SPY |
+| `abs_delta = [0.15, 0.35]` | a starting band for a short call, read at 2 decimals as the exit rules read the absolute delta |
+| `min_credit = 0.50` | a starting minimum per share, at the bid |
+| `strike_floor = "cost_basis"`, `credit_only = true` | by default a call strike below your stock cost fails, and so does a roll for a net debit; a zero net passes |
+| `earnings = "exclude"`, `ex_dividend = "exclude"` | an event inside a short call's life is labelled, as the exit rules label it (`EARN2`; `EXDIV`, from the early-exercise mechanics above); `#earnings-ok`, `#assign-ok` or `allow` accept it |
+| `floor_pct = [3, 10]`, `cap_pct = [2, 10]` | starting bands for the put's distance below and the call's distance above the share price |
+| `stress_drop_pct = 20` | above the floor band's top, so every put inside the band offsets some loss at the stress |
+| `max_net_debit = 0.00` | a collar of zero cost or a credit |
+| a second ex-date label at 80 calendar days | `research/calendar.toml` holds one ex-date per symbol; 80 days is under a quarter of a year, so a quarterly payer's next ex-date is flagged with room to spare |
+| a passed or unknown date counts as inside | the same honesty rule as an unknown dividend: a date the desk does not know is never read as none |
+
+The three objectives, each computed in `Decimal` with a 28-digit context and ranked on the quantized value:
+
+- **`extrinsic_per_day`** (covered call and roll): E = bid - max(0, S - K), score = E / S / T_c x 100 at 4 decimals,
+  higher first. It reads only the fresh bid you could expect, the spot and the strike, so it needs no model and no
+  forecast. The intrinsic part is subtracted because, for an in-the-money strike, it only offsets the value of the
+  shares given up at the strike on assignment; what remains is the price of time. Dividing by the share price gives a
+  percent, and dividing by the calendar days lets expirations compare. A model's expected value was not used: the
+  implied volatility is solved from the mid, so under the model's own risk-neutral measure a sale at the bid is worth
+  half the spread less than the model's value, and that value would rank the candidates by their spreads alone; any
+  other measure needs a forecast of the share price, which the desk does not make. The risk is left to your delta band
+  and your window.
+- **`stress_cost_per_day`** (protective put): S_x = S x (1 - x / 100) with x = `stress_drop_pct`, score =
+  ask / T_c / (K - S_x) x 100 at 4 decimals, lower first. It is the premium per day of cover per 100 of loss the
+  put offsets at your own stress drop, from the fresh ask, the strike and the spot. Without the stress denominator
+  the put with the lowest ask, the one furthest below the share price, would rank first, however little it offsets.
+- **`cap_within_budget`** (collar): U = (Kc - S) / S x 100 at 2 decimals, higher first, among the put and call pairs
+  of one expiration whose net debit (the put's ask minus the call's bid) is within `max_net_debit`. A collar gives
+  up the upside above the call to pay for the put, so within your budget the desk ranks by how much upside is kept;
+  the floor is your band's. A cost of protection per unit of downside covered was not used for collars: it ranks
+  first the tightest cap with the deepest floor, which brings in the largest net credit. On the synthetic fixture it
+  would put the SPY 2027-03-19 590 put and 680 call first, at a 7.65 credit.
+
+The tie-breaks give every candidate set one total order, so the best candidate never depends on the order in which a
+chain lists its contracts: a covered call by the absolute delta (lower first), the expiration (earlier first) and the
+strike (higher first); a replacement call by the net credit (higher first), then the same; a protective put by the
+strike (higher first, the higher floor) and the expiration (later first, the longer cover); a collar by the put
+strike (higher first), the net debit (lower first) and the expiration (later first); the contract symbol last.
+
 ## Vendor behaviour
 
 From the plan's discovery of Tradier's documentation, as built into the client:
@@ -108,10 +162,12 @@ From the plan's discovery of Tradier's documentation, as built into the client:
 
 Every value in `tests/fixtures/desk/fixtures/tradier/` is synthetic. The quote and chain shapes follow the recorded
 Tradier sandbox responses kept in the Aegis repository (FairGradient); the expirations, strikes, history, clock and
-calendar shapes follow Tradier's public documentation as known at authoring. No live capture has been made yet. A live
-sandbox read is checked at release, and this page records it then. Every example output in the documentation and the
-skills was produced by the tools on a copy of the fixture desk (a few on a deliberately modified copy, which the
-example says) and is labelled synthetic.
+calendar shapes follow Tradier's public documentation as known at authoring. The Structuring Desk's chains are
+generated by `tests/fixtures/desk/fixtures/tradier/_generate.py` from a stated volatility surface, which the
+[fixture README](../tests/fixtures/desk/fixtures/tradier/README.md) gives with every input. No live capture has
+been made yet. A live sandbox read is checked at release, and this page records it then. Every example output in the
+documentation and the skills was produced by the tools on a copy of the fixture desk (a few on a deliberately
+modified copy, which the example says) and is labelled synthetic.
 
 ## Compliance references
 
@@ -120,8 +176,10 @@ example says) and is labelled synthetic.
   description of the design, not legal advice.
 - OCC exercise by exception: a contract at least 0.01 in the money at expiry is exercised automatically. The desk uses
   this one-cent rule for in the money.
-- The OCC exercise cutoff of 17:30 ET is a reference only. Your broker's cutoff is earlier, and the desk's act-by
-  time is your `broker_exercise_cutoff_et` from `desk.toml`.
+- The OCC exercise cutoff of 17:30 ET is a reference only. Your broker's cutoff is earlier, and the expiry tools'
+  act-by time is your `broker_exercise_cutoff_et` from `desk.toml`. A LET_ASSIGN ticket's act-by for a short option
+  is the session close of its last trading day (16:00 ET, 13:00 ET on an early close), or that cutoff when it is
+  earlier, because a short option can be closed only while the session trades.
 - AM-settled index options settle on the opening value of the settlement morning; their values are recorded by you in
   `research/calendar.toml` in Stage 1.
 

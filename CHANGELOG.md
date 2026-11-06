@@ -15,20 +15,22 @@
   - the owner's criteria `structuring.toml` and its strict reader (`scripts/aegis_desk/structuring_config.py`),
     rendered by `desk_init.py` from the structuring interview with its one-time disclosure; it joins the CONFIG
     CHANGED set acknowledged by `ack.py config`, and the structuring tools answer UNAVAILABLE while `desk.toml`,
-    `positions.csv` or `structuring.toml` are unacknowledged;
+    `positions.csv` or `structuring.toml` are unacknowledged, or while any group of `positions.csv` is quarantined;
   - the approval-level check (`scripts/aegis_desk/approval.py`), the first reader of `desk.toml`'s self-attested
     `approval_level`, in the desk's convention;
   - a third footer and the alert lint's structuring mode (`alert_lint.py --footer structuring`), with a fixed leg
-    grammar; the rules and market-snapshot footers refuse a leg or a candidate;
-  - `quote_cache.get_expirations`, cached per ET date, and synthetic structuring chains in the fixture desk;
+    grammar; the rules and market-snapshot footers refuse a leg reference, a ranked candidate or a structuring
+    answer;
+  - `quote_cache.get_expirations`, cached per ET date (an empty list is never cached), and synthetic structuring
+    chains in the fixture desk;
   - `routine.py` refuses the three tools as routine steps; the owner-authority Auto-review text names them (333 of
     1000 characters), so each run asks first;
   - `tickets/`, `reports/rolls/`, `reports/proposals/` and the audit journal `journal/structuring.jsonl`;
   - the agent `agents/structuring-desk.md` and its generated role skill; the skills `aegis-overlay-proposals`,
     `aegis-roll-decision-framework` and `aegis-ticket-and-unwind-order`; `docs/STRUCTURING.md`, the owner and counsel
-    reference; SETUP step 9's structuring criteria; the README, FAQ, monitoring, security and runtime pages for four
-    Bots;
-  - 368 more tests, 2952 in all (floor 2952).
+    reference; the provenance of the criteria defaults and the three objectives (`docs/PROVENANCE.md`); SETUP step
+    9's structuring criteria; the README, FAQ, monitoring, security and runtime pages for four Bots;
+  - 425 more tests, 3009 in all (floor 3009).
 - Release tooling:
   - `scripts/release_bump.py <next> [--check]` moves the version in `plugin.json`, every mirrored manifest, the
     marketplace refs, the template's release and skill hashes, every pin `check.sh` step 4 checks, the role skills

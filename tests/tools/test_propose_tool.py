@@ -368,7 +368,10 @@ class MainFixtureTest(DeskCopy):
         self.assertEqual(CC_NOTHING_TEXT, self.run_text(WMT, "covered_call"))
         payload = self.run_json(WMT, "covered_call")["payload"]
         self.assertEqual(("NOTHING_TO_PROPOSE", 0), (payload["verdict"], payload["requests"]["made"]))
-        self.assertEqual(2, len(self.reports()), "a complete answer (exit 0) is a report")
+        # BD6: a NOTHING_TO_PROPOSE writes no report, only its journal record
+        self.assertEqual([], self.reports())
+        self.assertIsNone(payload["files"])
+        self.assertEqual(2, len(self.journal()))
 
     def test_a_collar_on_a_covered_call_group(self) -> None:
         payload = self.run_json(NVDA, "collar")["payload"]
@@ -646,6 +649,65 @@ class RecordTest(DeskCopy):
         self.assertEqual(out[:-1], payload["message"])
         self.assertEqual([], self.reports())
         self.assertEqual([], self.journal())
+
+
+QUARANTINED_ROW = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,open,"
+                   ",,,,")
+FULL_CALL_ROW = ("option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,-684.00,,3.42,open,,,,,"
+                 "covered call #assign-ok")
+
+
+class FixerTest(DeskCopy):
+    """The PR 3b review, through the tool: BD5, L2-1/L3-1 (repro B), L3-4, L3-6, BD4 and L3-3."""
+
+    def test_one_source_of_the_disabled_words(self) -> None:
+        self.assertFalse(hasattr(tool, "DISABLED_WORDS"), "BD5: the library's words are the only source")
+
+    def test_a_quarantined_group_fails_closed(self) -> None:
+        self.edit("positions.csv", FULL_CALL_ROW, QUARANTINED_ROW)
+        self.edit("positions.csv", *WMT_SHARES_NOTE)
+        self.prepare()
+        for structure in ("covered_call", "protective_put", "collar"):
+            with self.subTest(structure=structure):
+                payload = self.run_json(WMT, structure, expected=20)["payload"]
+                self.assertEqual(("UNAVAILABLE", "positions_quarantined", 0, None),
+                                 (payload["verdict"], payload["cause"], payload["requests"]["made"], payload["best"]))
+        self.assertEqual([], self.reports())
+
+    def test_partly_free_shares_say_how_many_are_free(self) -> None:
+        self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,300,")
+        self.edit("positions.csv", FULL_CALL_ROW, "option,WMT,WMT261120C00105000,-1,,,,Brokerage (margin),AG-20261030-01,"
+                                                  "2026-10-30,-342.00,,3.42,open,,,,,one call")
+        self.prepare()
+        lines = self.run_text(WMT, "covered_call")
+        self.assertEqual("NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | 200 of the 300 WMT shares are free: 1 "
+                         "short call held in another group of this account relies on the rest; the desk proposes no "
+                         "covered call on part of a group's shares", lines[0])
+        self.assertEqual([], self.reports())
+
+    def test_fractional_shares_are_proposed_on(self) -> None:
+        self.drop_row(WMT_CALL_ROW)
+        self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,250.5,")
+        self.prepare()
+        payload = self.run_json(WMT, "covered_call")["payload"]
+        self.assertEqual(("NONE_QUALIFIES", 2, "250.5"), (payload["verdict"], payload["contracts"], payload["shares"]))
+
+    def test_refused_market_data_is_journaled(self) -> None:
+        self.prepare()
+        error = tool.quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        with mock.patch.object(tool.quote_cache, "open_market_data", side_effect=error):
+            code, out = call(tool.main, self.argv(SPY, "collar", json_mode=False))
+        self.assertEqual(20, code)
+        (record,) = self.journal()
+        self.assertEqual(("UNAVAILABLE", "no_token", "collar", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+                         (record["verdict"], record["refused_code"], record["structure"], record["text_sha256"]))
+
+    def test_two_runs_in_one_second_write_one_report(self) -> None:
+        self.wmt_shares_only(tags=True)
+        first = self.run_json(WMT, "covered_call", now="2026-11-03T19:50:00.100000Z")
+        second = self.run_json(WMT, "covered_call", now="2026-11-03T19:50:00.900000Z")
+        self.assertEqual((True, False), (first["payload"]["files"]["written"], second["payload"]["files"]["written"]))
+        self.assertEqual("2026-11-03T19:50:00+00:00", second["generated_at"])
 
 
 if __name__ == "__main__":

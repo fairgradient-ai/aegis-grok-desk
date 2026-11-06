@@ -57,6 +57,9 @@ MODEL = "prices: European Black-Scholes-Merton on the quotes' mids; early exerci
 APPROVAL = ("approval: the highest step needs level %d by the desk's convention, within your self-attested level 2 "
             "(desk.toml); your broker's own approval for this account decides")
 MULTI = "entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level"
+# an unwind is shares and options together, not a roll (reviews L1-5, L2-6, L4-5)
+MULTI_UNWIND = ("entered as one multi-leg order, some brokers class shares and options together as a combination, "
+                "which can need a higher level")
 QUOTE = "quote grade %s, Tradier sandbox, 15-min delayed, as of 19:31 UTC"
 WMT_HEAD = "TICKET AG-20261020-01 | WMT covered call | %s (action %s) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
 SPY_HEAD = "TICKET AG-20261028-03 | SPY protective put | %s (action %s) | account 2 of desk.toml (ira) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
@@ -94,7 +97,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); "
         "after leg 2 you hold no WMT shares and no option (level 0)",
         "in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
-        MULTI, APPROVAL % 0,
+        MULTI_UNWIND, APPROVAL % 0,
         "cash: +20140.00 at the conservative prices (mid +20161.00); the most the steps need at once: 700.00; the desk "
         "does not see your cash balance",
         "realized on the closing legs: +1124.00 at the conservative side (mid +1145.00)") + TAIL),
@@ -103,7 +106,9 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your "
         "broker's cutoff is 16:30 ET (desk.toml)",
         "the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike",
-        "if you decide otherwise, you act by Fri 2026-11-20 16:30 ET (21:30 UTC)",
+        # the short leg can be closed only in the session: its close, not the broker's exercise cutoff (L1-2, L2-5)
+        "if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be "
+        "closed only while the session trades",
         "if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares "
         "+1984.00",
         "the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20",
@@ -147,7 +152,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         SPY_PUT_LEG % (2, 2),
         "leg order: leg 1 first; after leg 1 you hold no SPY shares and 1 long put (level 0 by the desk's convention); "
         "after leg 2 you hold no SPY shares and no option (level 0)",
-        MULTI, APPROVAL % 0,
+        MULTI_UNWIND, APPROVAL % 0,
         "cash: +65790.00 at the conservative prices (mid +65807.00); the most the steps need at once: 0.00; the desk "
         "does not see your cash balance",
         "realized on the closing legs: +1420.00 at the conservative side (mid +1437.00)") + TAIL),
@@ -350,7 +355,7 @@ class GoldenTextTest(DeskCase):
     def test_the_wmt_let_assign_payload(self) -> None:
         _code, body = self.run_json(*GOLDEN_TEXTS["wmt_let_assign"][0])
         (leg,) = body["payload"]["let_assign"]
-        self.assertEqual(("WMT261120C00105000", False, "104.23", "2026-11-20T21:30:00+00:00", "21000.00", "1984.00"),
+        self.assertEqual(("WMT261120C00105000", False, "104.23", "2026-11-20T21:00:00+00:00", "21000.00", "1984.00"),
                          (leg["contract"], leg["itm"], leg["spot_mid"], leg["act_by_utc"], leg["cash_if_assigned"],
                           leg["realized_if_assigned"]))
         self.assertEqual([], body["payload"]["legs"])
@@ -721,6 +726,101 @@ class RequestsTest(DeskCase):
         with open(os.path.join(self.root, "data", "cache", "ledger.jsonl"), encoding="utf-8") as handle:
             ledger = [json.loads(line) for line in handle]
         self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/chains"], [record["path"] for record in ledger])
+
+
+QUARANTINED_ROW = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,open,"
+                   ",,,,")
+WMT_CALL_ROW = ("option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20,-684.00,,3.42,open,,,,,"
+                "covered call #assign-ok")
+
+
+class FixerTest(DeskCase):
+    """The PR 3b review, through the tool: L2-1/L3-1 (repro A), L3-2, L3-3, L3-6 and BD4."""
+
+    acknowledge = False
+
+    def edit(self, relative: str, old: str, new: str) -> None:
+        path = os.path.join(self.root, relative)
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertEqual(1, text.count(old), old)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text.replace(old, new))
+
+    def test_a_quarantined_group_fails_closed(self) -> None:
+        self.edit("positions.csv", WMT_CALL_ROW, WMT_CALL_ROW + "\n" + QUARANTINED_ROW)
+        self.ack()
+        for action in ("UNWIND_STOCK", "CLOSE"):
+            with self.subTest(action=action):
+                code, body = self.run_json(WMT, action)
+                payload = body["payload"]
+                self.assertEqual((20, "UNAVAILABLE", "positions_quarantined", 0),
+                                 (code, payload["verdict"], payload["cause"], payload["requests"]["made"]))
+                self.assertNotIn("after leg", payload["message"])
+        self.assertEqual([], self.ticket_files())
+        self.assertEqual(["positions_quarantined", "positions_quarantined"], [r["refused_code"] for r in self.journal()])
+
+    def test_an_account_named_with_a_desk_word_prints_the_ticket(self) -> None:
+        for relative in ("desk.toml", "positions.csv"):
+            path = os.path.join(self.root, relative)
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text.replace("Roth IRA", "options"))
+        self.ack()
+        code, out = self.run_text(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115")
+        self.assertEqual(0, code, out)
+        self.assertTrue(out.startswith("TICKET AG-20261020-01 | WMT covered call"), out)
+
+    def test_two_tickets_in_one_second_are_one_ticket(self) -> None:
+        self.ack()
+        first_code, first = self.run_json(WMT, "CLOSE", now="2026-11-03T19:50:00.100000Z")
+        second_code, second = self.run_json(WMT, "CLOSE", now="2026-11-03T19:50:00.900000Z")
+        self.assertEqual((0, 0), (first_code, second_code))
+        self.assertEqual((True, False), (first["payload"]["files"]["written"], second["payload"]["files"]["written"]))
+        self.assertEqual("2026-11-03T19:50:00+00:00", second["payload"]["computed_utc"])
+
+    def test_refused_market_data_is_journaled(self) -> None:
+        self.ack()
+        error = quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        with mock.patch.object(exit_ticket.quote_cache, "open_market_data", side_effect=error):
+            code, out = self.run_text(WMT, "CLOSE")
+        self.assertEqual(20, code)
+        (record,) = self.journal()
+        self.assertEqual(("UNAVAILABLE", "no_token", "CLOSE", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+                         (record["verdict"], record["refused_code"], record["action"], record["text_sha256"]))
+
+    def test_an_unwind_of_fractional_shares(self) -> None:
+        self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,200.5,")
+        self.ack()
+        code, out = self.run_text(WMT, "UNWIND_STOCK")
+        self.assertEqual(0, code, out)
+        self.assertIn("leg 2 of 2: closes 200.5 of your long WMT shares", out)
+
+
+class VerifierTest(DeskCase):
+    """The PR 3b verifier: the JSON of a fractional unwind (BD4) matches its --schema."""
+
+    acknowledge = False
+
+    def test_a_fractional_unwind_payload_matches_the_schema(self) -> None:
+        path = os.path.join(self.root, "positions.csv")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertEqual(1, text.count("equity,WMT,,200,"))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text.replace("equity,WMT,,200,", "equity,WMT,,200.5,"))
+        self.ack()
+        code, body = self.run_json(WMT, "UNWIND_STOCK")
+        self.assertEqual(0, code, body)
+        payload = body["payload"]
+        self.assertEqual([2, "200.5"], [leg["quantity"] for leg in payload["legs"]])
+        self.assertEqual([("200.5", 0), (0, 0)], [(step["after"]["shares"], step["after"]["short_calls"])
+                                                  for step in payload["steps"]])
+        self.assertIs(int, type(payload["steps"][-1]["after"]["shares"]))
+        schema = exit_ticket.OUTPUT
+        self.assertIn("decimal string", schema["legs"][0]["quantity"])
+        self.assertIn("decimal string", schema["steps"][0]["after"]["shares"])
 
 
 if __name__ == "__main__":

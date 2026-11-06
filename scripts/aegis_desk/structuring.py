@@ -55,7 +55,10 @@ Events (designer Q's D9 with S4), short calls only (:func:`short_call_event_reas
 fresh call) or the held call's exercise cutoff (a replacement) to the new call's cutoff. Earnings: status ``none`` no
 label; no calendar, an unlisted symbol, no entry, status ``unknown``, no date, or a date whose instant has passed
 (09:30 ET for ``pre``/``unknown``, 16:00 ET for ``post``; a passed date says nothing about the next one, and unknown is
-never none) -> ``earnings_unknown``; else ``crosses_earnings`` when the instant lies strictly inside the window.
+never none) -> ``earnings_unknown``; else ``crosses_earnings`` when the instant lies in ``(start, end]``: a release
+after the close of a last trading day belongs to the call expiring that day (its holders can still exercise after the
+move, until the OCC 17:30 ET cutoff), so a replacement carries a release after the close of its own last trading day
+and not one after the close of the held call's (review L1-3).
 Ex-dividend through ``expiry.dividend_window``: not known -> ``dividend_unknown``; applicable to the new call (its last
 cum-dividend day on or before the new last trading day) and not to the held call -> ``crosses_ex_dividend``; and, the
 calendar holding one ex-date per symbol, a new last trading day at least :data:`SECOND_EX_DATE_HORIZON_DAYS` (80)
@@ -69,7 +72,12 @@ first). ``T_c`` is the calendar DTE to the last trading day. Tie-breaks (:data:`
 lower, expiration earlier, strike higher, contract; roll net credit higher first, then the covered call's; protective
 put strike higher, expiration later, contract; collar put strike higher, net debit lower, expiration later, contract
 pair. :func:`rank_candidates`: ELIGIBLE, FAILS_CRITERION, OUTSIDE_BANDS (each by the objective and the tie-breaks), then
-UNPRICED by contract; rank = 1-based position; best = rank 1 iff ELIGIBLE, else NONE_QUALIFIES.
+UNPRICED by contract; rank = 1-based position; best = rank 1 iff ELIGIBLE, else NONE_QUALIFIES. An UNPRICED candidate
+was never judged against the criteria: it is counted apart (``unpriced``), never as failing them. A chain that lists
+one contract more than once is read once per symbol (:func:`listed_options`): identical copies are one contract,
+copies with different quotes make it UNPRICED ``quote_conflict``, so no answer depends on where a copy stands (Q D17).
+When no candidate at all was priced the answer is UNAVAILABLE ``no_candidate_priced`` (no complete evaluation); a
+window that holds no listed standard monthly is NOT_APPLICABLE ``no_expiration_in_window``.
 
 After-state (designer Q's D6-D8): :class:`AfterState` at the conservative fills (new short calls at the bid, new long
 puts at the ask, the held leg closed at its conservative side). With ``n`` shares, the economic net cost ``E = stock
@@ -83,7 +91,9 @@ n``, ``s0 + D``); the tests prove them equal to ``payoff`` on in-memory post-fil
 
 Applicability (S1): :func:`roll_applicability`, :func:`proposal_applicability` and :func:`ticket_applicability` return
 ``None`` or an :class:`Applicability` (NOT_APPLICABLE or NOTHING_TO_PROPOSE, a code and the desk's own reason words,
-never a cell the owner typed). UNAVAILABLE causes: :data:`CAUSES`. Errors (exit 1 in the tools):
+never a cell the owner typed). While another group of ``positions.csv`` is quarantined its rows are not loaded, so the
+account's coverage cannot be counted: every answer is UNAVAILABLE ``positions_quarantined`` before any quote (reviews
+L2-1 and L3-1). UNAVAILABLE causes: :data:`CAUSES`. Errors (exit 1 in the tools):
 :class:`StructuringError` with ``unknown_trade``, ``positions_invalid`` or ``calendar_invalid``.
 """
 
@@ -199,11 +209,29 @@ CODE_NONSTANDARD_CONTRACT: str = "nonstandard_contract"
 CODE_SPOT_UNAVAILABLE: str = "spot_unavailable"
 CODE_SPOT_UNALIGNED: str = "spot_unaligned"
 CODE_EXPIRING: str = "expiring"
+CODE_QUOTE_CONFLICT: str = "quote_conflict"
+"""The chain lists the contract more than once with different quotes: which copy stands is unknown, so none is used
+(the answer never depends on where a copy stands in the vendor's list)."""
 IV_CODE_PREFIX: str = "iv_"
 """An implied volatility the solver did not find is ``iv_<status>`` (``iv_below_intrinsic``, ``iv_no_root``, ...)."""
 UNPRICED_CODES: Tuple[str, ...] = (CODE_MARKET_CLOSED, CODE_QUOTE_MISSING, CODE_QUOTE_UNDATED, CODE_QUOTE_STALE,
                                    CODE_QUOTE_ONE_SIDE_STALE, CODE_QUOTE_CROSSED, CODE_ZERO_BID, CODE_QUOTE_WIDE,
-                                   CODE_NONSTANDARD_CONTRACT, CODE_SPOT_UNAVAILABLE, CODE_SPOT_UNALIGNED, CODE_EXPIRING)
+                                   CODE_NONSTANDARD_CONTRACT, CODE_SPOT_UNAVAILABLE, CODE_SPOT_UNALIGNED, CODE_EXPIRING,
+                                   CODE_QUOTE_CONFLICT)
+UNPRICED_WORDS: Dict[str, str] = {
+    CODE_MARKET_CLOSED: "the market is closed", CODE_QUOTE_MISSING: "a quote side is missing",
+    CODE_QUOTE_UNDATED: "a quote side is undated", CODE_QUOTE_STALE: "the quote is stale",
+    CODE_QUOTE_ONE_SIDE_STALE: "one quote side is stale", CODE_QUOTE_CROSSED: "the quote is crossed",
+    CODE_ZERO_BID: "no bid", CODE_QUOTE_WIDE: "the spread is wider than the quote grades allow",
+    CODE_NONSTANDARD_CONTRACT: "not a standard 100-share contract",
+    CODE_SPOT_UNAVAILABLE: "no usable quote of the underlying",
+    CODE_SPOT_UNALIGNED: "the underlying's quote is stamped too far from the option's",
+    CODE_EXPIRING: "it expires too soon for a per-day score",
+    CODE_QUOTE_CONFLICT: "the chain lists the contract more than once with different quotes",
+}
+"""The words of every UNPRICED code (``structuring_text`` prints them; an ``iv_<status>`` code reads
+:data:`IV_WORDS`)."""
+IV_WORDS: str = "no implied volatility from its mid"
 CODE_KEYS: Dict[str, str] = {
     CODE_DTE_OUTSIDE_WINDOW: KEY_DTE, CODE_DELTA_OUTSIDE_BAND: KEY_ABS_DELTA, CODE_CREDIT_BELOW_MINIMUM: KEY_MIN_CREDIT,
     CODE_SPREAD_ABOVE_MAX: KEY_MAX_SPREAD_PCT, CODE_FLOOR_OUTSIDE_BAND: KEY_FLOOR_PCT, CODE_CAP_OUTSIDE_BAND: KEY_CAP_PCT,
@@ -226,8 +254,15 @@ CAUSE_HELD_LEG_UNUSABLE: str = "held_leg_unusable"
 CAUSE_EXPIRATIONS_NOT_SERVED: str = "expirations_not_served"
 CAUSE_CHAIN_NOT_SERVED: str = "chain_not_served"
 CAUSE_REPLACEMENT_NOT_LISTED: str = "replacement_not_listed"
-CAUSES: Tuple[str, ...] = (CAUSE_MARKET_CLOSED, CAUSE_GROUP_QUARANTINED, CAUSE_SPOT_UNUSABLE, CAUSE_HELD_LEG_UNUSABLE,
-                           CAUSE_EXPIRATIONS_NOT_SERVED, CAUSE_CHAIN_NOT_SERVED, CAUSE_REPLACEMENT_NOT_LISTED)
+CAUSE_POSITIONS_QUARANTINED: str = "positions_quarantined"
+"""Another group of positions.csv is quarantined: its rows are not loaded, so the account's coverage cannot be
+counted (reviews L2-1 and L3-1: every structuring answer fails closed while one exists)."""
+CAUSE_NO_CANDIDATE_PRICED: str = "no_candidate_priced"
+"""Every candidate of the evaluated chains is UNPRICED: no candidate was judged against the owner's criteria, so the
+answer is not a complete evaluation (designer Q's D12: unusable data is UNAVAILABLE, never NONE_QUALIFIES)."""
+CAUSES: Tuple[str, ...] = (CAUSE_MARKET_CLOSED, CAUSE_GROUP_QUARANTINED, CAUSE_POSITIONS_QUARANTINED,
+                           CAUSE_SPOT_UNUSABLE, CAUSE_HELD_LEG_UNUSABLE, CAUSE_EXPIRATIONS_NOT_SERVED,
+                           CAUSE_CHAIN_NOT_SERVED, CAUSE_NO_CANDIDATE_PRICED, CAUSE_REPLACEMENT_NOT_LISTED)
 """Why an answer is UNAVAILABLE (designer Q's D12 and S5); every one is exit 20 in the tools."""
 NOT_REQUESTED: str = "not requested: an earlier expiration was not served"
 
@@ -236,11 +271,18 @@ NA_INDEX: str = "index_underlying"
 NA_DISABLED: str = "disabled"
 NA_NO_OPEN_LEGS: str = "no_open_legs"
 NA_ACTION: str = "action"
+NA_NO_EXPIRATION: str = "no_expiration_in_window"
+"""The listed expirations hold no standard monthly inside the section's ``dte`` window: the owner's window selects
+nothing to evaluate (NOT_APPLICABLE with the window in words, no report)."""
 NOTHING_NOT_SHARES_ONLY: str = "not_shares_only"
 NOTHING_FEWER_THAN_100: str = "fewer_than_100_shares"
 NOTHING_NO_SHARES: str = "no_shares"
 NOTHING_NO_FREE_SHARES: str = "no_free_shares"
-"""Designer C's D6: the shares already cover short calls held in another group of the same account."""
+"""Designer C's D6: the shares already cover short calls held in another group of the same account (fewer than 100
+free shares)."""
+NOTHING_NOT_ENOUGH_FREE_SHARES: str = "not_enough_free_shares"
+"""Some of the group's shares are free, but short calls held in another group of the account rely on the rest: the
+desk proposes no overlay on part of a group's shares (review L3-4)."""
 NA_TWO_ROWS_WORDS: str = ("%s holds its %s on more than one row of positions.csv: the desk prices a replacement for a "
                           "leg held on one row")
 
@@ -830,7 +872,10 @@ def _earnings_reason(ctx: EventContext, start: datetime.datetime, end: datetime.
     instant = market_clock.from_et(datetime.datetime.combine(entry.date, clock))
     if instant <= ctx.now:
         return unknown("passed", entry.date)
-    if start < instant < end:
+    # (start, end]: a release after the close of a last trading day belongs to the call expiring that day (its holders
+    # can still exercise after the move, until the OCC 17:30 ET cutoff), so it is inside the new call's life when it
+    # is on the new last trading day, and the held call's when it is on the held one
+    if start < instant <= end:
         return Reason(KEY_EARNINGS, CODE_CROSSES_EARNINGS, {"date": entry.date, "time": entry.time, "status": entry.status},
                       {"from": start, "to": end})
     return None
@@ -1172,45 +1217,76 @@ class CandidateSet:
     outside_bands: Optional[Dict[str, int]] = None
 
 
-def _options(chains: Mapping[datetime.date, Sequence[Quote]], right: str) -> List[Quote]:
-    out: List[Quote] = []
-    seen = set()
+QUOTE_IDENTITY_FIELDS: Tuple[str, ...] = ("bid", "ask", "bid_date", "ask_date", "strike", "expiration_date",
+                                          "contract_size", "root_symbol", "option_type", "underlying")
+"""The fields that price a contract: two copies of one symbol equal in all of them are one contract."""
+
+
+def _identity(quote: Quote) -> Tuple[Any, ...]:
+    return tuple(getattr(quote, name) for name in QUOTE_IDENTITY_FIELDS)
+
+
+def listed_options(chains: Mapping[datetime.date, Sequence[Quote]], right: str) -> List[Tuple[Quote, int]]:
+    """Every contract of ``right`` the ``chains`` list, once per symbol, with the number of different quotes the
+    vendor listed for it: copies equal in every :data:`QUOTE_IDENTITY_FIELDS` field are one contract (``1``); copies
+    that differ give that number (``> 1``, priced UNPRICED ``quote_conflict`` by :func:`price_listed`). The result
+    never depends on the order of the entries (Q D17), and is in symbol order."""
+    copies: Dict[str, List[Quote]] = {}
     for expiration in sorted(chains):
         for quote in chains[expiration]:
             if (quote.option_type or "").upper() != right or quote.strike is None or quote.expiration_date is None:
                 continue
-            key = quote.symbol.strip().upper()
-            if key not in seen:
-                seen.add(key)
-                out.append(quote)
+            copies.setdefault(quote.symbol.strip().upper(), []).append(quote)
+    out: List[Tuple[Quote, int]] = []
+    for symbol in sorted(copies):
+        group = copies[symbol]
+        distinct = sorted({repr(_identity(quote)) for quote in group})
+        canonical = min(group, key=lambda quote: repr(_identity(quote)))
+        out.append((canonical, len(distinct)))
     return out
+
+
+def price_listed(quote: Quote, quotes_listed: int, ctx: PricingContext) -> PricedLeg:
+    """:func:`price_contract` of a listed contract; one listed with conflicting quotes is UNPRICED ``quote_conflict``
+    and carries no price, no grade and no Greeks."""
+    leg = price_contract(quote, ctx)
+    if quotes_listed <= 1:
+        return leg
+    return replace(leg, bid=None, ask=None, mid=None, spread_pct=None, grade=None, quote_status=None,
+                   quote_age_min=None, as_of=None, tau_years=None, iv=None, delta=None, abs_delta=None, greeks=None,
+                   unpriced=Reason(KEY_UNPRICED, CODE_QUOTE_CONFLICT, quotes_listed, None))
+
+
+def _priced_options(chains: Mapping[datetime.date, Sequence[Quote]], right: str,
+                    ctx: PricingContext) -> List[PricedLeg]:
+    return [price_listed(quote, count, ctx) for quote, count in listed_options(chains, right)]
 
 
 def candidates_for(kind: str, chains: Mapping[datetime.date, Sequence[Quote]], ctx: PricingContext, group: GroupContext,
                    section: Any, events: EventContext, *, held: Optional[HeldLeg] = None) -> CandidateSet:
     """Every candidate of ``kind`` in the evaluated ``chains`` (pure; order-independent: ranking sorts them)."""
     if kind == KIND_COVERED_CALL:
-        return CandidateSet([covered_call_candidate(price_contract(q, ctx), ctx, group, section, events)
-                             for q in _options(chains, "CALL")])
+        return CandidateSet([covered_call_candidate(leg, ctx, group, section, events)
+                             for leg in _priced_options(chains, "CALL", ctx)])
     if kind == KIND_REPLACEMENT_CALL:
         if held is None:
             raise ValueError("a replacement call needs the held call")
-        return CandidateSet([replacement_call_candidate(price_contract(q, ctx), ctx, group, held, section, events)
-                             for q in _options(chains, "CALL")])
+        return CandidateSet([replacement_call_candidate(leg, ctx, group, held, section, events)
+                             for leg in _priced_options(chains, "CALL", ctx)])
     if kind == KIND_PROTECTIVE_PUT:
-        return CandidateSet([protective_put_candidate(price_contract(q, ctx), ctx, group, section)
-                             for q in _options(chains, "PUT")])
+        return CandidateSet([protective_put_candidate(leg, ctx, group, section)
+                             for leg in _priced_options(chains, "PUT", ctx)])
     if kind == KIND_REPLACEMENT_PUT:
         if held is None:
             raise ValueError("a replacement put needs the held put")
-        return CandidateSet([replacement_put_candidate(price_contract(q, ctx), ctx, group, held, section)
-                             for q in _options(chains, "PUT")])
+        return CandidateSet([replacement_put_candidate(leg, ctx, group, held, section)
+                             for leg in _priced_options(chains, "PUT", ctx)])
     if kind != KIND_COLLAR:
         raise ValueError("unknown candidate kind %r" % (kind,))
     spot = ctx.spot_mid
     assert spot is not None
-    puts = [price_contract(q, ctx) for q in _options(chains, "PUT")]
-    calls = [price_contract(q, ctx) for q in _options(chains, "CALL")]
+    puts = _priced_options(chains, "PUT", ctx)
+    calls = _priced_options(chains, "CALL", ctx)
     in_puts = [leg for leg in puts if section.floor_pct[0] <= floor_pct(spot, leg.strike) <= section.floor_pct[1]]
     in_calls = [leg for leg in calls if section.cap_pct[0] <= cap_pct(spot, leg.strike) <= section.cap_pct[1]]
     pairs = [collar_candidate(put, call, ctx, group, section, events) for put in in_puts for call in in_calls
@@ -1227,7 +1303,9 @@ def candidates_for(kind: str, chains: Mapping[datetime.date, Sequence[Quote]], c
 class Ranking:
     """The ranked table (module notes): every candidate with its ``rank`` and ``lost_because``; ``best`` is rank 1 when
     it is ELIGIBLE (``verdict`` BEST), else ``None`` (NONE_QUALIFIES); ``tie_break`` names the rule that separated the
-    best from an ELIGIBLE runner-up with the same score; ``failure_counts`` counts the failing candidates per key."""
+    best from an ELIGIBLE runner-up with the same score. ``passed`` counts the ELIGIBLE candidates, ``failed`` those
+    that failed a criterion (FAILS_CRITERION, OUTSIDE_BANDS) and ``unpriced`` those never judged against the criteria
+    (UNPRICED); ``failure_counts`` counts the failing candidates per ``structuring.toml`` key (UNPRICED apart)."""
 
     candidates: Tuple[Candidate, ...]
     best: Optional[Candidate]
@@ -1237,11 +1315,17 @@ class Ranking:
     failed: int
     failure_counts: Dict[str, int]
     objective: Objective
+    unpriced: int = 0
+
+    @property
+    def priced(self) -> int:
+        """The candidates judged against the criteria (every one but the UNPRICED)."""
+        return self.passed + self.failed
 
     def as_dict(self) -> Dict[str, Any]:
         return {"candidates": [candidate.as_dict() for candidate in self.candidates],
                 "best": None if self.best is None else self.best.id, "verdict": self.verdict,
-                "tie_break": self.tie_break, "passed": self.passed, "failed": self.failed,
+                "tie_break": self.tie_break, "passed": self.passed, "failed": self.failed, "unpriced": self.unpriced,
                 "failure_counts": dict(self.failure_counts), "objective": objective_dict(self.objective)}
 
 
@@ -1318,17 +1402,20 @@ def rank_candidates(candidates: Iterable[Candidate], kind: str) -> Ranking:
             lost = None if best is None or index == 1 else _separating(candidate, best, kind, objective)
         else:
             lost = {"by": "status", "status": candidate.status, "codes": [reason.code for reason in candidate.reasons]}
-            for key in dict.fromkeys(reason.key for reason in candidate.reasons):
-                counts[key] = counts.get(key, 0) + 1
+            if candidate.status != STATUS_UNPRICED:   # never judged: counted apart, not as failing the criteria
+                for key in dict.fromkeys(reason.key for reason in candidate.reasons):
+                    counts[key] = counts.get(key, 0) + 1
         ranked.append(replace(candidate, rank=index, lost_because=lost))
     tie = None
     if best is not None and len(ranked) > 1 and ranked[1].status == STATUS_ELIGIBLE and ranked[1].score == best.score:
         separating = _separating(ranked[1], best, kind, objective)
         tie = None if separating is None else separating["by"]
     passed = sum(1 for candidate in ranked if candidate.status == STATUS_ELIGIBLE)
+    unpriced = sum(1 for candidate in ranked if candidate.status == STATUS_UNPRICED)
     failure_counts = {key: counts[key] for key in REASON_KEY_ORDER if key in counts}
     return Ranking(tuple(ranked), None if best is None else ranked[0], VERDICT_BEST if best is not None
-                   else VERDICT_NONE_QUALIFIES, tie, passed, len(ranked) - passed, failure_counts, objective)
+                   else VERDICT_NONE_QUALIFIES, tie, passed, len(ranked) - passed - unpriced, failure_counts, objective,
+                   unpriced)
 
 
 # --------------------------------------------------------------------------------------------
@@ -1392,7 +1479,7 @@ def roll_applicability(group: PositionGroup, criteria: StructuringConfig) -> Opt
         ticket = ("; a ROLL ticket prices the replacement of its long put that you name"
                   if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT else "")
         return Applicability(VERDICT_NOT_APPLICABLE, NA_STRUCTURE, "%s is a %s: the roll analysis covers the short "
-                             "call of a covered call%s; the roll analysis of long puts, short puts and collars is "
+                             "call of a covered call%s; the roll analysis of a long put, a short put or a collar is "
                              "planned for Stage 2 (not in this release)" % (_subject(group), _words(group), ticket))
     return _disabled(criteria, "roll")
 
@@ -1495,6 +1582,22 @@ class Target:
     def unusable(self) -> bool:
         """Quarantined by the parser (its rows are not loaded) or by the grouping (an account or root mismatch)."""
         return self.quarantined or (self.group is not None and self.group.is_quarantined)
+
+    @property
+    def others_quarantined(self) -> bool:
+        """Another group of positions.csv is quarantined by the parser: its rows are not loaded, so neither the
+        account's share coverage nor its other short options can be counted (every structuring answer fails closed)."""
+        return any(key != self.trade_id for key in self.positions.quarantined)
+
+
+def owner_texts(target: Optional[Target]) -> List[str]:
+    """The cells the owner typed that a structuring text never prints (designer C's D15), the same set in the three
+    tools: every account name of desk.toml and every account cell of positions.csv (review L3-2)."""
+    texts = set()
+    if target is not None:
+        texts.update(entry.name for entry in target.market.cfg.owner.accounts if entry.name)
+        texts.update(row.account for row in target.positions.rows if row.account)
+    return sorted(texts)
 
 
 def load_target(market: MarketData, trade_id: str) -> Target:
@@ -1668,8 +1771,8 @@ def valid_until(now: datetime.datetime, session: SessionInfo,
 ANSWER_KEYS: Tuple[str, ...] = (
     "tool", "kind", "trade_id", "group_id", "structure", "structure_requested", "section", "underlying", "account",
     "account_type", "verdict", "cause", "reason", "objective", "criteria", "spot", "held", "before", "shares",
-    "contracts", "stress", "expirations", "candidates", "best", "tie_break", "passed", "failed", "failure_counts",
-    "outside_bands", "after", "model_note", "requests", "warnings",
+    "contracts", "stress", "expirations", "candidates", "best", "tie_break", "passed", "failed", "unpriced",
+    "failure_counts", "outside_bands", "after", "model_note", "requests", "warnings",
 )
 """The keys of :meth:`Answer.as_dict`, the payload body the three tools extend with their own keys."""
 
@@ -1761,6 +1864,7 @@ class Answer:
             "candidates": [] if ranking is None else [candidate.as_dict() for candidate in ranking.candidates],
             "best": None if best is None else best.id, "tie_break": None if best is None else ranking.tie_break,
             "passed": None if ranking is None else ranking.passed, "failed": None if ranking is None else ranking.failed,
+            "unpriced": None if ranking is None else ranking.unpriced,
             "failure_counts": None if ranking is None else dict(ranking.failure_counts),
             "outside_bands": self.outside_bands, "after": after, "model_note": self.model_note,
             "requests": dict(self.requests), "warnings": list(self.warnings),
@@ -1777,6 +1881,9 @@ def _close(answer: Answer, verdict: str, cause: Optional[str] = None, reason: Op
 _UNAVAILABLE_WORDS: Dict[str, str] = {
     CAUSE_MARKET_CLOSED: "the market is closed today",
     CAUSE_GROUP_QUARANTINED: "the group is quarantined in positions.csv (positions_check.py shows why)",
+    CAUSE_POSITIONS_QUARANTINED: ("positions.csv has a quarantined group (positions_check.py shows why): the desk cannot "
+                                  "count the account's coverage"),
+    CAUSE_NO_CANDIDATE_PRICED: "no candidate in your window could be priced",
     CAUSE_SPOT_UNUSABLE: "no usable quote of the underlying",
     CAUSE_HELD_LEG_UNUSABLE: "no fresh conservative side for the held leg",
     CAUSE_EXPIRATIONS_NOT_SERVED: "the listed expirations were not served",
@@ -1797,6 +1904,8 @@ def _start(answer: Answer, market: MarketData) -> Optional[Answer]:
     answer.target = target
     if target.unusable:
         return _unavailable(answer, CAUSE_GROUP_QUARANTINED)
+    if target.others_quarantined:
+        return _unavailable(answer, CAUSE_POSITIONS_QUARANTINED)
     return None
 
 
@@ -1850,6 +1959,12 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     answer.warnings.extend(warnings)
     if expirations is None:
         return _unavailable(answer, CAUSE_EXPIRATIONS_NOT_SERVED)
+    if not expirations:
+        low, high = answer.section.dte
+        answer.expirations = ExpirationsBlock([], [], [])
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_NO_EXPIRATION,
+                      "no listed standard monthly expiration lies inside your %s window of %d to %d calendar days"
+                      % (answer.section_name, low, high))
     chains, block, chain_warnings = load_chains(target, expirations)
     answer.warnings.extend(chain_warnings)
     answer.expirations = block
@@ -1861,7 +1976,29 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
                            held=answer.held)
     answer.outside_bands = built.outside_bands
     answer.ranking = rank_candidates(built.candidates, answer.kind)
+    if answer.ranking.priced == 0 and (built.candidates or answer.kind != KIND_COLLAR):
+        return _unavailable(answer, CAUSE_NO_CANDIDATE_PRICED, no_candidate_words(built.candidates))
     return _close(answer, answer.ranking.verdict)
+
+
+def unpriced_words(reason: Reason) -> str:
+    """The words of an UNPRICED reason (:data:`UNPRICED_WORDS`, :data:`IV_WORDS`)."""
+    if reason.code in UNPRICED_WORDS:
+        return UNPRICED_WORDS[reason.code]
+    if reason.code.startswith(IV_CODE_PREFIX):
+        return IV_WORDS
+    raise ValueError("unknown UNPRICED code %r" % (reason.code,))
+
+
+def no_candidate_words(candidates: Sequence[Candidate]) -> str:
+    """Why no candidate was priced: the one UNPRICED reason they share, else that the reasons differ."""
+    head = _UNAVAILABLE_WORDS[CAUSE_NO_CANDIDATE_PRICED]
+    if not candidates:
+        return head + ": the chains list none"
+    words = {unpriced_words(reason) for candidate in candidates for reason in candidate.reasons}
+    if len(words) == 1:
+        return "%s: %s" % (head, words.pop())
+    return head + " (the reasons differ; the JSON lists each)"
 
 
 def _option_row(group: PositionGroup, right: str, short: bool) -> Optional[PositionRow]:
@@ -1901,13 +2038,22 @@ def _free_shares(target: Optional[Target], group: PositionGroup, structure: str)
         holdings = approval.holdings_of(target.positions.rows, group.account, group.underlying)
     except ValueError as exc:
         raise StructuringError(ERROR_POSITIONS_INVALID, str(exc)) from None
-    contracts = int(_open_shares(group) // _MULTIPLIER)
-    if holdings.free_shares >= CONTRACT_SIZE * contracts:
+    shares = _open_shares(group)
+    contracts = int(shares // _MULTIPLIER)
+    free = holdings.free_shares
+    if free >= CONTRACT_SIZE * contracts:
         return None
-    return Applicability(VERDICT_NOTHING_TO_PROPOSE, NOTHING_NO_FREE_SHARES,
-                         "no free shares: %s %s shares are covered by %s short call%s; the desk proposes no %s"
-                         % (holdings.shares, group.underlying, holdings.short_calls,
-                            "" if holdings.short_calls == 1 else "s", _words_of(structure)))
+    calls = holdings.short_calls
+    if free < CONTRACT_SIZE:
+        return Applicability(VERDICT_NOTHING_TO_PROPOSE, NOTHING_NO_FREE_SHARES,
+                             "no free shares: %s %s shares are covered by %s short call%s; the desk proposes no %s"
+                             % (_plain(Decimal(holdings.shares)), group.underlying, calls, "" if calls == 1 else "s",
+                                _words_of(structure)))
+    return Applicability(VERDICT_NOTHING_TO_PROPOSE, NOTHING_NOT_ENOUGH_FREE_SHARES,
+                         "%s of the %s %s shares are free: %s short call%s held in another group of this account "
+                         "rel%s on the rest; the desk proposes no %s on part of a group's shares"
+                         % (_plain(Decimal(free)), _plain(shares), group.underlying, calls, "" if calls == 1 else "s",
+                            "ies" if calls == 1 else "y", _words_of(structure)))
 
 
 def _words_of(structure: str) -> str:
@@ -1989,10 +2135,11 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
               and q.strike is not None and expiry.plain_decimal(q.strike) == wanted and q.expiration_date == expiration
               and (q.root_symbol or row.occ.root).strip().upper() == row.occ.root]
     answer.chains = {expiration: listed}
-    if not listed:
+    entries = listed_options({expiration: listed}, row.occ.right)
+    if not entries:
         return _unavailable(answer, CAUSE_REPLACEMENT_NOT_LISTED)
     assert answer.events is not None
-    leg = price_contract(listed[0], answer.pricing)
+    leg = price_listed(entries[0][0], entries[0][1], answer.pricing)
     if answer.kind == KIND_REPLACEMENT_PUT:
         candidate = replacement_put_candidate(leg, answer.pricing, answer.group_context, answer.held, answer.section)
     else:
