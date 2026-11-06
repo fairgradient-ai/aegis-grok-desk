@@ -46,9 +46,10 @@ posted for it and its verdict of record stands (the group banners carry the caus
 
 The message
 -----------
-In order: ``CONFIG CHANGED`` first whenever the SHA-256 of ``desk.toml``, ``positions.csv`` or the adopted
-rulebook file differs from ``state/desk_state.json["acknowledged_hashes"]`` (a missing file or key is
-unacknowledged; printed on every run until ``ack.py config --owner-tapped``; the run still evaluates), then the
+In order: ``CONFIG CHANGED`` first whenever the SHA-256 of ``desk.toml``, ``positions.csv``, the adopted
+rulebook file or ``structuring.toml`` differs from ``state/desk_state.json["acknowledged_hashes"]`` (a missing key is
+unacknowledged; a missing structuring.toml with no acknowledged hash is no change, so a desk without structuring
+criteria never sees it; printed on every run until ``ack.py config --owner-tapped``; the run still evaluates), then the
 ``rulebook changed: N verdicts changed`` digest once after an adoption (``state/desk_state.json["rulebook_change"]``
 = ``{version, sha256, previous_version, previous_sha256, adopted_utc, changed, snapshot}`` as ``rules_adopt.py``
 records it, printed while ``version`` and ``sha256`` name the adopted file and no ``posted_utc`` is set; ``--post``
@@ -99,6 +100,7 @@ contract.python_floor_check(tool="book_check")
 
 import contextlib  # noqa: E402
 import datetime  # noqa: E402
+import hashlib  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
@@ -131,8 +133,9 @@ RUN_LOCK_TIMEOUT_S = 5.0
 QUIET_LINE = "quiet"
 DRY_RUN_LINE = "dry run"
 CLOSED_DAY_LINE = "NYSE closed (%s); no evaluation"
-HASH_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook")
-"""The acknowledged files, in the order CONFIG CHANGED names them (``ack.py config`` writes the same names)."""
+HASH_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook", "structuring_toml")
+"""The acknowledged files, in the order CONFIG CHANGED names them (``ack.py config`` writes the same names; a test
+keeps ``ack.HASH_NAMES``, this tuple and ``exit_check.CONFIG_NAMES`` equal)."""
 SHA256_RE = exit_rules.SHA256_RE  # anchored with \Z: a value with a trailing newline is no acknowledged hash
 PORTFOLIO_KEY = alerts.PORTFOLIO_TRADE
 LAST_VERDICTS_KEY = "last_verdicts"
@@ -175,7 +178,7 @@ OUTPUT: Dict[str, Any] = {
                 "note": "the strict emitted document: alert_lint.py --emitted-file (null keys when nothing is posted)"},
     "withheld": [{"group_id": "string | portfolio | null", "kind": "the part's kind",
                   "codes": ["the lint finding codes that withheld its text"]}],
-    "config_changed": [{"name": "desk_toml | positions_csv | rulebook", "old": "acknowledged sha256 | null",
+    "config_changed": [{"name": " | ".join(HASH_NAMES), "old": "acknowledged sha256 | null",
                         "new": "current sha256 | null"}],
     "rulebook": {"version": "X.Y.Z", "sha256": "hex of the adopted file", "adopted_utc": "ISO-8601 UTC"},
     "verdicts": [{"group_id": "string", "trade_id": "string | null", "structure": "string | null",
@@ -263,6 +266,15 @@ def fail(args: Any, version: str, now: datetime.datetime, code: str, message: st
     else:
         print("error: %s" % message)
     return exit_code
+
+
+def file_sha256(path: str) -> Optional[str]:
+    """The SHA-256 of a file's bytes, or ``None`` when there is no file (``structuring.toml`` is optional)."""
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except FileNotFoundError:
+        return None
 
 
 def run_lock_path(paths: desk_paths.DeskPaths) -> str:
@@ -421,7 +433,8 @@ class Check:
 
     def current_hashes(self) -> Dict[str, Optional[str]]:
         hashes = {"rulebook": self.rulebook.sha256, "desk_toml": self.market.cfg.sha256,
-                  "positions_csv": self.run.positions.sha256}
+                  "positions_csv": self.run.positions.sha256,
+                  "structuring_toml": file_sha256(self.paths.structuring_toml)}
         return {name: hashes[name] for name in HASH_NAMES}
 
     def config_changes(self) -> List[Dict[str, Optional[str]]]:

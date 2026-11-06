@@ -442,7 +442,8 @@ class ConfigChangedTest(DeskCopy):
 
     def test_config_hashes_name_the_adopted_target_file(self) -> None:
         hashes = tool.config_hashes(self.paths)
-        self.assertEqual(self.acknowledged_hashes(), hashes)
+        # PR 3b (designer C's D3): structuring_toml is hashed too, None while the fixture desk holds no such file.
+        self.assertEqual(dict(self.acknowledged_hashes(), structuring_toml=None), hashes)
         os.remove(self.paths.adopted_file)
         self.assertIsNone(tool.config_hashes(self.paths)["rulebook"], "no adoption: no adopted file to hash")
 

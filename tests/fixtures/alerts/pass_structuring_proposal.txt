@@ -1,0 +1,19 @@
+PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 3c5e9a10) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
+the score ranks the candidates only on the objective you chose; it is not a forecast
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; call strike 680 above your stock cost 632.40
+accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
+accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
+after both legs: group delta 24.14, max loss 1165.00, max profit 4835.00, breakeven 631.65
+leg order: leg 1 first; after leg 1 a protective put (level 2 by the desk's convention); after leg 2 a collar (level 2)
+approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92
+candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92
+failed your criteria: 6 (max_net_debit 6)
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+you supply the limit; the desk prints none
+if you decide to act, you type it into your brokerage account yourself and you supply the limit
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC

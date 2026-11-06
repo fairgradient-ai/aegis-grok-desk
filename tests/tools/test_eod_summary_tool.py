@@ -186,6 +186,9 @@ class SchemaAndUsageTest(DeskCopy):
         self.assertEqual("eod_summary", body["tool"])
         self.assertEqual("none", body["network_access"])
         self.assertEqual(sorted(tool.PAYLOAD_KEYS), sorted(body["envelope"]["payload"]))
+        # The brief's CONFIG CHANGED names are exit_check's, structuring.toml included (PR 3b).
+        self.assertEqual("desk_toml | positions_csv | rulebook | structuring_toml (brief; null in the morning)",
+                         body["envelope"]["payload"]["config_changed"][0]["name"])
         self.assertEqual([], order_shaped(out))
 
     def test_usage_errors(self) -> None:

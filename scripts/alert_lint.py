@@ -3,8 +3,8 @@
 
 Usage::
 
-    python3 scripts/alert_lint.py --message-file PATH --emitted-file PATH [--json] [--schema] [--timeout S]
-        [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
+    python3 scripts/alert_lint.py --message-file PATH --emitted-file PATH [--footer rules|snapshot|structuring]
+        [--json] [--schema] [--timeout S] [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
 
 Reads the message (UTF-8 text) and its emitted-numbers file (JSON: a list of the number strings the formatters of
 ``aegis_desk.alerts`` printed, or the emitted document ``{"emitted_numbers": [...], "rule_ids": [...],
@@ -17,15 +17,18 @@ identifier (trade, signal and group ids, ``rules X.Y.Z``, ``sha <8 hex>``, ``HH:
 the footer's ``15 min``); the last line must be the fixed footer ``deterministic rules you adopted · posted by an AI
 assistant · not personalized investment advice · data delayed 15 min, as of HH:MM UTC``; the lint's forbidden
 phrases (any case, across line breaks), order-ticket fields and imperative sentence starts are rejected, and so is
-any character outside printable ASCII, newline and tab (the middle dot belongs to the footer line only). Relative paths are read from the
-current directory. Nothing is written and the network is never used; the shared flags ``--desk-root``,
-``--offline`` and ``--now`` are accepted (``--now`` stamps the envelope) so the tool runs in a journey like any
-desk tool.
+any character outside printable ASCII, newline and tab (the middle dot belongs to the footer line only). ``--footer``
+(else the document's ``footer`` key, else ``rules``) names the footer: ``snapshot`` is ``opening_bell.py``'s rule-free
+market snapshot; ``structuring`` is the Structuring Desk's tickets, roll analyses and proposals, which adds the fixed
+leg grammar, the structuring phrase table (``SL01``...) and imperative starts (``IS10``...) and refuses rule content,
+while the rules and snapshot footers refuse a leg or a candidate. Relative paths are read from the current
+directory. Nothing is written and the network is never used; the shared flags ``--desk-root``, ``--offline`` and
+``--now`` are accepted (``--now`` stamps the envelope) so the tool runs in a journey like any desk tool.
 
 Prose: ``ok: the message passes the alert lint (N numbers checked)``, or ``alert lint: N problems; the message
-must not be posted`` followed by one line per problem. A problem names the forbidden-phrase entry (``FL01``...) or
-the imperative word's entry (``IS01``...) instead of repeating the text, so this tool's output never carries the
-language it reports.
+must not be posted`` followed by one line per problem. A problem names the forbidden-phrase entry (``FL01``...,
+``SL01``...) or the imperative word's entry (``IS01``...) instead of repeating the text, so this tool's output never
+carries the language it reports.
 
 Exit 0 when the message passes, 1 when it does not (``--json``: the envelope with status ``error`` and the payload
 below) or when a file cannot be read (``message_unreadable``, ``emitted_unreadable``, ``emitted_invalid``: the
@@ -70,9 +73,10 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
                         help="the emitted numbers: a JSON list of strings, or the emitted document {emitted_numbers, "
                              "rule_ids, identifiers, clocks, as_of} book_check.py prints (strict)")
     parser.add_argument("--footer", choices=alert_lint.FOOTER_KINDS, default=None,
-                        help="the footer the last line must be: rules (every alert, sheet and summary) or snapshot "
-                             "(opening_bell.py's rule-free market snapshot only); default: the emitted document's "
-                             "footer key, else rules")
+                        help="the footer the last line must be: rules (every alert, sheet and summary), snapshot "
+                             "(opening_bell.py's rule-free market snapshot only) or structuring (the Structuring Desk's "
+                             "tickets, roll analyses and proposals only); default: the emitted document's footer key, "
+                             "else rules")
     return parser
 
 

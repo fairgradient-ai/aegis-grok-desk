@@ -1,0 +1,17 @@
+TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 a covered call (level 1)
+in the other order, after leg 1 you would hold 2 uncovered calls (level 4)
+entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
+approval: the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; the desk does not see your cash balance
+realized on the closing leg: -16.00 at the conservative side (mid -1.00)
+after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03
+accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+you supply the limit, for example at 3.50
+valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
+after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+if you decide to act, you type it into your brokerage account yourself and you supply the limit
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC

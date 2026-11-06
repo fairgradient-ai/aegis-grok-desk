@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""desk_init.py: render desk.toml once from the owner's interview answers, and the ex-dividend intake.
+"""desk_init.py: render desk.toml once from the owner's interview answers, the ex-dividend intake and the structuring
+intake.
 
 Usage::
 
@@ -23,16 +24,28 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
   "owner-entered", checked_utc = <--now> }`` or ``{ status = "none", source = <the owner's>, checked_utc = <--now> }``,
   validated by ``calendar_events.parse_calendar_text`` (exit 1 ``calendar_invalid``). The bootstrap runs the tool a
   second time for this intake once ``positions.csv`` is validated, with answers that hold no ``desk``.
+* ``structuring.toml`` (when the answers hold ``structuring``, which may stand alone like ``ex_dividends``; PR 3b
+  decision S3 over designer C's D2): the owner's structuring criteria, rendered by :func:`render_structuring_toml`
+  with the two header comment lines of :data:`STRUCTURING_HEADER`, then ``schema_version = 1``, then the sections of
+  ``structuring_config.SECTIONS`` with their keys in ``structuring_config.SECTION_KEYS`` order. Decimals are JSON
+  strings matching :data:`DECIMAL_RE`, printed verbatim; bands are two-element arrays (integers for ``dte``, decimal
+  strings otherwise); booleans are JSON booleans; every key is required and no default is injected (the Bot writes the
+  documented defaults the owner accepted, and ``disclosure_acknowledged`` only after the owner acknowledges the
+  disclosure the interview shows last). A shape error is ``answers_invalid``; the text is then validated by
+  ``structuring_config.parse_structuring_toml_text`` before anything is written (a failure is exit 1
+  ``structuring_invalid`` with the reader's reason).
 
-An existing ``desk.toml`` or ``research/calendar.toml`` is refused (exit 1 ``desk_toml_exists`` or
-``calendar_exists``) unless both ``--replace`` and ``--owner-tapped`` are given (``--owner-tapped`` is the signature of
+An existing ``desk.toml``, ``research/calendar.toml`` or ``structuring.toml`` is refused (exit 1 ``desk_toml_exists``,
+``calendar_exists`` or ``structuring_exists``) unless both ``--replace`` and ``--owner-tapped`` are given
+(``--owner-tapped`` is the signature of
 the owner's tap on the Ask-first card that runs it; routines never run it; one flag without the other is a usage
 error). A desk root that is this checkout or lies inside it is refused (exit 1 ``desk_root``: the desk's files never
 dirty the release checkout). Everything is checked before the first write, so a refusal or an invalid answer writes
 nothing; each file is
 written with ``state.atomic_write_text``. desk_init records no acknowledged hash (positions.csv and the adopted
-rulebook do not exist yet at that step of the bootstrap): it prints the desk.toml SHA-256 and ``acknowledge with ack.py
-config --owner-tapped once positions.csv and the adopted rulebook are in place``. It reads no quote and opens no
+rulebook do not exist yet at that step of the bootstrap): it prints each written file's SHA-256 and, when desk.toml is
+written, ``acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in place``;
+when structuring.toml is written without desk.toml, :data:`ACKNOWLEDGE_STRUCTURING`. It reads no quote and opens no
 connection.
 
 Exit 0 written; 1 invalid answers (``answers_invalid``), a refusal, a round-trip failure or an I/O error
@@ -53,12 +66,13 @@ import re  # noqa: E402
 import sys  # noqa: E402
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple  # noqa: E402
 
-from aegis_desk import calendar_events, desk_config, state, version  # noqa: E402
+from aegis_desk import calendar_events, desk_config, state, structuring_config, version  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "desk_init"
-DESCRIPTION = ("render desk.toml once from the owner's interview answers (and the ex-dividend intake into "
-               "research/calendar.toml), byte for byte, validated before it is written; owner-authority")
+DESCRIPTION = ("render desk.toml once from the owner's interview answers (the ex-dividend intake into "
+               "research/calendar.toml and the structuring intake into structuring.toml), byte for byte, validated "
+               "before it is written; owner-authority")
 NETWORK_ACCESS = "none"
 SCHEMA_VERSION = 1
 DECIMAL_RE = re.compile(r"^-?[0-9]+([.][0-9]+)?\Z")
@@ -71,6 +85,8 @@ OWNER_ENTERED = "owner-entered"
 DATED_STATUSES: Tuple[str, ...] = (calendar_events.STATUS_CONFIRMED, calendar_events.STATUS_ESTIMATED)
 ACKNOWLEDGE_HINT = ("acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in "
                     "place")
+ACKNOWLEDGE_STRUCTURING = ("acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until "
+                           "structuring.toml is acknowledged")
 OWNER_TAP_MESSAGE = ("--replace requires --owner-tapped (and --owner-tapped applies only with --replace): the signature "
                      "of the owner's tap on the Ask-first card that runs it (routines never run it)")
 DESK_HEADER: Tuple[str, ...] = (
@@ -81,11 +97,16 @@ CALENDAR_HEADER: Tuple[str, ...] = (
     "# research/calendar.toml: the owner's ex-dividend intake, rendered by scripts/desk_init.py; every entry is dated",
     "# and sourced, and unknown is never zero. Earnings, settlement values and closures are added by hand.",
 )
+STRUCTURING_HEADER: Tuple[str, ...] = (
+    "# structuring.toml: rendered by scripts/desk_init.py from the owner's structuring interview; a hand edit changes its",
+    "# hash, and the structuring tools show nothing until the owner acknowledges it (ack.py config --owner-tapped).",
+)
 CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vendor": json.dumps(desk_config.VENDOR),
                              "feed_delay_min": "15", "quote_ttl_min": "5", "grace_min": "5", "pin_band": "0.25",
                              "order_shape_enabled": "false"}
 """The rendered values the interview does not ask."""
-TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends")
+TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends",
+                             "structuring")
 DESK_KEYS: Tuple[str, ...] = ("engagement", "cadence_profile", "chatty_or_quiet")
 OWNER_KEYS: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity", "attention_thresholds",
                                "disclosures_acknowledged", "accounts")
@@ -96,18 +117,58 @@ RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
 DATED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status")
 NONE_DIVIDEND_KEYS: Tuple[str, ...] = ("status", "source")
-PAYLOAD_KEYS: Tuple[str, ...] = ("written", "replaced", "desk_toml", "calendar_toml", "acknowledge")
+STRUCTURING_KEYS: Tuple[str, ...] = ("disclosure_acknowledged",) + structuring_config.SECTIONS[1:]
+"""The keys of the ``structuring`` answers: the disclosure id, then one object per section after ``[disclosure]``."""
+STRUCTURING_KINDS: Dict[str, str] = {
+    "acknowledged": "string", "max_spread_pct": "decimal", "max_candidates_shown": "integer", "enabled": "boolean",
+    "dte": "integer_band", "abs_delta": "decimal_band", "min_credit": "decimal", "credit_only": "boolean",
+    "strike_floor": "string", "earnings": "string", "ex_dividend": "string", "objective": "string",
+    "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
+}
+"""How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS``)."""
+PAYLOAD_KEYS: Tuple[str, ...] = ("written", "replaced", "desk_toml", "calendar_toml", "structuring_toml", "acknowledge")
 _FILE_SHAPE: Dict[str, Any] = {"path": "desk-root relative path", "sha256": "hex of the written bytes",
                                "bytes": "integer", "text": "string (the file exactly)"}
 OUTPUT: Dict[str, Any] = {
-    "written": ["desk-root relative paths written (desk.toml, research/calendar.toml)"],
+    "written": ["desk-root relative paths written (desk.toml, research/calendar.toml, structuring.toml)"],
     "replaced": ["the written paths that existed before (--replace --owner-tapped)"],
     "desk_toml": dict(_FILE_SHAPE, note="null when the answers hold no desk"),
     "calendar_toml": dict(_FILE_SHAPE, symbols=["symbol"], note="null when the answers hold no ex_dividends"),
-    "acknowledge": "string | null (the next step for the owner once desk.toml is written)",
+    "structuring_toml": dict(_FILE_SHAPE, note="null when the answers hold no structuring"),
+    "acknowledge": "string | null (the next step for the owner once desk.toml or structuring.toml is written)",
 }
+_DTE_WORDS = "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90"
+_EVENT_WORDS = " | ".join(structuring_config.EVENT_POLICIES)
+_FLOOR_WORDS = "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50"
+STRUCTURING_SHAPE: Dict[str, Any] = {
+    "disclosure_acknowledged": "%s (given only after the owner acknowledges the disclosure the interview shows "
+                               "last)" % structuring_config.DISCLOSURE_ID,
+    "general": {"max_spread_pct": "decimal string: percent, 0 < x <= 25",
+                "max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)"},
+    "covered_call": {"enabled": "boolean", "dte": _DTE_WORDS,
+                     "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
+                     "min_credit": "decimal string >= 0.01 (per share, at the bid)",
+                     "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
+                     "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+    "roll": {"enabled": "boolean", "dte": _DTE_WORDS,
+             "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
+             "min_credit": "decimal string >= 0.01 (per share, the new call's bid)",
+             "credit_only": "boolean (a net debit fails it; a zero net passes)",
+             "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
+             "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+    "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
+                       "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
+                       "objective": structuring_config.OBJECTIVE_STRESS_COST_PER_DAY},
+    "collar": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
+               "cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100",
+               "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)",
+               "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
+               "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_CAP_WITHIN_BUDGET},
+}
+"""``ANSWERS_SHAPE["structuring"]``: every key required, decimals as JSON strings, no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
-    "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, or both)",
+    "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, structuring, or "
+                      "any of these together)",
     "desk": {"engagement": "string", "cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
              "chatty_or_quiet": " | ".join(desk_config.CHATTY_OR_QUIET)},
     "owner": {"broker_exercise_cutoff_et": "HH:MM (America/New_York)", "approval_level": "integer 0-5 (self-attested)",
@@ -122,6 +183,7 @@ ANSWERS_SHAPE: Dict[str, Any] = {
     "levels": {"penny_classes": ["OCC root (optional)"], "penny_all_classes": ["OCC root (optional)"]},
     "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or "
                                "{status none, source string} (optional; written to research/calendar.toml)"},
+    "structuring": STRUCTURING_SHAPE,
 }
 
 
@@ -314,6 +376,47 @@ def render_calendar_toml(intake: Any, now: datetime.datetime) -> Tuple[str, List
     return "\n".join(lines) + "\n", symbols
 
 
+def structuring_value(kind: str, value: Any, where: str) -> str:
+    """One structuring answer as its TOML text (``answers_invalid`` for a wrong JSON shape; the values themselves
+    are the reader's to judge)."""
+    if kind == "string":
+        if not isinstance(value, str):
+            raise answers_error("%s must be a JSON string" % where)
+        return json.dumps(value)
+    if kind == "boolean":
+        if not isinstance(value, bool):
+            raise answers_error("%s must be a JSON boolean (true or false)" % where)
+        return "true" if value else "false"
+    if kind == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise answers_error("%s must be a JSON integer" % where)
+        return str(value)
+    if kind == "decimal":
+        return decimal_value(value, where)
+    if not isinstance(value, list) or len(value) != 2:
+        raise answers_error("%s must be a two-element array [lo, hi]" % where)
+    item_kind = "integer" if kind == "integer_band" else "decimal"
+    return "[%s]" % ", ".join(structuring_value(item_kind, item, "%s[%d]" % (where, index))
+                              for index, item in enumerate(value))
+
+
+def render_structuring_toml(intake: Any) -> str:
+    """The ``structuring.toml`` text of the structuring answers (module notes), ending with one newline."""
+    answers = table(intake, "structuring", STRUCTURING_KEYS, STRUCTURING_KEYS)
+    lines: List[str] = list(STRUCTURING_HEADER) + ["schema_version = %d" % structuring_config.SCHEMA_VERSION]
+    for section in structuring_config.SECTIONS:
+        keys = structuring_config.SECTION_KEYS[section]
+        if section == structuring_config.SECTION_DISCLOSURE:
+            values: Dict[str, Any] = {"acknowledged": answers["disclosure_acknowledged"]}
+            places = {"acknowledged": "structuring.disclosure_acknowledged"}
+        else:
+            values = table(answers[section], "structuring.%s" % section, keys, keys)
+            places = {key: "structuring.%s.%s" % (section, key) for key in keys}
+        lines += ["", "[%s]" % section]
+        lines += ["%s = %s" % (key, structuring_value(STRUCTURING_KINDS[key], values[key], places[key])) for key in keys]
+    return "\n".join(lines) + "\n"
+
+
 def read_answers(path: str) -> Dict[str, Any]:
     try:
         with open(path, "rb") as handle:
@@ -327,9 +430,9 @@ def read_answers(path: str) -> Dict[str, Any]:
     answers = table(answers, "the answers", TOP_KEYS, ("schema_version",))
     if answers["schema_version"] != SCHEMA_VERSION or isinstance(answers["schema_version"], bool):
         raise answers_error("the answers' schema_version must be %d" % SCHEMA_VERSION)
-    if "desk" not in answers and "ex_dividends" not in answers:
-        raise answers_error("the answers render nothing: give desk (with owner, market_data and rates), ex_dividends "
-                            "or both")
+    if "desk" not in answers and "ex_dividends" not in answers and "structuring" not in answers:
+        raise answers_error("the answers render nothing: give desk (with owner, market_data and rates), ex_dividends, "
+                            "structuring or several of them")
     for key in ("owner", "market_data", "rates", "levels"):
         if key in answers and "desk" not in answers:
             raise answers_error("%s goes with desk" % key)
@@ -364,9 +467,11 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
     planned: List[Tuple[str, str]] = []
     desk_text: Optional[str] = None
     calendar_text: Optional[str] = None
+    structuring_text: Optional[str] = None
     symbols: List[str] = []
     desk_toml = os.path.join(root, "desk.toml")  # desk_paths.for_root's layout; the root may not exist yet
     calendar_toml = os.path.join(root, "research", "calendar.toml")
+    structuring_toml = os.path.join(root, structuring_config.FILE_NAME)
     if "desk" in answers:
         desk_text = render_desk_toml(answers)
         try:
@@ -381,10 +486,19 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
         except calendar_events.CalendarError as exc:
             raise ToolError("calendar_invalid", "the rendered research/calendar.toml does not load: %s" % exc) from None
         planned.append((calendar_toml, calendar_text))
+    if "structuring" in answers:
+        structuring_text = render_structuring_toml(answers["structuring"])
+        try:
+            structuring_config.parse_structuring_toml_text(structuring_text, path=structuring_toml)
+        except structuring_config.StructuringConfigError as exc:
+            raise ToolError("structuring_invalid",
+                            "the rendered structuring.toml does not load: %s" % exc.reason) from None
+        planned.append((structuring_toml, structuring_text))
     replaced = [path for path, _text in planned if os.path.exists(path)]
     if replaced and not (args.replace and args.owner_tapped):
         first = replaced[0]
-        code = "desk_toml_exists" if first == desk_toml else "calendar_exists"
+        code = {desk_toml: "desk_toml_exists", calendar_toml: "calendar_exists",
+                structuring_toml: "structuring_exists"}[first]
         raise ToolError(code, "%s already exists at %s: replacing it needs --replace --owner-tapped"
                         % (relative(root, first), root))
     try:
@@ -399,11 +513,15 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
         "desk_toml": file_entry(root, desk_toml, desk_text) if desk_text is not None else None,
         "calendar_toml": (dict(file_entry(root, calendar_toml, calendar_text), symbols=symbols)
                           if calendar_text is not None else None),
-        "acknowledge": ACKNOWLEDGE_HINT if desk_text is not None else None,
+        "structuring_toml": (file_entry(root, structuring_toml, structuring_text)
+                             if structuring_text is not None else None),
+        "acknowledge": (ACKNOWLEDGE_HINT if desk_text is not None
+                        else ACKNOWLEDGE_STRUCTURING if structuring_text is not None else None),
     }
     lines = ["%s %s (%d bytes, sha256 %s)" % ("replaced" if entry["path"] in payload["replaced"] else "wrote",
                                             entry["path"], entry["bytes"], entry["sha256"])
-             for entry in (payload["desk_toml"], payload["calendar_toml"]) if entry is not None]
+             for entry in (payload["desk_toml"], payload["calendar_toml"], payload["structuring_toml"])
+             if entry is not None]
     if payload["acknowledge"]:
         lines.append(payload["acknowledge"])
     return payload, lines

@@ -31,9 +31,9 @@ unavailable, no-history and suppressed rule with its values; rules that are clea
 JSON). Then the portfolio and underlying sections (their WATCH, pending, unavailable and no-history results are
 reported there and never make a group UNAVAILABLE nor change the exit code), the one no-history line (decision 11:
 ``MOVE5_DOWN, MOVE5_UP and DAILY need the previous end-of-day snapshot (none for YYYY-MM-DD)``), the verdict counts,
-the CONFIG CHANGED list (the sha256 of ``desk.toml``, ``positions.csv`` and the adopted rulebook file against
-``state/desk_state.json["acknowledged_hashes"]``; a missing file or key is unacknowledged; it never changes the
-exit code) and the data footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. Every number printed is the
+the CONFIG CHANGED list (the sha256 of ``desk.toml``, ``positions.csv``, the adopted rulebook file and
+``structuring.toml`` against ``state/desk_state.json["acknowledged_hashes"]``; a missing key is unacknowledged, a
+missing structuring.toml with no acknowledged hash is no change; it never changes the exit code) and the data footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. Every number printed is the
 value the engine decided on (``aegis_desk.exit_rules``, decision 15), written as a plain decimal.
 
 Exit codes, by the one verdict table: 10 when any group is EXIT_SIGNAL, 20 when any group is UNAVAILABLE (and none
@@ -82,11 +82,11 @@ NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (throug
 
 ORIGIN_QUOTES = "quotes"
 ORIGIN_FILE = "file"
-CONFIG_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook")
+CONFIG_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook", "structuring_toml")
 """The files CONFIG CHANGED compares, by their ``acknowledged_hashes`` key (the names ``alerts.config_changed_text``
-prints)."""
+prints; a test keeps ``ack.HASH_NAMES``, ``book_check.HASH_NAMES`` and this tuple equal)."""
 CONFIG_LABELS: Dict[str, str] = {"desk_toml": "desk.toml", "positions_csv": "positions.csv",
-                                 "rulebook": "adopted rulebook"}
+                                 "rulebook": "adopted rulebook", "structuring_toml": "structuring.toml"}
 ACKNOWLEDGE_HINT = "the rules were evaluated as the files are now; acknowledge with ack.py config --owner-tapped"
 SECTIONS_NOTE = "the portfolio and underlying sections never set a group verdict or the exit code"
 SNAPSHOT_NAME_RE = re.compile(r"^([0-9]{4}-[0-9]{2}-[0-9]{2})\.json\Z")
@@ -355,9 +355,10 @@ def adopted_target(paths: desk_paths.DeskPaths) -> Optional[str]:
 
 
 def config_hashes(paths: desk_paths.DeskPaths) -> Dict[str, Optional[str]]:
-    """The current SHA-256 of each file CONFIG CHANGED compares (:data:`CONFIG_NAMES`; ``None`` for a missing one)."""
+    """The current SHA-256 of each file CONFIG CHANGED compares (:data:`CONFIG_NAMES`; ``None`` for a missing one, so
+    a missing structuring.toml with no acknowledged hash is no change)."""
     return {"desk_toml": file_sha256(paths.desk_toml), "positions_csv": file_sha256(paths.positions_csv),
-            "rulebook": file_sha256(adopted_target(paths))}
+            "rulebook": file_sha256(adopted_target(paths)), "structuring_toml": file_sha256(paths.structuring_toml)}
 
 
 def config_changes(paths: desk_paths.DeskPaths) -> List[Dict[str, Optional[str]]]:

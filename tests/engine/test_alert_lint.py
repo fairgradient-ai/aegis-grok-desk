@@ -14,10 +14,12 @@ import datetime
 import glob
 import json
 import os
+import re
 import unittest
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
+from unittest import mock
 
-from aegis_desk import alert_lint
+from aegis_desk import alert_lint, alerts
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALERT_FIXTURES = os.path.join(ROOT, "tests", "fixtures", "alerts")
@@ -93,7 +95,8 @@ class SnapshotFooterTest(unittest.TestCase):
     def test_the_exact_line(self) -> None:
         self.assertEqual("public market data · posted by an AI assistant · not a signal and not personalized "
                          "investment advice · data delayed 15 min, as of 19:31 UTC", self.SNAPSHOT)
-        self.assertEqual((alert_lint.FOOTER_RULES, alert_lint.FOOTER_SNAPSHOT), alert_lint.FOOTER_KINDS)
+        self.assertEqual((alert_lint.FOOTER_RULES, alert_lint.FOOTER_SNAPSHOT, alert_lint.FOOTER_STRUCTURING),
+                         alert_lint.FOOTER_KINDS)
 
     def test_a_snapshot_passes_only_in_snapshot_mode(self) -> None:
         text = message(self.BODY, footer=self.SNAPSHOT)
@@ -138,6 +141,337 @@ class SnapshotFooterTest(unittest.TestCase):
         self.assertNotIn("footer", alert_lint.EMITTED_DOCUMENT_KEYS, "an optional key: every rules document is unchanged")
         with self.assertRaises(ValueError):
             alert_lint.load_emitted({"emitted_numbers": self.EMITTED, "footer": "market"})
+
+
+# --------------------------------------------------------------------------------------------
+# The structuring footer (PR 3b, designer C's decision D5): the Structuring Desk's tickets, roll analyses and
+# proposals. Its table's advice and claim phrases are spelled in the cases below (none is order-shaped); the
+# order-shaped words among the cases are assembled from pieces, as everywhere in this file.
+# --------------------------------------------------------------------------------------------
+
+STRUCTURING_LINE = ("computed by the desk's tools from your criteria · posted by an AI assistant · a personalized "
+                    "suggestion for positions you hold, not an order · you decide and act in your brokerage account "
+                    "· data delayed 15 min, as of 19:31 UTC")
+LEG_CLOSE = "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425"
+LEG_OPEN = "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60"
+STRUCTURING_IMPERATIVES = ("open", "write", "take", "go", "consider", "choose", "pick", "use", "let", "keep", "hold", "set",
+                           "type", "act", "do", "try", "hedge", "protect", "cover", "collar", "unwind", "monetize",
+                           "replace", "lock", "add")
+# (code, texts the entry refuses, texts it leaves alone): the regex of each entry re-derived against both lists.
+STRUCTURING_PHRASE_CASES: Tuple[Tuple[str, Tuple[str, ...], Tuple[str, ...]], ...] = (
+    ("SL01", ("you might want to", "one may wish to", "you would like to", "you could want to"),
+     ("you might see", "one would expect", "you may")),
+    ("SL02", ("I'd", "we would", "I would", "we'd"), ("it would", "we will", "Id")),
+    ("SL03", ("I suggest", "we advise", "I prefer", "we favour", "we favor", "I propose", "we like"),
+     ("it proposes", "the suggestion", "I see")),
+    ("SL04", ("go with", "goes with", "going with"), ("go without", "gone with")),
+    ("SL05", ("the one to pick", "the one to choose", "the one to take", "the one to use", "the one to open"),
+     ("the one to the left", "one to pick")),
+    ("SL06", ("best move", "better choice", "smart bet", "smarter trade", "wise play", "right idea", "good deal"),
+     ("best score", "go" + "od till", "a better level")),
+    ("SL07", ("you must", "you need to", "you have to", "you ought to", "you will need to", "you really must"),
+     ("you need a", "the steps need at once", "you have a ticket")),
+    ("SL08", ("probability", "probabilities", "chance", "chances", "likely", "likelihood", "odds", "pop"),
+     ("popular", "chancellor", "oddsmaker")),
+    ("SL09", ("guarantee", "guarantees", "guaranteed", "risk-free", "risk free", "cannot lose", "can't lose",
+              "sure thing"), ("risky", "unsure")),
+    ("SL10", ("act now", "move fast", "act quickly", "move today", "don't miss", "dont miss", "urgent", "urgently"),
+     ("act in your brokerage account", "the move of the stock", "missing")),
+    ("SL11", ("suit", "suits", "suited", "suitable", "suitability", "right for you", "best fit for you",
+              "ideal for you", "appropriate for you"), ("suite", "pursuit", "right for the call")),
+    ("SL12", tuple("pl" + "ac" + ending for ending in ("e", "es", "ed", "ing")),
+     ("re" + "pl" + "ace", "re" + "pl" + "acement", "pl" + "acement")),
+    ("SL13", ("safe", "safer", "safest", "safely", "safety"), ("unsafe", "safeguard")),
+    ("SL14", ("at 1.90", "for 3.50", "at $1.90", "at 1,640.00", "for +0.05", "at -0.70", "at .50"),
+     ("at 19:31 UTC", "for 2 contracts", "at or above 0.50", "for 2,000 shares", "at 15 min", "for the 105 call")),
+)
+
+
+def structuring_line(as_of: datetime.datetime = AS_OF, delay_min: int = 15) -> str:
+    return alert_lint.structuring_footer_line(as_of, delay_min)
+
+
+def emitted_of(text: str) -> List[str]:
+    """Every number a formatter would have emitted for ``text`` (rule ids read as none, as structuring mode does)."""
+    return [token.text for token in alert_lint.unwhitelisted_numbers(text, [])]
+
+
+def structuring_check(*lines: str, footer: Optional[str] = None, emitted: Optional[Sequence[str]] = None,
+                      **kwargs: object) -> alert_lint.LintResult:
+    text = "\n".join(list(lines) + [structuring_line() if footer is None else footer])
+    numbers = emitted_of("\n".join(lines)) if emitted is None else list(emitted)
+    return alert_lint.check(text, numbers, footer=alert_lint.FOOTER_STRUCTURING, **kwargs)
+
+
+class StructuringFooterTest(unittest.TestCase):
+    """``footer="structuring"``: the exact line, the cross-refusals (it never closes rule content; the rules and snapshot
+    footers never close a leg or a candidate), ``rule_ids=None`` read as ``[]``, the as-of pin, the SL table, the
+    imperative starts IS10 to IS34 and the fixed leg grammar (designer C's decision D5, items 1 to 7)."""
+
+    def test_the_exact_line(self) -> None:
+        line = structuring_line()
+        self.assertEqual(STRUCTURING_LINE, line)
+        self.assertEqual(226, len(line))
+        self.assertEqual("structuring", alert_lint.FOOTER_STRUCTURING)
+        self.assertEqual(("rules", "snapshot", "structuring"), alert_lint.FOOTER_KINDS)
+        self.assertEqual(line[:-len("15 min, as of 19:31 UTC")], alert_lint.STRUCTURING_FOOTER_PREFIX)
+        match = alert_lint.STRUCTURING_FOOTER_RE.match(line)
+        self.assertEqual(("15", "19:31"), (match.group("delay"), match.group("clock")))
+        self.assertIsNone(alert_lint.STRUCTURING_FOOTER_RE.match(FOOTER))
+        self.assertIsNone(alert_lint.FOOTER_RE.match(line))
+        self.assertTrue(structuring_line(delay_min=20).endswith("data delayed 20 min, as of 19:31 UTC"))
+        eastern = datetime.timezone(datetime.timedelta(hours=-5))
+        self.assertEqual(line, structuring_line(AS_OF.astimezone(eastern)))
+        with self.assertRaises(ValueError):
+            structuring_line(AS_OF.replace(tzinfo=None))
+
+    def test_the_footer_dicts(self) -> None:
+        kinds = set(alert_lint.FOOTER_KINDS)
+        self.assertEqual((kinds, kinds, kinds), (set(alert_lint._FOOTER_RES), set(alert_lint._FOOTER_PREFIXES),
+                                                 set(alert_lint._FOOTER_NAMES)))
+        self.assertEqual({"rules": "fixed footer", "snapshot": "market-snapshot footer",
+                          "structuring": "structuring footer"}, alert_lint._FOOTER_NAMES)
+        self.assertEqual({"rules": alert_lint.FOOTER_PREFIX, "snapshot": alert_lint.SNAPSHOT_FOOTER_PREFIX,
+                          "structuring": alert_lint.STRUCTURING_FOOTER_PREFIX}, alert_lint._FOOTER_PREFIXES)
+        self.assertIs(alert_lint.STRUCTURING_FOOTER_RE, alert_lint._FOOTER_RES["structuring"])
+        missing = structuring_check(LEG_CLOSE, footer="no footer on this line")
+        self.assertEqual(["footer_missing"], codes(missing), missing.problems)
+        self.assertEqual("the last line is not the structuring footer (%sN min, as of HH:MM UTC)"
+                         % alert_lint.STRUCTURING_FOOTER_PREFIX, missing.problems[0])
+
+    def test_a_structuring_text_passes_only_in_its_own_mode(self) -> None:
+        text = "\n".join([LEG_CLOSE, LEG_OPEN, structuring_line()])
+        numbers = emitted_of("\n".join([LEG_CLOSE, LEG_OPEN]))
+        result = alert_lint.check(text, numbers, footer=alert_lint.FOOTER_STRUCTURING, as_of=AS_OF)
+        self.assertTrue(result.ok, result.problems)
+        for kind in (alert_lint.FOOTER_RULES, alert_lint.FOOTER_SNAPSHOT):
+            with self.subTest(kind=kind):
+                self.assertIn("footer_missing", codes(alert_lint.check(text, numbers, footer=kind)))
+        self.assertIn("footer_missing", codes(alert_lint.check(text, numbers)), "the default stays the rules footer")
+
+    def test_rule_content_cannot_close_with_the_structuring_footer(self) -> None:
+        for body in ("your rule DTE21 fired", "Your Rules changed", "EXIT SIGNAL AG-20261020-01", "an EXIT_SIGNAL",
+                     "WATCH AG-20261020-01", "HOLD portfolio", "rules 1.0.0", "the RULES 1.1.0 file"):
+            with self.subTest(body=body):
+                result = structuring_check("TICKET AG-20261020-01 | WMT covered call", body)
+                self.assertIn("footer_missing", codes(result), result.problems)
+                self.assertIn("the structuring footer cannot close rule content (a rule, a verdict or a rulebook "
+                              "version, line 2): an alert keeps the rules footer", result.problems)
+        named = structuring_check(LEG_CLOSE, rule_ids=["TP80"])
+        self.assertEqual(["footer_missing"], codes(named))
+        self.assertEqual(["the structuring footer cannot close rule content (a rule, a verdict or a rulebook version: "
+                          "rule ids were given): an alert keeps the rules footer"], named.problems)
+        for body in ("UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria",
+                     "after leg 1 you hold 200 WMT shares", "the held call", "a watch list", "rules of thumb"):
+            with self.subTest(body=body):
+                self.assertTrue(structuring_check(body).ok, structuring_check(body).problems)
+        self.assertTrue(structuring_check(LEG_CLOSE, rule_ids=[]).ok)
+
+    def test_rule_ids_none_is_read_as_empty(self) -> None:
+        body = "an adjusted root WMT1 after a corporate action"
+        result = structuring_check(body, emitted=[])
+        self.assertEqual(["number_not_emitted"], codes(result), "no capitals-and-digits word is a rule id here")
+        self.assertEqual(codes(result), codes(structuring_check(body, emitted=[], rule_ids=[])))
+        self.assertTrue(structuring_check(body, emitted=["1"]).ok)
+        self.assertTrue(alert_lint.check(message(body), []).ok, "the rules mode keeps its permissive rule-id whitelist")
+
+    def test_the_rules_and_snapshot_footers_cannot_close_a_structuring_text(self) -> None:
+        bodies = ((LEG_CLOSE, 1), ("  leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call", 1),
+                  ("LEG 1 OF 2: closes your short 2 x WMT 2026-11-20 105 call", 1),
+                  ("an opening line\nleg 2 of 2 : opens a new short 2 x WMT 2027-01-15 115 call", 2),
+                  ("BEST CANDIDATE 1 of 20", 1), ("the best candidate", 1), ("the best-candidate line", 1),
+                  ("best_candidates", 1), ("x\ncandidate 2: closes the 2026-11-20 105 call", 2),
+                  ("candidates 3 of 7", 1), ("candidate 3 of 7 shown", 1), ("Candidate 2 :", 1))
+        numbers = ["1", "2", "105", "115", "3.35", "3.50", "3.425", "20", "3", "7"]
+        for kind, name, line in ((alert_lint.FOOTER_RULES, "fixed footer", FOOTER),
+                                 (alert_lint.FOOTER_SNAPSHOT, "market-snapshot footer",
+                                  alert_lint.snapshot_footer_line(AS_OF))):
+            for body, number in bodies:
+                with self.subTest(kind=kind, body=body):
+                    result = alert_lint.check(body + "\n" + line, numbers, footer=kind)
+                    self.assertEqual(["footer_missing"], codes(result), result.problems)
+                    self.assertEqual(["the %s cannot close a structuring text (a leg or a candidate, line %d): use the "
+                                      "structuring footer" % (name, number)], result.problems)
+            for body in ("rules/candidate-1.1.0.toml", "the candidate rulebook candidate-1.1.0.toml", "candidate 1.1.0",
+                         "a candidate", "the candidates", "the call is leg 1 of 2: in a roll", "legs 1 of 2: shown",
+                         "the leg 1 quote", "candidate-2: x", "best of the candidates"):
+                with self.subTest(kind=kind, narrowed=body):
+                    result = alert_lint.check(body + "\n" + line, ["1.1.0", "1", "2"], footer=kind)
+                    self.assertTrue(result.ok, result.problems)
+
+    def test_the_footer_rules_still_hold(self) -> None:
+        moved = structuring_check(LEG_CLOSE, as_of=AS_OF + datetime.timedelta(minutes=5))
+        self.assertEqual(["footer_missing"], codes(moved), "as_of pins the structuring footer's clock too")
+        self.assertIn("19:36 UTC", moved.problems[0])
+        late = structuring_check(LEG_CLOSE, footer=structuring_line(delay_min=20))
+        self.assertEqual(["number_not_emitted"], codes(late), "a delay other than 15 minutes must be emitted")
+        self.assertTrue(structuring_check(LEG_CLOSE, footer=structuring_line(delay_min=20),
+                                          emitted=emitted_of(LEG_CLOSE) + ["20"]).ok)
+        dotted = structuring_check(LEG_CLOSE + " · extra")
+        self.assertEqual(["non_ascii"], codes(dotted), "the middle dot belongs to the footer line only")
+        strict = structuring_check(LEG_CLOSE, "on 2026-11-23", identifiers=["2026-11-20"], clocks=["19:31 UTC"],
+                                   as_of=AS_OF)
+        self.assertEqual(["identifier_not_emitted"], codes(strict), strict.problems)
+        self.assertTrue(structuring_check(LEG_CLOSE, identifiers=["2026-11-20"], clocks=["19:31 UTC"], as_of=AS_OF).ok)
+        with self.assertRaises(ValueError):
+            alert_lint.check(LEG_CLOSE + "\n" + structuring_line(), [], footer="structured")
+
+    def test_the_structuring_phrase_table(self) -> None:
+        table = alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE
+        self.assertEqual(["SL%02d" % index for index in range(1, 15)], [entry.code for entry in table])
+        self.assertEqual(["advice", "advice", "advice", "advice", "advice", "advice", "advice", "claim", "claim",
+                          "urgency", "advice", "order-instruction", "claim", "order-field"],
+                         [entry.category for entry in table])
+        for entry in table:
+            with self.subTest(entry=entry.code):
+                self.assertTrue(entry.pattern.search(entry.example), entry.code)
+                self.assertTrue(entry.pattern.flags & re.IGNORECASE, entry.code)
+                self.assertNotIn(entry.pattern, alert_lint.FORBIDDEN_PATTERNS, "the SL table stays out of the "
+                                 "global screen cli_journeys reads")
+        self.assertEqual(25, len(alert_lint.FORBIDDEN_LANGUAGE))
+        self.assertEqual(len(alert_lint.FORBIDDEN_LANGUAGE), len(alert_lint.FORBIDDEN_PATTERNS))
+        self.assertEqual([case[0] for case in STRUCTURING_PHRASE_CASES], [entry.code for entry in table])
+
+    def test_each_entry_against_its_cases(self) -> None:
+        table = {entry.code: entry for entry in alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE}
+        for code, refused, allowed in STRUCTURING_PHRASE_CASES:
+            for text in refused:
+                with self.subTest(code=code, refused=text):
+                    self.assertIsNotNone(table[code].pattern.search("the desk says " + text + " here"), text)
+            for text in allowed:
+                with self.subTest(code=code, allowed=text):
+                    self.assertIsNone(table[code].pattern.search("the desk says " + text + " here"), text)
+
+    def test_every_phrase_is_refused_in_structuring_mode_only(self) -> None:
+        for entry in alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE:
+            code = "order_field" if entry.code == "SL14" else "forbidden_language"
+            self.assertEqual(code, "order_field" if entry.category == "order-field" else "forbidden_language")
+            for variant in (entry.example, entry.example.upper(), entry.example.title(), entry.example.lower()):
+                body = "the desk says " + variant + " here"
+                with self.subTest(entry=entry.code, variant=variant):
+                    result = structuring_check(body)
+                    self.assertIn(code, codes(result), result.problems)
+                    self.assertTrue(any(entry.code in problem for problem in result.problems), result.problems)
+                    rules = alert_lint.check(message(body), emitted_of(body), rule_ids=[])
+                    self.assertFalse(any(entry.code in problem for problem in rules.problems), rules.problems)
+            if " " in entry.example and entry.pattern.fullmatch(entry.example):  # a phrase of several words
+                for joined in (entry.example.replace(" ", "\n"), entry.example.replace(" ", "   "),
+                               entry.example.replace(" ", "\t"), entry.example.replace(" ", "-"),
+                               entry.example.replace(" ", "_")):
+                    with self.subTest(entry=entry.code, joined=joined):
+                        result = structuring_check("the desk says " + joined + " here")
+                        self.assertTrue(any(entry.code in problem for problem in result.problems), result.problems)
+
+    def test_problems_never_echo_the_phrase(self) -> None:
+        for entry in alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE:
+            result = structuring_check("the desk says " + entry.example + " here")
+            for problem in result.problems:
+                for other in alert_lint.STRUCTURING_FORBIDDEN_LANGUAGE:
+                    self.assertIsNone(other.pattern.search(problem), (entry.code, problem))
+                for pattern in alert_lint.FORBIDDEN_PATTERNS:
+                    self.assertIsNone(pattern.search(problem), (entry.code, problem))
+
+    def test_phrases_inside_the_footer_line_are_skipped(self) -> None:
+        probe = alert_lint._phrase("SL99", "claim", r"\bpersonalized\s+suggestion\b", "personalized suggestion")
+        with mock.patch.object(alert_lint, "STRUCTURING_FORBIDDEN_LANGUAGE", (probe,)):
+            clean = structuring_check(LEG_CLOSE)
+            self.assertTrue(clean.ok, clean.problems)
+            echoed = structuring_check("a personalized suggestion")
+            self.assertEqual(["forbidden_language"], codes(echoed))
+            self.assertEqual("line 1, column 3: forbidden language (claim, SL99)", echoed.problems[0])
+
+    def test_the_structuring_imperative_starts(self) -> None:
+        self.assertEqual(STRUCTURING_IMPERATIVES, alert_lint.STRUCTURING_IMPERATIVE_START_WORDS)
+        self.assertEqual(9, len(alert_lint.IMPERATIVE_START_WORDS), "the base list is unchanged")
+        for index, word in enumerate(STRUCTURING_IMPERATIVES, 10):
+            for spelled in (word, word.title()):
+                for body in (spelled + " the 2027-01-15 115 call", "a line. " + spelled + " it",
+                             "TICKET AG-20261020-01 | " + spelled + " it", "reasons: " + spelled + " it",
+                             "a line, so " + spelled + " it"):
+                    with self.subTest(word=spelled, body=body):
+                        result = structuring_check(body)
+                        problems = [p for f, p in zip(result.findings, result.problems) if f.code == "imperative_start"]
+                        self.assertEqual(1, len(problems), result.problems)
+                        self.assertIn("IS%02d" % index, problems[0])
+                        self.assertNotIn(word, problems[0].lower().replace("imperative", ""))
+                        rules = alert_lint.check(message(body), emitted_of(body))
+                        self.assertNotIn("imperative_start", codes(rules), "structuring mode only")
+        for index, word in enumerate(alert_lint.IMPERATIVE_START_WORDS, 1):
+            with self.subTest(base=word):
+                result = structuring_check("a line. " + word.title() + " it")
+                self.assertTrue(any("IS%02d" % index in problem for problem in result.problems), result.problems)
+
+    def test_the_fixed_lines_pass_and_the_wording_traps_fail(self) -> None:
+        for line in ("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of "
+                     "desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)",
+                     "you supply the limit; the desk prints none",
+                     "valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
+                     "after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+                     "if you decide to act, you type it into your brokerage account yourself and you supply the limit",
+                     "the score ranks the candidates only on the objective you chose; it is not a forecast",
+                     "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
+                     "and strike",
+                     "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+                     "options is not modelled",
+                     "entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
+                     "level",
+                     "approval: the highest step needs level 1 by the desk's convention, within your self-attested "
+                     "level 2 (desk.toml); your broker's own approval for this account decides",
+                     "STRUCTURING | AG-20261020-01 roll analysis | WMT covered call",
+                     "the open interest and the hold period", "after leg 1 you hold 200 WMT shares and no option"):
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertTrue(result.ok, result.problems)
+        traps = (("type this into your broker if you decide to act", "IS22"),
+                 ("roll analysis AG-20261020-01", "IS04"),
+                 ("the desk prints no " + "lim" + "it pri" + "ce: you supply the limit", "FL22"))
+        for line, code in traps:
+            with self.subTest(trap=line):
+                result = structuring_check(line)
+                self.assertTrue(any(code in problem for problem in result.problems), result.problems)
+
+    def test_the_leg_grammar(self) -> None:
+        passing = ("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-12-18 112.5 call | ask 3.50 | quote grade B, 18 min old",
+                   "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55",
+                   "leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put",
+                   "leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80",
+                   "leg 2 of 3: closes 200 of your long WMT shares | bid 104.20, ask 104.26",
+                   "leg 3 of 3: closes 100 of your long BRK.B shares",
+                   "leg 1 of 2: opens a new short 1 x WMT1 2026-12-18 110 call",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ")
+        for line in passing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertTrue(result.ok, result.problems)
+        failing = ("leg 1 of 2: short 2 x WMT 2026-12-18 110 call to close",
+                   "leg 1 of 2: closes your short 2 WMT 2026-11-20 105 call",
+                   "Leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+                   "  leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+                   "leg 1 of 2 : closes your short 2 x WMT 2026-11-20 105 call",
+                   "leg 1 of 2:closes your short 2 x WMT 2026-11-20 105 call",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 calls",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call|bid 3.35",
+                   "leg 1 of 2: closes 200 of your short WMT shares",
+                   "leg 1 of 2: closes your short 2 x wmt 2026-11-20 105 call",
+                   "leg 1 of 2: closes your short 2 x WMT 20261120 105 call",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call and the rest",
+                   "leg 1 of 2: opens a new short 2 x WMT 2026-11-20 105 call\t",
+                   "leg 1 of 2: opens a new long 2 x WMT 2026-11-20 105 strangle",
+                   "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105. call",
+                   "leg 1 of 2: closes your short 2 x WMTXYZ1 2026-11-20 105 call")
+        for line in failing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertEqual(["order_field"], codes(result), result.problems)
+                self.assertEqual(["line 1, column 1: a leg line outside the fixed leg grammar"], result.problems)
+        both = structuring_check(LEG_CLOSE, "leg 2 of 2: opens 2 new WMT calls")
+        self.assertEqual(["line 2, column 1: a leg line outside the fixed leg grammar"], both.problems)
+        written = structuring_check("leg 1 of 2: " + STRUCTURING_IMPERATIVES[1] + " 2 WMT calls")
+        self.assertEqual(["order_field", "imperative_start"], codes(written), written.problems)
+        rules = alert_lint.check(failing[0] + "\n" + FOOTER, emitted_of(failing[0]))
+        self.assertEqual(["footer_missing"], codes(rules), "the grammar is a structuring rule; the rules footer refuses "
+                         "the leg line outright")
 
 
 class NumericTokenTest(unittest.TestCase):
@@ -461,6 +795,31 @@ def fail_fixture_table() -> dict:
     }
 
 
+STRUCTURING_PASS_FIXTURES = ("pass_structuring_ticket", "pass_structuring_roll", "pass_structuring_proposal")
+
+
+def structuring_fail_fixture_table() -> Dict[str, tuple]:
+    """``{fixture: (base pass fixture, [(old, new) text replacements], {document key: new value}, [codes])}``: each
+    structuring red-team fixture is one documented change of a passing fixture and its emitted document."""
+    rules = FOOTER
+    structuring = alert_lint.structuring_footer_line(AS_OF)
+    caveat = "the score ranks the candidates only on the objective you chose; it is not a forecast"
+    return {
+        "fail_structuring_under_rules_footer": ("pass_structuring_ticket", [(structuring, rules)], {"footer": "rules"},
+                                                ["footer_missing"]),
+        "fail_rules_text_under_structuring_footer": ("pass_exit_signal", [(rules, structuring)],
+                                                     {"footer": "structuring"}, ["footer_missing"]),
+        "fail_structuring_leg_grammar": ("pass_structuring_ticket", [(
+            "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+            "leg 1 of 2: short 2 x WMT 2026-11-20 105 call to close")], {}, ["order_field"]),
+        "fail_structuring_go_with": ("pass_structuring_roll", [(caveat, caveat + ", and owners often " + "go wi" + "th it")],
+                                     {}, ["forbidden_language"]),
+        "fail_structuring_at_price": ("pass_structuring_ticket", [("you supply the limit; the desk prints none",
+                                                                   "you supply the limit, for example " + "a" + "t 3.50")],
+                                      {}, ["order_field"]),
+    }
+
+
 def read_fixture(name: str) -> str:
     with open(os.path.join(ALERT_FIXTURES, name + ".txt"), encoding="utf-8") as handle:
         return handle.read()
@@ -477,7 +836,8 @@ class FixtureTest(unittest.TestCase):
 
     def test_every_fixture_is_listed(self) -> None:
         found = sorted(os.path.basename(path)[:-len(".txt")] for path in glob.glob(os.path.join(ALERT_FIXTURES, "*.txt")))
-        self.assertEqual(sorted(PASS_FIXTURES + tuple(fail_fixture_table())), found)
+        self.assertEqual(sorted(PASS_FIXTURES + tuple(fail_fixture_table()) + STRUCTURING_PASS_FIXTURES
+                                + tuple(structuring_fail_fixture_table())), found)
         for name in found:
             self.assertTrue(os.path.isfile(os.path.join(ALERT_FIXTURES, name + ".emitted.json")), name)
         self.assertTrue(os.path.isfile(os.path.join(ALERT_FIXTURES, "README.md")))
@@ -513,6 +873,37 @@ class FixtureTest(unittest.TestCase):
                 expected = [item for item in base_emitted["emitted_numbers"] if item not in removed] + list(added)
                 self.assertEqual(dict(base_emitted, emitted_numbers=expected), read_emitted(name))
                 self.assertEqual(set(alert_lint.EMITTED_DOCUMENT_KEYS), set(read_emitted(name)), "the strict document")
+
+    def test_structuring_fixtures_pass_in_structuring_mode(self) -> None:
+        for name in STRUCTURING_PASS_FIXTURES:
+            with self.subTest(name=name):
+                document = read_emitted(name)
+                self.assertEqual(list(alert_lint.EMITTED_DOCUMENT_KEYS) + ["footer"], list(document))
+                self.assertEqual(("structuring", []), (document["footer"], document["rule_ids"]))
+                result = self.lint(name)
+                self.assertTrue(result.ok, result.problems)
+                self.assertTrue(read_fixture(name).endswith(alert_lint.structuring_footer_line(AS_OF) + "\n"))
+                for kind in (alert_lint.FOOTER_RULES, alert_lint.FOOTER_SNAPSHOT):
+                    other = alert_lint.load_emitted(document).check(read_fixture(name), kind)
+                    self.assertIn("footer_missing", [finding.code for finding in other.findings])
+
+    def test_structuring_red_team_fixtures_fail_for_their_reason_only(self) -> None:
+        for name, (_base, _replacements, _changes, expected) in structuring_fail_fixture_table().items():
+            with self.subTest(name=name):
+                result = self.lint(name)
+                self.assertFalse(result.ok)
+                self.assertEqual(sorted(set(expected)), sorted({finding.code for finding in result.findings}),
+                                 result.problems)
+
+    def test_structuring_red_team_fixtures_derive_from_a_passing_fixture(self) -> None:
+        for name, (base, replacements, changes, _codes) in structuring_fail_fixture_table().items():
+            with self.subTest(name=name):
+                text = read_fixture(base)
+                for old, new in replacements:
+                    self.assertEqual(1, text.count(old), old)
+                    text = text.replace(old, new)
+                self.assertEqual(text, read_fixture(name))
+                self.assertEqual(dict(read_emitted(base), **changes), read_emitted(name))
 
     def test_the_brief_examples_are_verbatim(self) -> None:
         self.assertIn("loss 2x credit", read_fixture("fail_2x_credit"))
@@ -638,6 +1029,35 @@ class StrictIdentifierTest(unittest.TestCase):
         self.assertEqual((None, None, None, None), (plain.rule_ids, plain.identifiers, plain.clocks, plain.as_of))
         with self.assertRaises(ValueError):
             alert_lint.load_emitted(dict(document, as_of="19:31"))
+
+
+class FmtFooterKindTest(unittest.TestCase):
+    """``alerts.fmt_footer(kind=...)`` prints the footer of each of the lint's three kinds (designer C's D5.8: a
+    structuring text must never be closed by the snapshot footer)."""
+
+    def test_each_kind_prints_its_own_footer(self) -> None:
+        for kind, build in ((alert_lint.FOOTER_RULES, alert_lint.footer_line),
+                            (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line),
+                            (alert_lint.FOOTER_STRUCTURING, alert_lint.structuring_footer_line)):
+            with self.subTest(kind=kind):
+                emitted: List[str] = []
+                clocks: List[str] = []
+                self.assertEqual(build(AS_OF), alerts.fmt_footer(AS_OF, 15, emitted, clocks, kind=kind))
+                self.assertEqual(([], ["19:31 UTC"]), (emitted, clocks))
+                self.assertEqual(build(AS_OF, 20), alerts.fmt_footer(AS_OF, 20, emitted, kind=kind))
+                self.assertEqual(["20"], emitted)
+        self.assertEqual(alert_lint.footer_line(AS_OF), alerts.fmt_footer(AS_OF, 15, []), "the default is the rules footer")
+        with self.assertRaises(ValueError):
+            alerts.fmt_footer(AS_OF, 15, [], kind="structured")
+
+    def test_a_structuring_text_closed_by_fmt_footer_passes(self) -> None:
+        emitted = emitted_of(LEG_CLOSE)
+        clocks: List[str] = []
+        text = LEG_CLOSE + "\n" + alerts.fmt_footer(AS_OF, 15, emitted, clocks, kind=alert_lint.FOOTER_STRUCTURING)
+        result = alert_lint.check(text, emitted, rule_ids=[], identifiers=["2026-11-20"], clocks=clocks, as_of=AS_OF,
+                                  footer=alert_lint.FOOTER_STRUCTURING)
+        self.assertTrue(result.ok, result.problems)
+
 
 if __name__ == "__main__":
     unittest.main()

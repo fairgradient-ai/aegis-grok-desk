@@ -346,6 +346,43 @@ NO_OPINION: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("N60", CURSOR, cursor_mcp_http("linear", "list_issues", '{"orderBy": "updatedAt"}', "https://mcp.linear.app/sse")),
 )
 
+# The Aegis Structuring Desk's commands (PR 3b; designer C's D8 with the addendum's S2 command lines): the three tools,
+# the structuring intake, the lint in structuring mode and reads of what they write. Each gets no opinion in the Claude
+# Code and the Grok Build shapes; the gate's bytes did not change for them.
+DESK_ROOT = "--desk-root /workspace/aegis-desk"
+SCRIPTS_DIR = "python3 /workspace/aegis-grok-desk/scripts/"
+STRUCTURING_COMMANDS: Tuple[str, ...] = (
+    SCRIPTS_DIR + "roll_analysis.py --trade AG-20261020-01 " + DESK_ROOT,
+    SCRIPTS_DIR + "roll_analysis.py --trade AG-20261022-02 " + DESK_ROOT + " --json",
+    SCRIPTS_DIR + "propose.py --trade AG-20261028-03 --structure covered_call " + DESK_ROOT,
+    SCRIPTS_DIR + "propose.py --trade AG-20261028-03 --structure protective_put " + DESK_ROOT,
+    SCRIPTS_DIR + "propose.py --trade AG-20261028-03 --structure collar " + DESK_ROOT + " --json",
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261020-01 --action CLOSE " + DESK_ROOT,
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261020-01 --action UNWIND_STOCK " + DESK_ROOT,
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261020-01 --action LET_ASSIGN " + DESK_ROOT,
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261028-03 --action MONETIZE_PUT " + DESK_ROOT,
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 "
+    + DESK_ROOT,
+    SCRIPTS_DIR + "exit_ticket.py --trade AG-20261028-03 --action ROLL --new-expiration 2027-03-19 --new-strike 610 "
+    + DESK_ROOT + " --json",
+    SCRIPTS_DIR + "desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json " + DESK_ROOT,
+    SCRIPTS_DIR + "desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --replace --owner-tapped "
+    + DESK_ROOT,
+    SCRIPTS_DIR + "alert_lint.py --message-file /tmp/text.txt --emitted-file /tmp/text.json --footer structuring",
+    "cat /workspace/aegis-desk/reports/rolls/AG-20261020-01-20261103T195000Z.md",
+    "ls /workspace/aegis-desk/reports/proposals/",
+    "ls -la /workspace/aegis-desk/tickets/",
+    "cat /workspace/aegis-desk/tickets/TK-AG-20261020-01-ROLL-20261103T195000Z.md",
+    "tail -n 3 /workspace/aegis-desk/journal/structuring.jsonl",
+)
+NO_OPINION += tuple(("N%02d" % (61 + 2 * index + offset), (), shape(command))
+                    for index, command in enumerate(STRUCTURING_COMMANDS)
+                    for offset, shape in enumerate((claude_bash, grok_full)))
+# A desk tool wrapped as an MCP tool (the desk ships no MCP server): an input key named trade_id gets no opinion.
+NO_OPINION += (
+    ("N99", (), claude_mcp("mcp__aegis__roll_analysis", {"trade_id": "AG-20261020-01"})),
+)
+
 # Malformed input gets no opinion (documented fail-open): (id, arguments, raw stdin bytes).
 MALFORMED: Tuple[Tuple[str, Tuple[str, ...], bytes], ...] = (
     ("M01", (), b"not json"),
@@ -791,6 +828,25 @@ class RepositoryCommandsTest(unittest.TestCase):
                     self.assertIsNone(gate.decide(claude_bash(command)))
                     self.assertIsNone(gate.decide(grok_full(command)))
                     self.assertIsNone(gate.decide(cursor_shell(command), "cursor"))
+
+    def test_the_structuring_desk_commands_get_no_opinion_and_an_mcp_trade_key_is_denied(self) -> None:
+        def shell_tool(event: Any, command: str) -> Any:
+            """The shell tool name of a no-opinion vector that runs ``command`` (None for any other vector)."""
+            if isinstance(event, dict) and isinstance(event.get("tool_input"), dict):
+                if event["tool_input"].get("command") == command:
+                    return event.get("tool_name")
+            return None
+
+        for command in STRUCTURING_COMMANDS:
+            with self.subTest(command=command):
+                shells = sorted(name for name in (shell_tool(event, command) for _id, _args, event in NO_OPINION) if name)
+                self.assertEqual(["Bash", "run_terminal_command"], shells, "the Claude Code and the Grok Build shapes")
+        for name in ("exit_ticket.py", "roll_analysis.py", "propose.py"):
+            self.assertTrue(any(name in command for command in STRUCTURING_COMMANDS), name)
+        # The documented false positive (designer C's D8): an MCP input key named trade is denied; trade_id is a read.
+        self.assertIsNotNone(gate.decide(claude_mcp("mcp__aegis__roll_analysis", {"trade": "AG-20261020-01"})))
+        self.assertIsNotNone(gate.decide(grok_mcp("aegis__exit_ticket", {"trade": "AG-20261020-01", "action": "CLOSE"})))
+        self.assertIsNone(gate.decide(grok_mcp("aegis__exit_ticket", {"trade_id": "AG-20261020-01", "action": "CLOSE"})))
 
     def test_every_routine_prompt_and_command_gets_no_opinion(self) -> None:
         found = routine_commands()

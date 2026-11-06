@@ -15,6 +15,7 @@ import tests._path  # noqa: F401
 import dataclasses
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
@@ -22,7 +23,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 from unittest import mock
 
-from aegis_desk import desk_config, desk_paths, quote_cache, state
+from aegis_desk import desk_config, desk_paths, market_clock, quote_cache, state, tradier_client
 from aegis_desk.market_types import Quote, RequestReceipt
 
 UTC = timezone.utc
@@ -32,6 +33,8 @@ NOW = datetime(2026, 11, 3, 19, 50, 0, tzinfo=UTC)
 STAMP_MS = 1793734272000  # 2026-11-03T19:31:12Z
 QUOTES_PATH = "/v1/markets/quotes"
 CHAINS_PATH = "/v1/markets/options/chains"
+EXPIRATIONS_PATH = "/v1/markets/options/expirations"
+WMT_EXPIRATIONS = ["2026-11-06", "2026-11-13", "2026-11-20", "2026-12-18", "2027-01-15"]
 EXPIRY = date(2026, 11, 20)
 
 
@@ -90,6 +93,12 @@ class FakeChainResult:
     receipt: RequestReceipt
 
 
+@dataclasses.dataclass
+class FakeExpirationsResult:
+    dates: List[date]
+    receipt: RequestReceipt
+
+
 class FakeClient:
     """``quotes`` and ``option_chain`` with the brief's return types; ``errors`` is consumed one
     status per call (``None`` = success); ``drop`` names symbols the vendor silently omits.
@@ -105,9 +114,11 @@ class FakeClient:
 
     def __init__(self, book: Optional[Dict[str, Dict[str, Any]]] = None, chains: Optional[Dict] = None,
                  errors: Sequence[Optional[str]] = (), on_request=None, now: datetime = NOW,
-                 drop: Sequence[str] = (), raw_less: Sequence[str] = (), tick: timedelta = timedelta(0)) -> None:
+                 drop: Sequence[str] = (), raw_less: Sequence[str] = (), tick: timedelta = timedelta(0),
+                 expirations: Optional[Dict[str, List[str]]] = None) -> None:
         self.book = dict(BOOK if book is None else book)
         self.chains = dict(chains or {})
+        self.expirations = dict(expirations or {})
         self.errors = list(errors)
         self.on_request = on_request
         self.now = now
@@ -157,6 +168,12 @@ class FakeClient:
         raws = self.chains.get((symbol.upper(), expiration), [])
         return FakeChainResult([Quote.from_vendor(raw) for raw in raws], receipt)
 
+    def option_expirations(self, symbol: str, *, include_all_roots: bool = True) -> FakeExpirationsResult:
+        self.calls.append(("expirations", symbol))
+        receipt = self._attempt(EXPIRATIONS_PATH, 1)
+        listed = self.expirations.get(symbol.upper(), [])
+        return FakeExpirationsResult([date.fromisoformat(day) for day in listed], receipt)
+
 
 def receipt_at(moment: datetime, status: str = "ok", path: str = QUOTES_PATH) -> RequestReceipt:
     return RequestReceipt(path, 1, moment, status, http_status=200 if status == "ok" else 400,
@@ -184,6 +201,10 @@ class CacheTestCase(unittest.TestCase):
               cfg=None, **kwargs: Any):
         return quote_cache.get_chain(symbol, expiration, now=now, cfg=cfg or self.cfg, client=client,
                                      paths=self.paths, **kwargs)
+
+    def expirations(self, client: FakeClient, symbol: str = "WMT", now: datetime = NOW, cfg=None, **kwargs: Any):
+        return quote_cache.get_expirations(symbol, now=now, cfg=cfg or self.cfg, client=client, paths=self.paths,
+                                           **kwargs)
 
     def read_cache(self) -> Dict[str, Any]:
         with open(quote_cache.quotes_path(self.paths), encoding="utf-8") as handle:
@@ -862,6 +883,296 @@ class GetChainTest(CacheTestCase):
     def test_expiration_must_be_a_date(self) -> None:
         with self.assertRaises(ValueError):
             self.chain(self.client(), expiration="2026-11-20")  # type: ignore[arg-type]
+
+
+class GetExpirationsTest(CacheTestCase):
+    """``get_expirations`` (PR 3b, designer Q's D3 item 2): the listed expirations of one underlying, cached at
+    ``data/cache/expirations/<SYMBOL>.json`` and served without a refetch on the ET date it was fetched (a list does not
+    change within a session), with ``get_chain``'s budget guard, stop and no-send rules and warning words; it counts
+    against ``per_run_max_requests`` and never against the chain cap."""
+
+    def listed(self) -> Dict[str, List[str]]:
+        return {"WMT": list(WMT_EXPIRATIONS)}
+
+    def test_result_shape_and_path(self) -> None:
+        fields = [item.name for item in dataclasses.fields(quote_cache.ExpirationsCacheResult)]
+        self.assertEqual(["symbol", "dates", "served_from", "missing_reason", "requests_made", "receipt_utc", "warnings",
+                          "fetched_utc"], fields)
+        self.assertEqual("expirations", quote_cache.EXPIRATIONS_SUBDIR)
+        self.assertEqual(os.path.join(self.root, "data", "cache", "expirations", "WMT.json"),
+                         quote_cache.expirations_path(self.paths, " wmt "))
+        self.assertEqual(os.path.join(self.paths.cache_dir, "expirations", "SPY.json"),
+                         quote_cache.expirations_path(self.paths, "SPY"))
+        for name in ("EXPIRATIONS_SUBDIR", "ExpirationsCacheResult", "expirations_path", "get_expirations"):
+            self.assertIn(name, quote_cache.__all__)
+        result = self.expirations(self.client(expirations=self.listed()))
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            result.requests_made = 9  # type: ignore[misc]
+
+    def test_fetch_and_persist(self) -> None:
+        run = quote_cache.RunCounters()
+        client = self.client(expirations=self.listed())
+        result = self.expirations(client, symbol=" wmt ", run=run)
+        self.assertEqual([("expirations", "WMT")], client.calls)
+        self.assertEqual(("WMT", "fetch", None, 1, NOW, NOW), (result.symbol, result.served_from, result.missing_reason,
+                                                               result.requests_made, result.receipt_utc, result.fetched_utc))
+        self.assertEqual([date.fromisoformat(day) for day in WMT_EXPIRATIONS], result.dates)
+        self.assertEqual([], result.warnings)
+        self.assertEqual((1, 0), (run.requests, run.chains), "a request, never a chain")
+        with open(quote_cache.expirations_path(self.paths, "WMT"), encoding="utf-8") as handle:
+            document = json.load(handle)
+        self.assertEqual({"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00",
+                          "dates": WMT_EXPIRATIONS}, document)
+        self.assertEqual([{"utc": "2026-11-03T19:50:00+00:00", "path": EXPIRATIONS_PATH, "symbols": 1, "status": "ok",
+                           "http_status": 200, "ratelimit_available": 59}], self.ledger_lines())
+
+    def test_served_without_a_refetch_on_the_same_et_date(self) -> None:
+        self.expirations(self.client(expirations=self.listed()))
+        last_minute = datetime(2026, 11, 4, 4, 59, 59, tzinfo=UTC)  # 23:59:59 ET on 2026-11-03
+        self.assertEqual(date(2026, 11, 3), market_clock.to_et(last_minute).date())
+        for moment in (NOW, NOW + timedelta(hours=2), last_minute):
+            with self.subTest(moment=moment):
+                client = self.client()
+                result = self.expirations(client, now=moment)
+                self.assertEqual(([], "cache", 0, NOW), (client.calls, result.served_from, result.requests_made,
+                                                         result.fetched_utc))
+                self.assertEqual(5, len(result.dates))
+                self.assertIsNone(result.receipt_utc)
+        next_day = datetime(2026, 11, 4, 5, 0, 0, tzinfo=UTC)  # 00:00 ET on 2026-11-04: a new ET date
+        client = self.client(expirations={"WMT": WMT_EXPIRATIONS[1:]})
+        result = self.expirations(client, now=next_day)
+        self.assertEqual(([("expirations", "WMT")], "fetch", 4), (client.calls, result.served_from, len(result.dates)))
+        self.assertEqual("2026-11-04T05:00:00+00:00", self.read_expirations("WMT")["fetched_utc"])
+
+    def test_the_quote_ttl_does_not_apply(self) -> None:
+        self.expirations(self.client(expirations=self.listed()))
+        client = self.client()
+        later = NOW + timedelta(minutes=self.cfg.ttl_min * 20)
+        self.assertEqual("cache", self.expirations(client, now=later).served_from)
+        self.assertEqual([], client.calls)
+
+    def test_a_copy_stamped_in_the_future_is_not_trusted(self) -> None:
+        self.expirations(self.client(expirations=self.listed()), now=NOW + timedelta(minutes=1))
+        client = self.client(expirations=self.listed())
+        self.assertEqual("fetch", self.expirations(client).served_from)
+        self.assertEqual(1, len(client.calls))
+
+    def test_force_refetches_and_keeps_the_same_day_copy_when_it_cannot(self) -> None:
+        self.expirations(self.client(expirations=self.listed()))
+        forced = self.client(expirations={"WMT": WMT_EXPIRATIONS[:2]})
+        result = self.expirations(forced, force=True)
+        self.assertEqual(("fetch", 2), (result.served_from, len(result.dates)))
+        failing = self.client(errors=["network"])
+        kept = self.expirations(failing, force=True)
+        self.assertEqual(("cache", None, 1, 2), (kept.served_from, kept.missing_reason, kept.requests_made,
+                                                 len(kept.dates)))
+        self.assertTrue(any("forced refetch did not happen (fetch_failed:network)" in w for w in kept.warnings),
+                        kept.warnings)
+
+    def test_cache_only_mode_serves_any_copy(self) -> None:
+        client = self.client(expirations=self.listed())
+        absent = self.expirations(client, allow_fetch=False)
+        self.assertEqual((None, "market_closed", [], 0), (absent.served_from, absent.missing_reason, absent.dates,
+                                                          absent.requests_made))
+        self.assertEqual([], client.calls)
+        self.expirations(self.client(expirations=self.listed()), now=NOW - timedelta(days=3))
+        old = self.expirations(self.client(), allow_fetch=False)
+        self.assertEqual(("cache", 5), (old.served_from, len(old.dates)))
+        self.assertTrue(any("non-trading day" in w for w in old.warnings), old.warnings)
+        forced = self.client(expirations=self.listed())
+        self.assertEqual("cache", self.expirations(forced, allow_fetch=False, force=True).served_from)
+        self.assertEqual([], forced.calls, "force never fetches on a non-trading day")
+
+    def test_counts_against_the_request_cap_not_the_chain_cap(self) -> None:
+        no_chains = quote_cache.CacheConfig(ttl_min=5, per_run_max_chains=0)
+        run = quote_cache.RunCounters()
+        self.assertEqual("fetch", self.expirations(self.client(expirations=self.listed()), cfg=no_chains,
+                                                   run=run).served_from)
+        self.assertEqual((1, 0), (run.requests, run.chains))
+        one = quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=1)
+        capped = quote_cache.RunCounters()
+        self.get(["SPY"], self.client(), cfg=one, run=capped)
+        client = self.client(expirations={"NVDA": ["2026-12-18"]})
+        result = self.expirations(client, symbol="NVDA", cfg=one, run=capped)
+        self.assertEqual(([], None, "per_run_cap", 0), (client.calls, result.served_from, result.missing_reason,
+                                                        result.requests_made))
+        self.assertTrue(any("per-run" in w and "cap" in w for w in result.warnings), result.warnings)
+        self.assertEqual("cache", self.expirations(self.client(), cfg=one, run=capped).served_from,
+                         "the cache still serves under the cap")
+        chain_run = quote_cache.RunCounters()
+        two = quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=1)
+        self.expirations(self.client(expirations={"SPY": ["2026-12-18"]}), symbol="SPY", cfg=two, run=chain_run)
+        chain = self.chain(self.client(chains={("WMT", EXPIRY): CHAIN_WMT}), cfg=two, run=chain_run)
+        self.assertEqual("per_run_cap", chain.missing_reason, "the expirations request counts for the chain's cap")
+
+    def test_budget_guard(self) -> None:
+        self.fill_ledger(55, NOW - timedelta(seconds=5))
+        client = self.client(expirations=self.listed())
+        result = self.expirations(client)
+        self.assertEqual(([], "quota_guard", [], 0), (client.calls, result.missing_reason, result.dates,
+                                                      result.requests_made))
+        self.assertTrue(any("budget exhausted" in w for w in result.warnings), result.warnings)
+
+    def test_the_budget_counts_the_runs_own_receipts(self) -> None:
+        self.fill_ledger(54, NOW - timedelta(seconds=10))  # 60 - 5 - 54: exactly one request left
+        run = quote_cache.RunCounters()
+        hook = quote_cache.ledger_hook(self.paths, run)
+        client = FakeClient(expirations={"WMT": WMT_EXPIRATIONS, "NVDA": ["2026-12-18"]}, on_request=hook,
+                            tick=timedelta(seconds=1))  # live: the receipt is stamped after now
+        first = self.expirations(client, run=run)
+        second = self.expirations(client, symbol="NVDA", run=run)
+        self.assertEqual(("fetch", None, "quota_guard"), (first.served_from, second.served_from, second.missing_reason))
+        self.assertEqual([("expirations", "WMT")], client.calls)
+        self.assertEqual([NOW + timedelta(seconds=1)], run.receipt_stamps)
+
+    def test_errors_stop_rules_and_the_ledger(self) -> None:
+        quota_run = quote_cache.RunCounters()
+        quota = self.expirations(self.client(errors=["quota"]), run=quota_run)
+        self.assertEqual(("quota_guard", [], 1, "quota_guard"), (quota.missing_reason, quota.dates,
+                                                                quota.requests_made, quota_run.stop_reason))
+        later = self.client(chains={("WMT", EXPIRY): CHAIN_WMT}, expirations=self.listed())
+        self.assertEqual("quota_guard", self.chain(later, run=quota_run).missing_reason)
+        self.assertEqual({"SPY": "quota_guard"}, self.get(["SPY"], later, run=quota_run).missing)
+        stopped = self.expirations(later, symbol="NVDA", run=quota_run)
+        self.assertEqual(("quota_guard", 0), (stopped.missing_reason, stopped.requests_made))
+        self.assertTrue(any("stopped" in w for w in stopped.warnings), stopped.warnings)
+        self.assertEqual([], later.calls)
+        auth_run = quote_cache.RunCounters()
+        auth = self.expirations(self.client(errors=["auth"]), symbol="SPY", run=auth_run)
+        self.assertEqual(("fetch_failed:auth", "fetch_failed:auth"), (auth.missing_reason, auth_run.stop_reason))
+        network_run = quote_cache.RunCounters()
+        network = self.expirations(self.client(errors=["network"]), symbol="NVDA", run=network_run)
+        self.assertEqual(("fetch_failed:network", None, 1, 1), (network.missing_reason, network_run.stop_reason,
+                                                                network.requests_made, network_run.requests))
+        self.assertTrue(any("expirations fetch failed for NVDA" in w and "network" in w for w in network.warnings),
+                        network.warnings)
+        self.assertFalse(os.path.exists(quote_cache.expirations_path(self.paths, "NVDA")))
+        self.assertEqual(3, len([line for line in self.ledger_lines() if line["path"] == EXPIRATIONS_PATH]),
+                         "every attempt that was sent is a ledger line, failures too")
+
+    def test_a_refusal_before_sending_is_not_a_request(self) -> None:
+        for status, stops in (("bad_symbol", False), ("refused_path", True), ("refused_host", True)):
+            with self.subTest(status=status):
+                run = quote_cache.RunCounters()
+                result = self.expirations(self.client(errors=[status]), run=run)
+                self.assertEqual(("fetch_failed:" + status, 0, 0), (result.missing_reason, result.requests_made,
+                                                                    run.requests))
+                self.assertEqual("fetch_failed:" + status if stops else None, run.stop_reason,
+                                 "a refused path or host would recur: the run stops")
+        self.assertEqual([], self.ledger_lines())
+        client = self.client()
+        bad = self.expirations(client, symbol="W MT")
+        self.assertEqual(([], "fetch_failed:bad_symbol", 0), (client.calls, bad.missing_reason, bad.requests_made))
+        self.assertTrue(any("nothing sent" in w for w in bad.warnings), bad.warnings)
+
+    def test_an_empty_list_is_served_and_cached_with_a_warning(self) -> None:
+        result = self.expirations(self.client(), symbol="AAPL")
+        self.assertEqual(([], "fetch", None), (result.dates, result.served_from, result.missing_reason))
+        self.assertTrue(any("empty" in w for w in result.warnings), result.warnings)
+        self.assertEqual([], self.read_expirations("AAPL")["dates"])
+        again = self.expirations(self.client(), symbol="AAPL")
+        self.assertEqual(("cache", []), (again.served_from, again.dates))
+
+    def test_unusable_cache_files_are_refetched(self) -> None:
+        path = quote_cache.expirations_path(self.paths, "WMT")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("[")
+        corrupt = self.expirations(self.client(expirations=self.listed()))
+        self.assertEqual("fetch", corrupt.served_from)
+        self.assertTrue(any("quarantined" in w for w in corrupt.warnings), corrupt.warnings)
+        for document in ({"schema": 1, "symbol": "NVDA", "fetched_utc": "2026-11-03T19:50:00+00:00", "dates": []},
+                         {"schema": 1, "symbol": "WMT", "fetched_utc": "later", "dates": []},
+                         {"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00", "dates": "x"},
+                         {"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00",
+                          "dates": ["2026-13-01"]},
+                         {"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00", "dates": [20261218]},
+                         {"schema": 1, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00", "dates": ["20261218"]},
+                         {"schema": 2, "symbol": "WMT", "fetched_utc": "2026-11-03T19:50:00+00:00", "dates": []}):
+            with self.subTest(document=document):
+                state.atomic_write_json(path, document)
+                result = self.expirations(self.client(expirations=self.listed()))
+                self.assertEqual(("fetch", 5), (result.served_from, len(result.dates)))
+                self.assertTrue(any("expirations cache WMT" in w for w in result.warnings), result.warnings)
+
+    def test_unexpected_exceptions_and_arguments(self) -> None:
+        class Broken(FakeClient):
+            def option_expirations(self, symbol: str, *, include_all_roots: bool = True) -> FakeExpirationsResult:
+                raise RuntimeError("a bug, not a client error")
+
+        with self.assertRaises(RuntimeError):
+            self.expirations(Broken(on_request=self.hook))
+        for symbol in ("", "  ", None, 5):
+            with self.subTest(symbol=symbol):
+                with self.assertRaises(ValueError):
+                    self.expirations(self.client(), symbol=symbol)  # type: ignore[arg-type]
+        with self.assertRaises(ValueError):
+            self.expirations(self.client(), now=datetime(2026, 11, 3, 19, 50))
+
+    def test_the_lock_busy_case_serves_and_warns(self) -> None:
+        with mock.patch.object(quote_cache.state, "locked", side_effect=state.LockBusy(self.paths.lock_path, 0.1)):
+            result = self.expirations(self.client(expirations=self.listed()))
+        self.assertEqual(("fetch", 5), (result.served_from, len(result.dates)))
+        self.assertTrue(any("expirations cache not written" in w for w in result.warnings), result.warnings)
+        self.assertFalse(os.path.exists(quote_cache.expirations_path(self.paths, "WMT")))
+
+    def test_quotes_and_chains_ignore_the_expirations_cache(self) -> None:
+        self.expirations(self.client(expirations=self.listed()))
+        self.assertFalse(os.path.exists(quote_cache.quotes_path(self.paths)))
+        self.assertFalse(os.path.exists(os.path.join(self.paths.cache_dir, quote_cache.CHAINS_SUBDIR)))
+
+    def read_expirations(self, symbol: str) -> Dict[str, Any]:
+        with open(quote_cache.expirations_path(self.paths, symbol), encoding="utf-8") as handle:
+            return json.load(handle)
+
+
+class OfflineExpirationsTest(unittest.TestCase):
+    """Offline, ``get_expirations`` reads the recorded ``expirations__<SYMBOL>.json`` of the fixture set through the
+    existing transport (``open_market_data`` on a copy of ``tests/fixtures/desk``; nothing under ``tests/fixtures`` is
+    written)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="aegis-expirations-")
+        self.root = os.path.join(os.path.realpath(self._tmp.name), "desk")
+        shutil.copytree(FIXTURE_DESK, self.root)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def recorded(self, fixture_set: str, symbol: str) -> List[date]:
+        path = os.path.join(FIXTURE_DESK, "fixtures", "tradier", fixture_set, "expirations__%s.json" % symbol)
+        with open(path, encoding="utf-8") as handle:
+            return [date.fromisoformat(day) for day in json.load(handle)["expirations"]["date"]]
+
+    def market(self, fixture_set: str, now: datetime) -> quote_cache.MarketData:
+        return quote_cache.open_market_data(self.root, now=now, offline=True, fixture_set=fixture_set, timeout_s=10.0,
+                                            user_agent="aegis-desk-tests/0")
+
+    def test_the_recorded_lists_are_served_through_the_transport(self) -> None:
+        for fixture_set, now in (("regular", NOW), ("expiry_day", datetime(2026, 11, 20, 19, 50, 0, tzinfo=UTC))):
+            for symbol in ("WMT", "NVDA", "SPY"):
+                with self.subTest(fixture_set=fixture_set, symbol=symbol):
+                    market = self.market(fixture_set, now)
+                    self.assertIsInstance(market.client, tradier_client.TradierClient)
+                    result = quote_cache.get_expirations(symbol, now=now, cfg=market.cache, client=market.client,
+                                                         paths=market.paths, run=market.run)
+                    self.assertEqual(self.recorded(fixture_set, symbol), result.dates)
+                    self.assertEqual(("fetch", 1, 1, 0), (result.served_from, result.requests_made, market.run.requests,
+                                                         market.run.chains))
+                    shutil.rmtree(os.path.join(market.paths.cache_dir, quote_cache.EXPIRATIONS_SUBDIR))
+        ledger = os.path.join(self.root, "data", "cache", "ledger.jsonl")
+        with open(ledger, encoding="utf-8") as handle:
+            paths = [json.loads(line)["path"] for line in handle.read().splitlines() if line]
+        self.assertEqual([EXPIRATIONS_PATH] * 6, paths)
+
+    def test_a_symbol_without_a_recorded_file_is_a_failed_request(self) -> None:
+        market = self.market("regular", NOW)
+        result = quote_cache.get_expirations("AAPL", now=NOW, cfg=market.cache, client=market.client,
+                                             paths=market.paths, run=market.run)
+        self.assertEqual(([], None, "fetch_failed:network", 1), (result.dates, result.served_from,
+                                                                 result.missing_reason, result.requests_made))
+        self.assertIsNone(market.run.stop_reason, "a missing fixture is a transient network failure")
+        self.assertTrue(any("no offline fixture" in w for w in result.warnings), result.warnings)
 
 
 class ToolPlumbingTest(unittest.TestCase):

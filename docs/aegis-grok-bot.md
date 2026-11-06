@@ -1,7 +1,8 @@
 # Aegis Desk on Grok Bot
 
-Grok Bot is the desk's main runtime. Three Bots, the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position
-Control, share your Grok Bot computer, run their routines there and post in their own chats.
+Grok Bot is the desk's main runtime. Four Bots share your Grok Bot computer. Three of them, the Aegis Desk Lead, the
+Aegis Exit Sentinel and Aegis Position Control, run their routines there and post in their own chats. The fourth, the
+Aegis Structuring Desk, runs no routine and answers only when you ask.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
 
@@ -66,16 +67,20 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    ```text
    Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
-   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py. These record the owner's own decisions: run them only after the owner taps approve on this card.
+   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
 
    The tool reports their lengths: `allow (506 of 1000 characters)`, `ask_first_writes (315 of 1000 characters)` and
-   `ask_first_owner_authority (250 of 1000 characters)`. Auto-review is model-based, and an "Ask first" rule wins over
+   `ask_first_owner_authority (333 of 1000 characters)`. Auto-review is model-based, and an "Ask first" rule wins over
    an "Allow" rule. Staff have reported that it can still ask for approval despite an Allow rule.
 5. **Your tap is the signature.** `desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`,
    `ack.py snooze`, `ack.py acted` and any `--allow-rth` run only after you approve their Ask-first card, and never from
    a routine. A Bot never adds `--owner-tapped` or `--allow-rth` on its own. `rules_adopt.py` also takes the phrase you
    type, for example `--owner-phrase "adopt rules 1.0.0"`.
+6. **Choices only on your request.** The Aegis Structuring Desk runs `exit_ticket.py`, `roll_analysis.py` and
+   `propose.py` only when you ask, and each run raises the same Ask-first card: your tap is the record of your request.
+   `routine.py` refuses them as routine steps. Their answers carry no order fields, and you supply the limit
+   ([STRUCTURING.md](STRUCTURING.md)).
 
 ## How a routine runs
 
@@ -127,7 +132,8 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   and the Lead reports whether it raised an Ask-first card. It runs the quick doctor, which has no sandbox check: the
   interactive full doctor verified the sandbox.
 - **Readbacks** of every Bot's Name and Job, every skill (`template`, `installed`, `pointer` or `mismatch`), the
-  Floor's members, Notifications and Timezone, and the connected apps and MCP servers.
+  Floor's members, Notifications and Timezone on the three routine-owning Bots, and the connected apps and MCP
+  servers.
 - **The weekly cost** in runs:
 
   ```text

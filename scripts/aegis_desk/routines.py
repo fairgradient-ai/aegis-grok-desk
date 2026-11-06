@@ -29,8 +29,9 @@ Sheet carries the early-close line):
   :data:`STEP_TOOLS`, no token is a flag ``routine.py`` sets itself (:data:`ROUTINE_OWNED_FLAGS`, also in the
   ``--flag=value`` spelling) or a flag no routine may carry (:data:`FORBIDDEN_CHAIN_FLAGS`), ``ack`` appears
   nowhere (its text fails the alert lint, and ``eod_summary --brief`` reads the same journals), ``routine_audit`` is
-  never a step (``eod_summary`` calls :func:`audit_day` itself), and a chain holds at most one ``book_check`` step,
-  which carries ``--post``;
+  never a step (``eod_summary`` calls :func:`audit_day` itself), the Structuring Desk's ``exit_ticket``,
+  ``roll_analysis`` and ``propose`` are never steps (:data:`STRUCTURING_REFUSAL`: they answer the owner's own request
+  only), and a chain holds at most one ``book_check`` step, which carries ``--post``;
 * ``depends_on`` (``{routine, min_gap_min}``): another routine of the manifest, with ``min_gap_min`` an integer of at
   least :data:`MIN_GAP_MIN`, and every slot of the dependant at least that many minutes after the dependency's
   latest slot;
@@ -102,10 +103,16 @@ FIXTURE_SET_TOOLS: FrozenSet[str] = frozenset({"book_check", "book", "csv_recon"
 NO_FIXTURE_SET_FLAGS: Tuple[str, ...] = ("--from-snapshot",)
 """A step carrying one of these reads a saved record, never quotes: ``routine.py`` passes it no ``--fixture-set``
 (``trigger_levels --from-snapshot`` refuses the pair)."""
+STRUCTURING_REFUSAL: str = "owner-requested only: a structuring text names candidates and never runs in a routine"
 REFUSED_STEP_TOOLS: Dict[str, str] = {
     "ack": "its text fails the alert lint (IS07) and eod_summary --brief reads the same journals",
     "routine_audit": "eod_summary calls routines.audit_day itself; routine_audit.py is an owner and Bot command",
+    "exit_ticket": STRUCTURING_REFUSAL,
+    "roll_analysis": STRUCTURING_REFUSAL,
+    "propose": STRUCTURING_REFUSAL,
 }
+"""Tools a chain names only to be refused, with the reason (the Structuring Desk's three tools answer the owner's own
+request: PR 3b decision S9, designer C's D7.1)."""
 ROUTINE_OWNED_FLAGS: Tuple[str, ...] = ("--json", "--schema", "--timeout", "--desk-root", "--offline", "--now",
                                         "--fixture-set", "--routine", "--scheduled-et", "--next-run-utc", "-h",
                                         "--help")
@@ -939,6 +946,7 @@ __all__ = [
     "Routine",
     "SCHEMA_VERSION",
     "STEP_TOOLS",
+    "STRUCTURING_REFUSAL",
     "Slot",
     "SlotAudit",
     "WEEKDAYS",

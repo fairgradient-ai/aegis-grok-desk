@@ -120,8 +120,10 @@ The 60 % of VTP is the example's documented default. Any other value is the owne
 
 - Whether to keep a vertical, end it or adjust it is the owner's decision. The plan words in a message are the owner's
   own plan, never the desk's instruction.
-- No tool in this release prices a vertical's choices. Pricing the owner's choices is
-  planned for Stage 2 (not in this release).
-- The desk checks no options approval level. `desk.toml` records `approval_level` for later stages; no tool reads it.
+- Verticals stay outside the structuring scope in this release. On the owner's request the Aegis Structuring Desk
+  prints a CLOSE ticket for a vertical, its short leg first; it proposes no spread and prices no replacement. A
+  vertical's other choices are planned for Stage 2 (not in this release).
+- No alert reads the approval level. Only the structuring tools check `desk.toml`'s self-attested `approval_level`,
+  on their own answers; a vertical is level 3 by the desk's convention.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

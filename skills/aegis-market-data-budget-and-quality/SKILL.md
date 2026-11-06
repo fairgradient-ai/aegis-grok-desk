@@ -1,6 +1,6 @@
 ---
 name: aegis-market-data-budget-and-quality
-description: How the read-only Aegis desk gets and judges market data, for the Bots whose tools fetch quotes (Exit Sentinel, Position Control, and the Desk Lead's pre-open run and Opening Bell). The one GET-only client pinned to the Tradier sandbox, the token and where it lives, the quote cache with its 60-per-minute ledger and per-run caps, the 15-minute delay and session-aware freshness, quote grades A to F, mid and liquidation marks, chains on demand, and why a stale or missing quote is UNAVAILABLE, never a zero.
+description: How the read-only Aegis desk gets and judges market data, for the Bots whose tools fetch quotes (Exit Sentinel, Position Control, the Structuring Desk, and the Desk Lead's pre-open run and Opening Bell). The one GET-only client pinned to the Tradier sandbox, the token and where it lives, the quote cache with its 60-per-minute ledger and per-run caps, the 15-minute delay and session-aware freshness, quote grades A to F, mid and liquidation marks, chains on demand (the Structuring Desk's for held symbols only, on the owner's request), and why a stale or missing quote is UNAVAILABLE, never a zero.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -75,6 +75,7 @@ desk root:
 | `quotes.json` | the latest vendor answer per symbol, with the instant it was fetched |
 | `ledger.jsonl` | one line per request attempt, success or failure |
 | `chains/<SYMBOL>__<date>.json` | an option chain, fetched only on request |
+| `expirations/<SYMBOL>.json` | a symbol's listed expirations, served again all day on the same ET date |
 | `history/<SYMBOL>__<start>__<end>.json` | daily bars, which `csv_recon.py` settles expired legs against |
 
 The rules it keeps:
@@ -184,6 +185,20 @@ python3 scripts/quote_cache.py SPY --chain SPY --expiration 2026-12-18 --desk-ro
 ```
 
 `opening_bell.py` makes exactly three requests: the quote, the expirations and one chain.
+
+The Structuring Desk's tools fetch chains only for the underlying of the group the owner named, a symbol held in
+`positions.csv`, and only on the owner's request; no routine runs them. Each run keeps to the same caps of 20
+requests and 4 chains and to the desk-wide ledger:
+
+- a roll analysis or a proposal: one quotes batch of the group's symbols, the underlying's expirations, then the
+  standard monthly chains inside the owner's window (at most four). The WMT roll analysis of the fixture made 4
+  requests: the quotes, the expirations and two chains;
+- a ticket: one quotes batch, and for a ROLL the one chain of the replacement's expiration (2 requests in the
+  fixture);
+- an expiration of the window that cannot be served (the quota, the cap, a vendor failure) makes the answer
+  UNAVAILABLE, never a best candidate on partial data;
+- a new leg is priced only from a two-sided fresh quote with a mid, at grade A to D, within the owner's
+  `max_spread_pct`; a held leg being closed needs only its conservative fresh side.
 
 The sandbox serves no index quotes, no Greeks and no implied volatility. The desk computes IV and Greeks itself from
 the quotes it has. An index underlying in `positions.csv` is reported by `csv_recon.py` as the warning

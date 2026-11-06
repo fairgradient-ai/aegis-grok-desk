@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- The Aegis Structuring Desk joins Stage 1 as a fourth Bot on the Floor. It answers only the owner's own request,
+  never runs in a routine and never fires an alert:
+  - `scripts/exit_ticket.py` (`--action` CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT, or ROLL with
+    `--new-expiration` and `--new-strike`), `scripts/roll_analysis.py` (the replacements for a covered call's short
+    call) and `scripts/propose.py` (a covered call, protective put or collar on a group that holds shares only), on
+    the library `scripts/aegis_desk/structuring.py`, `structuring_text.py` and `tickets.py`: candidates from the held
+    underlying's own monthly chains, priced with the European model and labelled as such, labelled against the owner's
+    criteria and ranked by the objective the owner declared; one best candidate when one passes every criterion;
+    tickets with the legs in a fixed order, their quotes, the cash at the conservative side and at the mid, and no
+    order fields; no `positions.csv` lines (Position Control proposes them after a fill);
+  - the owner's criteria `structuring.toml` and its strict reader (`scripts/aegis_desk/structuring_config.py`),
+    rendered by `desk_init.py` from the structuring interview with its one-time disclosure; it joins the CONFIG
+    CHANGED set acknowledged by `ack.py config`, and the structuring tools answer UNAVAILABLE while `desk.toml`,
+    `positions.csv` or `structuring.toml` are unacknowledged;
+  - the approval-level check (`scripts/aegis_desk/approval.py`), the first reader of `desk.toml`'s self-attested
+    `approval_level`, in the desk's convention;
+  - a third footer and the alert lint's structuring mode (`alert_lint.py --footer structuring`), with a fixed leg
+    grammar; the rules and market-snapshot footers refuse a leg or a candidate;
+  - `quote_cache.get_expirations`, cached per ET date, and synthetic structuring chains in the fixture desk;
+  - `routine.py` refuses the three tools as routine steps; the owner-authority Auto-review text names them (333 of
+    1000 characters), so each run asks first;
+  - `tickets/`, `reports/rolls/`, `reports/proposals/` and the audit journal `journal/structuring.jsonl`;
+  - the agent `agents/structuring-desk.md` and its generated role skill; the skills `aegis-overlay-proposals`,
+    `aegis-roll-decision-framework` and `aegis-ticket-and-unwind-order`; `docs/STRUCTURING.md`, the owner and counsel
+    reference; SETUP step 9's structuring criteria; the README, FAQ, monitoring, security and runtime pages for four
+    Bots;
+  - 368 more tests, 2952 in all (floor 2952).
 - Release tooling:
   - `scripts/release_bump.py <next> [--check]` moves the version in `plugin.json`, every mirrored manifest, the
     marketplace refs, the template's release and skill hashes, every pin `check.sh` step 4 checks, the role skills
@@ -14,9 +41,10 @@
   - `docs/RELEASE.md`, the 0.1.0 checklist and receipt, with who does each step and empty evidence rows;
   - 82 more tests, 2584 in all (floor 2584).
 - Stage-1 content:
-  - three role profiles (`agents/desk-lead.md`, `agents/exit-sentinel.md`, `agents/position-control.md`) and their
-    three generated role skills; fifteen Stage-1 skills, each with its `LICENSE` and `ATTRIBUTION.md` (one adapted:
-    the bootstrap skill, which carries its notice line in its body);
+  - four role profiles (`agents/desk-lead.md`, `agents/exit-sentinel.md`, `agents/position-control.md` and, with the
+    Structuring Desk, `agents/structuring-desk.md`) and their four generated role skills; eighteen Stage-1 skills,
+    each with its `LICENSE` and `ATTRIBUTION.md` (one adapted: the bootstrap skill, which carries its notice line in its
+    body);
   - the broker-write gate `hooks/broker_write_gate.py`, a backstop that denies a shell command or MCP tool call that
     looks like a broker write and gives no opinion on reads, registered by `hooks/hooks.json` (Claude Code and Grok
     Build) and `hooks/cursor-hooks.json` (Cursor, fail-closed, answering `ask` when it has no opinion);
@@ -41,7 +69,10 @@
   - quoting diagnostic output: a Bot quotes it only when the owner asks, unchanged, in a fenced block headed by the
     exact command, and the proposed `positions.csv` lines of `csv_recon.py --diff` appear only in Aegis Position
     Control's chat;
-  - ticket templates are planned for Stage 2 (not in this release); their review comes with them.
+  - the Structuring Desk (rows 1 to 9 of `docs/RELEASE.md` step 4): the structuring footer and the disclosure, the texts
+    of the tickets, the roll analyses and the proposals, the approval convention and the REFUSED line, the criteria
+    defaults and the interview, the FAQ answer and the README description, whether publishing software that names a best
+    candidate raises investment-adviser questions, and whether the release may advertise the Structuring Desk.
 - Levels, routines and the doctor:
   - the threshold-level sheet (`levels.py`, `trigger_levels.py`): each adopted rule as an option or spread
     price, an underlying level, a band or a date, with its arithmetic shown, rounded on the class's tick grid in

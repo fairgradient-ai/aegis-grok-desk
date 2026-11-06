@@ -29,11 +29,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
 MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
-AUTOREVIEW_SHA256 = "03355ffe641901cdd0d6a54dbde2a6ff9f376266f41759209832561bf99ce231"
+AUTOREVIEW_SHA256 = "840001327b3afa304b8d5280d2ae0d37fc67bffae45ee623a297e7672874aa62"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
+# PR 3b decision S14: the plan's Stage-2 roll-window routine is dropped (the Structuring Desk never posts alerts).
 PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1-call", "pre-event-stress",
-                            "roll-window", "weekend-stress", "calendar-build", "journal-close", "weekly-review",
+                            "weekend-stress", "calendar-build", "journal-close", "weekly-review",
                             "rules-sanity", "rulebook-memo"]
+STRUCTURING_TOOLS = ("exit_ticket", "roll_analysis", "propose")
+STRUCTURING_REFUSAL = "owner-requested only: a structuring text names candidates and never runs in a routine"
+OWNER_AUTHORITY_TEXT = ("Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.")
 UTC = datetime.timezone.utc
 TUESDAY = datetime.date(2026, 11, 3)
 SATURDAY = datetime.date(2026, 11, 21)
@@ -62,6 +66,15 @@ class ConstantsTest(unittest.TestCase):
                           "expiry_checklist", "trigger_levels"), routines.STEP_TOOLS)
         self.assertNotIn("ack", routines.STEP_TOOLS)
         self.assertNotIn("routine_audit", routines.STEP_TOOLS)
+        for name in STRUCTURING_TOOLS:
+            self.assertNotIn(name, routines.STEP_TOOLS)
+
+    def test_the_structuring_tools_are_refused_step_tools(self) -> None:
+        # PR 3b decision S9 (designer C's D7.1): owner-requested only, never in a routine.
+        self.assertEqual(("ack", "routine_audit") + STRUCTURING_TOOLS, tuple(routines.REFUSED_STEP_TOOLS))
+        for name in STRUCTURING_TOOLS:
+            self.assertEqual(STRUCTURING_REFUSAL, routines.REFUSED_STEP_TOOLS[name])
+        self.assertEqual([], order_shaped(STRUCTURING_REFUSAL))
         self.assertEqual(frozenset({"book_check", "book", "csv_recon", "expiry_checklist", "assignment_watch",
                                     "trigger_levels"}), routines.FIXTURE_SET_TOOLS)
         self.assertTrue(routines.FIXTURE_SET_TOOLS <= set(routines.STEP_TOOLS))
@@ -346,6 +359,35 @@ class StructuralRulesTest(unittest.TestCase):
                                         'chain = ["routine_audit", "eod_summary --brief"]'),
                             "routine eod-brief: step 'routine_audit': routine_audit is not a step tool")
 
+    def test_the_structuring_tools_are_refused_in_a_chain(self) -> None:
+        for name in STRUCTURING_TOOLS:
+            for step in (name, "%s --trade AG-20261020-01" % name):
+                with self.subTest(step=step):
+                    self.assert_refused(self.mutate('chain = ["eod_summary --brief"]',
+                                                    'chain = ["%s", "eod_summary --brief"]' % step),
+                                        "routine eod-brief: step '%s': %s is not a step tool: %s"
+                                        % (step, name, STRUCTURING_REFUSAL))
+            self.assert_refused(self.mutate('"15:35" = ["book_check --post --summary"]',
+                                            '"15:35" = ["book_check --post --summary", "%s"]' % name),
+                                "routine book-check: step '%s': %s is not a step tool: %s" % (name, name,
+                                                                                              STRUCTURING_REFUSAL))
+
+    def test_check_manifests_reports_a_structuring_step(self) -> None:
+        import check_manifests  # the gate script; routines' refusal reaches it through parse_manifest_text
+        from tests.gates import _trees
+        from tests.gates.test_check_manifests import ROUTINE_MANIFEST, routine_tree
+
+        old = 'chain = ["book_check --post"]'
+        self.assertEqual(1, ROUTINE_MANIFEST.count(old))
+        for name in STRUCTURING_TOOLS:
+            with self.subTest(tool=name):
+                with _trees.fixture_tree() as root:
+                    routine_tree(root, ROUTINE_MANIFEST.replace(old, 'chain = ["book_check --post", "%s"]' % name))
+                    result = check_manifests.run(root)
+                self.assertFalse(result["ok"])
+                self.assertIn("step '%s': %s is not a step tool: %s" % (name, name, STRUCTURING_REFUSAL),
+                              "\n".join(result["errors"]))
+
     def test_unknown_tool_and_bad_tokens(self) -> None:
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["positions_check"]'),
                             "routine post-expiry: step 'positions_check': positions_check is not a step tool "
@@ -457,13 +499,16 @@ class AutoreviewTest(unittest.TestCase):
         self.assertEqual(1000, self.autoreview.limit_chars)
         texts = routines.rules_text(self.manifest, self.autoreview)
         self.assertEqual(list(routines.RULE_KEYS), list(texts))
-        self.assertEqual({"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250},
+        self.assertEqual({"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 333},
                          {key: len(value) for key, value in texts.items()})
         self.assertIn(": preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs", texts["allow"])
         self.assertTrue(texts["allow"].startswith("Allow automatically: the command python3 "
                                                   "/workspace/aegis-grok-desk/scripts/routine.py followed by"))
         self.assertTrue(texts["ask_first_writes"].startswith("Ask first: placing, modifying or cancelling an order;"))
-        self.assertIn("rules_adopt.py; desk_init.py.", texts["ask_first_owner_authority"])
+        self.assertIn("rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py.",
+                      texts["ask_first_owner_authority"])
+        # PR 3b decision S9 (designer C's D7.3): exactly this text; one tap per structuring run.
+        self.assertEqual(OWNER_AUTHORITY_TEXT, texts["ask_first_owner_authority"])
         for value in texts.values():
             self.assertEqual([], order_shaped(value), value)
             self.assertNotIn("{routine_ids}", value)
@@ -473,7 +518,7 @@ class AutoreviewTest(unittest.TestCase):
         planned = dataclasses.replace(self.manifest, routines=tuple(
             dataclasses.replace(self.manifest.routines[0], id=routine_id) for routine_id in PLANNED_IDS))
         texts = routines.rules_text(planned, self.autoreview)
-        self.assertEqual(680, len(texts["allow"]))
+        self.assertEqual(667, len(texts["allow"]), "17 planned routine ids (roll-window dropped)")
         self.assertEqual([], routines.rules_text_problems(planned, self.autoreview))
 
     def test_too_long_and_unnamed_texts_are_problems(self) -> None:

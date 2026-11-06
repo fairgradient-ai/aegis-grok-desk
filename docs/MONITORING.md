@@ -28,7 +28,8 @@ platform queue delays are worst and the delayed quotes of the open are not in ye
 minutes after `preopen`, and `eod-brief` at least 20 minutes after `eod` (`depends_on` with `min_gap_min = 20`).
 
 There is no other routine. Acknowledging a signal, snoozing it or marking it acted is always yours, by a command; no
-routine runs `ack.py`.
+routine runs `ack.py`. The Aegis Structuring Desk owns no routine: `exit_ticket`, `roll_analysis` and `propose` are
+refused as routine steps, and they run only when you ask.
 
 ## What posts and when
 
@@ -61,14 +62,16 @@ never inside its rule's cooldown. A standing UNAVAILABLE banner re-posts on ever
 
 ## Which chat says what
 
-A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for all three Bots.
+A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the three routine-owning Bots:
+the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position Control.
 
 | Message | Chat |
 | --- | --- |
 | each EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED message, the rulebook digest, the pre-close line, watch alive, THRESHOLD LEVELS | Aegis Exit Sentinel |
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the post-expiry reconciliation | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF | Aegis Desk Lead |
-| An INCIDENT or WITHHELD line | the chat of the routine that printed it |
+| An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
+| A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
 ## Is the desk running?
 

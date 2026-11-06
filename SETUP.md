@@ -58,7 +58,7 @@ again.
 
 ## 2. Read the desk and run the gate
 
-The Lead reads `README.md`, this file, the skill `aegis-desk-charter` and the three agent files. Then it runs the
+The Lead reads `README.md`, this file, the skill `aegis-desk-charter` and the four agent files. Then it runs the
 repository gate once:
 
 ```text
@@ -77,8 +77,8 @@ python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --selftest --desk-root
 ## 3. Prepare the desk computer (read-only)
 
 - The desk root `/workspace/aegis-desk` exists from step 1. The tools create the folders they write into (`state/`,
-  `data/`, `journal/`, `levels/`, `plans/`, `reports/`, `incidents/`). `desk.toml`, `positions.csv`, `rules/` and
-  `research/` come from the interviews in steps 8 and 9.
+  `data/`, `journal/`, `levels/`, `plans/`, `reports/`, `incidents/`, and `tickets/` at the first ticket). `desk.toml`,
+  `positions.csv`, `rules/`, `research/` and `structuring.toml` come from the interviews in steps 8 and 9.
 - Nothing is installed: the tools are standard-library Python, 3.9 or later. The doctor's check 2 confirms the
   interpreter.
 - If you choose the token file instead of the secret card in step 8, it lives at
@@ -92,38 +92,43 @@ python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --selftest --desk-root
 | `agents/desk-lead.md` | Aegis Desk Lead | Head of the options desk |
 | `agents/exit-sentinel.md` | Aegis Exit Sentinel | Exit-rule monitor of the options desk |
 | `agents/position-control.md` | Aegis Position Control | Book-of-record and expiry controller of the options desk |
+| `agents/structuring-desk.md` | Aegis Structuring Desk | On-request choices desk of the options desk |
 
 - Each Bot gets its native Name and Job label from the table.
 - Its standing instructions are its role skill, enabled for that Bot only: `aegis-role-desk-lead`,
-  `aegis-role-exit-sentinel` or `aegis-role-position-control`. A role skill is the agent file's System prompt,
-  generated word for word.
+  `aegis-role-exit-sentinel`, `aegis-role-position-control` or `aegis-role-structuring-desk`. A role skill is the agent
+  file's System prompt, generated word for word.
+- The Aegis Structuring Desk answers only when you ask. It never fires an alert and owns no routine.
 - Each Bot also gets the desk skills its agent file lists under `skills:` (step 5).
 - The Lead reads back each Bot's Name and Job.
 
-The Aegis Book & Risk Analyst, the Aegis Structuring Desk and the Aegis Events and Calendar Analyst are planned for Stage 2 (not in this release).
+The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst are planned for Stage 2 (not in this release).
 The Aegis Rules Steward and the Aegis Review Desk are planned for Stage 3 (not in this release).
 
 ## 5. Install the skills
 
 Skills to install (Stage 1), with the Bots whose agent file lists them:
 
-| Skill | Aegis Desk Lead | Aegis Exit Sentinel | Aegis Position Control |
-| --- | --- | --- | --- |
-| `aegis-desk-charter` | yes | yes | yes |
-| `aegis-compliance-voice-and-number-discipline` | yes | yes | yes |
-| `aegis-routines-and-quiet-rules` | yes | yes | yes |
-| `aegis-market-data-budget-and-quality` | yes | yes | yes |
-| `aegis-desk-incident-playbooks` | yes | yes | yes |
-| `aegis-desk-bootstrap-and-onboarding` | yes | | |
-| `aegis-rules-dsl-and-change-control` | yes | yes | |
-| `aegis-book-marking-and-greeks-honesty` | | yes | |
-| `aegis-exit-watch-and-signal-protocol` | | yes | |
-| `aegis-threshold-levels` | | yes | |
-| `aegis-covered-call-and-cash-secured-put-management` | | yes | |
-| `aegis-protective-put-and-collar-management` | | yes | |
-| `aegis-vertical-spread-management` | | yes | |
-| `aegis-positions-csv-book-of-record` | | | yes |
-| `aegis-expiry-and-assignment-protocol` | | | yes |
+| Skill | Aegis Desk Lead | Aegis Exit Sentinel | Aegis Position Control | Aegis Structuring Desk |
+| --- | --- | --- | --- | --- |
+| `aegis-desk-charter` | yes | yes | yes | yes |
+| `aegis-compliance-voice-and-number-discipline` | yes | yes | yes | yes |
+| `aegis-routines-and-quiet-rules` | yes | yes | yes | yes |
+| `aegis-market-data-budget-and-quality` | yes | yes | yes | yes |
+| `aegis-desk-incident-playbooks` | yes | yes | yes | yes |
+| `aegis-desk-bootstrap-and-onboarding` | yes | | | |
+| `aegis-rules-dsl-and-change-control` | yes | yes | | |
+| `aegis-book-marking-and-greeks-honesty` | | yes | | yes |
+| `aegis-exit-watch-and-signal-protocol` | | yes | | |
+| `aegis-threshold-levels` | | yes | | |
+| `aegis-covered-call-and-cash-secured-put-management` | | yes | | yes |
+| `aegis-protective-put-and-collar-management` | | yes | | yes |
+| `aegis-vertical-spread-management` | | yes | | |
+| `aegis-positions-csv-book-of-record` | | | yes | |
+| `aegis-expiry-and-assignment-protocol` | | | yes | |
+| `aegis-overlay-proposals` | | | | yes |
+| `aegis-roll-decision-framework` | | | | yes |
+| `aegis-ticket-and-unwind-order` | | | | yes |
 
 What each one teaches is in [skills/README.md](skills/README.md).
 
@@ -138,23 +143,24 @@ with `skills/<name>/SKILL.md` in the checkout. `template/grok-bot.json` records 
   name but a different body is never enabled.
 
 <!-- role-skills:start -->
-Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`
+Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-structuring-desk`
 <!-- role-skills:end -->
 
 ## 6. Create the Aegis Options Floor
 
-The Lead creates one private group, "Aegis Options Floor", with exactly the three Stage-1 Bots, and reads back its
-members. A group holds two to six Bots, so the Stage-2 seats fit later. Nothing is shared publicly.
+The Lead creates one private group, "Aegis Options Floor", with exactly the four Stage-1 Bots, and reads back its
+members. A group holds two to six Bots, so the two Stage-2 seats fit later. Nothing is shared publicly.
 
 Each Bot posts its own routine output in its own chat (see [docs/MONITORING.md](docs/MONITORING.md) for which chat
-says what). Bots pass information to each other through files and tool output on the desk computer, never through
-opinions.
+says what). The Aegis Structuring Desk answers in its own chat or in the Floor, and only in reply to you. Bots pass
+information to each other through files and tool output on the desk computer, never through opinions.
 
 ## 7. Approvals and the connector check
 
-**You: Notifications and Timezone.** Turn Notifications on for all three Bots, and set Timezone to
-America/New_York on all three. No tool records these settings; the Lead reads them back from you and reports them in
-the receipt.
+**You: Notifications and Timezone.** Turn Notifications on for the three routine-owning Bots (the Aegis Desk Lead,
+the Aegis Exit Sentinel and Aegis Position Control), and set Timezone to America/New_York on all three. The Aegis
+Structuring Desk runs no routine and answers only when you ask, so it needs neither. No tool records these settings;
+the Lead reads them back from you and reports them in the receipt.
 
 **You: the Auto-review rules.** The Lead prints them from the routine manifest:
 
@@ -177,11 +183,14 @@ Auto-review rule, one rule per line. On this release they are:
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
    ```
 
-3. `ask_first_owner_authority` (250 of 1000 characters), as an "Ask first" rule:
+3. `ask_first_owner_authority` (333 of 1000 characters), as an "Ask first" rule:
 
    ```text
-   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py. These record the owner's own decisions: run them only after the owner taps approve on this card.
+   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
+
+   It also covers the Aegis Structuring Desk's three tools: each run asks first, and your tap is the record that you
+   asked.
 
 **You: Connected apps and MCP servers.** Open both lists in your Grok account and read every entry back to the Lead.
 They are account-wide: an app that can place or change orders would give every Bot that ability. None may be able
@@ -211,14 +220,27 @@ The interview comes first: the doctor reads the token's variable and the market-
 `/workspace/aegis-desk/setup/desk-answers.json`. The shape is `desk_init` "Input" in [docs/TOOLS.md](docs/TOOLS.md):
 
 - your accounts (a name and `cash`, `margin` or `ira` each) and your broker's exercise cutoff in ET, `HH:MM`;
-- your self-attested options approval level (0 to 5), declared equity, attention thresholds, the disclosures you
-  acknowledged, the engagement, `chatty` or `quiet`, and the cadence profile, `lean` or `active`;
+- your self-attested options approval level (0 to 5) in the desk's convention, declared equity, attention thresholds,
+  the disclosures you acknowledged, the engagement, `chatty` or `quiet`, and the cadence profile, `lean` or `active`;
 - the market data: host `sandbox` and the token variable `TRADIER_API_TOKEN` (or a token file);
 - the risk-free rate, its source and its date.
 
-The approval level, the attention thresholds, `chatty_or_quiet`, the engagement and the disclosures are recorded for
-later stages. No tool reads them in this release, and the desk does not check them. After your tap, the
-**owner-authority** command:
+The Lead shows the approval convention word for word:
+
+Approval levels by the desk's convention (brokers number and define their levels differently; state yours in this convention, and give the lowest level across your accounts):
+
+- `0` no options approval: the desk shows closing tickets only;
+- `1` covered calls on shares held in the same account, and cash-secured puts;
+- `2` level 1 plus long calls and long puts (protective puts, collars);
+- `3` level 2 plus defined-risk spreads;
+- `4` level 3 plus uncovered short options;
+- `5` level 4 plus uncovered index options and other advanced strategies.
+
+By the desk's convention, a closing transaction needs no approval (level 0); the broker's own rules apply.
+
+The structuring tools read the approval level (the approval-level check, [docs/STRUCTURING.md](docs/STRUCTURING.md)).
+The attention thresholds, `chatty_or_quiet`, the engagement and the disclosures are recorded for later stages; no tool
+reads them in this release. After your tap, the **owner-authority** command:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/desk-answers.json --desk-root /workspace/aegis-desk
@@ -263,7 +285,7 @@ With the token in the file, it adds `--token-file /workspace/.aegis-secrets/trad
 Before the token exists, the Lead may show only the recorded synthetic snapshot, labelled as such (the command in
 [README.md](README.md), "Try it now").
 
-## 9. Positions, dividends and the rulebook
+## 9. Positions, dividends, the rulebook and your structuring criteria
 
 **positions.csv.** The file is yours: the book of record, one row per position leg. Its format is in
 [docs/POSITIONS_CSV.md](docs/POSITIONS_CSV.md).
@@ -349,6 +371,34 @@ written: rules/exit_rules-1.0.0.toml, rules/ADOPTED, rules/CHANGELOG.md, state/d
 The rules, their grammar and later changes are in [docs/EXIT_RULES.md](docs/EXIT_RULES.md) and the skill
 `aegis-rules-dsl-and-change-control`.
 
+**Your structuring criteria.** The Aegis Structuring Desk prices your choices for a position you hold only when you
+ask, and only by criteria you set in `/workspace/aegis-desk/structuring.toml`. Without that file it shows nothing, so
+you may skip this block and do it at your first request instead. The Structuring Desk runs the interview in its own
+chat:
+
+1. It shows each section of the criteria (the covered call, the replacement of a short call, the protective put and
+   the collar) with its documented defaults. You keep a value, change it within its bounds, or switch a structure off.
+   The defaults are starting points, not a judgment that they fit your account; the full table is in
+   [docs/STRUCTURING.md](docs/STRUCTURING.md).
+2. Last, it shows the one-time disclosure `structuring-suggestions-1` word for word. It records your acknowledgement
+   only after you say that you acknowledge it.
+3. It writes your answers to `/workspace/aegis-desk/setup/structuring-answers.json` and, after your tap, runs the
+   **owner-authority** command:
+
+```text
+python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
+```
+
+Synthetic, the fixture answers `tests/fixtures/init/structuring-answers.json` at 22:03 UTC:
+
+```text
+wrote structuring.toml (1090 bytes, sha256 5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c)
+acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until structuring.toml is acknowledged
+```
+
+An existing `structuring.toml` is refused unless you tap `--replace --owner-tapped`, which rewrites the whole file
+from full answers. The doctor's check 8 then adds `structuring.toml loads (sha 5155427c)`.
+
 **The configuration acknowledgement.** Last, after your tap, the **owner-authority** command:
 
 ```text
@@ -358,8 +408,12 @@ python3 /workspace/aegis-grok-desk/scripts/ack.py config --owner-tapped --desk-r
 Synthetic, the same copy at 22:05 UTC:
 
 ```text
-configuration acknowledged at 2026-11-03 22:05 UTC: desk.toml sha f011fe05, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c
+configuration acknowledged at 2026-11-03 22:05 UTC: desk.toml sha f011fe05, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c
 ```
+
+Without `structuring.toml` the line ends after the rulebook. From now on, a change to `desk.toml`, `positions.csv`, the
+adopted rulebook or `structuring.toml` that you have not acknowledged posts CONFIG CHANGED, and the structuring tools
+answer UNAVAILABLE while `desk.toml`, `positions.csv` or `structuring.toml` differ from what you acknowledged.
 
 ## 10. Offer the routines, verify, turn on monitoring
 
@@ -377,8 +431,9 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
 | Aegis Exit Sentinel | `book-check` 10:05, 12:05, 14:05 and 15:35, and `eod` 16:35, Mon-Fri |
 | Aegis Position Control | `final-call` 15:20 Mon-Fri, and `post-expiry` 09:30 Saturday |
 
-That is nine routines. The active profile adds four Exit Sentinel book-check routines at 11:05, 13:05, 14:35 and 15:05,
-created paused. The weekly cost in runs:
+That is nine routines. The Aegis Structuring Desk creates none: its tools are refused as routine steps. The active
+profile adds four Exit Sentinel book-check routines at 11:05, 13:05, 14:35 and 15:05, created paused. The weekly cost in
+runs:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root /workspace/aegis-desk
@@ -432,12 +487,13 @@ steps.
 The Lead returns one message with the evidence of each step:
 
 - the release and the pin check line; the `check.sh` result;
-- the three Bots by Name and Job; each skill and its status; the Floor and its members;
-- Notifications and Timezone per Bot, as you reported them;
+- the four Bots by Name and Job; each skill and its status; the Floor and its members;
+- Notifications and Timezone on each routine-owning Bot, as you reported them;
 - the three Auto-review rules pasted, and whether the Test run raised a card;
 - the connector readback line; the token source (check 4) and the sandbox check (check 5);
 - the `desk.toml` sha256, the `positions.csv` verdict, rows and sha256, the calendar written, the rulebook version and
-  sha, and the configuration acknowledgement line;
+  sha, the `structuring.toml` sha256 (or that you chose to set your criteria later), and the configuration
+  acknowledgement line;
 - the routines created, paused or on, and the doctor's verdict line;
 - the dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading day means the
   desk is not running, and you rely on your broker's own alerts;
@@ -451,7 +507,7 @@ Setup stayed read-only: one sandbox market-data token was added by you; no order
 
 ## Later stages (planned)
 
-- The Aegis Book & Risk Analyst, the Aegis Structuring Desk and the Aegis Events and Calendar Analyst, with their skills and routines, are planned for Stage 2 (not in this release).
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with their skills and routines, are planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, by direct message, are planned for Stage 3 (not in this release).
 
 When asked for any of them, a Bot says it is not available in this release.

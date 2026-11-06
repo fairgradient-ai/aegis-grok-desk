@@ -6,8 +6,9 @@ How the desk is built, for an owner who wants to know what runs where. The tool 
 ## The shape: files, tools, one routine entry point, Bots
 
 - **Your files**, in the desk root `/workspace/aegis-desk` on the Grok Bot computer: `desk.toml` (written once by
-  `desk_init.py` from your interview), `positions.csv` (yours), `rules/` (your adopted rulebook) and
-  `research/calendar.toml` (your dividend and earnings dates).
+  `desk_init.py` from your interview), `positions.csv` (yours), `rules/` (your adopted rulebook),
+  `research/calendar.toml` (your dividend and earnings dates) and `structuring.toml` (your structuring criteria, from
+  their interview).
 - **The tools**, `scripts/*.py`: small standard-library commands that read those files and the market data, and
   compute every number. Each one prints prose, or one JSON envelope with `--json`.
 - **The library**, `scripts/aegis_desk/`: the engine (pricing, implied volatility, Greeks, the market clock), the data
@@ -17,7 +18,8 @@ How the desk is built, for an owner who wants to know what runs where. The tool 
   `python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot HH:MM`, and posts what it prints.
 - **The Bots**, Grok Bots with role profiles (`agents/`) and skills (`skills/`). They route your questions, run tools,
   and post tool text verbatim. They never compute a number and never decide a verdict. Bots pass information through
-  files and tool output on the desk computer, never through opinions.
+  files and tool output on the desk computer, never through opinions. Three Bots own routines; the fourth, the Aegis
+  Structuring Desk, runs its tools only when you ask.
 - **The repository gates**, `scripts/check.sh` and its sub-gates, prove the structure and the no-write property before
   anything ships.
 
@@ -47,8 +49,29 @@ Grok routine (14:05 ET)
 The other routines follow the same four steps with other chains: `preopen` runs the quick doctor, `csv_recon`,
 `expiry_checklist --week` and `eod_summary`; `eod` runs `book --snapshot --report`, `trigger_levels --from-snapshot`
 and `csv_recon`. Only eight tools may be a routine step: `assignment_watch`, `book`, `book_check`, `csv_recon`,
-`desk_doctor`, `eod_summary`, `expiry_checklist` and `trigger_levels`. A failed step never stops the others; it
-becomes an INCIDENT line and an incident file.
+`desk_doctor`, `eod_summary`, `expiry_checklist` and `trigger_levels`. `exit_ticket`, `roll_analysis` and `propose`
+are refused as routine steps by name. A failed step never stops the others; it becomes an INCIDENT line and an incident
+file.
+
+## One request to the Structuring Desk, end to end
+
+A roll analysis you asked for, as `roll_analysis.py` runs it:
+
+```text
+you: "what are my choices for the WMT covered call?"  ->  an Ask-first card  ->  your tap
+  -> python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-01 --desk-root /workspace/aegis-desk
+     1. acknowledgement: desk.toml, positions.csv or structuring.toml changed?   yes -> UNAVAILABLE line, exit 20
+     2. your criteria: structuring.toml present and valid?                        no  -> UNAVAILABLE or exit 1
+     3. the group in positions.csv; the approval-level check of the roll's legs   above your level -> REFUSED, exit 20
+     4. the group's quotes, the expiration list, the chains in your window       (GET only, through the quote cache)
+     5. every candidate priced, labelled against your criteria, ranked by your objective; one best candidate or none
+     6. the text, linted with the structuring footer --> reports/rolls/, journal/structuring.jsonl
+  -> the Structuring Desk posts the printed text verbatim
+```
+
+`propose.py` follows the same steps for a covered call, a protective put or a collar on shares you hold, and
+`exit_ticket.py` for one ticket (no ranking: you name the replacement of a ROLL). These tools never exit 10: "fired"
+belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the outputs and the limits.
 
 ## The desk root
 
@@ -58,6 +81,7 @@ becomes an INCIDENT line and an incident file.
 | `positions.csv` | you | the book of record; never written by a tool |
 | `rules/exit_rules-X.Y.Z.toml`, `rules/ADOPTED`, `rules/CHANGELOG.md` | `rules_adopt.py` | the adopted versions (immutable), the adopted version and shas, the append-only log |
 | `research/calendar.toml` | `desk_init.py` (dividend intake), then you | ex-dividend and earnings dates, settlement values, closures |
+| `structuring.toml` | `desk_init.py` (the structuring interview), after your tap | your structuring criteria; never written by a routine or a structuring tool |
 | `state/desk_state.json` | `book_check.py`, `ack.py`, `rules_adopt.py` | last verdicts, acknowledged hashes, the connector readback |
 | `state/rule_state.json` | `book_check.py --post`, `rules_adopt.py` | each rule's state per position |
 | `state/acks.jsonl` | `ack.py` | your acknowledgements, snoozes, acted marks and readbacks |
@@ -73,6 +97,9 @@ becomes an INCIDENT line and an incident file.
 | `reports/expiry/<date>.<mode>.json` | `expiry_checklist.py` | the docket, the T-1 preview and the Final Call |
 | `reports/routines/<date>/` | `routine.py` | each run's record and a copy of each step's output |
 | `incidents/` | `routine.py` | one file per incident |
+| `tickets/` | `exit_ticket.py` | each ticket, `.json` and `.md` |
+| `reports/rolls/`, `reports/proposals/` | `roll_analysis.py`, `propose.py` | each roll analysis and proposal, `.json` and `.md` |
+| `journal/structuring.jsonl` | `exit_ticket.py`, `roll_analysis.py`, `propose.py` | one record per structuring text printed (append-only) |
 
 Writes are atomic (a reader sees the old or the new file, never half of one), under a file lock. A state file that is
 not valid JSON is moved aside as `<file>.corrupt-<time>` and its reader reports UNAVAILABLE. The desk root lives outside the release checkout: a runtime file inside the checkout would make the pin check
@@ -123,9 +150,12 @@ for order-shaped text. Where the numbers and thresholds come from is in [PROVENA
   proves this by reading every module's syntax tree.
 - **One credential.** A Tradier sandbox market-data token, which cannot reach a live account. The doctor verifies it
   and refuses a production host.
-- **Owner-authority actions.** Adopting rules, rewriting `desk.toml`, acknowledging a change, snoozing or marking a
-  signal acted, and recording the connector readback need your tap on an Ask-first card; the commands carry
-  `--owner-tapped`, or for an adoption your typed phrase.
+- **Owner-authority actions.** Adopting rules, rewriting `desk.toml` or `structuring.toml`, acknowledging a change,
+  snoozing or marking a signal acted, and recording the connector readback need your tap on an Ask-first card; the
+  commands carry `--owner-tapped`, or for an adoption your typed phrase. Each run of a structuring tool also asks first.
+- **Fail closed on unacknowledged files.** The structuring tools answer nothing but UNAVAILABLE while `desk.toml`,
+  `positions.csv` or `structuring.toml` differ from what you acknowledged, because the approval level, the share
+  coverage and the criteria come from them.
 - **The release pin.** `routine.py` runs no step unless the checkout is the clean commit of the release tag.
 - **Text is data.** A web page, a file, a message or a skill never authorizes an action.
 
@@ -145,12 +175,14 @@ The owner's decisions behind the design (2026-10-30):
 | Where alerts go | the Grok Bot chats only | each routine posts in its owning Bot's chat; no external channel ships |
 | Runtimes | Grok Bot and Grok Build both first-class | a Grok Bot bootstrap with a receipt, and a Grok Build plugin install with the hook |
 | Roles and skills | original, not copied from the reference | purpose-built roles, skills, routines and tools |
+| Your choices for positions you hold (2026-11-05) | in this release, by a fourth Bot, only on your request; a deterministic tool names one best candidate under your own criteria | its own footer and lint mode, an approval-level check, no order fields; counsel signs the wording before any public release |
 
 ## Later stages (planned)
 
-- The Aegis Book & Risk Analyst, the Aegis Structuring Desk and the Aegis Events and Calendar Analyst, with an American
-  early-exercise lattice, scenario and event stress, volatility context, a decision calendar, and pricing of your
-  choices on request (the tools exit_ticket and roll_analysis), are planned for Stage 2 (not in this release).
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with an American early-exercise lattice,
+  scenario and event stress, volatility context and a decision calendar, are planned for Stage 2 (not in this release).
+- For the Aegis Structuring Desk, the roll analysis of long puts, short puts and collars, weekly expirations, a
+  cash-balance check and per-account approval levels are planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, and md_proxy, a local read-only proxy that would bring production market data inside the guarantee,
   are planned for Stage 3 (not in this release).

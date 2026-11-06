@@ -27,6 +27,11 @@ Files (under ``paths.cache_dir``, written through :mod:`aegis_desk.state`)
   (closed days never change) and served without any TTL; otherwise the quote TTL applies, an
   empty answer included. History is fetched on non-trading days too (the post-expiry Saturday
   routine), and a history request counts against ``per_run_max_requests`` like a chain.
+* ``expirations/<SYMBOL>.json``: ``{"schema": 1, "symbol", "fetched_utc", "dates": [YYYY-MM-DD, ...]}`` (PR 3b): the
+  listed expirations of one underlying (:func:`get_expirations`), the list the Structuring Desk picks its candidate
+  expirations from. An expiration list does not change within a session, so a copy fetched on the ET date of ``now``
+  is served without a refetch whatever its age (a copy stamped in the future is not trusted); an expirations request
+  counts against ``per_run_max_requests`` but never against the chain cap.
 
 Rules
 -----
@@ -66,7 +71,8 @@ Rules
   passed, and reports the rest ``market_closed``.
 * The client is duck-typed to the brief's interface (``quotes(symbols) -> QuotesResult(quotes,
   unmatched, receipt)``, ``option_chain(symbol, expiration) -> ChainResult(options, receipt)``,
-  errors carrying ``.status``), so the unit tests run with a fake and this module never imports the
+  ``option_expirations(symbol) -> ExpirationsResult(dates, receipt)``, errors carrying ``.status``),
+  so the unit tests run with a fake and this module never imports the
   network client at import time. :func:`open_market_data` (the plumbing both tools share) imports
   ``aegis_desk.tradier_client`` lazily when it builds the real client.
 
@@ -104,6 +110,8 @@ QUOTES_FILE: str = "quotes.json"
 LEDGER_FILE: str = "ledger.jsonl"
 CHAINS_SUBDIR: str = "chains"
 HISTORY_SUBDIR: str = "history"
+EXPIRATIONS_SUBDIR: str = "expirations"
+_ISO_DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 MAX_BATCH: int = 50
 """Symbols per quotes request (equals ``tradier_client.MAX_BATCH``; asserted by the tool tests)."""
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9.$^:_-]{1,32}$")
@@ -967,12 +975,154 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
     return HistoryCacheResult(symbol, start, end, bars, SERVED_FETCH, None if bars else REASON_NO_BARS, 1, receipt_utc,
                               warnings, now)
 
+# --------------------------------------------------------------------------------------------
+# Expirations (PR 3b): the listed expirations of one underlying, for the Structuring Desk
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ExpirationsCacheResult:
+    """What :func:`get_expirations` served; ``missing_reason`` is set (and ``dates`` empty) when the list could not be
+    served. ``dates`` keep the vendor's order; an empty list served is the vendor's empty answer."""
+
+    symbol: str
+    dates: List[datetime.date]
+    served_from: Optional[str]
+    missing_reason: Optional[str]
+    requests_made: int
+    receipt_utc: Optional[datetime.datetime]
+    warnings: List[str]
+    fetched_utc: Optional[datetime.datetime] = None
+
+
+def expirations_path(paths: DeskPaths, symbol: str) -> str:
+    """``data/cache/expirations/<SYMBOL>.json`` under the desk's cache directory."""
+    return os.path.join(paths.cache_dir, EXPIRATIONS_SUBDIR, "%s.json" % symbol.strip().upper())
+
+
+def _load_expirations(paths: DeskPaths, symbol: str,
+                      warnings: List[str]) -> Optional[Tuple[List[datetime.date], datetime.datetime]]:
+    label = "expirations cache %s" % symbol
+    document = _load_document(expirations_path(paths, symbol), warnings, label)
+    if document is None:
+        return None
+    stamp = _parse_utc(document.get("fetched_utc"))
+    raws = document.get("dates")
+    dates: List[datetime.date] = []
+    readable = document.get("symbol") == symbol and stamp is not None and isinstance(raws, list)
+    for raw in raws if readable else []:
+        try:
+            if not isinstance(raw, str) or not _ISO_DAY_RE.match(raw):
+                raise ValueError("not YYYY-MM-DD")
+            dates.append(datetime.date.fromisoformat(raw))
+        except ValueError:
+            readable = False
+            break
+    if not readable or stamp is None:
+        warnings.append("%s ignored: unexpected contents; refetching" % label)
+        return None
+    return dates, stamp
+
+
+def _store_expirations(paths: DeskPaths, symbol: str, now: datetime.datetime, dates: List[datetime.date],
+                       warnings: List[str]) -> None:
+    document = {"schema": SCHEMA, "symbol": symbol, "fetched_utc": state.format_utc(now),
+                "dates": [day.isoformat() for day in dates]}
+    try:
+        with state.locked(paths.lock_path, timeout_s=LOCK_TIMEOUT_S):
+            state.atomic_write_json(expirations_path(paths, symbol), document)
+    except state.LockBusy as exc:
+        warnings.append("expirations cache not written: %s" % _one_line(exc))
+
+
+def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, client: Any, paths: DeskPaths,
+                    force: bool = False, allow_fetch: bool = True,
+                    run: Optional[RunCounters] = None) -> ExpirationsCacheResult:
+    """Serve the listed expirations of ``symbol`` from ``expirations/`` or the client (module notes).
+
+    A cached copy fetched on the ET date of ``now`` (and not after ``now``) is served without a refetch: an
+    expiration list does not change within a session, so the quote TTL does not apply. ``force`` asks for a fresh
+    list and keeps that copy when the refetch cannot happen or fails; ``allow_fetch=False`` (a non-trading day) serves
+    any cached copy, with a warning when it is from another ET date, and reports ``market_closed`` without one. The
+    budget guard, the run's stop reason, the ``quota`` / credential stop rules, the no-send statuses and the warning
+    words are :func:`get_chain`'s; the request counts against ``per_run_max_requests`` and never against
+    ``per_run_max_chains``; every request the client sent is in the ledger through the client's :func:`ledger_hook`.
+    An empty answer is served and cached with a warning. ``OSError`` from the cache directory propagates.
+    """
+    now = _require_utc(now)
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non-blank string, got %r" % (symbol,))
+    symbol = symbol.strip().upper()
+    run = RunCounters() if run is None else run
+    warnings: List[str] = []
+    label = "expirations %s" % symbol
+    if not SYMBOL_RE.fullmatch(symbol):
+        warnings.append("%s is not a valid symbol (%s): nothing sent" % (symbol, SYMBOL_RE.pattern))
+        return ExpirationsCacheResult(symbol, [], None, REASON_BAD_SYMBOL, 0, None, warnings)
+    cached = _load_expirations(paths, symbol, warnings)
+    fallback: Optional[Tuple[List[datetime.date], datetime.datetime]] = None
+    if cached is not None:
+        dates, stamp = cached
+        same_day = stamp <= now and market_clock.to_et(stamp).date() == market_clock.to_et(now).date()
+        if (same_day and not force) or not allow_fetch:
+            if not same_day:
+                warnings.append("%s served from a cache copy %s old (fetched on %s ET): no fetch on a non-trading day"
+                                % (label, _age_text(now, stamp), market_clock.to_et(stamp).date().isoformat()))
+            return ExpirationsCacheResult(symbol, dates, SERVED_CACHE, None, 0, None, warnings, stamp)
+        if same_day:
+            fallback = cached  # a forced refetch: this copy stays valid if it cannot happen
+
+    def not_fetched(reason: str, requests_made: int = 0) -> ExpirationsCacheResult:
+        if fallback is not None:
+            dates, stamp = fallback
+            warnings.append("%s served from its cache copy %s old (fetched today): the forced refetch did not happen "
+                            "(%s)" % (label, _age_text(now, stamp), reason))
+            return ExpirationsCacheResult(symbol, dates, SERVED_CACHE, None, requests_made, None, warnings, stamp)
+        return ExpirationsCacheResult(symbol, [], None, reason, requests_made, None, warnings)
+
+    if not allow_fetch:
+        return not_fetched(REASON_MARKET_CLOSED)
+    if run.stop_reason is not None:
+        warnings.append("%s not fetched: fetching stopped for this run (%s)" % (label, run.stop_reason))
+        return not_fetched(run.stop_reason)
+    if run.requests >= cfg.per_run_max_requests:
+        warnings.append("per-run request cap reached (%d): %s not fetched" % (cfg.per_run_max_requests, label))
+        return not_fetched(REASON_PER_RUN_CAP)
+    if budget_left(paths, now, cfg, run) <= 0:
+        warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): expirations not fetched"
+                        % (cfg.minute_budget, cfg.minute_headroom))
+        return not_fetched(REASON_QUOTA_GUARD)
+    try:
+        result = client.option_expirations(symbol)
+    except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
+        status = _client_error_status(exc)
+        if status is None:
+            raise
+        sent = status not in NO_SEND_STATUSES  # a refusal before sending is not a request made
+        if sent:
+            run.requests += 1
+        reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
+        if status == STATUS_QUOTA or status in STOP_STATUSES:
+            run.stop_reason = reason
+        warnings.append("expirations fetch failed for %s: %s" % (symbol, _one_line(exc)))
+        return not_fetched(reason, 1 if sent else 0)
+    run.requests += 1
+    receipt = getattr(result, "receipt", None)
+    receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
+    dates = list(result.dates)
+    if not dates:
+        warnings.append("%s is empty: no listed expirations" % label)
+    _store_expirations(paths, symbol, now, dates, warnings)
+    return ExpirationsCacheResult(symbol, dates, SERVED_FETCH, None, 1, receipt_utc, warnings, now)
+
 __all__ = [
     "CHAINS_SUBDIR",
     "CacheConfig",
     "CacheResult",
     "ChainCacheResult",
     "DEFAULT_FIXTURE_SET",
+    "EXPIRATIONS_SUBDIR",
+    "ExpirationsCacheResult",
     "FETCH_FAILED_PREFIX",
     "HISTORY_SUBDIR",
     "HistoryCacheResult",
@@ -1006,9 +1156,11 @@ __all__ = [
     "budget_left",
     "build_client",
     "chain_path",
+    "expirations_path",
     "footer_line",
     "format_money",
     "get_chain",
+    "get_expirations",
     "get_history",
     "get_quotes",
     "history_path",

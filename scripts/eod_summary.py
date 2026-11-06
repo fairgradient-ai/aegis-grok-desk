@@ -107,7 +107,7 @@ OUTPUT: Dict[str, Any] = {
                  "through_et": "HH:MM | null (the eod-brief slot once it has come)",
                  "counts": {"expected": "n", "ran": "n", "late": "n", "missed": "n", "pending": "n"},
                  "audit": "routines.DayAudit.as_dict() | null (the manifest cannot be read)"},
-    "config_changed": [{"name": "desk_toml | positions_csv | rulebook (brief; null in the morning)",
+    "config_changed": [{"name": " | ".join(exit_check.CONFIG_NAMES) + " (brief; null in the morning)",
                         "old": "acknowledged sha256 | null", "new": "current sha256 | null"}],
     "calendar_findings": "integer (brief; null in the morning)",
     "incidents": [{"file": "incidents/<stamp>-<name>.md (an incident file of the ET date; brief; null in the morning)",

@@ -20,8 +20,10 @@ import tests._path  # noqa: F401
 # isort: on
 
 import csv
+import hashlib
 import io
 import json
+import math
 import os
 import re
 import unittest
@@ -29,8 +31,8 @@ from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from aegis_desk import bsm, iv, occ, toml_compat
 from aegis_desk import market_clock as mc
-from aegis_desk import occ, toml_compat
 
 UTC = timezone.utc
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -140,6 +142,44 @@ REQUIRED_QUOTE_KEYS = (
 )
 RECON_QUOTE_KEYS = ("SPY", "SPY261218P00620000", "SPY,SPY261218P00620000")
 CHAINS = {"WMT": "2026-11-20", "NVDA": "2026-11-20", "SPY": "2026-12-18"}
+# PR 3b: the structuring chains (designer Q's D1 and D2, addendum S12): no anchor contract, priced from the stated
+# surface sigma(K) = max(0.05, sigma0 - skew x ln(K / S)) with q = 0 and r = 0.0412. Per set: (underlying, expiration)
+# -> the number of entries (a call and a put per strike).
+STRUCTURING_CHAINS: Dict[str, Dict[Tuple[str, str], int]] = {
+    "regular": {("WMT", "2026-12-18"): 20, ("WMT", "2027-01-15"): 20, ("NVDA", "2026-12-18"): 20,
+                ("NVDA", "2027-01-15"): 20, ("SPY", "2027-03-19"): 24},
+    "expiry_day": {("WMT", "2027-01-15"): 20, ("NVDA", "2027-01-15"): 20},
+}
+STRUCTURING_STRIKES = {
+    "WMT": ("95", "97.5", "100", "102.5", "105", "107.5", "110", "112.5", "115", "120"),
+    "NVDA": ("130", "135", "140", "145", "150", "155", "160", "165", "170", "180"),
+    "SPY": ("580", "590", "600", "610", "620", "625", "630", "640", "650", "660", "680", "700"),
+}
+STRUCTURING_SKEW = {"WMT": 0.25, "NVDA": 0.25, "SPY": 0.50}
+# The set whose anchor quote fixes sigma0: the expiry_day anchors have 1 h 29 min left and almost no time value.
+STRUCTURING_SIGMA_SET = {"regular": "regular", "expiry_day": "regular"}
+STRUCTURING_RATE = 0.0412
+# The README table: (set, underlying, expiration) -> (spot, tau seconds, tau years, sigma0), every value as printed.
+STRUCTURING_TABLE: Dict[Tuple[str, str, str], Tuple[str, int, str, str]] = {
+    ("regular", "WMT", "2026-12-18"): ("104.23", 3893328, "0.123457", "0.4108"),
+    ("regular", "WMT", "2027-01-15"): ("104.23", 6312528, "0.200169", "0.4108"),
+    ("regular", "NVDA", "2026-12-18"): ("148.925", 3893328, "0.123457", "0.2780"),
+    ("regular", "NVDA", "2027-01-15"): ("148.925", 6312528, "0.200169", "0.2780"),
+    ("regular", "SPY", "2027-03-19"): ("648.12", 11752128, "0.372658", "0.2501"),
+    ("expiry_day", "WMT", "2027-01-15"): ("104.93", 4843728, "0.153594", "0.4108"),
+    ("expiry_day", "NVDA", "2027-01-15"): ("153.33", 4843728, "0.153594", "0.2780"),
+}
+# The bytes the generator writes (identical on CPython 3.9, 3.10, 3.12 and 3.13; the regular five are designer Q's
+# recomputed values).
+STRUCTURING_SHA256 = {
+    ("regular", "WMT", "2026-12-18"): "86d9dbc61826245c6dd6e8a2439da69fb087b61e1e6eceb2d4c0a7db7d5b38cf",
+    ("regular", "WMT", "2027-01-15"): "5197236c33f25e32ca3de93f161c7e8b1ab92a1adc037f492cd9a988854efa06",
+    ("regular", "NVDA", "2026-12-18"): "cd7da3b87be9129008f0e978924db4b21e8c6f85c5212736b2889ef11bede4b1",
+    ("regular", "NVDA", "2027-01-15"): "12e2fc2a944b695a2037103c636f16ffc7ff4c50697c034ab0f74e9dc1e424e2",
+    ("regular", "SPY", "2027-03-19"): "296ed35a204621bf442cec7d2ff2bd5846320d2091e18c009770979bfc96b1d3",
+    ("expiry_day", "WMT", "2027-01-15"): "e5a8486285363eb303621146ae93047994bc4a3aad5922cde7a41af5e4c7e26a",
+    ("expiry_day", "NVDA", "2027-01-15"): "19a099cd4d685a66aadc75d7da92933871c5427c5e88fc83bb6633514d518dd0",
+}
 HISTORY_RANGE = ("2026-10-27", "2026-11-02")
 # Bars as (date, open, high, low, close, volume); one bar is served as an object, several as a list.
 TWO_BAR_HISTORY: Dict[str, List[Tuple[str, str, str, str, str, int]]] = {
@@ -1229,6 +1269,195 @@ class ReconRootTest(unittest.TestCase):
         for trade_id in sorted(set(RECON_TRADE_IDS)):
             self.assertIn(trade_id, text, trade_id)
         self.assertNotIn("Bearer", text)
+
+
+def structuring_chain(name: str, underlying: str, expiration: str) -> List[Dict[str, Any]]:
+    return read_json(os.path.join(set_dir(name), "chains__%s__%s.json" % (underlying, expiration)))["options"]["option"]
+
+
+def third_friday(year: int, month: int) -> date:
+    first = date(year, month, 1)
+    return date(year, month, 1 + (4 - first.weekday()) % 7 + 14)
+
+
+def mid_of(quote: Dict[str, Any]) -> Decimal:
+    return (dec(quote["bid"]) + dec(quote["ask"])) / 2
+
+
+def to_tick(value: float) -> Decimal:
+    """``max(0.05, half-even(value / 0.05) x 0.05)`` to the cent: the chains' model-price rounding."""
+    ticks = (Decimal(repr(value)) / Decimal("0.05")).quantize(Decimal("1"), rounding=ROUND_HALF_EVEN)
+    return max(ticks * Decimal("0.05"), Decimal("0.05")).quantize(Decimal("0.01"))
+
+
+def cutoff_16_et(expiration: str) -> datetime:
+    return mc.from_et(datetime.combine(date.fromisoformat(expiration), mc.REGULAR_CLOSE_ET))
+
+
+def resolved_sigma0(underlying: str, sigma_set: str) -> float:
+    """sigma0 solved here from the sigma set's own anchor quote and spot (q = 0), independently of the generator."""
+    anchor = {"WMT": "WMT261120C00105000", "NVDA": "NVDA261120C00150000", "SPY": "SPY261218P00620000"}[underlying]
+    parsed = occ.parse(anchor)
+    option = quotes_in(read_json(os.path.join(set_dir(sigma_set), "quotes__%s.json" % anchor)))[0][0]
+    spot = quotes_in(read_json(os.path.join(set_dir(sigma_set), "quotes__%s.json" % underlying)))[0][0]
+    tau = (cutoff_16_et(parsed.expiration.isoformat()) - SET_FACTS[sigma_set]["stamp"]).total_seconds() / (365 * 86400)
+    solved = iv.implied_vol(float(mid_of(option)), "CALL" if parsed.is_call else "PUT", float(mid_of(spot)),
+                            float(parsed.strike), tau, STRUCTURING_RATE, 0.0)
+    assert solved.ok, (underlying, sigma_set, solved.status)
+    return solved.sigma
+
+
+class StructuringChainTest(unittest.TestCase):
+    """The structuring chains of PR 3b (designer Q's D1 and D2, addendum S12), checked independently of the
+    generator: present only where listed, the recorded shape, listed standard monthlies, re-priced here from the
+    stated surface with sigma0 re-solved from the anchor quote, put-call parity, the calendar order, and the bytes."""
+
+    def test_present_only_where_listed(self) -> None:
+        anchors = {"chains__%s__%s.json" % item for item in CHAINS.items()}
+        for name in SETS:
+            with self.subTest(name=name):
+                found = {os.path.basename(p) for p in walk_files(set_dir(name)) if os.path.basename(p).startswith("chains__")}
+                listed = {"chains__%s__%s.json" % key for key in STRUCTURING_CHAINS.get(name, {})}
+                self.assertEqual(anchors | listed, found)
+                self.assertNotIn("chains__SPY__2027-01-15.json", found, "designer Q's D2: SPY's chain is 2027-03-19")
+
+    def test_the_recorded_shape(self) -> None:
+        anchor_keys = list(quotes_in(read_json(os.path.join(set_dir("regular"), "quotes__WMT261120C00105000.json")))[0][0])
+        for name, chains in STRUCTURING_CHAINS.items():
+            stamp = epoch_ms(SET_FACTS[name]["stamp"])
+            for (underlying, expiration), count in chains.items():
+                with self.subTest(name=name, chain=(underlying, expiration)):
+                    payload = read_json(os.path.join(set_dir(name), "chains__%s__%s.json" % (underlying, expiration)))
+                    self.assertEqual(["options"], list(payload))
+                    self.assertEqual(["option"], list(payload["options"]))
+                    options = payload["options"]["option"]
+                    self.assertEqual(count, len(options))
+                    strikes = [Decimal(s) for s in STRUCTURING_STRIKES[underlying]]
+                    self.assertEqual(sorted(strikes * 2), sorted(dec(o["strike"]) for o in options))
+                    for strike in strikes:
+                        rights = sorted(o["option_type"] for o in options if dec(o["strike"]) == strike)
+                        self.assertEqual(["call", "put"], rights, strike)
+                    for option in options:
+                        self.assertEqual(anchor_keys + ["greeks"], list(option), option["symbol"])
+                        self.assertIsNone(option["greeks"])
+                        self.assertEqual((underlying, expiration, underlying), (option["underlying"],
+                                                                                option["expiration_date"],
+                                                                                option["root_symbol"]))
+                        self.assertEqual(("option", 100, "standard", None), (option["type"], option["contract_size"],
+                                                                              option["expiration_type"], option["close"]))
+                        for key in DATE_KEYS:
+                            self.assertEqual(stamp, option[key], (option["symbol"], key))
+                        self.assertLessEqual(0, dec(option["bid"]))
+                        self.assertLess(dec(option["bid"]), dec(option["ask"]))
+                        self.assertEqual(mid_of(option), dec(option["last"]), option["symbol"])
+                        parsed = occ.parse(option["symbol"])
+                        self.assertEqual((parsed.compact, parsed.root, parsed.strike, parsed.expiration.isoformat(),
+                                          "call" if parsed.is_call else "put"),
+                                         (option["symbol"], underlying, dec(option["strike"]), expiration,
+                                          option["option_type"]))
+                        self.assertGreater(option["open_interest"], 0)
+                        self.assertGreater(option["volume"], 0)
+                    for right, sign in (("call", -1), ("put", 1)):
+                        mids = [mid_of(o) for o in sorted((o for o in options if o["option_type"] == right),
+                                                          key=lambda o: dec(o["strike"]))]
+                        for earlier, later in zip(mids, mids[1:]):
+                            self.assertTrue(earlier >= later if sign < 0 else earlier <= later, (right, mids))
+
+    def test_dates_are_listed_standard_monthlies(self) -> None:
+        for name, chains in STRUCTURING_CHAINS.items():
+            for underlying, expiration in chains:
+                with self.subTest(name=name, chain=(underlying, expiration)):
+                    listed = read_json(os.path.join(set_dir(name), "expirations__%s.json" % underlying))
+                    self.assertIn(expiration, listed["expirations"]["date"])
+                    day = date.fromisoformat(expiration)
+                    self.assertEqual(day, mc.settlement_day(third_friday(day.year, day.month), False))
+                    self.assertGreater(day, SET_FACTS[name]["quote_date"])
+
+    def test_independent_re_pricing_at_each_sets_stamp(self) -> None:
+        for name, chains in STRUCTURING_CHAINS.items():
+            stamp = SET_FACTS[name]["stamp"]
+            for underlying, expiration in chains:
+                sigma0 = resolved_sigma0(underlying, STRUCTURING_SIGMA_SET[name])
+                spot_quote = quotes_in(read_json(os.path.join(set_dir(name), "quotes__%s.json" % underlying)))[0][0]
+                spot = float(mid_of(spot_quote))
+                s_prev, s_open = float(dec(spot_quote["prevclose"])), float(dec(spot_quote["open"]))
+                tau = (cutoff_16_et(expiration) - stamp).total_seconds() / (365 * 86400)
+                skew = STRUCTURING_SKEW[underlying]
+
+                def surface(strike: float, at: float) -> float:
+                    return max(0.05, sigma0 - skew * math.log(strike / at))
+
+                for option in structuring_chain(name, underlying, expiration):
+                    with self.subTest(name=name, symbol=option["symbol"]):
+                        right = "CALL" if option["option_type"] == "call" else "PUT"
+                        strike = float(dec(option["strike"]))
+                        mid = to_tick(bsm.price(right, spot, strike, tau, STRUCTURING_RATE, 0.0, surface(strike, spot)))
+                        half = Decimal("0.10") if mid >= 5 else Decimal("0.05")
+                        self.assertEqual((max(mid - half, Decimal("0")), mid + half), (dec(option["bid"]),
+                                                                                        dec(option["ask"])))
+                        self.assertEqual(mid, mid_of(option))
+                        self.assertEqual(to_tick(bsm.price(right, s_prev, strike, tau + 1.0 / 365.0, STRUCTURING_RATE, 0.0,
+                                                           surface(strike, s_prev))), dec(option["prevclose"]))
+                        self.assertEqual(to_tick(bsm.price(right, s_open, strike, tau, STRUCTURING_RATE, 0.0,
+                                                           surface(strike, s_open))), dec(option["open"]))
+
+    def test_put_call_parity(self) -> None:
+        worst = Decimal("0")
+        for name, chains in STRUCTURING_CHAINS.items():
+            stamp = SET_FACTS[name]["stamp"]
+            for underlying, expiration in chains:
+                spot = mid_of(quotes_in(read_json(os.path.join(set_dir(name), "quotes__%s.json" % underlying)))[0][0])
+                tau = (cutoff_16_et(expiration) - stamp).total_seconds() / (365 * 86400)
+                options = structuring_chain(name, underlying, expiration)
+                for strike in {dec(o["strike"]) for o in options}:
+                    call = [mid_of(o) for o in options if o["option_type"] == "call" and dec(o["strike"]) == strike][0]
+                    put = [mid_of(o) for o in options if o["option_type"] == "put" and dec(o["strike"]) == strike][0]
+                    forward = spot - strike * Decimal(repr(math.exp(-STRUCTURING_RATE * tau)))
+                    residual = abs(call - put - forward)
+                    worst = max(worst, residual)
+                    self.assertLessEqual(residual, Decimal("0.05"), (name, underlying, expiration, strike))
+        self.assertGreater(worst, 0, "the ticks leave a residual")
+
+    def test_the_later_expiration_is_worth_more(self) -> None:
+        for underlying in ("WMT", "NVDA"):
+            spot = mid_of(quotes_in(read_json(os.path.join(set_dir("regular"), "quotes__%s.json" % underlying)))[0][0])
+            december = {(o["option_type"], dec(o["strike"])): mid_of(o)
+                        for o in structuring_chain("regular", underlying, "2026-12-18")}
+            for option in structuring_chain("regular", underlying, "2027-01-15"):
+                key = (option["option_type"], dec(option["strike"]))
+                if option["option_type"] == "put" and key[1] >= spot:
+                    continue  # a deep in-the-money European put can lose value with time (r > 0)
+                with self.subTest(underlying=underlying, contract=key):
+                    self.assertGreaterEqual(mid_of(option), december[key])
+
+    def test_the_bytes(self) -> None:
+        for (name, underlying, expiration), digest in STRUCTURING_SHA256.items():
+            with self.subTest(name=name, chain=(underlying, expiration)):
+                path = os.path.join(set_dir(name), "chains__%s__%s.json" % (underlying, expiration))
+                self.assertEqual(digest, hashlib.sha256(read_bytes(path)).hexdigest())
+        self.assertEqual({(name, u, e) for name, chains in STRUCTURING_CHAINS.items() for u, e in chains},
+                         set(STRUCTURING_SHA256))
+        self.assertEqual(set(STRUCTURING_SHA256), set(STRUCTURING_TABLE))
+
+    def test_the_readme_states_the_surface_and_the_table(self) -> None:
+        text = read_text(README)
+        for (name, underlying, expiration), (spot, seconds, years, sigma0) in STRUCTURING_TABLE.items():
+            row = "| `%s` | %s %s | %s | %d / %s | %s |" % (name, underlying, expiration, spot, seconds, years, sigma0)
+            self.assertIn(row, text)
+            self.assertEqual(sigma0, "%.4f" % resolved_sigma0(underlying, STRUCTURING_SIGMA_SET[name]))
+            stamp = SET_FACTS[name]["stamp"]
+            self.assertEqual(seconds, int((cutoff_16_et(expiration) - stamp).total_seconds()))
+            self.assertEqual(years, "%.6f" % (seconds / (365 * 86400)))
+            self.assertEqual(Decimal(spot), mid_of(quotes_in(read_json(os.path.join(set_dir(name),
+                                                                                    "quotes__%s.json" % underlying)))[0][0]))
+            self.assertIn("chains__%s__%s.json" % (underlying, expiration), text)
+        for needle in ("## Structuring chains", "no anchor contract", "max(0.05, sigma0 - skew x ln(K / S))",
+                       "0.25 (WMT), 0.25 (NVDA) and 0.50 (SPY)", "`q` = 0", "`r` = 0.0412", "2027-03-19 16:00 ET = 20:00Z",
+                       "Each anchor `chains__` file holds five strikes", "no file", "0.9547", "0.3168"):
+            self.assertIn(needle, text, needle)
+        self.assertNotIn("Each `chains__` file holds five strikes", text, "the sentence names the anchor chains only")
+        for strikes in STRUCTURING_STRIKES.values():
+            self.assertIn(", ".join(strikes), text)
 
 
 class ReadmeTest(unittest.TestCase):

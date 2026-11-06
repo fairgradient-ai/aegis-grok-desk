@@ -23,13 +23,35 @@ import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import desk_init as tool  # the tool scripts/desk_init.py
-from aegis_desk import alert_lint, calendar_events, desk_config
+from aegis_desk import alert_lint, calendar_events, desk_config, structuring_config
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "answers.json")
 EXPECTED = os.path.join(ROOT, "tests", "fixtures", "init", "expected_desk.toml")
 FIXTURE_DESK_TOML = os.path.join(ROOT, "tests", "fixtures", "desk", "desk.toml")
 EXPECTED_SHA = "f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94"
+STRUCTURING_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuring-answers.json")
+EXPECTED_STRUCTURING = os.path.join(ROOT, "tests", "fixtures", "init", "expected_structuring.toml")
+EXPECTED_STRUCTURING_SHA = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
+EXPECTED_STRUCTURING_BYTES = 1090
+STRUCTURING_HINT = ("acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until "
+                    "structuring.toml is acknowledged")
+S3_VALUES = {
+    "disclosure_acknowledged": "structuring-suggestions-1",
+    "general": {"max_spread_pct": "25", "max_candidates_shown": 3},
+    "covered_call": {"enabled": True, "dte": [40, 75], "abs_delta": ["0.15", "0.35"], "min_credit": "0.50",
+                     "strike_floor": "cost_basis", "earnings": "exclude", "ex_dividend": "exclude",
+                     "objective": "extrinsic_per_day"},
+    "roll": {"enabled": True, "dte": [40, 75], "abs_delta": ["0.15", "0.35"], "min_credit": "0.50",
+             "credit_only": True, "strike_floor": "cost_basis", "earnings": "exclude", "ex_dividend": "exclude",
+             "objective": "extrinsic_per_day"},
+    "protective_put": {"enabled": True, "dte": [120, 210], "floor_pct": ["3", "10"], "stress_drop_pct": "20",
+                       "objective": "stress_cost_per_day"},
+    "collar": {"enabled": True, "dte": [120, 210], "floor_pct": ["3", "10"], "cap_pct": ["2", "10"],
+               "max_net_debit": "0.00", "strike_floor": "cost_basis", "earnings": "exclude", "ex_dividend": "exclude",
+               "objective": "cap_within_budget"},
+}
+"""PR 3b decision S3: the documented defaults the interview shows are exactly the fixture answers."""
 NOW = "2026-11-04T15:20:00Z"
 HINT = "acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in place"
 
@@ -50,6 +72,11 @@ def order_shaped(text: str) -> List[str]:
 
 def fixture_answers() -> Dict[str, Any]:
     with open(ANSWERS, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def structuring_answers() -> Dict[str, Any]:
+    with open(STRUCTURING_ANSWERS, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -99,8 +126,17 @@ class SchemaAndUsageTest(TempRoot):
         self.assertEqual(("desk_init", "none"), (body["tool"], body["network_access"]))
         self.assertEqual(["answers"], sorted(body["input"]))
         answers = body["input"]["answers"]
-        self.assertEqual(["desk", "ex_dividends", "levels", "market_data", "owner", "rates", "schema_version"],
-                         sorted(answers))
+        self.assertEqual(["desk", "ex_dividends", "levels", "market_data", "owner", "rates", "schema_version",
+                          "structuring"], sorted(answers))
+        shape = answers["structuring"]
+        self.assertEqual(sorted(tool.STRUCTURING_KEYS), sorted(shape))  # --schema prints sorted keys
+        self.assertEqual(("disclosure_acknowledged", "general", "covered_call", "roll", "protective_put", "collar"),
+                         tool.STRUCTURING_KEYS)
+        for section in structuring_config.SECTIONS[1:]:
+            self.assertEqual(sorted(structuring_config.SECTION_KEYS[section]), sorted(shape[section]), section)
+            self.assertEqual(list(structuring_config.SECTION_KEYS[section]), list(tool.STRUCTURING_SHAPE[section]))
+        self.assertEqual(set(tool.STRUCTURING_KINDS),
+                         {key for keys in structuring_config.SECTION_KEYS.values() for key in keys})
         self.assertEqual(sorted(tool.PAYLOAD_KEYS), sorted(body["envelope"]["payload"]))
         self.assertEqual([], order_shaped(out))
 
@@ -301,6 +337,163 @@ class DividendIntakeTest(TempRoot):
                                                                                  "status": "confirmed"}}})
         self.assertEqual((1, "calendar_invalid"), (code, body["error"]["code"]), "amount > 0 is the calendar's rule")
         self.assertEqual([], self.files())
+
+
+class StructuringIntakeTest(TempRoot):
+    """PR 3b decision S3 and designer C's D2: the structuring intake renders structuring.toml byte for byte, validated
+    by structuring_config before anything is written."""
+
+    def test_the_fixture_answers_hold_exactly_the_documented_defaults(self) -> None:
+        self.assertEqual({"schema_version": 1, "structuring": S3_VALUES}, structuring_answers())
+
+    def test_the_intake_alone_renders_the_expected_bytes(self) -> None:
+        self.assertFalse(os.path.exists(self.root))
+        code, body = self.run_json(structuring_answers())
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        written = read_bytes(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual(read_bytes(EXPECTED_STRUCTURING), written)
+        self.assertEqual(EXPECTED_STRUCTURING_BYTES, len(written))
+        self.assertEqual(EXPECTED_STRUCTURING_SHA, hashlib.sha256(written).hexdigest())
+        self.assertEqual(["structuring.toml"], self.files(), "the intake writes structuring.toml only")
+        payload = body["payload"]
+        self.assertEqual(list(tool.PAYLOAD_KEYS), sorted(payload, key=tool.PAYLOAD_KEYS.index))
+        self.assertEqual((["structuring.toml"], [], None, None), (payload["written"], payload["replaced"],
+                                                                 payload["desk_toml"], payload["calendar_toml"]))
+        self.assertEqual({"path": "structuring.toml", "sha256": EXPECTED_STRUCTURING_SHA,
+                          "bytes": EXPECTED_STRUCTURING_BYTES, "text": written.decode("utf-8")},
+                         payload["structuring_toml"])
+        self.assertEqual(STRUCTURING_HINT, payload["acknowledge"])
+        self.assertEqual(STRUCTURING_HINT, tool.ACKNOWLEDGE_STRUCTURING)
+
+    def test_the_rendering_and_its_header_lines(self) -> None:
+        text = tool.render_structuring_toml(S3_VALUES)
+        self.assertEqual(read_bytes(EXPECTED_STRUCTURING).decode("utf-8"), text)
+        lines = text.split("\n")
+        self.assertEqual(list(tool.STRUCTURING_HEADER), lines[:2])
+        self.assertEqual(("# structuring.toml: rendered by scripts/desk_init.py from the owner's structuring interview; a "
+                          "hand edit changes its",
+                          "# hash, and the structuring tools show nothing until the owner acknowledges it (ack.py config "
+                          "--owner-tapped)."), tool.STRUCTURING_HEADER)
+        self.assertEqual("schema_version = 1", lines[2])
+        headers = [line for line in lines if line.startswith("[")]
+        self.assertEqual(["[%s]" % name for name in structuring_config.SECTIONS], headers)
+        self.assertTrue(text.endswith('objective = "cap_within_budget"\n'))
+
+    def test_the_rendered_file_loads_with_the_documented_values(self) -> None:
+        self.assertEqual(0, self.invoke(structuring_answers())[0])
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual(EXPECTED_STRUCTURING_SHA, cfg.sha256)
+        self.assertEqual(structuring_config.DISCLOSURE_ID, cfg.disclosure.acknowledged)
+        self.assertEqual(((40, 75), (120, 210), "0.00", 3),
+                         (cfg.covered_call.dte, cfg.collar.dte, str(cfg.collar.max_net_debit),
+                          cfg.general.max_candidates_shown))
+
+    def test_human_output(self) -> None:
+        code, out = self.invoke(structuring_answers(), json_mode=False)
+        self.assertEqual(0, code)
+        self.assertEqual(["wrote structuring.toml (%d bytes, sha256 %s)" % (EXPECTED_STRUCTURING_BYTES,
+                                                                           EXPECTED_STRUCTURING_SHA), STRUCTURING_HINT],
+                         out.rstrip("\n").split("\n"))
+
+    def test_with_the_desk_answers_the_desk_hint_is_used(self) -> None:
+        answers = dict(fixture_answers(), structuring=S3_VALUES)
+        code, body = self.run_json(answers)
+        self.assertEqual(0, code, body)
+        self.assertEqual(["desk.toml", "structuring.toml"], body["payload"]["written"])
+        self.assertEqual(HINT, body["payload"]["acknowledge"])
+        self.assertEqual(read_bytes(EXPECTED), read_bytes(os.path.join(self.root, "desk.toml")))
+        self.assertEqual(read_bytes(EXPECTED_STRUCTURING), read_bytes(os.path.join(self.root, "structuring.toml")))
+
+    def test_an_existing_file_needs_replace_and_owner_tapped(self) -> None:
+        self.assertEqual(0, self.invoke(structuring_answers())[0])
+        before = read_bytes(os.path.join(self.root, "structuring.toml"))
+        answers = structuring_answers()
+        answers["structuring"]["general"]["max_candidates_shown"] = 5
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "structuring_exists"), (code, body["error"]["code"]))
+        self.assertIn("--replace --owner-tapped", body["error"]["message"])
+        self.assertEqual(before, read_bytes(os.path.join(self.root, "structuring.toml")))
+        both = dict(fixture_answers(), structuring=answers["structuring"])
+        code, body = self.run_json(both)
+        self.assertEqual((1, "structuring_exists"), (code, body["error"]["code"]))
+        self.assertEqual(["structuring.toml"], self.files(), "desk.toml is not written when structuring.toml is refused")
+        code, body = self.run_json(answers, "--replace", "--owner-tapped")
+        self.assertEqual(0, code, body)
+        self.assertEqual((["structuring.toml"], ["structuring.toml"]),
+                         (body["payload"]["written"], body["payload"]["replaced"]))
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual(5, cfg.general.max_candidates_shown)
+
+    def test_invalid_shapes_are_answers_invalid_and_write_nothing(self) -> None:
+        def changed(edit: Any) -> Dict[str, Any]:
+            answers = copy.deepcopy(structuring_answers())
+            edit(answers["structuring"])
+            return answers
+
+        cases = [
+            {"schema_version": 1, "structuring": []},
+            {"schema_version": 1, "structuring": {}},
+            changed(lambda s: s.pop("disclosure_acknowledged")),
+            changed(lambda s: s.update(disclosure={"acknowledged": "structuring-suggestions-1"})),
+            changed(lambda s: s.pop("roll")),
+            changed(lambda s: s["covered_call"].pop("min_credit")),
+            changed(lambda s: s["covered_call"].update(dte_unit="calendar")),
+            changed(lambda s: s["general"].update(max_spread_pct=25)),
+            changed(lambda s: s["general"].update(max_spread_pct="2.5e1")),
+            changed(lambda s: s["general"].update(max_candidates_shown="3")),
+            changed(lambda s: s["general"].update(max_candidates_shown=True)),
+            changed(lambda s: s["covered_call"].update(dte=[40, 75, 90])),
+            changed(lambda s: s["covered_call"].update(dte=["40", "75"])),
+            changed(lambda s: s["covered_call"].update(dte=[40.0, 75])),
+            changed(lambda s: s["roll"].update(abs_delta=[0.15, 0.35])),
+            changed(lambda s: s["roll"].update(abs_delta="0.15-0.35")),
+            changed(lambda s: s["roll"].update(credit_only="true")),
+            changed(lambda s: s["collar"].update(enabled=1)),
+            changed(lambda s: s["collar"].update(strike_floor=None)),
+            changed(lambda s: s["protective_put"].update(objective=3)),
+            changed(lambda s: s.update(disclosure_acknowledged=True)),
+        ]
+        for answers in cases:
+            code, body = self.run_json(answers)
+            self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]), answers)
+        self.assertEqual([], self.files())
+
+    def test_values_the_reader_refuses_are_structuring_invalid_and_write_nothing(self) -> None:
+        def changed(edit: Any) -> Dict[str, Any]:
+            answers = copy.deepcopy(structuring_answers())
+            edit(answers["structuring"])
+            return answers
+
+        cases = [
+            (changed(lambda s: s.update(disclosure_acknowledged="structuring-suggestions-2")),
+             "the structuring disclosure structuring-suggestions-1 is not acknowledged in this file"),
+            (changed(lambda s: s["covered_call"].update(dte=[5, 40])), "[covered_call] dte"),
+            (changed(lambda s: s["roll"].update(abs_delta=["0.35", "0.15"])), "[roll] abs_delta"),
+            (changed(lambda s: s["collar"].update(objective="extrinsic_per_day")), "[collar] objective"),
+            (changed(lambda s: s["covered_call"].update(earnings="skip")), "[covered_call] earnings"),
+            (changed(lambda s: s["protective_put"].update(stress_drop_pct="10")), "[protective_put] stress_drop_pct"),
+            (changed(lambda s: s["general"].update(max_candidates_shown=11)), "[general] max_candidates_shown"),
+            (changed(lambda s: s["collar"].update(max_net_debit="-0.05")), "[collar] max_net_debit"),
+            (changed(lambda s: s["general"].update(max_spread_pct="012")), "invalid TOML"),
+        ]
+        for answers, needle in cases:
+            code, body = self.run_json(answers)
+            self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]), answers)
+            self.assertIn("the rendered structuring.toml does not load: ", body["error"]["message"])
+            self.assertIn(needle, body["error"]["message"])
+        both = dict(fixture_answers(), structuring=cases[0][0]["structuring"])
+        code, body = self.run_json(both)
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertEqual([], self.files(), "nothing is written before everything is valid")
+
+    def test_with_the_dividend_intake(self) -> None:
+        os.makedirs(self.root)
+        answers = {"schema_version": 1, "ex_dividends": DividendIntakeTest.INTAKE, "structuring": S3_VALUES}
+        code, body = self.run_json(answers)
+        self.assertEqual(0, code, body)
+        self.assertEqual(["research/calendar.toml", "structuring.toml"], body["payload"]["written"])
+        self.assertEqual(STRUCTURING_HINT, body["payload"]["acknowledge"])
+        self.assertEqual(["research/calendar.toml", "structuring.toml"], self.files())
 
 
 if __name__ == "__main__":

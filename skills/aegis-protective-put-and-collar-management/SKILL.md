@@ -1,6 +1,6 @@
 ---
 name: aegis-protective-put-and-collar-management
-description: How the Aegis desk watches hedges, for the Aegis Exit Sentinel. How a protective put and a collar are grouped and measured as the rules engine reads them, the continuity rules at 30 and 14 calendar days, monetize on the put's absolute delta, the floor and cover rules, automatic exercise on the last trading day, the collar's short call with its take-profit, cap and ex-dividend exposure, and what the desk never decides. It describes the owner's adopted rules; it never chooses a rule or a threshold.
+description: How the Aegis desk watches hedges, for the Aegis Exit Sentinel and the Aegis Structuring Desk. How a protective put and a collar are grouped and measured as the rules engine reads them, the continuity rules at 30 and 14 calendar days, monetize on the put's absolute delta, the floor and cover rules, automatic exercise on the last trading day, the collar's short call with its take-profit, cap and ex-dividend exposure, and what the desk never decides. It describes the owner's adopted rules; it never chooses a rule or a threshold.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -114,9 +114,14 @@ unavailable: your rule FLOOR: underlying SPY: no usable mark (quote grade F)
 
 - Whether to keep a hedge, extend it or end it is the owner's decision, in the brokerage account. The plan words in a
   message are the owner's own plan, never the desk's instruction.
-- The desk measures no protection budget and no time decay against it. No tool in this release has such a metric.
-- Stress tests of a hedge through an event, and pricing a collar's choices, are
-  planned for Stage 2 (not in this release).
+- No alert measures a protection budget or the time decay against it. The structuring objective
+  `stress_cost_per_day` ranks new puts by their ask per day per 100 of loss covered at the owner's stress drop, only
+  in a proposal the owner asks for.
+- Only when the owner asks, the Aegis Structuring Desk prices a hedge's choices: a CLOSE, MONETIZE_PUT or
+  UNWIND_STOCK ticket, a ROLL ticket for a protective put's long put the owner names, and a protective put or a
+  collar on shares held alone (`aegis-ticket-and-unwind-order`, `aegis-overlay-proposals`).
+- A collar's legs are replaced as a unit, and a roll analysis of a hedge, and stress tests of a hedge through an
+  event, are planned for Stage 2 (not in this release).
 - The example rules read absolute delta; none of them reads a signed delta.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

@@ -1,6 +1,6 @@
 # Aegis Desk on Grok Build
 
-Grok Build loads the desk as a plugin: its skills, its three role profiles and a hook that denies a shell command or
+Grok Build loads the desk as a plugin: its skills, its four role profiles and a hook that denies a shell command or
 MCP tool call that looks like a broker write. For the desk that runs on its own every trading day, use
 [Grok Bot](aegis-grok-bot.md); Grok Build is for reading the desk, running its tools and monitoring from your own
 machine.
@@ -68,11 +68,13 @@ It reads only the call: the command text, the MCP tool name and the MCP input. I
   Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.
   ```
 
-- **Known false positives,** by design: an MCP tool whose name or identifier input carries an order verb as a whole
-  word (a pull-request review tool, a `replace_text` tool, a one-word search for "order"), free text that quotes a
-  write sample, a shell command that writes a file holding a write sample, and any HTTP call to a broker host outside
-  Tradier's market-data paths, a broker's own web page included. A sort direction such as `"order": "desc"` is not
-  one of them: the gate reads it as a read.
+- **Known false positives,** by design: an MCP tool whose name or identifier input carries an order verb as a whole word
+  (a pull-request review tool, a `replace_text` tool, a one-word search for "order"), free text that quotes a write
+  sample, a shell command that writes a file holding a write sample, and any HTTP call to a broker host outside
+  Tradier's market-data paths, a broker's own web page included. The desk ships no MCP server; if one ever wrapped the
+  structuring tools, an input key named `trade` would be denied as an order key, so such a wrapper names it `trade_id`.
+  On the command line, `--trade AG-...` gives the gate no opinion. A sort direction such as `"order": "desc"` is not one
+  of them: the gate reads it as a read.
 - **Not covered:** aliases and functions defined earlier, variables, encodings such as base64, a script written first
   and run later, a broker command-line tool that speaks no HTTP, a broker host behind a proxy, and an MCP tool that
   changes a position under a name the gate's rules do not name.

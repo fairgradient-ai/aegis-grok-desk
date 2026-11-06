@@ -1,6 +1,6 @@
 """``scripts/gen_tools_doc.py``: ``docs/TOOLS.md`` generated from every desk tool's ``--schema`` answer and parser.
 
-The generator imports the 23 tools by literal import statements (never a computed import), asks each for its
+The generator imports the 26 tools by literal import statements (never a computed import), asks each for its
 ``--schema`` in-process, reads each parser's flags from ``build_parser(release)._actions`` (never ``format_help()``,
 whose wrapping depends on the terminal) and renders one Markdown file: the generated-by line, the shared envelope
 and exit-code table once, then one ``## <tool>`` section per tool, sorted by name, with the script path, tool
@@ -38,9 +38,9 @@ SCRIPTS = os.path.join(ROOT, "scripts")
 DOC = os.path.join(ROOT, "docs", "TOOLS.md")
 EXPECTED_TOOLS = (
     "ack", "alert_lint", "assignment_watch", "book", "book_check", "calendar_check", "csv_recon", "desk_doctor",
-    "desk_init", "eod_summary", "exit_check", "expiry_checklist", "heartbeat", "market_clock", "opening_bell",
-    "positions_check", "quote_cache", "quote_qc", "routine", "routine_audit", "rules_adopt", "rules_diff",
-    "trigger_levels",
+    "desk_init", "eod_summary", "exit_check", "exit_ticket", "expiry_checklist", "heartbeat", "market_clock",
+    "opening_bell", "positions_check", "propose", "quote_cache", "quote_qc", "roll_analysis", "routine", "routine_audit",
+    "rules_adopt", "rules_diff", "trigger_levels",
 )
 # check.sh step 3 and step 4, as regular expressions over the rendered text.
 SCRIPT_RE = re.compile(r"\bscripts/((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_]+\.py)\b")
@@ -237,7 +237,7 @@ class CommittedDocTest(unittest.TestCase):
     def test_check_passes_on_the_committed_doc(self) -> None:
         code, output = run_main(["--check"])
         self.assertEqual(0, code, output)
-        self.assertEqual("ok: docs/TOOLS.md matches the --schema of 23 tools\n", output)
+        self.assertEqual("ok: docs/TOOLS.md matches the --schema of 26 tools\n", output)
 
 
 class CheckAndWriteTest(unittest.TestCase):
@@ -277,7 +277,7 @@ class CheckAndWriteTest(unittest.TestCase):
     def test_write_mode_writes_the_rendered_doc_then_check_passes(self) -> None:
         code, output = run_main([])
         self.assertEqual(0, code, output)
-        self.assertEqual("wrote docs/TOOLS.md (23 tools)\n", output)
+        self.assertEqual("wrote docs/TOOLS.md (26 tools)\n", output)
         with open(self.doc, encoding="utf-8") as handle:
             self.assertEqual(RenderCache.get(), handle.read())
         self.assertEqual(0, run_main(["--check"])[0])

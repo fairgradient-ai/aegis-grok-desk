@@ -29,7 +29,7 @@ from typing import List, Sequence, Tuple
 import gen_role_skills as gen
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SEATS = ("desk-lead", "exit-sentinel", "position-control")
+SEATS = ("desk-lead", "exit-sentinel", "position-control", "structuring-desk")
 BOUNDARY = ("This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules "
             "fired and why; you act in your brokerage account.")
 TREE_PARTS = ("agents", "skills", "SETUP.md", "LICENSE", "plugin.json")
@@ -137,6 +137,7 @@ class RealTreeTest(unittest.TestCase):
             "| [aegis-role-desk-lead](aegis-role-desk-lead/SKILL.md) | `agents/desk-lead.md` | floor |\n"
             "| [aegis-role-exit-sentinel](aegis-role-exit-sentinel/SKILL.md) | `agents/exit-sentinel.md` | floor |\n"
             "| [aegis-role-position-control](aegis-role-position-control/SKILL.md) | `agents/position-control.md` | floor |\n"
+            "| [aegis-role-structuring-desk](aegis-role-structuring-desk/SKILL.md) | `agents/structuring-desk.md` | floor |\n"
             "<!-- role-skills:end -->\n", readme)
         self.assertLess(readme.index("[aegis-desk-charter]"), readme.index("<!-- role-skills:start -->"),
                         "after the main table")
@@ -144,7 +145,7 @@ class RealTreeTest(unittest.TestCase):
         self.assertIn(
             "<!-- role-skills:start -->\n"
             "Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): "
-            "`aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`\n"
+            "`aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-structuring-desk`\n"
             "<!-- role-skills:end -->\n", setup)
         section_5 = setup.split("## 5. Install the skills", 1)[1].split("\n## ", 1)[0]
         self.assertIn("<!-- role-skills:start -->", section_5)
@@ -152,8 +153,8 @@ class RealTreeTest(unittest.TestCase):
             self.assertEqual((1, 1), (text.count(gen.START_MARKER), text.count(gen.END_MARKER)))
 
     def test_check_passes_on_the_committed_tree(self) -> None:
-        self.assertEqual((0, ["ok: 3 role skill(s) match agents/ (aegis-role-desk-lead, aegis-role-exit-sentinel, "
-                              "aegis-role-position-control)"]), gen.run(ROOT, check=True))
+        self.assertEqual((0, ["ok: 4 role skill(s) match agents/ (aegis-role-desk-lead, aegis-role-exit-sentinel, "
+                              "aegis-role-position-control, aegis-role-structuring-desk)"]), gen.run(ROOT, check=True))
         code, output = run_main(["--check"])
         self.assertEqual(0, code, output)
 
@@ -221,7 +222,8 @@ class CopyTest(unittest.TestCase):
         self.assertEqual(expected, read(self.root, "skills/aegis-role-golden-seat/SKILL.md"))
         self.assertIn("| [aegis-role-golden-seat](aegis-role-golden-seat/SKILL.md) | `agents/golden-seat.md` | off-floor |\n",
                       read(self.root, "skills/README.md"))
-        self.assertIn("`aegis-role-exit-sentinel`, `aegis-role-golden-seat`, `aegis-role-position-control`\n",
+        self.assertIn("`aegis-role-exit-sentinel`, `aegis-role-golden-seat`, `aegis-role-position-control`, "
+                      "`aegis-role-structuring-desk`\n",
                       read(self.root, "SETUP.md"), "sorted by agent file name")
 
     def test_write_on_a_tree_without_role_skills_reproduces_the_committed_ones(self) -> None:
@@ -236,17 +238,17 @@ class CopyTest(unittest.TestCase):
         self.assertIn("error: skills/aegis-role-desk-lead/SKILL.md: missing (generated from agents/desk-lead.md)", lines)
         self.assertIn("error: skills/README.md: the role-skills index block differs from its rendering", lines)
         self.assertIn("error: SETUP.md: the role-skills index block differs from its rendering", lines)
-        self.assertEqual("11 problem(s); run python3 scripts/gen_role_skills.py", lines[-1])
+        self.assertEqual("14 problem(s); run python3 scripts/gen_role_skills.py", lines[-1])
         code, lines = gen.run(self.root, check=False)
         self.assertEqual(0, code, lines)
         self.assertIn("wrote skills/aegis-role-exit-sentinel/LICENSE", lines)
-        self.assertEqual("ok: 3 role skill(s) generated from agents/ (11 file(s) written)", lines[-1])
+        self.assertEqual("ok: 4 role skill(s) generated from agents/ (14 file(s) written)", lines[-1])
         self.assertEqual(self.generated(ROOT), self.generated(self.root))
         for rel in ("skills/README.md", "SETUP.md"):
             self.assertEqual(read(ROOT, rel), read(self.root, rel))
         self.assertEqual(0, gen.run(self.root, check=True)[0])
         code, lines = gen.run(self.root, check=False)
-        self.assertEqual((0, ["ok: 3 role skill(s) generated from agents/ (0 file(s) written)"]), (code, lines))
+        self.assertEqual((0, ["ok: 4 role skill(s) generated from agents/ (0 file(s) written)"]), (code, lines))
 
     def test_a_hand_edit_of_a_generated_file_is_drift(self) -> None:
         rel = "skills/aegis-role-exit-sentinel/SKILL.md"

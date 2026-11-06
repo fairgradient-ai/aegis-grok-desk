@@ -144,7 +144,7 @@ PER_SHARE_METRICS: Tuple[str, ...] = ("extrinsic_bid", "dividend_amount", "extri
 DEFAULT_DAY_UNITS: Dict[str, str] = {"days_to_ex_dividend": "trading", "days_to_earnings": "trading"}
 CONFIG_FILE_LABELS: Dict[str, str] = {"desk_toml": "desk.toml", "positions_csv": "positions.csv",
                                       "rulebook": "adopted rulebook", "rules": "adopted rulebook",
-                                      "calendar_toml": "research calendar"}
+                                      "calendar_toml": "research calendar", "structuring_toml": "structuring.toml"}
 
 NOT_AN_INSTRUCTION: str = "not an instruction to trade; you act in your brokerage account."
 FIRST_OBSERVATION_SENTENCE: str = "already past this threshold at the desk's first observation"
@@ -396,15 +396,18 @@ def quarantine_words(reason: str) -> str:
 def fmt_footer(as_of: datetime.datetime, delay_min: int, emitted: List[str], clocks: Optional[List[str]] = None,
                kind: str = alert_lint.FOOTER_RULES) -> str:
     """The fixed footer (``alert_lint.footer_line``; with ``kind`` ``snapshot`` the market-snapshot footer of
-    ``alert_lint.snapshot_footer_line``, for rule-free text only) with the data's as-of time (its ``HH:MM UTC`` added
-    to ``clocks`` when given). Its ``15 min`` is in the lint's whitelist (addendum decision 6) and is not emitted; any
-    other delay is."""
-    if kind not in alert_lint.FOOTER_KINDS:
+    ``alert_lint.snapshot_footer_line``, for rule-free text only; with ``kind`` ``structuring`` the structuring footer
+    of ``alert_lint.structuring_footer_line``, for the Structuring Desk's texts only) with the data's as-of time (its
+    ``HH:MM UTC`` added to ``clocks`` when given). Its ``15 min`` is in the lint's whitelist (addendum decision 6) and
+    is not emitted; any other delay is."""
+    builders = {alert_lint.FOOTER_RULES: alert_lint.footer_line,
+                alert_lint.FOOTER_SNAPSHOT: alert_lint.snapshot_footer_line,
+                alert_lint.FOOTER_STRUCTURING: alert_lint.structuring_footer_line}
+    if kind not in alert_lint.FOOTER_KINDS or kind not in builders:
         raise ValueError("kind must be one of %s, got %r" % (", ".join(alert_lint.FOOTER_KINDS), kind))
     if _whole(delay_min, "the feed delay") != alert_lint.FOOTER_DELAY_MIN:
         _emit(emitted, str(delay_min))
-    line = (alert_lint.footer_line(as_of, delay_min) if kind == alert_lint.FOOTER_RULES
-            else alert_lint.snapshot_footer_line(as_of, delay_min))
+    line = builders[kind](as_of, delay_min)
     clock = as_of.astimezone(datetime.timezone.utc).strftime("%H:%M UTC")
     if clocks is not None and clock not in clocks:
         clocks.append(clock)

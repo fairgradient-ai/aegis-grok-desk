@@ -1,6 +1,6 @@
 ---
 name: aegis-covered-call-and-cash-secured-put-management
-description: How the Aegis desk measures covered calls and cash-secured puts and which example rules reach them, for the Aegis Exit Sentinel. The take-profit and loss metric of each structure as the rules engine reads it, take-profit on the conservative side of the quote, the time, delta, pin, cap and earnings rules, the ex-dividend test and its cum-dividend bound, the row tags, the assignment words of the expiry docket, and what the desk never decides. It describes the owner's adopted rules; it never chooses a rule or a threshold.
+description: How the Aegis desk measures covered calls and cash-secured puts and which example rules reach them, for the Aegis Exit Sentinel and the Aegis Structuring Desk. The take-profit and loss metric of each structure as the rules engine reads it, take-profit on the conservative side of the quote, the time, delta, pin, cap and earnings rules, the ex-dividend test and its cum-dividend bound, the row tags, the assignment words of the expiry docket, and what the desk never decides. It describes the owner's adopted rules; it never chooses a rule or a threshold.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -153,11 +153,15 @@ command; the expiry and assignment skill has the protocol.
 
 - Whether to keep a position, end it or adjust it is the owner's decision, in the brokerage account. The plan words
   in a message are the owner's own plan, never the desk's instruction.
-- No tool in this release prices a roll or compares choices. Pricing the owner's choices for a position is
-  planned for Stage 2 (not in this release).
+- No alert prices a roll or compares choices. Only when the owner asks, the Aegis Structuring Desk prices them:
+  the roll analysis of a covered call's short call (`aegis-roll-decision-framework`), a CLOSE, UNWIND_STOCK, LET_ASSIGN
+  or ROLL ticket (`aegis-ticket-and-unwind-order`), and a covered call on shares held alone
+  (`aegis-overlay-proposals`). The Exit Sentinel never prices them.
+- A cash-secured put is outside the structuring scope: the desk proposes none, and a short put's replacement is
+  planned for Stage 2 (not in this release). A CLOSE ticket covers it.
 - The early-exercise test is the European extrinsic-versus-dividend test above. An American lattice is
   planned for Stage 2 (not in this release).
-- The desk checks no cash reserve, approval level or suitability. `desk.toml` records `approval_level` for later
-  stages; no tool reads it.
+- The desk checks no cash reserve. No alert reads the approval level: only the structuring tools check `desk.toml`'s
+  self-attested `approval_level`, on their own answers (a covered call needs level 1 by the desk's convention).
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

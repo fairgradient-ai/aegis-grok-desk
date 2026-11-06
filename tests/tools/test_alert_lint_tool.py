@@ -23,7 +23,8 @@ from typing import Any, Dict, List, Sequence, Tuple
 from aegis_desk import alert_lint as library
 
 import alert_lint as tool  # the tool scripts/alert_lint.py, not the library aegis_desk.alert_lint
-from tests.engine.test_alert_lint import PASS_FIXTURES, fail_fixture_table
+from tests.engine.test_alert_lint import (PASS_FIXTURES, STRUCTURING_PASS_FIXTURES, fail_fixture_table,
+                                          structuring_fail_fixture_table)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -96,6 +97,50 @@ class ToolTest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
             run_tool(argv + ["--footer", "market"])
         self.assertEqual(2, raised.exception.code, "an unknown footer kind is a usage error")
+
+    def test_footer_structuring_flag(self) -> None:
+        footer = [action for action in tool.build_parser("0")._actions if "--footer" in action.option_strings][0]
+        self.assertEqual(library.FOOTER_KINDS, tuple(footer.choices))
+        self.assertEqual("the footer the last line must be: rules (every alert, sheet and summary), snapshot "
+                         "(opening_bell.py's rule-free market snapshot only) or structuring (the Structuring Desk's "
+                         "tickets, roll analyses and proposals only); default: the emitted document's footer key, else "
+                         "rules", footer.help)
+        stamp = datetime.datetime(2026, 11, 3, 19, 31, 12, tzinfo=datetime.timezone.utc)
+        leg = "leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50"
+        message_file = self.write("structuring.txt", (leg + "\n" + library.structuring_footer_line(stamp)).encode("utf-8"))
+        emitted_file = self.write("structuring.emitted.json", json.dumps(["1", "2", "105", "3.50"]).encode("utf-8"))
+        argv = ["--message-file", message_file, "--emitted-file", emitted_file]
+        self.assertEqual(0, run_tool(argv + ["--footer", "structuring"])[0])
+        code, body = run_json(argv)
+        self.assertEqual(1, code)
+        self.assertIn("footer_missing", [item["code"] for item in body["payload"]["findings"]],
+                      "without --footer structuring the rules footer is required")
+        self.assertEqual(1, run_tool(argv + ["--footer", "snapshot"])[0])
+        declared = self.write("declared.emitted.json", json.dumps({"emitted_numbers": ["1", "2", "105", "3.50"],
+                                                                   "footer": "structuring"}).encode("utf-8"))
+        self.assertEqual(0, run_tool(["--message-file", message_file, "--emitted-file", declared])[0],
+                         "a document that declares the structuring footer is linted with it")
+        self.assertEqual(1, run_tool(["--message-file", message_file, "--emitted-file", declared, "--footer", "rules"])[0],
+                         "--footer overrides the document's key")
+        code, body = run_json(["--schema"])
+        self.assertEqual(0, code)
+
+    def test_structuring_fixtures_exit_0_and_1(self) -> None:
+        for name in STRUCTURING_PASS_FIXTURES:
+            with self.subTest(name=name):
+                code, body = run_json(fixture_argv(name))
+                self.assertEqual(0, code, body)
+                self.assertEqual((True, []), (body["payload"]["ok"], body["payload"]["problems"]))
+                self.assertEqual([], body["payload"]["rule_ids"])
+        for name, (_base, _changes, _document, codes) in structuring_fail_fixture_table().items():
+            with self.subTest(name=name):
+                code, body = run_json(fixture_argv(name))
+                self.assertEqual(1, code)
+                self.assertEqual(sorted(set(codes)), sorted({finding["code"] for finding in body["payload"]["findings"]}))
+                self.assert_no_forbidden_text(json.dumps(body))
+                code, out = run_tool(fixture_argv(name))
+                for entry in library.STRUCTURING_FORBIDDEN_LANGUAGE:
+                    self.assertIsNone(entry.pattern.search(out), (entry.code, out))
 
     def test_passing_fixtures_exit_0(self) -> None:
         for name in PASS_FIXTURES:

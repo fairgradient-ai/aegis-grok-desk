@@ -36,7 +36,9 @@ whose text it may post, the posting policy, the written quiet rule and the promp
 - a routine with `depends_on` runs at least 20 minutes after the routine it depends on (`min_gap_min` 20 or more);
 - a chain holds only the eight step tools: `assignment_watch`, `book`, `book_check`, `csv_recon`, `desk_doctor`,
   `eod_summary`, `expiry_checklist` and `trigger_levels`;
-- `ack` and `routine_audit` are never steps;
+- `ack` and `routine_audit` are never steps, and neither are the Structuring Desk's three tools: a manifest step
+  naming `exit_ticket` or `roll_analysis` or `propose` is refused with the reason
+  `owner-requested only: a structuring text names candidates and never runs in a routine`;
 - no chain carries `--owner-tapped`, `--allow-rth`, `--diff` or `--allow-dirty`;
 - every prompt is the one template below;
 - each Auto-review text in `routines/autoreview.toml` stays within 1,000 characters, and the Allow text names every
@@ -51,7 +53,8 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 ```
 
 The Allow-automatically rule covers exactly that command and nothing else: no pipe, no redirection, no second
-command. What `routine.py` does in one run:
+command. The Ask-first owner-authority rule names `desk_init.py` and the Structuring Desk's three tools, so each
+interactive run of them raises a card for the owner's tap. What `routine.py` does in one run:
 
 1. It checks the release pin: the checkout must be the clean commit of tag v0.1.0. Otherwise no step runs.
 2. It picks the slot (`--slot`, else the latest slot at or before now) and the slot's chain.
@@ -90,6 +93,7 @@ INCIDENT | book-check | the desk checkout is not the pinned release v0.1.0: deve
 | Aegis Desk Lead | `preopen`, `eod-brief` | 07:30 and 17:10, Mon-Fri |
 | Aegis Exit Sentinel | `book-check` (four routines), `eod` | 10:05, 12:05, 14:05, 15:35 and 16:35, Mon-Fri |
 | Aegis Position Control | `final-call`, `post-expiry` | 15:20 Mon-Fri, and 09:30 Saturday |
+| Aegis Structuring Desk | none: it answers only when the owner asks | none |
 
 The active profile adds four book-check routines on the Exit Sentinel, at 11:05, 13:05, 14:35 and 15:05. They are
 created paused. Each owning Bot creates its own routines, reads them back to the owner, and keeps them paused until
@@ -184,8 +188,9 @@ active: 61 runs per week (lean plus four paused book-check slots, unpaused only 
 
 ## Timezone and the owner-side dead-man rule
 
-- Each routine-owning Bot (all three in Stage 1) has its Timezone set to America/New_York and notifications on.
-  Both are set at setup and read back in the setup receipt; no tool records them.
+- Each routine-owning Bot (the Desk Lead, the Exit Sentinel and Position Control in Stage 1) has its Timezone set to
+  America/New_York and notifications on. Both are set at setup and read back in the setup receipt; no tool records
+  them. The Aegis Structuring Desk owns no routine, so it needs neither.
 - The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading
   day means the desk is not running. The owner then relies on the broker's own alerts, set from the last
   threshold-level sheet, and answers any prompt that asks to keep the routines running.

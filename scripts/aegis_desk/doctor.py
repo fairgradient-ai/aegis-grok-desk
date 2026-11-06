@@ -41,8 +41,10 @@ one-line reason that never carries a secret.
 8. ``desk_files``: ``desk.toml`` (``desk_config``; a ``production`` market-data host FAILs here too, with no request,
    so the quick doctor of the pre-open routine agrees with check 5), ``positions.csv`` (file errors FAIL, quarantined
    groups WARN),
-   the adopted rulebook (``exit_rules.load_adopted_rulebook``: ``<code>: <first problem>`` FAILs) and
-   ``research/calendar.toml`` (missing WARNs, unusable FAILs); the worst status wins and the reason joins the four.
+   the adopted rulebook (``exit_rules.load_adopted_rulebook``: ``<code>: <first problem>`` FAILs),
+   ``research/calendar.toml`` (missing WARNs, unusable FAILs) and, only when the file exists, ``structuring.toml``
+   (``structuring_config``: ``structuring.toml loads (sha <8 hex>)`` PASSes, the reader's error FAILs; a missing file
+   adds no part, the structuring criteria being optional); the worst status wins and the reason joins the parts.
 9. ``market_status``: the session and the America/New_York offset at the run instant, and the local offset at that
    instant; WARN when the local offset is neither UTC nor America/New_York's.
 10. ``connector_readback``: ``state/desk_state.json["connector_readback_utc"]`` missing, unreadable, after the run
@@ -84,6 +86,7 @@ from . import (
     routines,
     signals,
     state,
+    structuring_config,
     toml_compat,
     tradier_client,
 )
@@ -410,6 +413,12 @@ def desk_files_check(paths: DeskPaths, et_date: datetime.date) -> Tuple[Check, O
         parts.append((FAIL, str(exc)))
     except OSError as exc:
         parts.append((FAIL, "research/calendar.toml cannot be read: %s" % (exc.strerror or exc)))
+    try:
+        criteria = structuring_config.load_structuring_config_if_present(paths.structuring_toml)
+        if criteria is not None:
+            parts.append((PASS, "structuring.toml loads (sha %s)" % criteria.sha256[:8]))
+    except structuring_config.StructuringConfigError as exc:
+        parts.append((FAIL, str(exc)))
     return check(8, worst(status for status, _text in parts), "; ".join(text for _status, text in parts)), cfg, cal
 
 

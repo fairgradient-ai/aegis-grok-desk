@@ -1,0 +1,602 @@
+# The Aegis Structuring Desk
+
+This page is the reference for the owner and for counsel. It covers the fourth Stage-1 Bot, the Aegis Structuring
+Desk: what you can ask it, your criteria file and its interview, how a tool picks one best candidate, the
+approval-level check, the three kinds of answer with synthetic examples, the footer and the disclosure, and the
+limits. Every command, flag and exit code is in [TOOLS.md](TOOLS.md); the Bot's own instructions are
+[agents/structuring-desk.md](../agents/structuring-desk.md).
+
+This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
+
+The Structuring Desk answers only when you ask. Its tools price your choices for a position you already hold in
+`positions.csv`, score the candidates by the objective and criteria you set in `structuring.toml`, and name the
+highest-scoring candidate with its reasons. That is a personalized suggestion, computed by deterministic tools and
+posted by an AI assistant. It is not an order. You decide, you supply the limit, and you act in your brokerage account.
+Counsel has not signed this wording yet ([RELEASE.md](RELEASE.md), step 4).
+
+## What you can ask for
+
+| Your question | Tool | Applies to |
+| --- | --- | --- |
+| a ticket that closes the option legs of a group (`--action CLOSE`) | `exit_ticket.py` | any group with open option legs; the shares stay |
+| a ticket that closes the shares and every option leg (`--action UNWIND_STOCK`) | `exit_ticket.py` | a group that holds shares |
+| what happens if a short option is left to expiry (`--action LET_ASSIGN`) | `exit_ticket.py` | short options only |
+| a ticket that closes the long put for its value (`--action MONETIZE_PUT`) | `exit_ticket.py` | protective put and collar groups |
+| a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, and the long put of a protective put |
+| the replacement candidates for a covered call's short call | `roll_analysis.py` | covered call groups |
+| a covered call, a protective put or a collar on shares you hold (`--structure`) | `propose.py` | groups that hold shares only |
+
+The commands, with the trade ids of the synthetic fixture:
+
+```text
+python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-01 --desk-root /workspace/aegis-desk
+python3 /workspace/aegis-grok-desk/scripts/propose.py --trade AG-20261028-03 --structure protective_put --desk-root /workspace/aegis-desk
+python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01 --action CLOSE --desk-root /workspace/aegis-desk
+python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 --desk-root /workspace/aegis-desk
+```
+
+- Every tool takes `--trade`: the trade id of a group in `positions.csv`. There is no symbol flag, so the desk never
+  looks at a symbol you do not hold. Chains are fetched only for that group's underlying.
+- A ROLL ticket needs both `--new-expiration` and `--new-strike`, and any other action refuses them (exit 2, usage).
+  The replacement keeps the held leg's root and right, and its expiration must be later than the held leg's. A
+  contract the chain does not list answers UNAVAILABLE: `the chain does not list that contract`.
+- A ticket never depends on an earlier report: you name the replacement by its expiration and strike, as the roll
+  analysis prints them.
+- Every answer is the tool's own text, linted, which the Structuring Desk posts verbatim, footer included.
+
+What the desk never does: it proposes no new symbol, no spread, no uncovered short option and no cash-secured put. A
+group that already holds an option leg, or fewer than 100 shares, gets NOTHING_TO_PROPOSE with its reason; index
+underlyings are NOT_APPLICABLE, because the sandbox cannot quote them. The roll analysis of long puts, short puts and
+collars, weekly expirations, the American lattice, scenario and iv_snapshot, a cash-balance check and per-account
+approval levels are planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also
+planned for Stage 2 (not in this release); a ROLL of either collar leg is NOT_APPLICABLE.
+
+## Only when you ask
+
+- The Structuring Desk runs its tools only when your own message asks, directly or quoted word for word in a handoff
+  from another Bot. It never runs them on its own initiative or because another Bot asked. No other Bot runs them.
+- Each run asks first: the owner-authority Auto-review rule of SETUP step 7 names `exit_ticket.py`,
+  `roll_analysis.py` and `propose.py`, and your tap on its card is the record of your request.
+- They never run in a routine. `routine.py` refuses them as routine steps with the reason
+  `owner-requested only: a structuring text names candidates and never runs in a routine`.
+- No alert, level sheet, plan card, brief or routine message can carry a leg or a candidate: the alert lint refuses a
+  leg line or a candidate under the rules footer and the market-snapshot footer.
+- The Structuring Desk never fires an alert and owns no routine. The Aegis Exit Sentinel, which fires the signals,
+  never prices the choices.
+
+## Your criteria: structuring.toml
+
+`/workspace/aegis-desk/structuring.toml` holds your criteria. You write it through an interview; no routine and no
+structuring tool ever writes it. Until it exists and you have acknowledged it, the structuring tools show nothing.
+
+### The interview
+
+The Structuring Desk runs it in its own chat, at SETUP step 9 or at your first request:
+
+1. It shows each section with its documented defaults (below). You keep each value, change it within its bounds, or
+   switch a structure off with `enabled = false`.
+2. Last, it shows the disclosure (below) word for word. It records `disclosure_acknowledged` only after you say that
+   you acknowledge it.
+3. It writes your answers as JSON to `/workspace/aegis-desk/setup/structuring-answers.json`, in the shape of
+   `desk_init` "Input" in [TOOLS.md](TOOLS.md), and after your tap runs the **owner-authority** command:
+
+   ```text
+   python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
+   ```
+
+   Synthetic, a copy of the fixture desk with the fixture answers `tests/fixtures/init/structuring-answers.json`:
+
+   ```text
+   wrote structuring.toml (1090 bytes, sha256 5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c)
+   acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until structuring.toml is acknowledged
+   ```
+
+4. The Aegis Desk Lead then runs `ack.py config --owner-tapped` after your tap. Synthetic, the same copy:
+
+   ```text
+   configuration acknowledged at 2026-11-03 19:49 UTC: desk.toml sha 0af433cf, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c
+   ```
+
+An existing `structuring.toml` is refused (exit 1, `structuring_exists`) unless you tap `--replace --owner-tapped`,
+which rewrites the whole file from full answers. Answers that the reader would refuse are exit 1
+(`structuring_invalid`) and nothing is written.
+
+### The documented defaults
+
+They are starting points, not a judgment that they fit your account. They are also the answers the synthetic
+examples on this page assume.
+
+| Section | Key | Default | Allowed | What it does |
+| --- | --- | --- | --- | --- |
+| `general` | `max_spread_pct` | 25 | above 0, at most 25 | the widest spread of a new leg, in percent of its mid; a new leg also needs both sides fresh at quote grade A to D |
+| `general` | `max_candidates_shown` | 3 | 1 to 10 | how many candidates the text shows; the JSON lists every one |
+| every structure | `enabled` | true | true or false | `false` makes that structure NOT_APPLICABLE: `disabled in your structuring.toml` |
+| every structure | `dte` | [40, 75] for `covered_call` and `roll`; [120, 210] for `protective_put` and `collar` | calendar days, 7 to 400, low below high, at most 90 apart | the window of expirations considered |
+| `covered_call`, `roll` | `abs_delta` | [0.15, 0.35] | 0.05 to 0.60, low below high | the new call's absolute delta, read at 2 decimal places as the exit rules read it |
+| `covered_call`, `roll` | `min_credit` | 0.50 | at least 0.01 | the new call's bid per share |
+| `roll` | `credit_only` | true | true or false | a net debit fails; a net of zero passes |
+| `covered_call`, `roll`, `collar` | `strike_floor` | `cost_basis` | `cost_basis` or `none` | a call strike below your stock cost fails (for a roll: below both the held strike and your stock cost) |
+| `covered_call`, `roll`, `collar` | `earnings` | `exclude` | `exclude` or `allow` | an earnings date inside the call's life fails, unless allowed |
+| `covered_call`, `roll`, `collar` | `ex_dividend` | `exclude` | `exclude` or `allow` | an ex-dividend date inside the call's life fails, unless allowed |
+| `protective_put`, `collar` | `floor_pct` | [3, 10] | 0 to 50, low below high | the put's distance below the share price, (S - K) / S x 100 |
+| `protective_put` | `stress_drop_pct` | 20 | above the top of `floor_pct`, at most 90 | the drop in the share price the put's cost is measured against |
+| `collar` | `cap_pct` | [2, 10] | above 0, at most 100, low below high | the call's distance above the share price, (Kc - S) / S x 100 |
+| `collar` | `max_net_debit` | 0.00 | at least 0 | the put's ask minus the call's bid, per share; 0.00 means a zero cost or a credit |
+| every structure | `objective` | one per section (below) | fixed | the score the candidates are ranked by, echoed with the file's sha |
+
+Every decimal carries at most 2 decimal places. The reader is strict: every section and key is required, an unknown
+key is an error, and a boolean is never a number. One rule is fixed, not a key: an earnings or ex-dividend date that
+`research/calendar.toml` lists as unknown, or does not list at all, counts as inside the window; it is never treated
+as none.
+
+The file the fixture answers render, byte for byte (`tests/fixtures/init/expected_structuring.toml`):
+
+```toml
+# structuring.toml: rendered by scripts/desk_init.py from the owner's structuring interview; a hand edit changes its
+# hash, and the structuring tools show nothing until the owner acknowledges it (ack.py config --owner-tapped).
+schema_version = 1
+
+[disclosure]
+acknowledged = "structuring-suggestions-1"
+
+[general]
+max_spread_pct = 25
+max_candidates_shown = 3
+
+[covered_call]
+enabled = true
+dte = [40, 75]
+abs_delta = [0.15, 0.35]
+min_credit = 0.50
+strike_floor = "cost_basis"
+earnings = "exclude"
+ex_dividend = "exclude"
+objective = "extrinsic_per_day"
+
+[roll]
+enabled = true
+dte = [40, 75]
+abs_delta = [0.15, 0.35]
+min_credit = 0.50
+credit_only = true
+strike_floor = "cost_basis"
+earnings = "exclude"
+ex_dividend = "exclude"
+objective = "extrinsic_per_day"
+
+[protective_put]
+enabled = true
+dte = [120, 210]
+floor_pct = [3, 10]
+stress_drop_pct = 20
+objective = "stress_cost_per_day"
+
+[collar]
+enabled = true
+dte = [120, 210]
+floor_pct = [3, 10]
+cap_pct = [2, 10]
+max_net_debit = 0.00
+strike_floor = "cost_basis"
+earnings = "exclude"
+ex_dividend = "exclude"
+objective = "cap_within_budget"
+```
+
+### Acknowledgement, and failing closed
+
+`structuring.toml` joins `desk.toml`, `positions.csv` and the adopted rulebook in the set that `ack.py config
+--owner-tapped` acknowledges and that every book check compares. A change you have not acknowledged posts CONFIG
+CHANGED at the next book check, so an edit that would steer the best candidate is visible.
+
+- No `structuring.toml`: every structuring tool answers UNAVAILABLE and exits 20. Synthetic, an acknowledged fixture
+  copy without the file:
+
+  ```text
+  UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
+  ```
+
+- An unacknowledged `desk.toml`, `positions.csv` or `structuring.toml`: the tool prints nothing else and exits 20.
+  Your approval level and your share coverage come from those files, so an unacknowledged edit, such as shares added
+  by mistake, never lets the desk call an uncovered call covered. Synthetic, the same copy after `structuring.toml`
+  was written and before it was acknowledged:
+
+  ```text
+  UNAVAILABLE | CONFIG CHANGED: structuring.toml: not acknowledged -> sha 5155427c | the desk names no candidate and prints no ticket while desk.toml, positions.csv or structuring.toml differ from what you acknowledged | acknowledge with ack.py config --owner-tapped
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:52 UTC
+  ```
+
+- An unacknowledged rulebook alone does not block: its CONFIG CHANGED line prints first, and the answer follows.
+- A `structuring.toml` the reader refuses is exit 1 (`structuring_invalid`) with the reader's reason.
+
+## How a tool picks one best candidate
+
+### The candidates
+
+- **Expirations.** Standard monthly expirations whose calendar days to expiry lie in your `dte` window and, for a
+  replacement, that expire after the held leg. The window is at most 90 days wide, so a run needs at most four chains.
+- **Prices.** A new leg is priced only when both sides of its quote are fresh at grade A to D, its spread is within
+  `max_spread_pct`, and it is a standard contract of the underlying. Its implied volatility is solved from the mid with
+  the European Black-Scholes-Merton model and the dividend yield of `research/calendar.toml` (0 with a warning). A
+  held leg you would close is priced at its conservative fresh side, which is the ask for a short and the bid for a
+  long. At grade E that side still stands, with the note `quote grade E: the conservative side stands`.
+- **Statuses.** Each candidate gets every reason that applies and one status, in this precedence:
+
+  | Status | Means |
+  | --- | --- |
+  | `UNPRICED` | no usable quote, no implied volatility, or less than an hour to the exercise cutoff |
+  | `OUTSIDE_BANDS` | outside a band or window: `dte`, `abs_delta`, `min_credit`, `max_spread_pct`, `floor_pct`, `cap_pct`, `stress_drop_pct` (no cover at the stress), `max_net_debit` |
+  | `FAILS_CRITERION` | fails `strike_floor`, `credit_only`, `earnings` or `ex_dividend` |
+  | `ELIGIBLE` | passes every criterion |
+
+  In the text, both failing tiers print as `FAILS_CRITERION <key>: <words>` with the value and your band. The JSON
+  carries each reason as `{key, code, value, threshold}`.
+
+### The objectives
+
+Each section declares one objective, so the file's sha names how the candidates were ranked:
+
+| Objective | Ranks | Words the text prints | Formula |
+| --- | --- | --- | --- |
+| `extrinsic_per_day` | higher first | the bid's time value per calendar day, in percent of the share price | E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even |
+| `stress_cost_per_day` | lower first | the put's ask per calendar day per 100 of loss it offsets at your stress drop | S_x = S x (1 - x / 100) with x = stress_drop_pct; score = ask / T_c / (K - S_x) x 100, quantized 0.0001 half-even (no cover at the stress when K <= S_x) |
+| `cap_within_budget` | higher first | the cap's distance above the share price, in percent, among pairs within your net-debit budget | U = (Kc - S) / S x 100, quantized 0.01 half-even, among the put and call pairs of one expiration whose net debit (put ask - call bid) is at most max_net_debit |
+
+S is the underlying's mid, K the strike, Kc the call strike, and T_c the calendar days to expiry. `covered_call` and
+`roll` use `extrinsic_per_day`, `protective_put` uses `stress_cost_per_day`, and `collar` uses `cap_within_budget`. A
+collar pairs a put and a call of the same expiration; a leg outside its band is counted, not paired.
+
+### The ranking and the best candidate
+
+- The table order is ELIGIBLE, then FAILS_CRITERION, then OUTSIDE_BANDS, each by score and the tie-breaks, then
+  UNPRICED by contract. A candidate's rank is its place in that order.
+- Ties on the score are broken in a fixed order: a covered call by the absolute delta (lower first), the expiration
+  (earlier first), the strike (higher first); a replacement call by the net credit (higher first) and then the same
+  keys; a protective put by the strike (higher first), the expiration (later first); a collar by the put strike
+  (higher first), the net debit (lower first), the expiration (later first). The contract decides last. The text says
+  so when a tie was broken, for example `tie on cap_within_budget broken by the put strike (higher first)`.
+- The best candidate is rank 1 when it is ELIGIBLE. It means only this: the highest score (or, for
+  `stress_cost_per_day`, the lowest) on the objective you chose, among the candidates that passed every criterion.
+  The text says so in its fixed caveat: `the score ranks the candidates only on the objective you chose; it is not a
+  forecast`.
+- When no candidate passes every criterion, the answer is NONE_QUALIFIES, and the text says `no candidate passed every
+  criterion: the desk names no best candidate`. That is a complete answer: closing, letting a short call be assigned
+  and leaving the position as it is remain your choices.
+
+### Earnings and ex-dividend dates
+
+A short call (a covered call, a replacement call, a collar's call) is checked against the dates in
+`research/calendar.toml`; a long put never is.
+
+- An earnings date inside the call's life fails `earnings`. `#earnings-ok` on any open row of the group, or
+  `earnings = "allow"`, accepts it.
+- An ex-dividend date whose last cum-dividend day falls inside the call's life fails `ex_dividend` (for a replacement,
+  only when the held call's life did not already include it). `#assign-ok` on any open row of the group, or
+  `ex_dividend = "allow"`, accepts it.
+- The calendar holds one next ex-date per symbol. When a call's last trading day is at least 80 calendar days after
+  that date, a second ex-date may fall inside its life, so the call also gets `a second ex-date may fall before the
+  call's last trading day; the calendar holds one`.
+- An accepted label stays visible: `accepted <key>: <words> (by #assign-ok)` or `(by your structuring.toml)`.
+- A short call in the money whose bid's time value is below a dividend before its last trading day, or a long put
+  with an absolute delta of 0.80 or more, gets an `american-style note:` line: early exercise can matter there, and
+  the European model does not price it.
+
+## The approval-level check
+
+The structuring tools are the only reader of `approval_level` in `desk.toml`. The level is self-attested: you state it
+in the desk's convention, and the desk records it.
+
+Approval levels by the desk's convention (brokers number and define their levels differently; state yours in this convention, and give the lowest level across your accounts):
+
+- `0` no options approval: the desk shows closing tickets only;
+- `1` covered calls on shares held in the same account, and cash-secured puts;
+- `2` level 1 plus long calls and long puts (protective puts, collars);
+- `3` level 2 plus defined-risk spreads;
+- `4` level 3 plus uncovered short options;
+- `5` level 4 plus uncovered index options and other advanced strategies.
+
+By the desk's convention, a closing transaction needs no approval (level 0); the broker's own rules apply.
+
+- A ticket or a proposal is checked step by step, against the holdings before each leg, in the same account and
+  underlying. A short call is covered only by 100 shares per contract in the same account; shares in another account
+  never cover it.
+
+  | Step | Level |
+  | --- | --- |
+  | a step that closes a short or long option you hold | 0 |
+  | a step that closes shares no remaining short call needs | 0 |
+  | a step that closes shares or a long option and leaves a remaining short option uncovered | 4 |
+  | a step that opens a short call covered by free shares in the same account (the shares minus 100 for each short call already open, at least 100 per new contract) | 1 |
+  | a step that opens a short call without enough free shares | 4 |
+  | a step that opens a short put (cash-secured; the desk does not see your cash) | 1 |
+  | a step that opens a long call or a long put | 2 |
+
+- The leg order is fixed so that no step opens or uncovers a short option. A CLOSE ticket closes the shorts, then the
+  longs. UNWIND_STOCK closes the shorts, then the shares, then the longs, so the protection goes last. A replacement
+  short call closes the old call first; a replacement long put opens the new put first, so the protection never lapses.
+  A collar opens its put, then its call. MONETIZE_PUT closes the put.
+- When the reverse order would leave an uncovered call, the text says so, for example `in the other order, after leg
+  2 you would hold 2 uncovered calls (level 4)`. A ticket or a proposal with more than one leg adds the multi-leg
+  note, for example `entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher
+  level`.
+- A step above your level refuses the answer (exit 20): the desk shows nothing above your level. Synthetic, the
+  fixture with `approval_level = 0`:
+
+  ```text
+  REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs level 1 by the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing above your level; your broker's own approval decides what you can enter
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
+  ```
+
+- Give the lowest level across your accounts: the desk uses one level for every account. Your broker's own approval
+  decides what you can enter. The desk calls this the approval-level check and makes no suitability determination.
+
+## The three answers (synthetic)
+
+Every example below ran on a copy of `tests/fixtures/desk` with `structuring.toml` rendered from the fixture answers
+and acknowledged, at 2026-11-03 19:50 UTC (`--offline --now 2026-11-03T19:50:00Z`), on the recorded quotes of 19:31
+UTC. Every value is made up; it is not market data.
+
+### A roll analysis
+
+`roll_analysis.py --trade AG-20261020-01`: the WMT covered call, 200 shares at 98.50 and 2 short 2026-11-20 105
+calls whose row carries `#assign-ok`. One replacement passes every criterion.
+
+```text
+STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
+BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
+the score ranks the candidates only on the objective you chose; it is not a forecast
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
+reasons: 73 calendar days inside your window 40 to 75; absolute delta 0.33 inside your band 0.15 to 0.35; bid 3.55 at or above your minimum 0.50; spread 2.78 % within your maximum 25 %; a net credit of 0.05 (10.00 in all) passes credit_only; strike 115 above your stock cost 98.50
+accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
+after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now 1984.00), breakeven 95.03 (now 95.08)
+candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
+candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
+failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
+a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+- `leg 1 of 2: closes your short ... | leg 2 of 2: opens a new short ...` is the fixed leg grammar. It names the
+  effect, the count, the root, the expiration, the strike and the right, and no trade-side word or order field.
+- The best candidate's lines carry its reasons and the state after both legs; the other candidates print their net
+  credit, their score and every criterion they fail. The JSON lists every candidate with its after-state.
+- `failed your criteria` counts each key a candidate fails, so one candidate can count twice.
+
+The same request for the NVDA covered call, whose row carries `#earnings-ok` but not `#assign-ok`, names no best
+candidate:
+
+```text
+STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 20 failed
+no candidate passed every criterion: the desk names no best candidate
+the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
+candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
+candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
+candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
+failed your criteria: 20 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18, unpriced 2)
+a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+### A ticket
+
+`exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115`, the replacement
+named by the roll analysis above:
+
+```text
+TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold 200 WMT shares and 2 short calls (level 1)
+in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
+entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
+approval: the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; the desk does not see your cash balance
+realized on the closing leg: -16.00 at the conservative side (mid -1.00)
+accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
+after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+you supply the limit; the desk prints none
+valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
+after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+if you decide to act, you type it into your brokerage account yourself and you supply the limit
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+- Each leg shows its bid, ask and mid, its quote grade and the quotes' time. You supply the limit; the desk prints
+  none.
+- `cash` is at the conservative side of each leg (the bid for what you would receive, the ask for what you would pay),
+  then at the mid. "The most the steps need at once" is the largest amount paid out before a later leg brings cash in.
+  The desk does not see your cash balance.
+- `realized on the closing leg` estimates the realized P/L of the closed leg at the conservative side and at the mid.
+- A ticket is computed only while the session is open. It stays valid for 30 minutes, or until the close if that
+  comes first; after that its quotes are too old, and a new ticket needs a new request.
+- A replacement that fails a criterion is still a ticket (exit 0), with its `FAILS_CRITERION` lines: you named it.
+- Only a ROLL ticket prints the model line, because only its replacement carries model numbers (implied volatility,
+  delta and the after-state). The other tickets print quotes and cash only.
+
+A LET_ASSIGN ticket has no leg to enter:
+
+```text
+TICKET AG-20261020-01 | WMT covered call | the short option left to expiry (action LET_ASSIGN) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
+no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
+the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike
+if you decide otherwise, you act by Fri 2026-11-20 16:30 ET (21:30 UTC)
+if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares +1984.00
+the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
+valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
+after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+### A proposal
+
+`propose.py --trade AG-20261028-03 --structure protective_put` on a copy of the fixture whose `positions.csv` drops the
+long put row, so the SPY group holds shares only, and whose share row carries `#assign-ok`:
+
+```text
+PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
+BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
+the score ranks the candidates only on the objective you chose; it is not a forecast
+leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum 25 %
+after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now unbounded), breakeven 655.50 (now 632.40)
+leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)
+approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+candidate 2: the 2027-03-19 620 put | ask 25.65 | stress_cost_per_day 0.1858
+candidate 3: the 2027-03-19 625 put | ask 27.05 | stress_cost_per_day 0.1868
+failed your criteria: 7 (floor_pct 7)
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+you supply the limit; the desk prints none
+if you decide to act, you type it into your brokerage account yourself and you supply the limit
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+On the same copy, `--structure collar`:
+
+```text
+PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed
+BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
+the score ranks the candidates only on the objective you chose; it is not a forecast
+tie on cap_within_budget broken by the put strike (higher first)
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your maximum 25 %; call strike 680 above your stock cost 632.40
+accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
+accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
+after both legs: group delta 24.14 (now 100.00), max loss 1165.00 (now 63240.00), max profit 4835.00 (now unbounded), breakeven 631.65 (now 632.40)
+leg order: leg 1 first; after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention); after leg 2 you hold 100 SPY shares, 1 short call and 1 long put (level 1)
+entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92
+candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92
+failed your criteria: 6 (max_net_debit 6)
+not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+you supply the limit; the desk prints none
+if you decide to act, you type it into your brokerage account yourself and you supply the limit
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+On the fixture itself, the SPY shares already carry a put, so a proposal has nothing to add:
+
+```text
+NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
+```
+
+### Answers without a candidate
+
+- NOT_APPLICABLE names the reason, for example the roll analysis of the SPY protective put:
+
+  ```text
+  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of long puts, short puts and collars is planned for Stage 2 (not in this release)
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
+  ```
+
+- A ticket outside an open session, here on the recorded after-close quotes at 22:00 UTC:
+
+  ```text
+  UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to act on: the session is not open
+  computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 22:00 UTC
+  ```
+
+- On a lint failure the tool prints only `WITHHELD | the text of <tool>.py failed the alert lint (<codes>) and is
+  withheld; the JSON of <tool>.py --json shows it` and the footer, and exits 1.
+
+## What each answer exits with, and what it writes
+
+| Code | Answers | Files | Journal record |
+| --- | --- | --- | --- |
+| 0 | BEST, NONE_QUALIFIES, NOT_APPLICABLE and NOTHING_TO_PROPOSE (roll analyses and proposals); TICKET and NOT_APPLICABLE (tickets) | a roll analysis or a proposal writes its report on every exit 0; a ticket writes its file only on TICKET | yes |
+| 20 | UNAVAILABLE (a quote, an expiration list or a chain the answer needs is missing or stale, a closed session for a ticket, `replacement_not_listed`, `criteria_missing`, `config_unacknowledged`) and REFUSED (`approval_level`, or `intermediate_exposure`, which the fixed leg order rules out) | none | yes |
+| 1 | `unknown_trade`, `desk_root`, `config_invalid`, `positions_invalid`, `calendar_invalid`, `structuring_invalid`, `io_error`, `ticket_exists`, `lint_failed` (the WITHHELD line) | none | none |
+| 2 | usage: a missing or malformed flag | none | none |
+
+These tools never exit 10: "fired" belongs to the alerts. An answer printed with exit 0 or 20 is posted verbatim.
+
+| File | Written by |
+| --- | --- |
+| `reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json` and `.md` | `roll_analysis.py` |
+| `reports/proposals/<trade_id>-<structure>-<YYYYMMDDTHHMMSSZ>.json` and `.md` | `propose.py` |
+| `tickets/TK-<trade_id>-<ACTION>-<YYYYMMDDTHHMMSSZ>.json` and `.md` | `exit_ticket.py` |
+| `journal/structuring.jsonl` | all three, one record per printed text |
+
+Each tool creates its folder at its first write. A rerun at the same instant with the same bytes writes nothing new; a
+different text under the same name is exit 1 (`ticket_exists`). The journal is the audit trail of what was suggested
+and when: each record carries `utc`, `tool`, `action`, `structure`, `trade_id`, `verdict`, the sha256 of
+`structuring.toml`, `desk.toml` and `positions.csv`, `best_candidate`, `candidates_passed`, `candidates_failed`,
+`refused_code` and the sha256 of the printed text. No book check, brief or routine reads it.
+
+## The footer and the disclosure
+
+Every structuring text ends with the structuring footer, for example:
+
+```text
+computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+```
+
+The desk has three footers, and the alert lint keeps them apart: the rules footer closes every alert, sheet and brief;
+the market-snapshot footer closes only the Opening Bell; the structuring footer closes only the Structuring Desk's
+tickets, its roll analyses and its proposals. It refuses rule content under the structuring footer and a leg or a
+candidate under the other two. In structuring mode it also refuses advice, urgency and claim language, a price after
+"at" or "for", and every leg line outside the fixed grammar.
+
+The one-time disclosure, `structuring-suggestions-1`, which the interview shows last and `structuring.toml` records as
+acknowledged:
+
+```text
+The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list candidates from delayed Tradier sandbox quotes: closing or unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and the approval level you stated; it does not see your cash, your other holdings, your objectives or your taxes. It never places anything: you decide, you supply the limit and you act in your brokerage account. Options involve substantial risk; you confirm that you received the OCC booklet Characteristics and Risks of Standardized Options.
+```
+
+## After a fill
+
+A ticket carries no `positions.csv` lines: the fill price is unknown until you have it, and the file has one owner.
+After a fill, tell Aegis Position Control the fill; it proposes the `positions.csv` lines with its close, partial-close
+and roll recipes, and you apply them. After an expiry, its post-expiry check proposes them. Once `positions.csv`
+changes, every structuring tool answers `config_unacknowledged` until you tap `ack.py config --owner-tapped`.
+
+## Limits
+
+- **Pricing.** European Black-Scholes-Merton with a continuous dividend yield, on the quotes' mids. US equity options
+  are American-style, and early exercise is not modelled; the `american-style note:` line marks the cases where it can
+  matter. The American lattice is planned for Stage 2 (not in this release).
+- **Data.** The Tradier sandbox feed, delayed 15 minutes. A ticket is computed only while the session is open, and it
+  is valid for 30 minutes at most.
+- **What the desk knows.** Your positions, your criteria and the approval level you stated. It does not see your cash,
+  your other holdings, your objectives or your taxes, and it makes no cash check.
+- **Expirations.** Standard monthly expirations only; weekly expirations are planned for Stage 2 (not in this
+  release).
+- **Dates.** One next earnings date and one next ex-dividend date per symbol, from `research/calendar.toml`.
+- **Budget.** At most 20 requests and 4 chains per run, inside the desk-wide 60 requests per minute. A chain the run
+  cannot get makes the answer UNAVAILABLE: no best candidate is named on partial data.
+
+## For counsel
+
+[RELEASE.md](RELEASE.md) step 4 lists the items to sign before the tag and before any public release: the structuring
+footer and the disclosure, the ticket texts, the roll-analysis texts and the proposal texts, the approval convention and
+the REFUSED line, the criteria defaults and how the interview presents them, the FAQ answer and the README description,
+and two questions about publishing this software. This page and the tools' outputs above are the material. Whether your
+own use of these answers is investment advice is a question for your counsel.
+
+## Reproduce the examples
+
+From a clone of this repository, with no token. The fixture copy goes outside the clone:
+
+```text
+cp -r tests/fixtures/desk ../aegis-structuring-desk
+python3 scripts/desk_init.py --answers tests/fixtures/init/structuring-answers.json --offline --desk-root ../aegis-structuring-desk --now 2026-11-03T19:48:00Z
+python3 scripts/ack.py config --owner-tapped --offline --desk-root ../aegis-structuring-desk --now 2026-11-03T19:49:00Z
+python3 scripts/roll_analysis.py --trade AG-20261020-01 --offline --desk-root ../aegis-structuring-desk --now 2026-11-03T19:50:00Z
+python3 scripts/exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 --offline --desk-root ../aegis-structuring-desk --now 2026-11-03T19:50:00Z
+```
+
+The proposals need a copy whose SPY group holds shares only, as described above; the REFUSED line needs
+`approval_level = 0` in the copy's `desk.toml`. Each copy is acknowledged again after the edit.

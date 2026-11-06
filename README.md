@@ -3,7 +3,8 @@
 **A read-only options desk for Grok Bot and Grok Build.** It watches your open option positions from a
 `positions.csv` you keep by hand, marks them from delayed Tradier sandbox market data, computes implied volatility,
 Greeks and P/L with standard-library Python tools, and posts an alert when one of your own adopted exit rules fires.
-The Bots narrate; the tools compute every number.
+When you ask, it also prices your choices for a position you hold, scored by criteria you set. The Bots narrate; the
+tools compute every number.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
 
@@ -45,8 +46,8 @@ The tag `v0.1.0` is created at release; until then these links do not resolve.
 The Lead clones the pinned release, checks it, creates the Stage-1 Bots and their group chat, installs the skills
 with a readback each, and then asks you for the things only you can do: the sandbox token through the secure
 secret card, the Auto-review rules, Notifications and Timezone, and a readback of your connected apps and MCP
-servers. It interviews you for the desk configuration, your positions and your rules, offers the routines paused,
-and returns a receipt that ends:
+servers. It interviews you for the desk configuration, your positions, your rules and, if you want the Structuring
+Desk's answers, your structuring criteria; it offers the routines paused, and returns a receipt that ends:
 
 ```text
 Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
@@ -65,8 +66,9 @@ only voice about them.
 | Aegis Desk Lead | routes your questions; `desk.toml`; the 07:30 Morning Desk Sheet and the 17:10 EOD Desk Brief; whether the desk ran today; rulebook changes in Stage 1 | [agents/desk-lead.md](agents/desk-lead.md) |
 | Aegis Exit Sentinel | runs your adopted exit rules; posts EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED; the pre-close line; the threshold-level sheet and plan cards; the end-of-day book snapshot | [agents/exit-sentinel.md](agents/exit-sentinel.md) |
 | Aegis Position Control | keeps `positions.csv` honest and proposes exact lines (you edit the file); the expiry week from Final Call to the Saturday reconciliation | [agents/position-control.md](agents/position-control.md) |
+| Aegis Structuring Desk | on your request only: a closing, unwind, let-assign or roll ticket, a roll analysis, or a covered call, protective put or collar on shares you hold; a tool scores the candidates by your criteria in `structuring.toml` and names the highest-scoring one; it never fires an alert and runs no routine | [agents/structuring-desk.md](agents/structuring-desk.md) |
 
-The Aegis Book & Risk Analyst, the Aegis Structuring Desk and the Aegis Events and Calendar Analyst are planned for Stage 2 (not in this release).
+The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst are planned for Stage 2 (not in this release).
 The Aegis Rules Steward and the Aegis Review Desk are planned for Stage 3 (not in this release).
 
 The skills the Bots load are listed in [skills/README.md](skills/README.md).
@@ -84,6 +86,7 @@ The lean profile, in America/New_York time, on a trading day:
 | 16:35 | Aegis Exit Sentinel | the THRESHOLD LEVELS sheet: each of your rules as the price at which it fires (always) |
 | 17:10 | Aegis Desk Lead | the EOD DESK BRIEF: P/L today, month and year to date, signals, which routines ran, your to-do list (always) |
 | Saturday 09:30 | Aegis Position Control | the post-expiry reconciliation, only in a week a held contract expired |
+| when you ask "what are my choices?" | Aegis Structuring Desk | a ticket, a roll analysis or a proposal for a position you hold, with the best candidate by your own criteria; nothing otherwise |
 
 Silence between runs means nothing changed. A synthetic example, the first line, the pre-close line and the footer of
 the 15:35 book check on the fixture's expiry day (the 15:35 slot of 2026-11-20, run at 19:50 UTC):
@@ -107,10 +110,15 @@ The lean profile costs 41 runs per week; the active profile, which adds four boo
   restate a number.
 - **UNAVAILABLE is a verdict.** A stale or missing input is reported as UNAVAILABLE, never as HOLD or a zero.
 - **The rules are yours.** You adopt each one, with a typed phrase, outside regular trading hours. Every alert cites the rule's
-  id, the rulebook version and its sha. Any change to the rulebook, `desk.toml` or `positions.csv` you have not
-  acknowledged posts CONFIG CHANGED first.
-- **Your tap is the signature.** Adopting rules, acknowledging a change, snoozing or marking a signal acted, and
-  recording the connector readback run only after you approve their Ask-first card.
+  id, the rulebook version and its sha. Any change to the rulebook, `desk.toml`, `positions.csv` or `structuring.toml`
+  you have not acknowledged posts CONFIG CHANGED first.
+- **Your tap is the signature.** Adopting rules, acknowledging a change, snoozing or marking a signal acted, recording
+  the connector readback, and each answer of the Structuring Desk run only after you approve their Ask-first card.
+- **Choices only when you ask.** The Structuring Desk answers only your own request, never in a routine and never in
+  an alert. Its answer is a personalized suggestion computed by the desk's tools from your own criteria and posted by
+  an AI assistant; it names the best candidate by the objective you chose, carries no order fields, and leaves the
+  limit to you. Your approval level, in the desk's convention, is checked first.
+  [docs/STRUCTURING.md](docs/STRUCTURING.md) has the criteria, the outputs and the limits.
 - **It is a level-setter and an interval checker, not a real-time watcher.** The data is 15 minutes delayed and
   routines can start late. The threshold-level sheet gives each rule as a price, so you can set your broker's own
   alerts, which watch in real time.
@@ -147,7 +155,7 @@ rules/       the desk rule and the example exit rules (inert until you adopt the
 hooks/       the broker-write gate and its registrations
 template/    the Grok Bot template contract
 tests/       unit tests, gate tests and the synthetic fixture desk
-docs/        architecture, data formats, monitoring, provenance, runtime pages, the tool reference
+docs/        architecture, data formats, monitoring, the Structuring Desk, provenance, runtime pages, the tool reference
 ```
 
 The tool reference, generated from the tools themselves, is [docs/TOOLS.md](docs/TOOLS.md). How it fits together is
@@ -160,4 +168,6 @@ MIT licensed (FairGradient). Repository mechanics are adapted from
 used under the MIT license; see [ATTRIBUTION.md](ATTRIBUTION.md). The roles, skills, rules and tools are Aegis Desk's
 own.
 
-Aegis Desk is documentation and tools, not personalized investment advice. Options involve substantial risk.
+Aegis Desk is documentation and tools. Its alerts are not personalized investment advice. The Structuring Desk's
+answers are personalized suggestions computed from your own criteria; counsel review of their wording is pending
+([docs/RELEASE.md](docs/RELEASE.md), step 4). Options involve substantial risk.
