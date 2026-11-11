@@ -30,7 +30,7 @@
     `aegis-roll-decision-framework` and `aegis-ticket-and-unwind-order`; `docs/STRUCTURING.md`, the owner and counsel
     reference; the provenance of the criteria defaults and the three objectives (`docs/PROVENANCE.md`); SETUP step
     9's structuring criteria; the README, FAQ, monitoring, security and runtime pages for four Bots;
-  - 425 more tests, 3009 in all (floor 3009).
+  - 429 more tests, 3013 in all (floor 3013).
 - Release tooling:
   - `scripts/release_bump.py <next> [--check]` moves the version in `plugin.json`, every mirrored manifest, the
     marketplace refs, the template's release and skill hashes, every pin `check.sh` step 4 checks, the role skills

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 # isort: off
 import tests._path  # noqa: F401
+from tests.floats import assert_close
 # isort: on
 
 import contextlib
@@ -146,10 +147,11 @@ class OfflineTest(DeskCopy):
                          payload["quote"], "each money field as the text prints it")
         self.assertEqual(("SPY", "2026-12-18", 45, "640"), (payload["symbol"], payload["expiration"],
                                                             payload["dte_calendar"], payload["strike"]))
-        self.assertEqual({"mid": "28.65", "iv": 0.25066666696134243}, payload["call"])
-        self.assertEqual({"mid": "17.30", "iv": 0.24979018665520808}, payload["put"])
-        self.assertEqual(0.2502284268082753, payload["atm_iv"])
-        self.assertEqual(0.12345662100456621, payload["tau_years"])
+        # Solved IVs come from libm: within 1e-12, not to the last digit (tests/floats.py).
+        assert_close(self, {"mid": "28.65", "iv": 0.25066666696134243}, payload["call"])
+        assert_close(self, {"mid": "17.30", "iv": 0.24979018665520808}, payload["put"])
+        assert_close(self, 0.2502284268082753, payload["atm_iv"])
+        assert_close(self, 0.12345662100456621, payload["tau_years"])
         self.assertEqual(("0.04", "0"), (payload["rate"], payload["q"]))
         self.assertEqual({"straddle": "36.76", "one_sigma": "56.98"}, payload["expected_move"])
         self.assertEqual((3, "regular"), (payload["requests_made"], payload["fixture_set"]))
@@ -177,7 +179,7 @@ class OfflineTest(DeskCopy):
         code, out = self.offline("--rate", "0.0412")
         self.assertEqual(0, code, out)
         payload = json.loads(out)["payload"]
-        self.assertEqual((0.25006528161319297, 0.25025856294841303), (payload["call"]["iv"], payload["put"]["iv"]))
+        assert_close(self, (0.25006528161319297, 0.25025856294841303), (payload["call"]["iv"], payload["put"]["iv"]))
         self.assertEqual("0.0412", payload["rate"])
         self.assertIn("; r 0.0412, q 0)", payload["message"])
 

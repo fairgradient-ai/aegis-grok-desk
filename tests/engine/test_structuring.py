@@ -16,6 +16,7 @@ from __future__ import annotations
 
 # isort: off
 import tests._path  # noqa: F401
+from tests.floats import assert_close
 # isort: on
 
 import csv
@@ -748,9 +749,9 @@ class RollGoldenTest(unittest.TestCase):
         self.assertEqual((D("3.50"), "ask", None, D("-16.00"), D("3.42"), D("-684.00")),
                          (held.close_price, held.close_side, held.note, held.realized, held.entry_price_per_share,
                           held.remaining_cost_basis))
-        self.assertEqual(0.4132098189873759, held.iv)
-        self.assertEqual(0.49146745409631537, held.delta)
-        self.assertEqual(101.70650918073693, before.group_delta)
+        # IV, delta and group delta come from libm: within 1e-12 (tests/floats.py).
+        assert_close(self, (0.4132098189873759, 0.49146745409631537, 101.70650918073693),
+                     (held.iv, held.delta, before.group_delta))
         self.assertEqual((D("19016.00"), D("1984.00"), D("95.08"), False),
                          (before.max_loss, before.max_profit, before.breakeven, before.unbounded_up))
         self.assertEqual((D("200"), D("19700.00"), D("98.50")), (self.wmt.group_context.shares,
@@ -849,7 +850,7 @@ class RollGoldenTest(unittest.TestCase):
         self.assertEqual(D("40.00"), cands["NVDA270115C00180000"].reasons[0].value)
         self.assertEqual(["delta_outside_band", "credit_below_minimum", "debit_roll", "crosses_ex_dividend"],
                          codes(cands["NVDA261218C00170000"].reasons))
-        self.assertEqual(104.6093299587413, answer.before.group_delta)
+        assert_close(self, 104.6093299587413, answer.before.group_delta)
 
     def test_deltas_and_ivs_against_an_independent_solve(self) -> None:
         for answer, spot, q in ((self.wmt, "104.23", 0.009), (self.nvda, "148.925", 0.0003)):

@@ -15,13 +15,22 @@ concurrency:
 jobs:
   check:
     name: check.sh (python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         # 3.9 is the syntax floor the Grok Bot computer may run; 3.13 is the newest CPython.
         python: ["3.9", "3.10", "3.12", "3.13"]
+        os: [ubuntu-latest]
+        # actions/setup-python has no 3.9 build for Ubuntu 26.04 (today's ubuntu-latest), so the
+        # floor runs on 24.04; the other interpreters keep exercising the current image.
+        exclude:
+          - python: "3.9"
+            os: ubuntu-latest
+        include:
+          - python: "3.9"
+            os: ubuntu-24.04
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"

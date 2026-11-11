@@ -17,6 +17,7 @@ from __future__ import annotations
 
 # isort: off
 import tests._path  # noqa: F401
+from tests.floats import assert_close
 # isort: on
 
 import contextlib
@@ -310,9 +311,11 @@ class GoldenTest(DeskCopy):
         self.assertEqual((1, "ELIGIBLE", "0.0467", "0.05", "10.00", 2),
                          (best["rank"], best["status"], best["score"], best["net_credit"], best["net_credit_total"],
                           best["contracts"]))
-        self.assertEqual({"group_delta": 134.07142892292973, "delta_change": 32.3649197421928, "max_loss": "19006.00",
-                          "max_profit": "3994.00", "breakeven": "95.03", "breakevens": ["95.03"], "unbounded_up": False,
-                          "realized_on_close": "-16.00"}, payload["after"])
+        # The deltas come from libm (within 1e-12); the money strings stay exact (tests/floats.py).
+        assert_close(self, {"group_delta": 134.07142892292973, "delta_change": 32.3649197421928,
+                            "max_loss": "19006.00", "max_profit": "3994.00", "breakeven": "95.03",
+                            "breakevens": ["95.03"], "unbounded_up": False, "realized_on_close": "-16.00"},
+                     payload["after"])
         self.assertEqual([{"by": "#assign-ok", "code": "crosses_ex_dividend", "key": "ex_dividend",
                            "threshold": {"last_trading_day": "2027-01-15"},
                            "value": {"amount": "0.2350", "cum_day": "2026-11-23", "ex_date": "2026-11-24",
