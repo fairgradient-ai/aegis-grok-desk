@@ -67,8 +67,9 @@ These are observed at release, before the tag. Observed on 2026-11-05 with Claud
 were refused with exactly the reasons below, the commands never ran, and a read (`git status --short`) ran with no
 opinion from the hook. Check 1 is interactive and was not observed; both `PreToolUse` groups ran (`PreToolUse:Bash`
 for the sample, `PreToolUse:mcp__blackhole__place_order` for the stub). The Aegis Structuring Desk then changed the
-plugin's agents and skills, not the hook, so the checks run again on the release commit and are recorded in
-[docs/RELEASE.md](RELEASE.md), step 2. The marketplace install is checked after the tag (the same step).
+plugin's agents and skills, not the hook, so the checks ran again on 2026-11-11 with Claude Code 2.1.322 on a clean
+clone of the Structuring Desk commit, with the same results; the session listed all four agents. Both runs are
+recorded in [docs/RELEASE.md](RELEASE.md), step 2. The marketplace install is checked after the tag (the same step).
 
 1. `/plugin` shows the plugin with no error, such as a duplicate hooks file; `/hooks` lists the two `PreToolUse`
    groups, and the shell matcher names every Claude Code tool that runs a shell command.
