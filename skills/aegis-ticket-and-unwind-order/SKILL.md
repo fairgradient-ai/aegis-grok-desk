@@ -220,8 +220,9 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 - OCC exercises an option at least 0.01 in the money at expiry by exception. The broker's cutoff in that line,
   `broker_exercise_cutoff_et` in `desk.toml`, is for an exercise instruction on a long option.
 - A short option left to expiry can be closed only while the session trades, so the act-by is the last trading day's
-  session close (16:00 ET, 13:00 ET on an early close), or the broker's cutoff when that is earlier. On the last
-  trading day `[today]` follows the time.
+  session close (16:00 ET, 13:00 ET on an early close), or the broker's cutoff when that is earlier; the expiry
+  sheet of Aegis Position Control applies the same rule to a short leg. On the last trading day `[today]` follows the
+  time.
 - The expiry and assignment skill of Aegis Position Control has the protocol; the outcome after expiry is an
   inference the owner confirms with the broker.
 

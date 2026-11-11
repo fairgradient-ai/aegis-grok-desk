@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- A short option's act-by (FAI-689): the expiry checklist (the FINAL CALL, the T-1 preview and the PIN lines), the
+  assignment watch and the morning sheet print a short option leg's act-by as the session close of its last trading
+  day (16:00 ET; 13:00 ET on an early close), or `broker_exercise_cutoff_et` when that is earlier, because a short
+  option is closed only while the market trades; its text ends `; the session close: a short option is closed only
+  while the market trades` and carries no early-close mark. A long leg keeps the broker cutoff, with the early-close
+  rule and mark (it governs exercise and do-not-exercise instructions):
+  - one helper, `expiry.leg_act_by`, serves the expiry sheet and the LET_ASSIGN ticket, whose printed text is
+    unchanged;
+  - `ActBy.basis` and the leg JSON's `act_by_basis` (`session_close` or `broker_cutoff`) name the instant that
+    governed, described by the `--schema` of `assignment_watch.py` and `expiry_checklist.py`;
+  - the FINAL CALL header names the earliest act-by of the listed legs when they differ, each leg line keeping its own;
+  - each docket line of the Morning Desk Sheet and the EOD brief names its contract, side and size first
+    (`<trade_id> <OCC symbol> <long|short> <contracts> | ...`), since the legs of one group can act by different
+    times; a docket record whose legs lack them is not the record the desk writes;
+  - 15 more tests, 3028 in all (floor 3028).
 - The Aegis Structuring Desk joins Stage 1 as a fourth Bot on the Floor. It answers only the owner's own request,
   never runs in a routine and never fires an alert:
   - `scripts/exit_ticket.py` (`--action` CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT, or ROLL with

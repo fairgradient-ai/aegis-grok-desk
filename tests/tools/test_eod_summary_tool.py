@@ -299,7 +299,7 @@ class MorningSheetTest(DeskCopy):
     def test_the_early_close_line_from_the_week_docket(self) -> None:
         self.stage_morning()
         day = "2026-11-27"
-        act = "act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; early close 13:00 ET: confirm your broker's cutoff"
+        act = "act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; the session close: a short option is closed only while the market trades"
         doctor_record = self.read_json("state/doctor.json")
         self.write_json("state/doctor.json", dict(doctor_record, run_utc="2026-11-27T12:31:00+00:00"))
         recon = self.read_json("data/positions/2026-11-03.recon.json")
@@ -309,6 +309,7 @@ class MorningSheetTest(DeskCopy):
         docket = self.read_json("reports/expiry/2026-11-03.week.json")
         docket["generated_at"] = "2026-11-27T12:31:00+00:00"
         leg = {"trade_id": WMT, "group_id": WMT, "underlying": "WMT", "structure": "covered_call",
+               "symbol": "WMT261127C00105000", "side": "short", "contracts": "2",
                "last_trading_day": day, "dte_trading": 0, "act_by_text": act, "act_by_passed": False}
         docket["payload"].update(today=day, legs=[leg])
         docket["payload"]["counts"].update(listed=1, unavailable=0)
@@ -320,8 +321,8 @@ class MorningSheetTest(DeskCopy):
         self.assertEqual(0, code, out)
         lines = out.split("\n")
         self.assertEqual("expiry docket (reports/expiry/2026-11-27.week.json): 1 contract due", lines[4])
-        self.assertEqual("AG-20261020-01 WMT covered call | last trading day 2026-11-27 (0 trading days) | " + act,
-                         lines[5])
+        self.assertEqual("AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day 2026-11-27 "
+                         "(0 trading days) | " + act, lines[5])
         self.assertEqual("early close today at 13:00 ET: 1 contract on its last trading day; " + act, lines[6])
         self.assertTrue(lines[7].startswith("last night's levels (levels/2026-11-25.json): "), lines[7])
 

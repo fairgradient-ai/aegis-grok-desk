@@ -219,7 +219,8 @@ The interview comes first: the doctor reads the token's variable and the market-
 **The desk interview.** The Lead asks one topic at a time and writes your answers as JSON to
 `/workspace/aegis-desk/setup/desk-answers.json`. The shape is `desk_init` "Input" in [docs/TOOLS.md](docs/TOOLS.md):
 
-- your accounts (a name and `cash`, `margin` or `ira` each) and your broker's exercise cutoff in ET, `HH:MM`;
+- your accounts (a name and `cash`, `margin` or `ira` each) and your broker's exercise cutoff in ET, `HH:MM` (the
+  act-by time of a long option; a short option acts by the session close, or this cutoff when earlier);
 - your self-attested options approval level (0 to 5) in the desk's convention, declared equity, attention thresholds,
   the disclosures you acknowledged, the engagement, `chatty` or `quiet`, and the cadence profile, `lean` or `active`;
 - the market data: host `sandbox` and the token variable `TRADIER_API_TOKEN` (or a token file);

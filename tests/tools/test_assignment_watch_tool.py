@@ -36,14 +36,14 @@ FOOTER_T1 = "Tradier sandbox, delayed 15 min, as of 19:31 UTC"
 # with the boundary note.
 WMT_NOTED = ("NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-23 in 2 trading days (confirmed), "
              "amount 0.2350; extrinsic (bid) 0.09 = bid 1.52 - max(0, 106.43 - 105); in the money; HIGH downgraded to "
-             "NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]")
+             "NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades")
 WMT_NOTED_EXPIRY_DAY = ("NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-23 in 1 trading day (confirmed), "
                         "amount 0.2350; extrinsic (bid) 0.12 = bid 0.12 - max(0, 104.93 - 105); out of the money; HIGH downgraded "
-                        "to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]")
+                        "to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades")
 WMT_PIN_WATCH = ("PIN WATCH AG-20261020-01 WMT261120C00105000 short 2: 1.34 % from the strike (mid 106.43 vs 105), in the "
-                 "money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]")
+                 "money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades")
 NVDA_PIN_HIGH = ("PIN HIGH AG-20261022-02 NVDA261120C00150000 short 2: 0.52 % from the strike (mid 149.225 vs 150), out of "
-                 "the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]")
+                 "the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades")
 BOUNDARY_NOTE = ("ex-dividend 2026-11-23 is the first trading day after the last trading day 2026-11-20: a dividend-capture "
                  "exercise would come at expiration")
 GRADE_E_NOTE = "option quote grade E (wide: spread 28.57% > 25%): the bid-side arithmetic stands"
@@ -216,7 +216,7 @@ class JourneysTest(DeskCopy):
         self.assertEqual([], wmt["unavailable_reasons"])
         self.assertEqual((1, 0, 0, 3), (payload["counts"]["fired"], payload["counts"]["noted"], payload["counts"]["unavailable"],
                                         payload["counts"]["open_option_legs"]))
-        self.assertEqual(("2026-11-20T21:30:00+00:00", "2026-11-20 16:30 ET", "21:30 UTC", False),
+        self.assertEqual(("2026-11-20T21:00:00+00:00", "2026-11-20 16:00 ET", "21:00 UTC", False),
                          (wmt["act_by_utc"], wmt["act_by_et"], wmt["act_by_utc_text"], wmt["act_by_passed"]))
         nvda = self.leg(body, "NVDA261120C00150000")
         self.assertEqual(("PIN HIGH", "0.52", "149.225", "150", False, True),
@@ -287,7 +287,7 @@ class JourneysTest(DeskCopy):
         self.assertFalse(any(line.startswith("  note:") for line in lines), "no dividend tier, so no dividend notes")
         self.assertNotIn("ex-dividend", text)
         self.assertTrue(any(line.startswith("PIN HIGH AG-20261020-01 WMT261120C00105000 short 2: 0.07 %") for line in lines))
-        self.assertTrue(any("act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]" in line for line in lines))
+        self.assertTrue(any("act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades" in line for line in lines))
 
     def test_expiry_day_with_the_ex_dividend_on_the_next_trading_day_notes_the_grade_e_call(self) -> None:
         # Ex-dividend Mon 2026-11-23 seen on Fri 2026-11-20: one trading day out, the cum day is today (the last trading

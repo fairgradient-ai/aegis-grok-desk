@@ -15,7 +15,7 @@ import unittest
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-from aegis_desk import calendar_events, contract, expiry, grouping, market_clock, positions_csv, quote_qc
+from aegis_desk import alert_lint, alerts, calendar_events, contract, expiry, grouping, market_clock, positions_csv, quote_qc
 from aegis_desk.quote_qc import QuoteQC
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -251,6 +251,118 @@ class SettlementAndActByTest(unittest.TestCase):
         passed = expiry.act_by(EXPIRY, CUTOFF, datetime.datetime(2026, 11, 20, 22, 0, tzinfo=UTC))
         self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today, passed]",
                          expiry.act_by_text(passed, EXPIRY, datetime.date(2026, 11, 23)))
+
+
+class LegActByTest(unittest.TestCase):
+    """FAI-689: a SHORT option is closed only while the market trades, so its act-by is the session close of the last
+    trading day (16:00 ET; 13:00 ET on an early close) or the broker cutoff when that is earlier, and no early-close
+    marker is printed for it; a LONG leg keeps the broker cutoff (exercise and do-not-exercise instructions) with the
+    early-close rule and marker. ``ActBy.basis`` names the instant that governed."""
+
+    SHORT_PHRASE = "the session close: a short option is closed only while the market trades"
+    EARLY = datetime.date(2026, 11, 27)
+
+    def short_call(self) -> positions_csv.PositionRow:
+        return rows_from([WMT_SHARES, WMT_CALL])[1]
+
+    def long_put(self) -> positions_csv.PositionRow:
+        return rows_from([SPY_SHARES, SPY_PUT])[1]
+
+    def test_the_basis_vocabulary(self) -> None:
+        self.assertEqual(("session_close", "broker_cutoff"), (expiry.BASIS_SESSION_CLOSE, expiry.BASIS_BROKER_CUTOFF))
+        self.assertEqual((expiry.BASIS_SESSION_CLOSE, expiry.BASIS_BROKER_CUTOFF), expiry.ACT_BY_BASES)
+        self.assertEqual(self.SHORT_PHRASE, expiry.SHORT_BASIS_PHRASE)
+
+    def test_act_by_names_its_basis(self) -> None:
+        self.assertEqual(expiry.BASIS_BROKER_CUTOFF, expiry.act_by(EXPIRY, CUTOFF, T1_NOW).basis)
+        self.assertEqual(expiry.BASIS_SESSION_CLOSE, expiry.act_by(self.EARLY, CUTOFF, T1_NOW).basis,
+                         "the 13:00 ET close governs a 16:30 ET cutoff on an early-close day")
+        self.assertEqual(expiry.BASIS_BROKER_CUTOFF, expiry.act_by(self.EARLY, datetime.time(12, 30), T1_NOW).basis)
+
+    def test_a_short_leg_acts_by_the_session_close(self) -> None:
+        act = expiry.leg_act_by(self.short_call(), EXPIRY, CUTOFF, T1_NOW)
+        self.assertEqual((datetime.datetime(2026, 11, 20, 21, 0, tzinfo=UTC), "2026-11-20 16:00 ET", "21:00 UTC",
+                          datetime.time(16, 0), CUTOFF, False, False, expiry.BASIS_SESSION_CLOSE),
+                         (act.utc, act.et_text, act.utc_text, act.cutoff_et, act.broker_cutoff_et, act.early_close,
+                          act.passed, act.basis))
+        self.assertTrue(expiry.leg_act_by(self.short_call(), EXPIRY, CUTOFF,
+                                          datetime.datetime(2026, 11, 20, 21, 0, tzinfo=UTC)).passed)
+        self.assertFalse(expiry.leg_act_by(self.short_call(), EXPIRY, CUTOFF,
+                                           datetime.datetime(2026, 11, 20, 20, 59, 59, tzinfo=UTC)).passed)
+
+    def test_a_short_leg_on_an_early_close_day_has_no_broker_marker(self) -> None:
+        act = expiry.leg_act_by(self.short_call(), self.EARLY, CUTOFF, T1_NOW)
+        self.assertEqual((datetime.datetime(2026, 11, 27, 18, 0, tzinfo=UTC), datetime.time(13, 0), False,
+                          expiry.BASIS_SESSION_CLOSE, None),
+                         (act.utc, act.cutoff_et, act.early_close, act.basis, act.early_close_text))
+        self.assertEqual("act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; " + self.SHORT_PHRASE,
+                         expiry.leg_act_by_text(self.short_call(), act, self.EARLY, datetime.date(2026, 11, 30)))
+
+    def test_a_short_leg_with_an_earlier_broker_cutoff_keeps_it(self) -> None:
+        act = expiry.leg_act_by(self.short_call(), EXPIRY, datetime.time(15, 30), T1_NOW)
+        self.assertEqual((datetime.time(15, 30), expiry.BASIS_BROKER_CUTOFF, False), (act.cutoff_et, act.basis, act.early_close))
+        self.assertEqual("act by Fri 2026-11-20 15:30 ET (20:30 UTC) [next trading day]",
+                         expiry.leg_act_by_text(self.short_call(), act, T1, EXPIRY), "no basis phrase: the cutoff governs")
+        tie = expiry.leg_act_by(self.short_call(), EXPIRY, datetime.time(16, 0), T1_NOW)
+        self.assertEqual((datetime.time(16, 0), expiry.BASIS_SESSION_CLOSE), (tie.cutoff_et, tie.basis),
+                         "a 16:00 ET cutoff equals the close: the session close is the reason")
+        early = expiry.leg_act_by(self.short_call(), self.EARLY, datetime.time(12, 30), T1_NOW)
+        self.assertEqual((datetime.time(12, 30), expiry.BASIS_BROKER_CUTOFF, False, None),
+                         (early.cutoff_et, early.basis, early.early_close, early.early_close_text))
+
+    def test_a_short_leg_on_an_injected_closure_moves_with_the_last_trading_day(self) -> None:
+        extra = {datetime.date(2026, 11, 26): "Thanksgiving Day", datetime.date(2026, 11, 27): "test closure"}
+        act = expiry.leg_act_by(self.short_call(), datetime.date(2026, 11, 25), CUTOFF, T1_NOW, extra)
+        self.assertEqual((datetime.datetime(2026, 11, 25, 21, 0, tzinfo=UTC), expiry.BASIS_SESSION_CLOSE),
+                         (act.utc, act.basis))
+
+    def test_a_long_leg_keeps_the_broker_cutoff(self) -> None:
+        put = self.long_put()
+        for day, now in ((EXPIRY, T1_NOW), (self.EARLY, T1_NOW), (datetime.date(2026, 12, 18), REGULAR_NOW)):
+            with self.subTest(day=day):
+                self.assertEqual(expiry.act_by(day, CUTOFF, now), expiry.leg_act_by(put, day, CUTOFF, now))
+        act = expiry.leg_act_by(put, EXPIRY, CUTOFF, T1_NOW)
+        self.assertEqual((datetime.time(16, 30), expiry.BASIS_BROKER_CUTOFF), (act.cutoff_et, act.basis))
+        self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]",
+                         expiry.leg_act_by_text(put, act, T1, EXPIRY))
+        early = expiry.leg_act_by(put, self.EARLY, CUTOFF, T1_NOW)
+        self.assertEqual((datetime.time(13, 0), True, expiry.BASIS_SESSION_CLOSE), (early.cutoff_et, early.early_close, early.basis))
+        self.assertEqual("act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; early close 13:00 ET: confirm your broker's "
+                         "cutoff", expiry.leg_act_by_text(put, early, self.EARLY, datetime.date(2026, 11, 30)))
+
+    def test_a_stock_row_has_no_act_by(self) -> None:
+        with self.assertRaises(ValueError):
+            expiry.leg_act_by(rows_from([WMT_SHARES])[0], EXPIRY, CUTOFF, T1_NOW)
+
+    def test_the_sheet_uses_the_leg_rule(self) -> None:
+        lines = FIXTURE_LINES + ["option,SPY,SPY261120P00600000,1,,,,Roth IRA,AG-20261101-05,2026-11-01,100.00,,1.00,"
+                                 "open,,,,,long put into expiry"]
+        sheet = sheet_for(lines, EXPIRY_NOW, expiry_day_qcs())
+        wmt, put = leg(sheet, "WMT261120C00105000"), leg(sheet, "SPY261120P00600000")
+        self.assertEqual("act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; " + self.SHORT_PHRASE, wmt.act_by_text)
+        self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]", put.act_by_text)
+        short_doc, long_doc = wmt.as_dict(), put.as_dict()
+        self.assertEqual(("session_close", "2026-11-20 16:00 ET", "21:00 UTC", False),
+                         (short_doc["act_by_basis"], short_doc["act_by_et"], short_doc["act_by_utc_text"],
+                          short_doc["act_by_early_close"]))
+        self.assertEqual(("broker_cutoff", "2026-11-20 16:30 ET"), (long_doc["act_by_basis"], long_doc["act_by_et"]))
+        self.assertIn("act_by_basis", expiry.LEG_OUTPUT)
+        self.assertEqual(list(short_doc).index("act_by_early_close") + 1, list(short_doc).index("act_by_basis"),
+                         "act_by_basis sits next to the other act_by keys")
+
+    def test_the_short_text_passes_the_strict_rules_lint(self) -> None:
+        act = expiry.leg_act_by(self.short_call(), EXPIRY, CUTOFF, EXPIRY_NOW)
+        text = expiry.leg_act_by_text(self.short_call(), act, EXPIRY, datetime.date(2026, 11, 23))
+        for body in (text, "AG-20261020-01 WMT261120C00105000 short 2 | " + text):
+            emitted: List[str] = []
+            rule_ids: List[str] = []
+            identifiers: List[str] = []
+            clocks: List[str] = []
+            message = alerts.fmt_reason(body, emitted, rule_ids=rule_ids, identifiers=identifiers, clocks=clocks)
+            message += "\n" + alerts.fmt_footer(EXPIRY_STAMP, 15, emitted, clocks)
+            result = alert_lint.check(message, emitted, rule_ids=rule_ids or None, identifiers=identifiers, clocks=clocks,
+                                      as_of=EXPIRY_STAMP)
+            self.assertTrue(result.ok, result.problems)
 
 
 class DividendTierTest(unittest.TestCase):
@@ -644,7 +756,7 @@ class SheetTest(unittest.TestCase):
         self.assertEqual(("AG-20261020-01", "covered_call", "pm", EXPIRY, 1, Decimal(2), "short"),
                          (wmt.trade_id, wmt.structure, wmt.settlement, wmt.last_trading_day, wmt.dte_trading, wmt.contracts, wmt.side))
         self.assertEqual("shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held)", wmt.implication)
-        self.assertEqual(datetime.datetime(2026, 11, 20, 21, 30, tzinfo=UTC), wmt.act_by.utc)
+        self.assertEqual(datetime.datetime(2026, 11, 20, 21, 0, tzinfo=UTC), wmt.act_by.utc)
         self.assertTrue(wmt.assign_ok)
         nvda = leg(sheet, "NVDA261120C00150000")
         self.assertIsNone(nvda.dividend, "the NVDA ex-dividend 2026-12-03 is nine trading days out")
@@ -676,7 +788,7 @@ class SheetTest(unittest.TestCase):
         nvda = leg(sheet, "NVDA261120C00150000")
         self.assertEqual((expiry.PIN_WATCH, Decimal("2.17"), expiry.ITM_LINE_TODAY), (nvda.pin.tier, nvda.pin.distance_pct, nvda.pin.line))
         self.assertEqual(0, nvda.dte_trading)
-        self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]", nvda.act_by_text)
+        self.assertEqual("act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades", nvda.act_by_text)
         self.assertEqual(contract.EXIT_FIRED, expiry.assignment_exit_code(sheet))
         self.assertEqual(contract.EXIT_FIRED, expiry.checklist_exit_code(sheet, expiry.MODE_FINAL_CALL))
         self.assertEqual(contract.EXIT_QUIET, expiry.checklist_exit_code(sheet, expiry.MODE_TOMORROW))
@@ -730,7 +842,7 @@ class SheetTest(unittest.TestCase):
                                               "Mon 2026-11-23 is after the call's last trading day anyway")
         self.assertEqual(contract.EXIT_FIRED, expiry.checklist_exit_code(sheet, expiry.MODE_WEEK))
         self.assertEqual(contract.EXIT_QUIET, expiry.assignment_exit_code(sheet))
-        self.assertEqual("act by Fri 2026-11-20 16:30 ET (21:30 UTC)", listed[0].act_by_text)
+        self.assertEqual("act by Fri 2026-11-20 16:00 ET (21:00 UTC); the session close: a short option is closed only while the market trades", listed[0].act_by_text)
 
     def test_quotes_unavailable_for_a_due_item(self) -> None:
         qcs = {symbol: stale(symbol, "1", "2") for symbol in t1_qcs()}
@@ -804,7 +916,7 @@ class SheetTest(unittest.TestCase):
         document = sheet.as_dict()
         text = contract.json_dumps(document)
         self.assertIn('"distance_pct": "0.52"', text)
-        self.assertIn('"act_by_utc": "2026-11-20T21:30:00+00:00"', text)
+        self.assertIn('"act_by_utc": "2026-11-20T21:00:00+00:00"', text)
         self.assertEqual(["expired", "legs", "next_trading_day", "quarantined", "today", "warnings", "week_end", "week_start"],
                          sorted(document))
         wmt = document["legs"][0]
@@ -827,18 +939,18 @@ class LineFormatTest(unittest.TestCase):
             expiry.dividend_line(wmt)
         nvda = leg(sheet, "NVDA261120C00150000")
         self.assertEqual("PIN HIGH AG-20261022-02 NVDA261120C00150000 short 2: 0.52 % from the strike (mid 149.225 vs 150), out of "
-                         "the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]",
+                         "the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades",
                          expiry.pin_line(nvda))
         self.assertEqual("AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 "
                          "(1 trading day) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | "
-                         "act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]", expiry.docket_line(wmt))
+                         "act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades", expiry.docket_line(wmt))
         self.assertEqual(["  in the money: automatic exercise or assignment expected at the close of Fri 2026-11-20"],
                          expiry.extra_lines(wmt), "no dividend note: the pin tier alone carries the assignment-at-expiry line")
         # The ex-dividend on the first trading day after the last trading day (the tool tests' rewritten calendar).
         graded = leg(sheet_for(FIXTURE_LINES, T1_NOW, t1_qcs(), CAL_EX_MONDAY), "WMT261120C00105000")
         self.assertEqual("NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-23 in 2 trading days (confirmed), "
                          "amount 0.2350; extrinsic (bid) 0.09 = bid 1.52 - max(0, 106.43 - 105); in the money; HIGH downgraded to "
-                         "NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]",
+                         "NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades",
                          expiry.dividend_line(graded))
         self.assertEqual(["  in the money: automatic exercise or assignment expected at the close of Fri 2026-11-20",
                           "  note: " + BOUNDARY_NOTE_WMT], expiry.extra_lines(graded))
@@ -847,7 +959,7 @@ class LineFormatTest(unittest.TestCase):
         sheet = sheet_for(FIXTURE_LINES, EXPIRY_NOW, expiry_day_qcs(), FIXTURE_CAL)
         nvda = leg(sheet, "NVDA261120C00150000")
         self.assertEqual("PIN WATCH AG-20261022-02 NVDA261120C00150000 short 2: 2.17 % from the strike (mid 153.33 vs 150), in the "
-                         "money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]",
+                         "money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades",
                          expiry.pin_line(nvda))
         self.assertEqual(["  " + expiry.ITM_LINE_TODAY], expiry.extra_lines(nvda))
         wmt = leg(sheet, "WMT261120C00105000")
@@ -855,12 +967,12 @@ class LineFormatTest(unittest.TestCase):
                       expiry.pin_line(wmt))
         self.assertEqual("AG-20261022-02 NVDA261120C00150000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 "
                          "(today) | shares called away if assigned: 200 NVDA at 150 (covered by the 200 shares held) | "
-                         "act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]", expiry.docket_line(nvda))
+                         "act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades", expiry.docket_line(nvda))
         self.assertIsNone(wmt.dividend)
         graded = leg(sheet_for(FIXTURE_LINES, EXPIRY_NOW, expiry_day_qcs(), CAL_EX_MONDAY), "WMT261120C00105000")
         self.assertEqual("NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-23 in 1 trading day (confirmed), "
                          "amount 0.2350; extrinsic (bid) 0.12 = bid 0.12 - max(0, 104.93 - 105); out of the money; HIGH downgraded "
-                         "to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]",
+                         "to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades",
                          expiry.dividend_line(graded))
         self.assertEqual(["  note: " + BOUNDARY_NOTE_WMT], expiry.extra_lines(graded), "out of the money: no in-the-money line")
 
@@ -868,14 +980,15 @@ class LineFormatTest(unittest.TestCase):
         sheet = sheet_for(FIXTURE_LINES, T1_NOW, t1_qcs(), None)
         wmt = leg(sheet, "WMT261120C00105000")
         self.assertEqual("UNAVAILABLE AG-20261020-01 WMT261120C00105000 short 2: dividend unknown: no research/calendar.toml "
-                         "(unknown dividend is never zero); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]",
+                         "(unknown dividend is never zero); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades",
                          expiry.dividend_line(wmt))
         qcs = t1_qcs()
         qcs["NVDA"] = unusable("NVDA")
         sheet = sheet_for(FIXTURE_LINES, T1_NOW, qcs, FIXTURE_CAL)
         self.assertEqual("UNAVAILABLE AG-20261022-02 NVDA261120C00150000 short 2: pin tier not graded: NVDA quote unavailable "
-                         "(F missing: cache: unmatched); last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) "
-                         "[next trading day]", expiry.pin_line(leg(sheet, "NVDA261120C00150000")))
+                         "(F missing: cache: unmatched); last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) "
+                         "[next trading day]; the session close: a short option is closed only while the market trades",
+                         expiry.pin_line(leg(sheet, "NVDA261120C00150000")))
 
 
 class ModuleHygieneTest(unittest.TestCase):

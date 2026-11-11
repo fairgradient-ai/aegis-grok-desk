@@ -99,9 +99,9 @@ A synthetic example: a copy of the fixture desk at 15:20 on Friday 2026-11-20 (t
 19:50 UTC). The message starts:
 
 ```text
-FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)
-AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]
-  PIN HIGH AG-20261020-01 WMT261120C00105000 short 2: 0.07 % from the strike (mid 104.93 vs 105), out of the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]
+FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)
+AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades
+  PIN HIGH AG-20261020-01 WMT261120C00105000 short 2: 0.07 % from the strike (mid 104.93 vs 105), out of the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades
 ```
 
 and further down carries the assignment watch's verdict line:
@@ -151,9 +151,13 @@ the owner's own fill. After a LET_ASSIGN ticket, the post-expiry reconciliation 
   vertical with the stock between its strikes.
 - On Saturday at 09:30 the post-expiry routine infers each expired leg's outcome from the official close and counts
   the proposed edits. On Monday at 07:30 the preopen reconciliation shows whether the owner applied them.
-- The act-by time is the owner's own broker cutoff (`broker_exercise_cutoff_et` in `desk.toml`) on the last trading
-  day. On an early-close day it is the earlier of that cutoff and 13:00 ET, marked with the words "early close 13:00
-  ET: confirm your broker's cutoff". The OCC 17:30 ET exercise time is a reference only, never the desk's act-by.
+- The act-by time depends on the leg's side. A short option is closed only while the market trades, so its act-by
+  is the session close of its last trading day (16:00 ET, 13:00 ET on an early close), or the owner's broker cutoff
+  (`broker_exercise_cutoff_et` in `desk.toml`) when that is earlier; when the session close governs, its text ends
+  "the session close: a short option is closed only while the market trades". A long option's act-by is the broker cutoff on its last trading
+  day; on an early-close day the earlier of that cutoff and 13:00 ET, marked with the words "early close 13:00 ET:
+  confirm your broker's cutoff". When the listed act-bys differ, the Final Call header names the earliest. The OCC
+  17:30 ET exercise time is a reference only, never the desk's act-by.
 - Early-close days have no extra routine. The final-call routine runs no step and prints `quiet`. The 07:30 sheet
   carries the line `early close today at 13:00 ET: <n> contracts on their last trading day; <act-by text>`, and the
   T-1 preview on the trading day before already printed the early act-by.

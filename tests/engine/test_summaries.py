@@ -54,8 +54,9 @@ def recon_record(verdict: str = "CLEAN", edits: int = 0, unavailable: int = 0, e
 
 
 def docket_leg(trade_id: Optional[str], underlying: str, structure: str, last_trading_day: str, dte: int,
-               act_by_text: str, group_id: str = "ROW-4") -> Dict[str, Any]:
+               act_by_text: str, symbol: str, side: str, contracts: str, group_id: str = "ROW-4") -> Dict[str, Any]:
     return {"trade_id": trade_id, "group_id": group_id, "underlying": underlying, "structure": structure,
+            "symbol": symbol, "side": side, "contracts": contracts,
             "last_trading_day": last_trading_day, "dte_trading": dte, "act_by_text": act_by_text,
             "act_by_passed": False}
 
@@ -289,11 +290,12 @@ class MorningSheetTest(LintedTest):
 
     def test_the_docket_lines_and_the_early_close_line(self) -> None:
         today = datetime.date(2026, 11, 27)
-        act = "act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; early close 13:00 ET: confirm your broker's cutoff"
-        legs = [docket_leg(WMT, "WMT", "covered_call", "2026-11-27", 0, act),
-                docket_leg(None, "NVDA", "short_call", "2026-11-27", 0, act, group_id="ROW-6"),
+        act = "act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; the session close: a short option is closed only while the market trades"
+        legs = [docket_leg(WMT, "WMT", "covered_call", "2026-11-27", 0, act, "WMT261127C00105000", "short", "2"),
+                docket_leg(None, "NVDA", "short_call", "2026-11-27", 0, act, "NVDA261127C00150000", "short", "2",
+                           group_id="ROW-6"),
                 docket_leg(SPY, "SPY", "protective_put", "2026-12-04", 5,
-                           "act by Fri 2026-12-04 16:30 ET (21:30 UTC)")]
+                           "act by Fri 2026-12-04 16:30 ET (21:30 UTC)", "SPY261204P00620000", "long", "1")]
         docket = made(summaries.LABEL_DOCKET, "reports/expiry/2026-11-27.week.json",
                       docket_record(legs, today="2026-11-27", unavailable=1,
                                     generated_at="2026-11-27T12:31:00+00:00"), today)
@@ -308,13 +310,63 @@ class MorningSheetTest(LintedTest):
         self.assertEqual([
             "expiry docket (reports/expiry/2026-11-27.week.json): 3 contracts due, 1 unavailable "
             "(expiry_checklist.py --week shows why)",
-            "AG-20261020-01 WMT covered call | last trading day 2026-11-27 (0 trading days) | " + act,
-            "ROW-6 NVDA short call | last trading day 2026-11-27 (0 trading days) | " + act,
-            "AG-20261028-03 SPY protective put | last trading day 2026-12-04 (5 trading days) | act by Fri 2026-12-04 "
-            "16:30 ET (21:30 UTC)",
+            "AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day 2026-11-27 (0 trading days) | "
+            + act,
+            "ROW-6 NVDA261127C00150000 short 2 | NVDA short call | last trading day 2026-11-27 (0 trading days) | " + act,
+            "AG-20261028-03 SPY261204P00620000 long 1 | SPY protective put | last trading day 2026-12-04 (5 trading days) "
+            "| act by Fri 2026-12-04 16:30 ET (21:30 UTC)",
             "early close today at 13:00 ET: 2 contracts on their last trading day; " + act,
         ], summary.lines[4:9])
         self.assertLinted(summary)
+
+    def test_each_docket_line_names_its_contract_and_side(self) -> None:
+        # Review L1-1 (FAI-689): the two legs of a vertical act by different times (a short leg by the session close,
+        # a long one by the broker cutoff), so each docket line names its own contract, side and size, as the
+        # checklist's lines do. The act-by texts are what expiry_checklist.py --week prints for a SPY 600/590 put debit
+        # vertical on its last trading day (fixture copy, 2026-11-20 12:31 UTC).
+        today = datetime.date(2026, 11, 20)
+        trade = "AG-20261101-05"
+        long_act = "act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]"
+        short_act = ("act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed "
+                     "only while the market trades")
+        legs = [docket_leg(trade, "SPY", "put_debit_vertical", "2026-11-20", 0, long_act, "SPY261120P00600000", "long",
+                           "1"),
+                docket_leg(trade, "SPY", "put_debit_vertical", "2026-11-20", 0, short_act, "SPY261120P00590000", "short",
+                           "1")]
+        docket = made(summaries.LABEL_DOCKET, "reports/expiry/2026-11-20.week.json",
+                      docket_record(legs, today="2026-11-20", generated_at="2026-11-20T12:31:00+00:00"), today)
+        summary = summaries.morning_sheet(morning(
+            et_date=today, now=contract.parse_utc_instant("2026-11-20T12:35:00Z"), docket=docket,
+            doctor=made(summaries.LABEL_DOCTOR, DOCTOR_PATH, doctor_record(run_utc="2026-11-20T12:31:00+00:00"), today),
+            recon=made(summaries.LABEL_RECON, "data/positions/2026-11-20.recon.json",
+                       recon_record(et_date="2026-11-20", generated_at="2026-11-20T12:31:00+00:00"), today),
+            levels=made(summaries.LABEL_LEVELS, "levels/2026-11-19.json", levels_record("2026-11-19"),
+                        datetime.date(2026, 11, 19))))
+        self.assertEqual([
+            "expiry docket (reports/expiry/2026-11-20.week.json): 2 contracts due",
+            "AG-20261101-05 SPY261120P00600000 long 1 | SPY put debit vertical | last trading day 2026-11-20 "
+            "(0 trading days) | " + long_act,
+            "AG-20261101-05 SPY261120P00590000 short 1 | SPY put debit vertical | last trading day 2026-11-20 "
+            "(0 trading days) | " + short_act,
+        ], summary.lines[4:7])
+        self.assertLinted(summary)
+        evening = summaries.eod_brief(brief(docket=docket))
+        self.assertIn(summary.lines[5], evening.lines, "the EOD brief prints the same docket lines")
+        self.assertIn(summary.lines[6], evening.lines)
+
+    def test_a_docket_leg_without_its_contract_side_or_size_is_invalid(self) -> None:
+        good = docket_leg(WMT, "WMT", "covered_call", "2026-11-20", 0, "act by Fri 2026-11-20 16:00 ET (21:00 UTC)",
+                          "WMT261120C00105000", "short", "2")
+        self.assertEqual(summaries.ARTIFACT_OK, made(summaries.LABEL_DOCKET, DOCKET_PATH, docket_record([good])).status)
+        for key, value in (("symbol", None), ("symbol", ""), ("side", None), ("side", "flat"), ("contracts", None),
+                           ("contracts", "two"), ("contracts", 2)):
+            leg = dict(good)
+            if value is None:
+                del leg[key]
+            else:
+                leg[key] = value
+            item = made(summaries.LABEL_DOCKET, DOCKET_PATH, docket_record([leg]))
+            self.assertEqual(summaries.ARTIFACT_INVALID, item.status, (key, value))
 
     def test_the_early_close_line_without_contracts_or_without_a_docket(self) -> None:
         one = morning(early_close_et=datetime.time(13, 0))

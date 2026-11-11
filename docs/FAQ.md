@@ -59,7 +59,8 @@ you apply them. After any change, CONFIG CHANGED posts until you tap `ack.py con
 
 Every weekday the Morning Desk Sheet carries the docket of contracts due this week. At 15:20 ET the day before a held
 contract's last trading day, Aegis Position Control posts the T-1 PREVIEW; on the day itself, the FINAL CALL with the
-act-by time from your broker's exercise cutoff, the pin tier and the dividend tier. On Saturday at 09:30 ET it posts
+act-by times (a short option's session close, or your broker's exercise cutoff when earlier; a long option's
+broker cutoff), the pin tier and the dividend tier. On Saturday at 09:30 ET it posts
 the inferred outcomes and the number of proposed edits; `csv_recon.py --diff` shows the lines. An outcome near the strike is `PIN_UNCERTAIN`: confirm with your broker.
 See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-assignment-protocol/SKILL.md).
 

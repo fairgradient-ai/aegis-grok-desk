@@ -685,7 +685,7 @@ class FiredTest(RoutineCopy):
         self.assertEqual("state/heartbeat/final-call.json", payload["heartbeat"])
         final, tomorrow, watch = [self.artifact(step)["payload"]["message"] for step in payload["steps"]]
         self.assertEqual("\n".join([DEV_HEADER, final, watch, footer(EXPIRY_QUOTES)]), payload["message"])
-        self.assertIn("FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+        self.assertIn("FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)",
                       payload["message"])
         self.assertIn("assignment watch Fri 2026-11-20 (session open): FIRED", payload["message"])
         self.assertNotIn(tomorrow.splitlines()[0], payload["message"])

@@ -16,8 +16,8 @@ Records and their labels (:func:`make_artifact` checks each one's shape and its 
   ``payload.verdict``, ``payload.et_date`` (its date), ``payload.counts.edits``, ``payload.counts.unavailable`` and
   ``generated_at`` are read, never an edit's CSV line or any text, which carry owner-typed cells.
 * ``expiry docket`` ``reports/expiry/<D>.week.json``: ``expiry_checklist.py --week``'s record (D1-12); its date is
-  ``payload.today``; the legs' ``trade_id``, ``underlying``, ``structure``, ``last_trading_day``, ``dte_trading`` and
-  ``act_by_text`` are read.
+  ``payload.today``; the legs' ``trade_id``, ``symbol``, ``side``, ``contracts``, ``underlying``, ``structure``,
+  ``last_trading_day``, ``dte_trading`` and ``act_by_text`` are read.
 * ``levels sheet`` ``levels/<previous trading day>.json`` (morning): ``trigger_levels.py``'s payload; its date is
   ``et_date``; each group's ``price_levels`` and ``resting_eligible`` counts are read.
 * ``doctor result`` ``state/doctor.json`` (morning): ``desk_doctor.py``'s record (D2-12); its date is the ET date of
@@ -38,8 +38,9 @@ Morning (``MORNING DESK SHEET <D>``): the doctor line ``doctor (state/doctor.jso
 ``positions.csv reconciliation (<path>): <VERDICT>, <n> proposed edits (csv_recon.py --diff lists them)[, <u>
 unavailable items (csv_recon.py shows them)]``; ``open signals: <n>`` and one line per open signal; the docket
 ``expiry docket (<path>): <n> contracts due[, <u> unavailable (expiry_checklist.py --week shows why)]`` with one
-``<trade_id> <UNDERLYING> <structure words> | last trading day <date> (<n> trading days) | <act-by text>`` line per
-contract; on an early-close day (O5) ``early close today at 13:00 ET: <n> contracts on their last trading day;
+``<trade_id> <OCC symbol> <long|short> <contracts> | <UNDERLYING> <structure words> | last trading day <date> (<n>
+trading days) | <act-by text>`` line per contract (the legs of one group can act by different times: a short leg by the
+session close, a long one by the broker cutoff, so each line names its contract); on an early-close day (O5) ``early close today at 13:00 ET: <n> contracts on their last trading day;
 <act-by text>``; and ``last night's levels (<path>): <trade_id> <r> resting-eligible of <p> price levels; ...``.
 Brief (``EOD DESK BRIEF <D>``): ``P/L (<path>): realized today <m>, month to date <m>, year to date <m> | unrealized
 <m> (liquidation), <m> (mid) | day <m>`` (a null prints ``unavailable``; a null day prints the book's own day-P/L
@@ -81,7 +82,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, alerts, doctor, exit_rules, market_clock, recon, routines, signals
+from . import alert_lint, alerts, doctor, exit_rules, market_clock, occ, recon, routines, signals
 
 MODE_MORNING: str = "morning"
 MODE_BRIEF: str = "brief"
@@ -130,6 +131,8 @@ CHECK_STATUSES: Tuple[str, ...] = doctor.STATUSES
 SIGNAL_VERDICT_ORDER: Tuple[str, ...] = (alerts.VERDICT_EXIT_SIGNAL, alerts.VERDICT_WATCH, alerts.VERDICT_UNAVAILABLE)
 PORTFOLIO_STRUCTURE: str = alerts.PORTFOLIO_TRADE
 _DATE_TEXT_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_CONTRACTS_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)?\Z")
+DOCKET_SIDES: Tuple[str, ...] = ("long", "short")
 _UTC = datetime.timezone.utc
 
 
@@ -241,9 +244,21 @@ def _read_recon(raw: Any) -> Optional[Tuple[Any, datetime.date, Optional[datetim
     return raw, day, _instant(payload.get("as_of"))
 
 
+def _occ_symbol(value: Any) -> bool:
+    """A compact OCC symbol as the expiry tools write it (``SPY261120P00590000``)."""
+    if not _text(value):
+        return False
+    try:
+        return occ.parse(value).compact == value
+    except ValueError:
+        return False
+
+
 def _docket_leg(leg: Any) -> bool:
     return (isinstance(leg, dict) and _text(leg.get("trade_id"), True) and _text(leg.get("group_id"))
-            and _text(leg.get("underlying")) and _text(leg.get("structure"))
+            and _text(leg.get("underlying")) and _text(leg.get("structure")) and _occ_symbol(leg.get("symbol"))
+            and leg.get("side") in DOCKET_SIDES and isinstance(leg.get("contracts"), str)
+            and _CONTRACTS_RE.match(leg["contracts"]) is not None
             and _date(leg.get("last_trading_day")) is not None and _whole(leg.get("dte_trading"))
             and _text(leg.get("act_by_text")))
 
@@ -557,10 +572,13 @@ def docket_lines(c: Composer, item: Artifact) -> None:
         head += ", %s unavailable (expiry_checklist.py --week shows why)" % c.count(unavailable)
     c.add(head)
     for leg in payload["legs"]:
-        c.add("%s %s %s | last trading day %s (%s) | %s" % (
-            c.ident(leg["trade_id"] or leg["group_id"]), c.reason(leg["underlying"]), _words(leg["structure"]),
-            c.date(leg["last_trading_day"]), alerts.fmt_days(leg["dte_trading"], c.emitted, "trading"),
-            c.reason(leg["act_by_text"])))
+        # Each line names its contract, side and size (the checklist's leg head): the legs of one group can act by
+        # different times (a short leg by the session close, a long one by the broker cutoff; FAI-689 review L1-1).
+        c.add("%s %s | %s %s | last trading day %s (%s) | %s" % (
+            c.ident(leg["trade_id"] or leg["group_id"]),
+            c.reason("%s %s %s" % (leg["symbol"], leg["side"], leg["contracts"])), c.reason(leg["underlying"]),
+            _words(leg["structure"]), c.date(leg["last_trading_day"]),
+            alerts.fmt_days(leg["dte_trading"], c.emitted, "trading"), c.reason(leg["act_by_text"])))
 
 
 def early_close_line(c: Composer, close_et: datetime.time, item: Artifact, et_date: datetime.date) -> str:
@@ -837,6 +855,7 @@ __all__ = [
     "CORRUPT_LINE",
     "Composer",
     "DOCKET_NONE_LINE",
+    "DOCKET_SIDES",
     "DAY_TOTAL_WITHOUT",
     "EARLY_CLOSE_NO_DOCKET",
     "EXCLUDED_DAY",

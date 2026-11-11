@@ -92,8 +92,10 @@ unavailable: your rule FLOOR: underlying SPY: no usable mark (quote grade F)
   automatically. The owner decides before the broker's cutoff.
 - AUTOEX fires on a long option leg that is in the money on its last trading day. The level line names the price
   and the day, as in the SPY line above.
-- The owner's broker cutoff is `broker_exercise_cutoff_et` in `desk.toml`. The Final Call of Aegis Position Control
-  prints the act-by time; the expiry and assignment skill has the protocol.
+- The owner's broker cutoff is `broker_exercise_cutoff_et` in `desk.toml`; it is the act-by time of a long option.
+  A short option, such as the collar's call, acts by the session close of its last trading day (or that cutoff when
+  earlier). The Final Call of Aegis Position Control prints each act-by time; the expiry and assignment skill has the
+  protocol.
 - On a group without a long option, the sheet says so:
   `AUTOEX cannot fire on this position: it reads long option legs only`.
 

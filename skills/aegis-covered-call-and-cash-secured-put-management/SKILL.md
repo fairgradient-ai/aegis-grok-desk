@@ -143,7 +143,7 @@ Aegis Position Control owns the expiry docket. Its lines name each short leg's i
 shares called away for a short call, the cash needed for a short put. From the Final Call on 2026-11-20 at 19:50 UTC:
 
 ```text
-AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]
+AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades
 ```
 
 That output is diagnostic. Quote it only when the owner asks, unchanged, in a fenced block headed by the exact

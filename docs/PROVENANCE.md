@@ -177,9 +177,10 @@ modified copy, which the example says) and is labelled synthetic.
 - OCC exercise by exception: a contract at least 0.01 in the money at expiry is exercised automatically. The desk uses
   this one-cent rule for in the money.
 - The OCC exercise cutoff of 17:30 ET is a reference only. Your broker's cutoff is earlier, and the expiry tools'
-  act-by time is your `broker_exercise_cutoff_et` from `desk.toml`. A LET_ASSIGN ticket's act-by for a short option
-  is the session close of its last trading day (16:00 ET, 13:00 ET on an early close), or that cutoff when it is
-  earlier, because a short option can be closed only while the session trades.
+  act-by time for a long option is your `broker_exercise_cutoff_et` from `desk.toml`. For a short option, the expiry
+  tools and a LET_ASSIGN ticket use one rule: the session close of its last trading day (16:00 ET, 13:00 ET on an
+  early close), or that cutoff when it is earlier, because a short option can be closed only while the session
+  trades.
 - AM-settled index options settle on the opening value of the settlement morning; their values are recorded by you in
   `research/calendar.toml` in Stage 1.
 

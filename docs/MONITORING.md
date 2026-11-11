@@ -162,8 +162,10 @@ paused again.
 - On an NYSE holiday, a weekend or a full closure in `research/calendar.toml`, every routine prints `quiet`.
 - On an early-close day (the session ends at 13:00 ET), `final-call` runs no step and prints `quiet`. There is no
   12:20 routine. The 07:30 Morning Desk Sheet carries the line `early close today at 13:00 ET: <n> contracts on their
-  last trading day; <act-by text>`, and the previous trading day's 15:20 T-1 preview already prints the early act-by:
-  the earlier of your broker's cutoff and 13:00 ET, marked `early close 13:00 ET: confirm your broker's cutoff`.
+  last trading day; <act-by text>`, and the previous trading day's 15:20 T-1 preview already prints the early act-by.
+  A short option acts by the earlier of the 13:00 ET close and your broker's cutoff (it is closed only while the
+  market trades), with no mark; a long option acts by the earlier of your broker's cutoff and 13:00 ET, marked
+  `early close 13:00 ET: confirm your broker's cutoff`.
 - The expiry week in full is in the skill
   [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-assignment-protocol/SKILL.md).
 

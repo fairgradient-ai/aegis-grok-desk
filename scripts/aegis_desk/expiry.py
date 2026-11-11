@@ -61,14 +61,29 @@ needs only the underlying's quote; without a usable one it is ``UNAVAILABLE``.
 
 Act-by, settlement, implications
 --------------------------------
-The act-by instant is the owner's ``broker_exercise_cutoff_et`` (``desk.toml``) on the leg's LAST
-TRADING DAY, printed in ET and UTC (``2026-11-20 16:30 ET`` = ``21:30 UTC``). On an early-close day
-(13:00 ET, ``market_clock.is_early_close``) the act-by is the EARLIER of the configured cutoff and
-the session close: a deadline after the market has closed is a wrong instruction time, not a
-conservative one. Such an act-by is marked ``early close 13:00 ET: confirm your broker's cutoff``
-(``ActBy.early_close``, ``act_by_early_close`` in the JSON) because the broker's own early-close
-cutoff is not in ``desk.toml``; a cutoff already before the close stands and is marked the same way.
-The calendar's closures are full closures and move the last trading day itself.
+:func:`leg_act_by` is the one act-by rule of an option leg, shared by the expiry sheet and the Structuring
+Desk's LET_ASSIGN ticket (``tickets.let_assign_leg``), and depends on the leg's side (FAI-689):
+
+* A SHORT leg: the owner avoids assignment only by closing it while the market trades, which ends at the
+  SESSION CLOSE of the leg's LAST TRADING DAY (16:00 ET; 13:00 ET on an early close), so the act-by is the
+  EARLIER of that close and the owner's ``broker_exercise_cutoff_et`` (``desk.toml``):
+  ``2026-11-20 16:00 ET`` = ``21:00 UTC`` with a 16:30 ET cutoff. It carries no early-close marker (the
+  time no longer depends on the broker's early-close cutoff), and when the close governs the sheet's text
+  ends with :data:`SHORT_BASIS_PHRASE` (``; the session close: a short option is closed only while the
+  market trades``), so a reader knows why it is earlier than the broker cutoff.
+* A LONG leg: the broker cutoff on the last trading day governs its exercise and do-not-exercise
+  instructions (``2026-11-20 16:30 ET`` = ``21:30 UTC``). On an early-close day (13:00 ET,
+  ``market_clock.is_early_close``) the act-by is the EARLIER of the configured cutoff and the session
+  close: a deadline after the market has closed is a wrong instruction time, not a conservative one. Such
+  an act-by is marked ``early close 13:00 ET: confirm your broker's cutoff`` (``ActBy.early_close``,
+  ``act_by_early_close`` in the JSON) because the broker's own early-close cutoff is not in ``desk.toml``;
+  a cutoff already before the close stands and is marked the same way.
+
+``ActBy.basis`` (``act_by_basis`` in the JSON) names the instant that governed: ``session_close`` or
+``broker_cutoff`` (a short leg's tie, a 16:00 ET cutoff, is ``session_close``). The LET_ASSIGN ticket
+prints the bare :func:`act_by_text` with its own session-close sentence, so its bytes are unchanged.
+The Final Call header names the EARLIEST act-by of the listed legs when they differ (each leg line keeps
+its own). The calendar's closures are full closures and move the last trading day itself.
 Settlement is ``am`` when the OCC root is in the calendar's ``am_settled_roots`` (the last trading
 day is then the day before the settlement morning), else ``pm``. Each leg's docket implication
 is one sentence: shares called away for a short call (with the group's coverage), cash needed for
@@ -144,6 +159,12 @@ BOUNDARY_NOTE: str = ("ex-dividend %s is the first trading day after the last tr
                       "would come at expiration")
 """The dividend-tier note of a short call whose last trading day is the last cum-dividend day (module notes)."""
 EARLY_CLOSE_MARKER: str = "early close %s ET: confirm your broker's cutoff"
+BASIS_SESSION_CLOSE: str = "session_close"
+BASIS_BROKER_CUTOFF: str = "broker_cutoff"
+ACT_BY_BASES: Tuple[str, ...] = (BASIS_SESSION_CLOSE, BASIS_BROKER_CUTOFF)
+"""``ActBy.basis``: the instant that governed the act-by (module notes)."""
+SHORT_BASIS_PHRASE: str = "the session close: a short option is closed only while the market trades"
+"""Appended to a short leg's sheet text when the session close governs (module notes)."""
 WARNING_EXPIRED: str = "%d expired open option leg%s left to csv_recon.py: %s"
 
 WEEKDAYS: Tuple[str, ...] = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -233,8 +254,9 @@ def leg_last_trading_day(row: PositionRow, cal: Optional[CalendarFile]) -> datet
 @dataclass(frozen=True)
 class ActBy:
     """The instruction deadline on the leg's last trading day (module notes): ``cutoff_et`` is the time
-    used (the configured ``broker_cutoff_et``, or the session close when that is earlier on an
-    early-close day, ``early_close`` True)."""
+    used (the configured ``broker_cutoff_et``, or the session close when that is earlier: always for a
+    short leg, on an early-close day for a long one, ``early_close`` True only there); ``basis`` names
+    which of the two governed (:data:`ACT_BY_BASES`)."""
 
     last_trading_day: datetime.date
     cutoff_et: datetime.time
@@ -242,6 +264,7 @@ class ActBy:
     passed: bool
     early_close: bool = False
     broker_cutoff_et: Optional[datetime.time] = None
+    basis: str = BASIS_BROKER_CUTOFF
 
     @property
     def et_text(self) -> str:
@@ -269,13 +292,35 @@ def act_by(last_trading_day: datetime.date, cutoff_et: datetime.time, now: datet
     if not isinstance(cutoff_et, datetime.time) or cutoff_et.tzinfo is not None:
         raise ValueError("cutoff_et must be a naive datetime.time in ET, got %r" % (cutoff_et,))
     used = cutoff_et
+    basis = BASIS_BROKER_CUTOFF
     early = market_clock.is_early_close(last_trading_day, extra_holidays)
     if early:
         close = market_clock.session_close_et(last_trading_day, extra_holidays=extra_holidays)
         if close < used:
             used = close
+            basis = BASIS_SESSION_CLOSE
     instant = market_clock.from_et(datetime.datetime.combine(last_trading_day, used))
-    return ActBy(last_trading_day, used, instant, now >= instant, early, cutoff_et)
+    return ActBy(last_trading_day, used, instant, now >= instant, early, cutoff_et, basis)
+
+
+def leg_act_by(row: PositionRow, last_trading_day: datetime.date, broker_cutoff_et: datetime.time, now: datetime.datetime,
+               extra_holidays: market_clock.ExtraHolidays = ()) -> ActBy:
+    """The act-by of the option leg ``row`` (module notes): for a SHORT leg the earlier of the session close of
+    ``last_trading_day`` (16:00 ET; 13:00 ET on an early close) and ``broker_cutoff_et``, never marked early-close
+    (``basis`` ``session_close`` unless the cutoff is strictly earlier); for a LONG leg :func:`act_by` unchanged."""
+    if row.occ is None:
+        raise ValueError("row %d is not an option leg" % row.row_number)
+    if not row.is_short:
+        return act_by(last_trading_day, broker_cutoff_et, now, extra_holidays)
+    if not isinstance(broker_cutoff_et, datetime.time) or broker_cutoff_et.tzinfo is not None:
+        raise ValueError("broker_cutoff_et must be a naive datetime.time in ET, got %r" % (broker_cutoff_et,))
+    close = market_clock.session_close_et(last_trading_day, extra_holidays=extra_holidays)
+    if close <= broker_cutoff_et:
+        used, basis = close, BASIS_SESSION_CLOSE
+    else:
+        used, basis = broker_cutoff_et, BASIS_BROKER_CUTOFF
+    instant = market_clock.from_et(datetime.datetime.combine(last_trading_day, used))
+    return ActBy(last_trading_day, used, instant, now >= instant, False, broker_cutoff_et, basis)
 
 
 def act_by_text(act: ActBy, today: datetime.date, next_trading_day: datetime.date) -> str:
@@ -294,6 +339,15 @@ def act_by_text(act: ActBy, today: datetime.date, next_trading_day: datetime.dat
     early = act.early_close_text
     if early is not None:
         text += "; " + early
+    return text
+
+
+def leg_act_by_text(row: PositionRow, act: ActBy, today: datetime.date, next_trading_day: datetime.date) -> str:
+    """:func:`act_by_text` of the sheet's leg ``row``, with ``; `` and :data:`SHORT_BASIS_PHRASE` appended for a
+    short leg whose act-by is the session close (module notes); a long leg's text is :func:`act_by_text`."""
+    text = act_by_text(act, today, next_trading_day)
+    if row.is_short and act.basis == BASIS_SESSION_CLOSE:
+        text += "; " + SHORT_BASIS_PHRASE
     return text
 
 
@@ -795,6 +849,7 @@ class LegSheet:
             "act_by_utc_text": self.act_by.utc_text,
             "act_by_passed": self.act_by.passed,
             "act_by_early_close": self.act_by.early_close,
+            "act_by_basis": self.act_by.basis,
             "act_by_text": self.act_by_text,
             "implication": self.implication,
             "vertical": self.vertical.as_dict() if self.vertical is not None else None,
@@ -865,7 +920,7 @@ def build_sheet(positions: PositionsFile, groups: Sequence[PositionGroup], *, no
             due_tomorrow = last_day == next_day
             in_window = due_today or due_tomorrow
             underlying_qc = qcs.get(row.underlying)
-            act = act_by(last_day, broker_cutoff_et, now, extra)
+            act = leg_act_by(row, last_day, broker_cutoff_et, now, extra)
             legs.append(LegSheet(
                 row=row,
                 group=group,
@@ -875,7 +930,7 @@ def build_sheet(positions: PositionsFile, groups: Sequence[PositionGroup], *, no
                 last_trading_day=last_day,
                 dte_trading=market_clock.trading_days_between(today, last_day, extra),
                 act_by=act,
-                act_by_text=act_by_text(act, today, next_day),
+                act_by_text=leg_act_by_text(row, act, today, next_day),
                 implication=implication(row, group),
                 vertical=vertical_check(group, underlying_qc) if in_window else None,
                 dividend=dividend_tier(row, qcs.get(row.compact_symbol), underlying_qc, cal, today, extra),
@@ -904,8 +959,13 @@ LEG_OUTPUT: Dict[str, Any] = {
     "contracts": "decimal string", "side": "long | short", "assign_ok": "boolean (#assign-ok on the row)",
     "act_by_utc": "ISO-8601 UTC", "act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_utc_text": "HH:MM UTC",
     "act_by_passed": "boolean",
-    "act_by_early_close": "boolean (the act-by is the 13:00 ET close of an early-close day: confirm the broker's cutoff)",
-    "act_by_text": "string", "implication": "string",
+    "act_by_early_close": ("boolean (a long leg whose act-by falls on an early-close day: confirm the broker's cutoff; "
+                           "always false for a short leg)"),
+    "act_by_basis": ("session_close | broker_cutoff (the instant that governed: a short leg acts by the earlier of the "
+                     "session close of its last trading day and the broker cutoff, a long leg by the broker cutoff, or "
+                     "the 13:00 ET close when that is earlier on an early-close day)"),
+    "act_by_text": ("string (a short leg's ends with '; %s' when the session close governs)" % SHORT_BASIS_PHRASE),
+    "implication": "string",
     "vertical": {"low_strike": "string", "high_strike": "string", "spot_mid": "decimal string | null",
                  "between": "boolean | null", "message": "string", "fired": "boolean", "unavailable": "boolean"},
     "dividend": {"tier": " | ".join(DIVIDEND_TIERS), "dividend_status": "confirmed | estimated | unknown",
@@ -1025,7 +1085,10 @@ def extra_lines(leg: LegSheet) -> List[str]:
 
 
 __all__ = [
+    "ACT_BY_BASES",
     "ASSIGN_OK_NOTE",
+    "BASIS_BROKER_CUTOFF",
+    "BASIS_SESSION_CLOSE",
     "BETWEEN_LINE",
     "BOUNDARY_NOTE",
     "DIVIDEND_TIERS",
@@ -1057,6 +1120,7 @@ __all__ = [
     "SETTLEMENT_AM",
     "SETTLEMENT_PM",
     "SHARES_PER_CONTRACT",
+    "SHORT_BASIS_PHRASE",
     "SPOT_ALIGNMENT_S",
     "TIER_HIGH",
     "TIER_LOW",
@@ -1081,6 +1145,8 @@ __all__ = [
     "implication",
     "in_the_money",
     "is_am_settled",
+    "leg_act_by",
+    "leg_act_by_text",
     "leg_last_trading_day",
     "pin_line",
     "pin_tier",

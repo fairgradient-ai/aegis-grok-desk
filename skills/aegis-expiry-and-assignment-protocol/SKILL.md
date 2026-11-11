@@ -1,6 +1,6 @@
 ---
 name: aegis-expiry-and-assignment-protocol
-description: The expiry protocol of the read-only Aegis desk, for Aegis Position Control. Exercise by exception and the one-cent rule, the owner's broker cutoff as the act-by time, PM and AM settlement, early-close days, the pin tier, the dividend tier and its last-cum-dividend-day bound, the expiry week from the morning docket through the T-1 preview and the Final Call to the Saturday inference and the Monday reconciliation, the inferred outcomes that always say confirm with your broker, and the exit codes.
+description: The expiry protocol of the read-only Aegis desk, for Aegis Position Control. Exercise by exception and the one-cent rule, the act-by time (a short option's session close or the owner's broker cutoff, whichever is earlier; a long option's broker cutoff), PM and AM settlement, early-close days, the pin tier, the dividend tier and its last-cum-dividend-day bound, the expiry week from the morning docket through the T-1 preview and the Final Call to the Saturday inference and the Monday reconciliation, the inferred outcomes that always say confirm with your broker, and the exit codes.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -27,18 +27,29 @@ in the money: automatic exercise or assignment expected at the close
 Before expiry the tools judge it at the underlying's usable mid (grade A to D); after expiry `csv_recon.py` judges it
 at the official close.
 
-## Your broker's cutoff is the act-by
+## The act-by time
 
-The act-by time is the owner's own broker cutoff, `broker_exercise_cutoff_et` in `desk.toml`, on the leg's last trading
-day. The desk prints it in ET and UTC, for example `act by Fri 2026-11-20 16:30 ET (21:30 UTC)` (the fixture desk's
-cutoff is 16:30 ET).
+The act-by time depends on the leg's side. The desk prints it in ET and UTC on the leg's last trading day; the fixture
+desk's broker cutoff, `broker_exercise_cutoff_et` in `desk.toml`, is 16:30 ET.
 
-- On an early-close day (13:00 ET) the act-by is the earlier of the broker cutoff and 13:00 ET, marked
-  `early close 13:00 ET: confirm your broker's cutoff`. The desk does not know the broker's own early-close cutoff.
+- A short option: the owner avoids assignment only by closing it while the market trades, so its act-by is the
+  session close of its last trading day (16:00 ET, 13:00 ET on an early close), or the broker cutoff when that is
+  earlier. When the close governs, the text says why, for example
+  `act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades`.
+  It carries no early-close mark: its time does not depend on the broker's early-close cutoff.
+- A long option: the broker cutoff governs its exercise and do-not-exercise instructions, for example
+  `act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]`. On an early-close day (13:00 ET) it is the earlier of the
+  broker cutoff and 13:00 ET, marked `early close 13:00 ET: confirm your broker's cutoff`. The desk does not know the
+  broker's own early-close cutoff.
+- The leg JSON says which instant governed: `act_by_basis` is `session_close` or `broker_cutoff`.
+- The Final Call header names the earliest act-by of the listed contracts when they differ, with
+  `the earliest act-by of the listed contracts (each line names its own)`; each leg line keeps its own time.
+- The legs of one vertical or collar can act by different times, so each docket line of the Morning Desk Sheet and the
+  EOD brief names its contract, side and size first, as the checklist does:
+  `<trade_id> <OCC symbol> <long|short> <contracts> | <UNDERLYING> <structure> | last trading day ... | <act-by text>`.
 - The OCC's 17:30 ET exercise deadline is never the desk's act-by.
-- The Structuring Desk's LET_ASSIGN ticket prints a short option's act-by as the session close of its last trading
-  day (16:00 ET, 13:00 ET on an early close), or this cutoff when it is earlier, because a short option can be closed
-  only while the session trades (`aegis-ticket-and-unwind-order`). Each Bot quotes its own tool's time.
+- The Structuring Desk's LET_ASSIGN ticket applies the same short-option rule (`aegis-ticket-and-unwind-order`), with
+  its own sentence after the time.
 - `market_clock.py` prints the exchange's instant as a reference. A synthetic run,
   `market_clock.py --at 2026-11-27T17:00:00Z --expiry 2026-11-27`, ends with:
 
@@ -101,7 +112,7 @@ still printed. A rewritten-calendar example: a fixture copy whose WMT ex-date wa
 of 2.00, run on the t1 set at 2026-11-19 19:50 UTC (synthetic):
 
 ```text
-NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-20 in 1 trading day (confirmed), amount 2.00; extrinsic (bid) 0.09 = bid 1.52 - max(0, 106.43 - 105); in the money; HIGH downgraded to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]
+NOTED AG-20261020-01 WMT261120C00105000 short 2: ex-dividend 2026-11-20 in 1 trading day (confirmed), amount 2.00; extrinsic (bid) 0.09 = bid 1.52 - max(0, 106.43 - 105); in the money; HIGH downgraded to NOTED: #assign-ok (owner accepted assignment); act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades
 ```
 
 An unknown dividend is UNAVAILABLE, never zero: a symbol missing from the calendar, a status of `unknown`, or an
@@ -110,7 +121,7 @@ was moved to the 2026-11-27 expiry (an early-close day), run with `--tomorrow` o
 20:20 UTC, after the 2026-11-24 ex-date:
 
 ```text
-  UNAVAILABLE AG-20261020-01 WMT261127C00105000 short 2: dividend unknown: the WMT ex-dividend 2026-11-24 has passed; the next is not in calendar.toml (unknown dividend is never zero); act by Fri 2026-11-27 13:00 ET (18:00 UTC) [next trading day]; early close 13:00 ET: confirm your broker's cutoff
+  UNAVAILABLE AG-20261020-01 WMT261127C00105000 short 2: dividend unknown: the WMT ex-dividend 2026-11-24 has passed; the next is not in calendar.toml (unknown dividend is never zero); act by Fri 2026-11-27 13:00 ET (18:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades
 ```
 
 In Stage 1 the dividends are the owner's: the bootstrap's intake through `desk_init.py`. Sourcing them is
@@ -138,16 +149,16 @@ The T-1 preview at the same instant (first two lines):
 
 ```text
 T-1 PREVIEW for Fri 2026-11-20: 2 contracts on their last trading day (today Thu 2026-11-19)
-AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (1 trading day) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:30 ET (21:30 UTC) [next trading day]
+AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (1 trading day) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:00 ET (21:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades
 ```
 
 The final-call routine on the expiry_day set at 2026-11-20 19:50 UTC (its first lines, and the assignment watch's
 summary):
 
 ```text
-FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)
-AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]
-  PIN HIGH AG-20261020-01 WMT261120C00105000 short 2: 0.07 % from the strike (mid 104.93 vs 105), out of the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:30 ET (21:30 UTC) [today]
+FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)
+AG-20261020-01 WMT261120C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-20 (today) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades
+  PIN HIGH AG-20261020-01 WMT261120C00105000 short 2: 0.07 % from the strike (mid 104.93 vs 105), out of the money; last trading day Fri 2026-11-20; act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]; the session close: a short option is closed only while the market trades
 assignment watch Fri 2026-11-20 (session open): FIRED (1 fired, 0 noted, 0 unavailable, 3 open option legs)
 ```
 
@@ -166,16 +177,17 @@ AG-20261022-02 row 6 NVDA261120C00150000 -2 PROBABLE_ASSIGNED: NVDA closed 153.4
 There is no 12:20 routine. On an early-close day the final-call routine runs no step and prints `quiet`. Two other
 messages carry the early act-by instead:
 
-- the 15:20 T-1 preview on the trading day before, which already prints the earlier of the broker cutoff and 13:00
-  ET with the early-close mark;
+- the 15:20 T-1 preview on the trading day before, which already prints the early act-by: for a short option the
+  13:00 ET close, or the broker cutoff when that is earlier (no mark); for a long one the earlier of the broker cutoff
+  and 13:00 ET, with the early-close mark;
 - the 07:30 Morning Desk Sheet of the day itself, which carries the early-close line.
 
 From a synthetic fixture copy whose WMT call expires on Friday 2026-11-27, the day after Thanksgiving: the T-1
 preview on Wednesday 2026-11-25 at 20:20 UTC, then the morning sheet at 2026-11-27 12:35 UTC (one line each):
 
 ```text
-AG-20261020-01 WMT261127C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-27 (1 trading day) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-27 13:00 ET (18:00 UTC) [next trading day]; early close 13:00 ET: confirm your broker's cutoff
-early close today at 13:00 ET: 1 contract on its last trading day; act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; early close 13:00 ET: confirm your broker's cutoff
+AG-20261020-01 WMT261127C00105000 short 2 | covered_call | pm-settled | last trading day Fri 2026-11-27 (1 trading day) | shares called away if assigned: 200 WMT at 105 (covered by the 200 shares held) | act by Fri 2026-11-27 13:00 ET (18:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades
+early close today at 13:00 ET: 1 contract on its last trading day; act by Fri 2026-11-27 13:00 ET (18:00 UTC) [today]; the session close: a short option is closed only while the market trades
 ```
 
 ## Inferred outcomes: confirm with your broker

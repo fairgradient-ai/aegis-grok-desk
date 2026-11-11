@@ -28,8 +28,8 @@ import unittest.mock
 from decimal import Decimal
 from typing import List, Optional, Tuple
 
-from aegis_desk import (alert_lint, approval, grouping, positions_csv, quote_cache, structuring, structuring_config,
-                        structuring_text, tickets)
+from aegis_desk import (alert_lint, approval, expiry, grouping, market_clock, positions_csv, quote_cache, structuring,
+                        structuring_config, structuring_text, tickets)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -643,6 +643,28 @@ class FixerTicketTest(unittest.TestCase):
         earlier = tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY, cutoff_et=datetime.time(12, 0),
                                          calendar=None, extra_holidays={})
         self.assertEqual("act by Fri 2026-11-27 12:00 ET (17:00 UTC)", earlier.act_by_text)
+
+    def test_let_assign_uses_the_shared_leg_act_by(self) -> None:
+        # FAI-689: one rule for a short leg's act-by, expiry.leg_act_by, shared with the expiry sheet; the ticket's
+        # printed text keeps its own wording (no basis phrase) and does not change.
+        row = positions_csv.parse_positions_text("\n".join((HEADER, SHARES, WMT_CALL_ROW)) + "\n", today=TODAY).rows[1]
+        group = group_of(SHARES, WMT_CALL_ROW)
+        for cutoff in (datetime.time(16, 30), datetime.time(16, 0), datetime.time(15, 0)):
+            with self.subTest(cutoff=cutoff):
+                leg = tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY, cutoff_et=cutoff,
+                                             calendar=None, extra_holidays={})
+                shared = expiry.leg_act_by(row, leg.last_trading_day, cutoff, NOW, {})
+                self.assertEqual(shared, leg.act_by)
+                self.assertEqual(expiry.act_by_text(shared, TODAY, market_clock.next_trading_day(TODAY, {})),
+                                 leg.act_by_text)
+                self.assertNotIn("session close:", leg.act_by_text)
+        self.assertEqual((expiry.BASIS_SESSION_CLOSE, datetime.time(16, 30)),
+                         (tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY,
+                                                 cutoff_et=datetime.time(16, 30), calendar=None,
+                                                 extra_holidays={}).act_by.basis,
+                          tickets.let_assign_leg(row, group, D("104.23"), now=NOW, today=TODAY,
+                                                 cutoff_et=datetime.time(16, 30), calendar=None,
+                                                 extra_holidays={}).act_by.broker_cutoff_et))
 
     def test_the_multi_leg_note_names_the_order(self) -> None:
         unwind = tickets.render_ticket(run(self, WMT, "UNWIND_STOCK"))

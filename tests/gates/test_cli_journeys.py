@@ -204,7 +204,7 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0, "payload.steps.2.exit_code": 10,
         "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
         "payload.message": harness.TextMatch(prefix="development run", contains=(
-            "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+            "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)",
             "assignment watch Fri 2026-11-20 (session open): FIRED"))}),
     "routine nope -> usage": ("routine.py", 2, harness.FIXTURE_DESK, {"status": "usage", "error.code": "invalid_arguments"}),
     "desk_init answers -> desk.toml": ("desk_init.py", 0, harness.FIXTURE_INIT, {
@@ -513,9 +513,10 @@ class CatalogueTest(unittest.TestCase):
             "expiry_checklist --week t1 (2 contracts due)": (
                 "expiry_checklist.py", 10, {"payload.mode": "week", "payload.counts.listed": 2}),
             "expiry_checklist --tomorrow t1 (T-1 preview)": ("expiry_checklist.py", 10, {"payload.mode": "tomorrow"}),
-            "expiry_checklist --final-call expiry_day (act by 16:30 ET)": (
+            "expiry_checklist --final-call expiry_day (short legs act by the 16:00 ET close)": (
                 "expiry_checklist.py", 10, {"payload.legs.0.pin.tier": "PIN HIGH", "payload.legs.1.pin.tier": "PIN WATCH",
-                                            "payload.legs.1.act_by_utc": "2026-11-20T21:30:00+00:00"}),
+                                            "payload.legs.1.act_by_utc": "2026-11-20T21:00:00+00:00",
+                                            "payload.legs.1.act_by_basis": "session_close"}),
             "expiry_checklist --week regular (nothing due)": ("expiry_checklist.py", 0, {"payload.mode": "week"}),
         }
         for name, (script, exit_code, keys) in expected.items():

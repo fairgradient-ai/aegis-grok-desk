@@ -317,10 +317,13 @@ JOURNEYS: Tuple[Journey, ...] = (
                  {"status": "fired", "tool": "expiry_checklist", "payload.mode": "week", "payload.counts.listed": 2}, now=T1_NOW),
     tool_journey("expiry_checklist --tomorrow t1 (T-1 preview)", ("expiry_checklist.py", "--tomorrow", "--fixture-set", "t1"), 10,
                  {"status": "fired", "payload.mode": "tomorrow", "payload.counts.listed": 2}, now=T1_NOW),
-    tool_journey("expiry_checklist --final-call expiry_day (act by 16:30 ET)",
+    # A short option is closed only while the market trades: its act-by is the session close (16:00 ET), earlier than
+    # the fixture's 16:30 ET broker cutoff (FAI-689).
+    tool_journey("expiry_checklist --final-call expiry_day (short legs act by the 16:00 ET close)",
                  ("expiry_checklist.py", "--final-call", "--fixture-set", "expiry_day"), 10,
                  {"status": "fired", "payload.mode": "final-call", "payload.legs.0.pin.tier": "PIN HIGH",
-                  "payload.legs.1.pin.tier": "PIN WATCH", "payload.legs.1.act_by_utc": "2026-11-20T21:30:00+00:00"},
+                  "payload.legs.1.pin.tier": "PIN WATCH", "payload.legs.1.act_by_utc": "2026-11-20T21:00:00+00:00",
+                  "payload.legs.1.act_by_basis": "session_close"},
                  now=EXPIRY_DAY_NOW),
     tool_journey("expiry_checklist --week regular (nothing due)", ("expiry_checklist.py", "--week", "--fixture-set", "regular"), 0,
                  {"status": "ok", "payload.mode": "week", "payload.counts.listed": 0}),
@@ -542,7 +545,7 @@ JOURNEYS += (
                  {"status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0,
                   "payload.steps.2.exit_code": 10, "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
                   "payload.message": TextMatch(prefix="development run", contains=(
-                      "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+                      "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)",
                       "assignment watch Fri 2026-11-20 (session open): FIRED"))},
                  now=EXPIRY_DAY_NOW),
     tool_journey("routine nope -> usage", ("routine.py", "nope"), 2, {"status": "usage", "error.code": "invalid_arguments"}),

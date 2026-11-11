@@ -507,9 +507,9 @@ def let_assign_leg(row: PositionRow, group: PositionGroup, spot_mid: Decimal, *,
     # The alternative to assignment for a short option is closing it, which only the session allows: the last
     # trading day's close (16:00 ET, 13:00 ET on an early close), or desk.toml's broker cutoff when that is earlier.
     # The broker's exercise cutoff itself governs a long holder's instruction (the OCC line keeps it; reviews L1-2
-    # and L2-5).
-    close_et = market_clock.session_close_et(last_day, extra_holidays=extra_holidays)
-    act = replace(expiry.act_by(last_day, min(close_et, cutoff_et), now, extra_holidays), early_close=False)
+    # and L2-5). expiry.leg_act_by is the one rule, shared with the expiry sheet (FAI-689); the ticket prints the bare
+    # act_by_text followed by its own SESSION_CLOSE_WORDS.
+    act = expiry.leg_act_by(row, last_day, cutoff_et, now, extra_holidays)
     text = expiry.act_by_text(act, today, market_clock.next_trading_day(today, extra_holidays))
     contracts = _whole(row.open_quantity, row)
     shares = contracts * row.multiplier
