@@ -142,12 +142,12 @@ class RulesTextTest(ToolTest):
         expected = routines.rules_text(routines.load_manifest(), routines.load_autoreview())
         self.assertEqual("rules_text", payload["mode"])
         self.assertEqual(expected, payload["rules"])
-        self.assertEqual({"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250}, payload["lengths"])
+        self.assertEqual({"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 333}, payload["lengths"])
         self.assertEqual(1000, payload["limit_chars"])
         self.assertEqual(["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"],
                          payload["routine_ids"])
         self.assertEqual("routines/autoreview.toml", payload["autoreview"]["path"])
-        self.assertEqual("03355ffe641901cdd0d6a54dbde2a6ff9f376266f41759209832561bf99ce231",
+        self.assertEqual("840001327b3afa304b8d5280d2ae0d37fc67bffae45ee623a297e7672874aa62",
                          payload["autoreview"]["sha256"])
 
     def test_rules_text_prints_each_rule_on_its_own_line(self) -> None:

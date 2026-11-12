@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "structuring": {
+    "disclosure_acknowledged": "structuring-suggestions-1",
+    "general": {
+      "max_spread_pct": "25",
+      "max_candidates_shown": 3
+    },
+    "covered_call": {
+      "enabled": true,
+      "dte": [40, 75],
+      "abs_delta": ["0.15", "0.35"],
+      "min_credit": "0.50",
+      "strike_floor": "cost_basis",
+      "earnings": "exclude",
+      "ex_dividend": "exclude",
+      "objective": "extrinsic_per_day"
+    },
+    "roll": {
+      "enabled": true,
+      "dte": [40, 75],
+      "abs_delta": ["0.15", "0.35"],
+      "min_credit": "0.50",
+      "credit_only": true,
+      "strike_floor": "cost_basis",
+      "earnings": "exclude",
+      "ex_dividend": "exclude",
+      "objective": "extrinsic_per_day"
+    },
+    "protective_put": {
+      "enabled": true,
+      "dte": [120, 210],
+      "floor_pct": ["3", "10"],
+      "stress_drop_pct": "20",
+      "objective": "stress_cost_per_day"
+    },
+    "collar": {
+      "enabled": true,
+      "dte": [120, 210],
+      "floor_pct": ["3", "10"],
+      "cap_pct": ["2", "10"],
+      "max_net_debit": "0.00",
+      "strike_floor": "cost_basis",
+      "earnings": "exclude",
+      "ex_dividend": "exclude",
+      "objective": "cap_within_budget"
+    }
+  }
+}

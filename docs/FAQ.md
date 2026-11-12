@@ -9,7 +9,9 @@ No. This desk never places, modifies or cancels orders. An exit alert tells you 
 No tool in this repository sends anything but a read-only market-data request, and
 `scripts/check_no_write_paths.py` proves it on every gate run. No Bot holds a brokerage credential; the only
 credential is a Tradier sandbox market-data token, which cannot reach a live account. When you ask a Bot to trade, it
-answers with the boundary sentence above: the decision and the order are yours, in your brokerage account. See
+answers with the boundary sentence above: the decision and the order are yours, in your brokerage account. When you
+ask the Aegis Structuring Desk for a ticket, it lists the legs with their quotes and carries no order fields: you
+supply the limit and type it into your brokerage account yourself, if you decide to act. See
 [SECURITY.md](../SECURITY.md).
 
 ## Why is the data 15 minutes late, and what does the desk do about it?
@@ -57,7 +59,8 @@ you apply them. After any change, CONFIG CHANGED posts until you tap `ack.py con
 
 Every weekday the Morning Desk Sheet carries the docket of contracts due this week. At 15:20 ET the day before a held
 contract's last trading day, Aegis Position Control posts the T-1 PREVIEW; on the day itself, the FINAL CALL with the
-act-by time from your broker's exercise cutoff, the pin tier and the dividend tier. On Saturday at 09:30 ET it posts
+act-by times (a short option's session close, or your broker's exercise cutoff when earlier; a long option's
+broker cutoff), the pin tier and the dividend tier. On Saturday at 09:30 ET it posts
 the inferred outcomes and the number of proposed edits; `csv_recon.py --diff` shows the lines. An outcome near the strike is `PIN_UNCERTAIN`: confirm with your broker.
 See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-assignment-protocol/SKILL.md).
 
@@ -79,7 +82,8 @@ guarantee. A local read-only proxy that would hold it outside the Bots' reach is
 The sandbox serves no Greeks or implied volatility, so the desk computes them: implied volatility from the quote's mid
 with the generalised Black-Scholes-Merton model, and European Greeks in desk units (theta per calendar day, vega per
 volatility point). The dividend yield comes from `research/calendar.toml`, or 0 with a warning on the leg. Early
-exercise is not modelled in Stage 1; an American lattice is planned for Stage 2 (not in this release). See the skill
+exercise is not modelled in Stage 1; an American lattice is planned for Stage 2 (not in this release). The
+Structuring Desk prices its candidates the same way and prints that it does. See the skill
 [aegis-book-marking-and-greeks-honesty](../skills/aegis-book-marking-and-greeks-honesty/SKILL.md).
 
 ## Is there a Grok Bot template?
@@ -92,18 +96,35 @@ README. See [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md).
 ## How much usage does it take?
 
 Every routine run spends weekly Grok usage. The lean profile is 41 runs per week; the active profile, with four more
-book checks a day, is 61 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run.
+book checks a day, is 61 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run. The
+Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its answers is one request of yours.
+
+## What are my choices for a position?
+
+Ask the Aegis Structuring Desk, in its chat or in the Floor. It answers only your own request, with one of three tool
+texts: a ticket (closing the option legs, unwinding the shares too, letting a short option go to expiry, closing a
+long put for its value, or replacing a leg you name), a roll analysis for a covered call's short call, or a covered
+call, protective put or collar on shares you hold. It needs your criteria in `structuring.toml` first (SETUP step 9);
+without them it shows nothing. The criteria, the outputs and the limits are in [STRUCTURING.md](STRUCTURING.md).
 
 ## Is this investment advice?
 
-No. The rules are yours: you adopt each one, and an alert says that your own rule fired, with the numbers that made it
-fire and the plan you wrote down. Alerts carry no order fields, no strikes or expiries to move to and no ranked
-alternatives. Every message says it was posted by an AI assistant and is not personalized investment advice. How the
-desk stays on the informational side, and why that is not legal advice, is in
-[rules/examples/README.md](../rules/examples/README.md); a question about your own use is for your own counsel.
-Options involve substantial risk.
+The alerts: no. The rules are yours: you adopt each one, and an alert says that your own rule fired, with the numbers
+that made it fire and the plan you wrote down. Alerts carry no order fields, no strikes or expiries to move to and no
+ranked alternatives. Every alert says it was posted by an AI assistant and is not personalized investment advice. How
+the desk stays on the informational side for alerts, and why that is not legal advice, is in
+[rules/examples/README.md](../rules/examples/README.md).
+
+The Aegis Structuring Desk is different, and the desk says so. Only when you ask, its tools take a position you hold,
+score the candidates by the objective and criteria you set in `structuring.toml`, and name the highest-scoring one
+with its reasons. That is a personalized suggestion, computed by deterministic tools and posted by an AI assistant,
+and its footer says exactly that. It is not an order, not a forecast and not a judgment that a trade fits you; the
+desk does not see your cash, your other holdings, your objectives or your taxes. You decide, you supply the limit and
+you act in your brokerage account. Whether your use is investment advice is for your counsel; the project's counsel
+review is pending ([RELEASE.md](RELEASE.md), step 4). Options involve substantial risk.
 
 ## What does the desk not do?
 
-It does not propose new trades, price your choices, read news, run backtests, optimize, or handle taxes.
-Pricing a close or a roll on your request is planned for Stage 2 (not in this release).
+It proposes no new symbols, no spreads and no uncovered positions, and it places no orders. It prices choices and
+proposals only when you ask, and only for positions you hold. It does not read news, run backtests, optimize, or
+handle taxes.

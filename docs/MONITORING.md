@@ -28,7 +28,8 @@ platform queue delays are worst and the delayed quotes of the open are not in ye
 minutes after `preopen`, and `eod-brief` at least 20 minutes after `eod` (`depends_on` with `min_gap_min = 20`).
 
 There is no other routine. Acknowledging a signal, snoozing it or marking it acted is always yours, by a command; no
-routine runs `ack.py`.
+routine runs `ack.py`. The Aegis Structuring Desk owns no routine: `exit_ticket`, `roll_analysis` and `propose` are
+refused as routine steps, and they run only when you ask.
 
 ## What posts and when
 
@@ -61,14 +62,16 @@ never inside its rule's cooldown. A standing UNAVAILABLE banner re-posts on ever
 
 ## Which chat says what
 
-A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for all three Bots.
+A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the three routine-owning Bots:
+the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position Control.
 
 | Message | Chat |
 | --- | --- |
 | each EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED message, the rulebook digest, the pre-close line, watch alive, THRESHOLD LEVELS | Aegis Exit Sentinel |
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the post-expiry reconciliation | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF | Aegis Desk Lead |
-| An INCIDENT or WITHHELD line | the chat of the routine that printed it |
+| An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
+| A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
 ## Is the desk running?
 
@@ -159,8 +162,10 @@ paused again.
 - On an NYSE holiday, a weekend or a full closure in `research/calendar.toml`, every routine prints `quiet`.
 - On an early-close day (the session ends at 13:00 ET), `final-call` runs no step and prints `quiet`. There is no
   12:20 routine. The 07:30 Morning Desk Sheet carries the line `early close today at 13:00 ET: <n> contracts on their
-  last trading day; <act-by text>`, and the previous trading day's 15:20 T-1 preview already prints the early act-by:
-  the earlier of your broker's cutoff and 13:00 ET, marked `early close 13:00 ET: confirm your broker's cutoff`.
+  last trading day; <act-by text>`, and the previous trading day's 15:20 T-1 preview already prints the early act-by.
+  A short option acts by the earlier of the 13:00 ET close and your broker's cutoff (it is closed only while the
+  market trades), with no mark; a long option acts by the earlier of your broker's cutoff and 13:00 ET, marked
+  `early close 13:00 ET: confirm your broker's cutoff`.
 - The expiry week in full is in the skill
   [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-assignment-protocol/SKILL.md).
 

@@ -375,8 +375,10 @@ class ActedReconJourneyTest(DeskCopy):
 
 class ConfigTest(DeskCopy):
     def expected_hashes(self) -> Dict[str, Optional[str]]:
+        # PR 3b (designer C's D3): structuring_toml is the last acknowledged name, null while the file is missing.
         return {"desk_toml": sha256_file(self.paths.desk_toml), "positions_csv": sha256_file(self.paths.positions_csv),
-                "rulebook": sha256_file(os.path.join(self.root, "rules", "exit_rules-1.0.0.toml"))}
+                "rulebook": sha256_file(os.path.join(self.root, "rules", "exit_rules-1.0.0.toml")),
+                "structuring_toml": None}
 
     def test_config_writes_the_acknowledged_hashes(self) -> None:
         code, body = self.run_json("config", "--owner-tapped")
@@ -391,9 +393,11 @@ class ConfigTest(DeskCopy):
         record = self.acks()[0]
         self.assertEqual({"utc": "2026-11-20T19:55:00+00:00", "signal_id": None, "trade_id": None, "action": "config",
                           "until": None, "rows_sha": None, "hashes": expected}, record)
+        self.assertEqual(["desk_toml", "positions_csv", "rulebook", "structuring_toml"], list(expected))
         code, text = self.run_text("config", "--owner-tapped")
         self.assertIn("desk.toml sha %s" % expected["desk_toml"][:8], text)
         self.assertIn("adopted rulebook 1.0.0 sha cc09859c", text)
+        self.assertNotIn("structuring", text, "without structuring.toml the line is the one SETUP and the journeys show")
 
     def test_config_keeps_the_other_desk_state_keys(self) -> None:
         desk_paths.ensure_runtime_dirs(self.paths)

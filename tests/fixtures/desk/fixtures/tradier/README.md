@@ -187,8 +187,9 @@ routine sees a clean EXPIRED_OTM, the Thanksgiving-week sets a pin.
 
 ## Chains: Black-Scholes-Merton consistent with the anchor quote
 
-Each `chains__` file holds five strikes with a call and a put each (WMT 100 to 110 for
-2026-11-20, NVDA 140 to 160 for 2026-11-20, SPY 600 to 640 for 2026-12-18). The anchor contract
+Each anchor `chains__` file holds five strikes with a call and a put each (WMT 100 to 110 for
+2026-11-20, NVDA 140 to 160 for 2026-11-20, SPY 600 to 640 for 2026-12-18); the structuring
+chains of the `regular` and `expiry_day` sets are described in the next section. The anchor contract
 (the option quoted above) is copied into the chain unchanged plus `"greeks": null`; its
 neighbours are priced with `aegis_desk.bsm` at the implied volatility `aegis_desk.iv.implied_vol`
 solves from the anchor mid, with `r` = 0.0412 (the fixture `desk.toml` rate), `q` = 0, spot = the
@@ -229,6 +230,53 @@ the open), with one no-arbitrage cap: a contract further out of the money than t
 never worth more than the anchor, so the WMT 107.5 and 110 calls are 0.00 / 0.06 (mid 0.03, the
 anchor's mid) rather than 0.06, and the chains stay monotone in strike. Nothing in PR 2b fetches
 chains; the files exist so a chain request on these sets is served, not crashed.
+
+## Structuring chains (PR 3b): no anchor contract, a stated surface
+
+The Structuring Desk's roll analyses, proposals and tickets read chains of later standard monthly
+expirations. Seven files hold them, five in the `regular` set and two in the `expiry_day` set:
+
+| Set | File | Strikes (a call and a put each) |
+| --- | --- | --- |
+| `regular` | `chains__WMT__2026-12-18.json`, `chains__WMT__2027-01-15.json` | 95, 97.5, 100, 102.5, 105, 107.5, 110, 112.5, 115, 120 (20 entries) |
+| `regular` | `chains__NVDA__2026-12-18.json`, `chains__NVDA__2027-01-15.json` | 130, 135, 140, 145, 150, 155, 160, 165, 170, 180 (20 entries) |
+| `regular` | `chains__SPY__2027-03-19.json` | 580, 590, 600, 610, 620, 625, 630, 640, 650, 660, 680, 700 (24 entries) |
+| `expiry_day` | `chains__WMT__2027-01-15.json` | the WMT strikes above (20 entries) |
+| `expiry_day` | `chains__NVDA__2027-01-15.json` | the NVDA strikes above (20 entries) |
+
+They hold no anchor contract. Every entry is priced with `aegis_desk.bsm` on the stated
+implied-volatility surface `sigma(K) = max(0.05, sigma0 - skew x ln(K / S))`, skewed in
+log-moneyness and flat in maturity, with skews 0.25 (WMT), 0.25 (NVDA) and 0.50 (SPY), `q` = 0,
+`r` = 0.0412, spot `S` = the underlying's mid in the same set and tau = seconds from the set's
+quote stamp to 16:00 ET on the expiration date over a 365-day year (2027-03-19 16:00 ET = 20:00Z,
+daylight time; the January and December dates are standard time, 21:00Z). `sigma0` is the implied
+volatility of the underlying's anchor contract in the `regular` set (the sigma its anchor chain is
+priced at). The `expiry_day` chains keep that `regular` sigma0: on the expiration day the November
+anchors have 1 h 29 min to their cutoff and almost no time value (the NVDA 150 call's mid is 0.03
+above intrinsic inside a 0.12 spread), so their own solved sigmas (0.3168 for WMT, 0.9547 for NVDA)
+identify no level for a 56-day surface. The spot, the stamp and tau are the `expiry_day` set's own.
+The rounding and spread rules are those of the anchor chains: model mids to the 0.05 tick (floor
+0.05), a spread of 0.10 (0.20 at or above 5.00) centred on the mid with the bid floored at 0.00,
+`last` = mid, `prevclose` the same surface at the prior close spot one day earlier, `open` at the
+day's opening spot.
+
+| Set | Chain | Spot (mid) | tau (seconds / years) | sigma0 |
+| --- | --- | --- | --- | --- |
+| `regular` | WMT 2026-12-18 | 104.23 | 3893328 / 0.123457 | 0.4108 |
+| `regular` | WMT 2027-01-15 | 104.23 | 6312528 / 0.200169 | 0.4108 |
+| `regular` | NVDA 2026-12-18 | 148.925 | 3893328 / 0.123457 | 0.2780 |
+| `regular` | NVDA 2027-01-15 | 148.925 | 6312528 / 0.200169 | 0.2780 |
+| `regular` | SPY 2027-03-19 | 648.12 | 11752128 / 0.372658 | 0.2501 |
+| `expiry_day` | WMT 2027-01-15 | 104.93 | 4843728 / 0.153594 | 0.4108 |
+| `expiry_day` | NVDA 2027-01-15 | 153.33 | 4843728 / 0.153594 | 0.2780 |
+
+Every date is already listed in that set's `expirations__<SYMBOL>.json` and is a standard
+monthly (the settlement day of the month's third Friday); no quotes, expirations or strikes file is
+added, so the `strikes__` files stay limited to the anchor expirations. SPY has no 2027-01-15 chain
+in any set: `opening_bell.py`'s tests pin that request as a failure. On any other set, or for any
+other date, a structuring chain request finds no file and fails like any other missing fixture.
+Put-call parity holds to the tick rounding (`|C - P - (S - K e^(-r tau))|` at most 0.05), and a
+January contract is worth at least its December twin except a deep in-the-money European put.
 
 ## Expirations, strikes, history, clock, calendar
 

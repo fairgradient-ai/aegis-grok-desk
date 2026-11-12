@@ -230,8 +230,9 @@ watch alive | nothing posted since the open | rules 1.0.0, sha cc09859c | data a
 
 ## CONFIG CHANGED and the rulebook digest
 
-- CONFIG CHANGED comes first in every run while `desk.toml`, `positions.csv` or the adopted rulebook file differs
-  from the hashes the owner acknowledged. The run still evaluates the files as they are now.
+- CONFIG CHANGED comes first in every run while `desk.toml`, `positions.csv`, the adopted rulebook file or, when it
+  exists, `structuring.toml` differs from the hashes the owner acknowledged. The run still evaluates the files as
+  they are now.
 - The digest posts once after an adoption. From a copy where rules 1.1.0 was adopted at 22:00 UTC on 2026-11-03
   (the dry run at 22:05 UTC):
 
@@ -241,6 +242,19 @@ rulebook changed: 0 verdicts changed | rules 1.0.0 -> rules 1.1.0, sha 131490c8
 ```
 
 - `ack.py config --owner-tapped` is the Aegis Desk Lead's step, after the owner's tap. The Sentinel never runs it.
+
+## After a signal: the owner's choices
+
+- An EXIT SIGNAL or a WATCH carries the owner's own plan words, never a choice the desk prices. When the owner asks
+  what the choices are, the Sentinel hands off in the Floor with the owner's words, the trade id and the signal id:
+
+  ```text
+  handoff to the Aegis Structuring Desk: the owner asks "<owner's words>" about <trade id> (<signal id>)
+  ```
+
+- The Aegis Structuring Desk answers only that request, with a ticket, a roll analysis or a proposal
+  (`aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order`). The Sentinel never runs those tools, and no
+  alert, card or sheet carries a candidate or a leg.
 
 ## The exit codes
 

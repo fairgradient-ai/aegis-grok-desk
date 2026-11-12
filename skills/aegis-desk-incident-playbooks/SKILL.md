@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-incident-playbooks
-description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for the Desk Lead, the Exit Sentinel and Position Control. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a blind desk (vendor, quota, wrong token or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
+description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Stage-1 Bot. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong token or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -34,6 +34,10 @@ Three rules hold in every incident:
 | `INCIDENT \| <id> \| the routine message failed the alert lint (<codes>) and is withheld` | the whole message failed the lint |
 | `UNAVAILABLE ...` | an input a verdict needs is missing or stale |
 | `CONFIG CHANGED \| ...` | a configuration file differs from the acknowledged one |
+| `UNAVAILABLE \| no structuring.toml: ...` | a structuring tool found no criteria file (exit 20, `criteria_missing`) |
+| `UNAVAILABLE \| CONFIG CHANGED: ...` | a structuring tool found `desk.toml`, `positions.csv` or `structuring.toml` unacknowledged (exit 20, `config_unacknowledged`) |
+| `WITHHELD \| the text of <tool>.py failed the alert lint (<codes>) and is withheld; ...` | a structuring text failed its lint (exit 1, `lint_failed`) |
+| `REFUSED ...` | a structuring answer needs a level above the owner's self-attested one (exit 20) |
 
 Incident files are `incidents/<stamp>-<id>-<slug>.md` in the desk root, with `-dirty-checkout.md` for a pin refusal and
 `-crash.md` for a crash. The 17:10 EOD Desk Brief names the day's files in its line
@@ -121,8 +125,8 @@ candidate, and only as the owner states.
 
 ## CONFIG CHANGED you did not expect
 
-Every book check compares `desk.toml`, `positions.csv` and the adopted rulebook with the hashes the owner last
-acknowledged, and posts this first on every run until they match. On a fixture copy with nothing acknowledged
+Every book check compares `desk.toml`, `positions.csv`, the adopted rulebook and, when it exists,
+`structuring.toml` with the hashes the owner last acknowledged, and posts this first on every run until they match. On a fixture copy with nothing acknowledged
 (synthetic):
 
 ```text
@@ -183,6 +187,37 @@ A WITHHELD line means a tool's text failed the alert lint, so the desk did not p
 paraphrases the withheld text. The tool the line names shows it interactively, as a diagnostic, when the owner asks;
 the incident file records the codes, never the text.
 
+## A structuring answer that cannot be given
+
+The Structuring Desk's tools fail closed: on any doubt about the files they print one line and the structuring
+footer, name no candidate and print no ticket. From synthetic fixture copies, at 19:50 UTC and, for the last line,
+with the after-close quotes at 21:30 UTC:
+
+```text
+UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)
+UNAVAILABLE | CONFIG CHANGED: structuring.toml: not acknowledged -> sha 5155427c | the desk names no candidate and prints no ticket while desk.toml, positions.csv or structuring.toml differ from what you acknowledged | acknowledge with ack.py config --owner-tapped
+UNAVAILABLE | AG-20261020-01 roll analysis | an option chain in your window was not served
+```
+
+- **No criteria.** The Structuring Desk offers its interview (`aegis-overlay-proposals`); nothing else is priced
+  until `structuring.toml` exists and is acknowledged.
+- **Unacknowledged files.** The line names each file. The Desk Lead asks the owner whether they changed it; the
+  acknowledgement is the Lead's step after the owner's tap, never a Bot's own. An unacknowledged rulebook alone does
+  not block: its CONFIG CHANGED line prints first and the answer follows.
+- **Withheld.** The structuring text failed its lint and was not printed. Nobody retypes it; `--json` of the same
+  tool shows it as a diagnostic when the owner asks.
+- **A chain not served.** The quota, the per-run cap of 20 requests or 4 chains, or a vendor failure left an
+  expiration of the window unpriced, so the answer is UNAVAILABLE: no best candidate on partial data. An empty
+  expiration list from the vendor counts as missing too. The owner asks again later; no Bot repeats the run in a loop.
+- **No candidate priced.** `no candidate in your window could be priced`, with the reason the candidates share: the
+  answer is UNAVAILABLE, never NONE_QUALIFIES, because no candidate was judged against the criteria.
+- **A quarantined group.** `positions.csv has a quarantined group (positions_check.py shows why): the desk cannot
+  count the account's coverage`. While any group of `positions.csv` is quarantined, every structuring answer is
+  UNAVAILABLE. Aegis Position Control shows the row errors with `positions_check.py`; the owner fixes the rows and
+  acknowledges the file again.
+- **A closed session.** A ticket needs live quotes: `a ticket needs quotes live enough to act on: the session is not
+  open`. A roll analysis or a proposal after the close reads the closing quotes, labelled as of the close.
+
 ## A Bot out of its lane
 
 Each question has one owning Bot. A Bot asked about another's file says who owns it and hands off in the Aegis Options
@@ -193,10 +228,11 @@ Floor; it never answers with another Bot's numbers.
 | signals, alerts, the threshold-level sheet, the book snapshot | Aegis Exit Sentinel |
 | `positions.csv`, the expiry week, assignment and settlement | Aegis Position Control |
 | `desk.toml`, the rulebook, the doctor, whether the desk ran | Aegis Desk Lead |
+| the owner's choices: tickets, the roll analyses and proposals, `structuring.toml` | Aegis Structuring Desk, only on the owner's request |
 
 A request for a planned seat's work gets the answer that it is not available in this release. Book and risk
-analysis, the pricing of choices and sourced events are planned for Stage 2 (not in this release); rule stewardship
-and the review desk are planned for Stage 3 (not in this release).
+analysis and sourced events are planned for Stage 2 (not in this release); rule stewardship and the review desk are
+planned for Stage 3 (not in this release).
 
 ## The owner's checklist: check your broker directly
 

@@ -131,7 +131,8 @@ class is what a rule reads: E only dates, M a quote, G a model value (delta) fro
 Which structures each family reaches is in the families table of
 [rules/examples/README.md](../rules/examples/README.md). The plan words an alert prints are "close" for `close`,
 "review a roll" for `roll_review` and "review and decide" for `hold_review`. A plan is the note you wrote down for
-yourself; the desk never decides it.
+yourself; the desk never decides it. An alert never prices your choices: when you want them after an alert, ask the
+Aegis Structuring Desk, which answers only your request, with the trade id ([STRUCTURING.md](STRUCTURING.md)).
 
 The numbers above are documented defaults for you to accept or change, not a judgment that they suit any account. Each
 example names its reference class in its `source`; see [PROVENANCE.md](PROVENANCE.md). A stop alert such as `LOSSX` is

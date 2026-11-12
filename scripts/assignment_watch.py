@@ -17,7 +17,8 @@ left to the pin tier, a call whose last trading day IS that day is graded with a
 against the dividend (``NOTED`` when the row carries ``#assign-ok``; ``UNAVAILABLE`` when the dividend is
 unknown: unknown is never zero), and for every option leg on its last or next-to-last trading day the pin
 tier ``PIN HIGH`` (within 1 % of the strike) / ``PIN WATCH`` (3 %) / ``ITM`` / ``PIN LOW``, each with the
-act-by time (the owner's broker cutoff on the leg's last trading day) in ET and UTC, then the standard
+act-by time in ET and UTC (``aegis_desk.expiry.leg_act_by``: a short leg's the earlier of the session close of its
+last trading day and the owner's broker cutoff, a long leg's the broker cutoff on its last trading day), then the standard
 data footer. Exit 10 when any tier fired (``HIGH``, ``PIN HIGH``, ``ITM`` on its last trading day), 20
 when any leg or group is UNAVAILABLE and nothing fired, 0 otherwise; 1 on configuration or file errors
 (``desk_root``, ``config_invalid``, ``positions_missing``, ``positions_invalid``, ``calendar_invalid``,
@@ -26,8 +27,10 @@ when any leg or group is UNAVAILABLE and nothing fired, 0 otherwise; 1 on config
 "quarantined", "quote_check", "counts", "session", "warnings", "fixture_set", "message", "as_of"}``:
 ``message`` is the human text exactly (without the final newline) and ``as_of`` the instant of its footer line (the
 newest graded quote, or the run instant when nothing was quoted), so a routine can post the text without running the
-tool twice. On an early-close day the act-by is the earlier of the broker cutoff and the 13:00 ET close, marked
-``early close ...: confirm your broker's cutoff`` (``act_by_early_close`` in each leg).
+tool twice. A short leg's text ends ``; the session close: a short option is closed only while the market trades``
+when the close governs (``act_by_basis`` ``session_close`` in each leg). On an early-close day a long leg's act-by is
+the earlier of the broker cutoff and the 13:00 ET close, marked ``early close ...: confirm your broker's cutoff``
+(``act_by_early_close`` in each leg); a short leg's 13:00 ET close carries no such mark.
 """
 
 from __future__ import annotations
@@ -46,7 +49,8 @@ from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "assignment_watch"
 DESCRIPTION = ("dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times "
-               "from the owner's broker cutoff; Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown")
+               "(a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a "
+               "dividend or quote is unknown")
 NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
 LABEL_NO_QUOTE = "no quote"
 NOTHING_LINE = ("nothing within the windows: no ex-dividend inside 5 trading days with a short call alive on the last "

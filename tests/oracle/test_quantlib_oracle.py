@@ -18,6 +18,15 @@ CDF switches to an asymptotic expansion below 1e-8 and uses the ``erf`` form abo
 relative comparison on tail-dominated prices is bounded by that implementation, not by ours; the
 grid keeps |d| modest and the absolute floor covers the rest. Non-circular: QuantLib brings its
 own CDF, its own formulas and its own solver.
+
+The Structuring Desk's legs (PR 3b, designer Q's D17): the best and runner-up legs of the fixture answers of
+``aegis_desk.structuring`` (the WMT and NVDA roll analyses, the WMT covered call, the SPY protective put and the SPY
+collar on copies of ``tests/fixtures/desk`` at the regular instant) are re-priced at their solved implied volatilities
+by the date-based ``AnalyticEuropeanEngine``. Their maturities are fractional (seconds to the exercise cutoff), and the
+engine counts whole days, so the comparison uses the time-homogeneous rescaling of a flat-curve European: with the
+expiry one Actual/365 year away and ``sigma' = sigma sqrt(tau)``, ``r' = r tau``, ``q' = q tau``, the discount and
+dividend factors and the total variance are those of the leg, so the price, delta and gamma are invariant, vega scales
+by ``sqrt(tau)`` (per vol point x 0.01) and QuantLib's own solver recovers ``sigma = sigma' / sqrt(tau)`` from the mid.
 """
 
 from __future__ import annotations
@@ -26,10 +35,14 @@ from __future__ import annotations
 import tests._path  # noqa: F401
 # isort: on
 
+import datetime
 import math
+import os
+import shutil
+import tempfile
 import unittest
 
-from aegis_desk import bsm, greeks, iv
+from aegis_desk import bsm, greeks, iv, quote_cache, structuring, structuring_config
 from aegis_desk.units import DAYS_PER_YEAR, RATE_POINT, VOL_POINT
 
 try:  # pragma: no cover - exercised only on the CI oracle job
@@ -260,6 +273,105 @@ class DateEngineOracleTest(unittest.TestCase):
                     _approx(ours.sigma, float(ql_sigma), 0.0, 1e-7), (right, market, ours, ql_sigma)
                 )
                 self.assertTrue(_approx(ours.sigma, m["sigma"], 0.0, 1e-7), (right, market, ours))
+
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_FIXTURE_DESK = os.path.join(_ROOT, "tests", "fixtures", "desk")
+_CRITERIA_FILE = os.path.join(_ROOT, "tests", "fixtures", "init", "expected_structuring.toml")
+_REGULAR_NOW = datetime.datetime(2026, 11, 3, 19, 50, tzinfo=datetime.timezone.utc)
+_WMT_TAGS = ("core holding #horizon:2027-03", "core holding #horizon:2027-03 #earnings-ok #assign-ok")
+_SPY_TAG = ("Roth IRA,AG-20261028-03,2026-10-28,63240.00,,,open,,,,,",
+            "Roth IRA,AG-20261028-03,2026-10-28,63240.00,,,open,,,,,#assign-ok")
+
+
+def _desk_copy(tmp: str, drop_row=None, replace=None) -> str:
+    root = tempfile.mkdtemp(prefix="desk-", dir=tmp)
+    os.rmdir(root)
+    shutil.copytree(_FIXTURE_DESK, root)
+    shutil.copyfile(_CRITERIA_FILE, os.path.join(root, "structuring.toml"))
+    path = os.path.join(root, "positions.csv")
+    with open(path, encoding="utf-8") as handle:
+        lines = handle.read().split("\n")
+    if drop_row is not None:
+        del lines[drop_row - 1]
+    text = "\n".join(lines)
+    if replace is not None:
+        text = text.replace(*replace)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    return root
+
+
+def _structuring_legs(tmp: str) -> list:
+    """``(label, right, S, K, tau, r, q, sigma, mid)`` of the best and runner-up legs (designer Q's D17)."""
+    criteria = structuring_config.load_structuring_config(_CRITERIA_FILE)
+
+    def market(root: str) -> quote_cache.MarketData:
+        return quote_cache.open_market_data(root, now=_REGULAR_NOW, offline=True, fixture_set="regular", timeout_s=5.0,
+                                            user_agent="aegis-desk-oracle")
+
+    main = _desk_copy(tmp)
+    answers = [structuring.run_roll_analysis(market(main), "AG-20261020-01", criteria),
+               structuring.run_roll_analysis(market(main), "AG-20261022-02", criteria),
+               structuring.run_proposal(market(_desk_copy(tmp, 4, _WMT_TAGS)), "AG-20261020-01", "covered_call", criteria),
+               structuring.run_proposal(market(_desk_copy(tmp, 8)), "AG-20261028-03", "protective_put", criteria),
+               structuring.run_proposal(market(_desk_copy(tmp, 8, _SPY_TAG)), "AG-20261028-03", "collar", criteria)]
+    legs = []
+    seen = set()
+    for answer in answers:
+        spot = float(answer.pricing.spot.mark_mid)
+        for candidate in answer.ranking.candidates[:2]:
+            for leg in candidate.legs:
+                if leg.occ in seen:
+                    continue
+                seen.add(leg.occ)
+                legs.append(("%s rank %d %s" % (answer.kind, candidate.rank, leg.occ), leg.right, spot, float(leg.strike),
+                             leg.tau_years, answer.pricing.rate, answer.pricing.q, leg.iv, float(leg.mid), leg.delta))
+    return legs
+
+
+@unittest.skipUnless(HAVE_QUANTLIB, "QuantLib (Python bindings) not installed; CI oracle job only")
+class StructuringLegsOracleTest(unittest.TestCase):
+    """The Structuring Desk's best and runner-up legs at their solved IVs against AnalyticEuropeanEngine."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp = tempfile.mkdtemp(prefix="aegis-structuring-oracle-")
+        cls.addClassCleanup(shutil.rmtree, cls.tmp, True)
+        cls.legs = _structuring_legs(cls.tmp)
+
+    def test_the_legs_were_collected(self) -> None:
+        self.assertEqual(7, len(self.legs))
+        self.assertEqual({"CALL", "PUT"}, {leg[1] for leg in self.legs})
+
+    def test_price_delta_gamma_vega_at_the_solved_iv(self) -> None:
+        for label, right, S, K, tau, r, q, sigma, mid, delta in self.legs:
+            rescaled = {"S": S, "K": K, "r": r * tau, "q": q * tau, "sigma": sigma * math.sqrt(tau)}
+            theirs = _date_engine(right, rescaled, 365)
+            market = {"S": S, "K": K, "tau": tau, "r": r, "q": q, "sigma": sigma}
+            ours = greeks.european_greeks(right, **market)
+            with self.subTest(leg=label):
+                self.assertTrue(_approx(bsm.price(right, **market), theirs["price"], PRICE_REL, PRICE_ABS), label)
+                self.assertTrue(_approx(mid, theirs["price"], 0.0, 1e-6), (label, mid, theirs["price"]))
+                self.assertTrue(_approx(ours.delta, theirs["delta"], GREEK_REL, GREEK_ABS), label)
+                self.assertTrue(_approx(delta, theirs["delta"], GREEK_REL, GREEK_ABS), label)
+                self.assertTrue(_approx(ours.gamma, theirs["gamma"], GREEK_REL, GREEK_ABS), label)
+                self.assertTrue(_approx(ours.vega, theirs["vega_per_unit"] * math.sqrt(tau) * VOL_POINT, GREEK_REL,
+                                        GREEK_ABS), label)
+
+    def test_quantlib_recovers_the_implied_volatility_from_the_mid(self) -> None:
+        for label, right, S, K, tau, r, q, sigma, mid, _delta in self.legs:
+            rescaled = {"S": S, "K": K, "r": r * tau, "q": q * tau, "sigma": sigma * math.sqrt(tau)}
+            theirs = _date_engine(right, rescaled, 365)
+            settings = ql.Settings.instance()
+            previous = settings.evaluationDate
+            try:
+                settings.evaluationDate = ql.Date(1, 1, 2020)
+                ql_sigma = theirs["option"].impliedVolatility(mid, theirs["process"], 1e-12, 1000, 1e-6, 10.0)
+            finally:
+                settings.evaluationDate = previous
+            with self.subTest(leg=label):
+                self.assertTrue(_approx(sigma, float(ql_sigma) / math.sqrt(tau), 0.0, 1e-7), (label, sigma, ql_sigma))
 
 
 if __name__ == "__main__":  # pragma: no cover

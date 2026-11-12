@@ -1,6 +1,6 @@
 # Aegis Desk on Cursor
 
-Cursor loads the desk from `.cursor-plugin/plugin.json`: the skills, the three role profiles, the desk rule and a
+Cursor loads the desk from `.cursor-plugin/plugin.json`: the skills, the four role profiles, the desk rule and a
 fail-closed hook that denies a shell command or MCP tool call that looks like a broker write. Use it to read the desk,
 run its tools and work on the repository. The desk that runs on its own every trading day lives on
 [Grok Bot](aegis-grok-bot.md).
@@ -85,7 +85,7 @@ example, would limit which calls run the gate, so the check refuses it.
 
 These are observed at release, at one Cursor install. Until then, nothing on this page claims that Cursor ran the hook.
 
-1. Cursor lists the skills, the three agents and the desk rule.
+1. Cursor lists the skills, the four agents and the desk rule.
 2. Cursor expands `${CURSOR_PLUGIN_ROOT}` and runs the hook from the plugin directory.
 3. A read such as `git status` gets the gate's `{"permission": "ask"}` answer, and Cursor asks before it runs it. If
    the install shows that Cursor reads `ask` differently, the hook is not claimed.

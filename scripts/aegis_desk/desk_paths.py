@@ -5,12 +5,14 @@ directories on request. The layout::
 
     <desk_root>/
       desk.toml                 owner-authored (strict; hashed; never written by routines)
+      structuring.toml          the owner's structuring criteria (rendered by desk_init.py; hashed)
       positions.csv             the book of record (hand-edited; never written by a tool)
       rules/                    exit_rules-X.Y.Z.toml, ADOPTED, CHANGELOG.md
       research/calendar.toml
       state/                    desk_state.json, heartbeat/, acks.jsonl, rule_state.json, .lock
       data/positions/  data/book/  data/cache/
       journal/  levels/  plans/  tickets/  reports/  incidents/
+      journal/structuring.jsonl  reports/rolls/  reports/proposals/
       fixtures/tradier/<set>/   offline recorded responses (fixture desk roots only)
 
 :func:`for_root` builds a :class:`DeskPaths` from an absolute, existing directory (anything else
@@ -18,10 +20,15 @@ is a :class:`DeskPathsError`, a ``ValueError``); every attribute is an absolute 
 root. :func:`ensure_runtime_dirs` creates the directories a tool may need to write into
 (:data:`RUNTIME_DIRS`: ``state/``, ``state/heartbeat/``, ``data/cache/``, ``data/book/``,
 ``data/positions/``, ``journal/``, ``levels/``, ``plans/``, ``reports/``, ``incidents/``) with
-``exist_ok`` and nothing else: it never creates ``desk.toml``, ``positions.csv``, ``rules/``,
-``research/``, ``tickets/`` or ``fixtures/``, which are the owner's (or the fixture tree's) to
-provide. ``plans/`` holds the exit-plan cards ``trigger_levels.py --plan`` writes. The tools pass ``args.desk_root`` from :class:`aegis_desk.contract.ReadOnlyParser`
-here, so a tool can never derive a path from anything but the explicit root.
+``exist_ok`` and nothing else: it never creates ``desk.toml``, ``structuring.toml``, ``positions.csv``,
+``rules/``, ``research/`` or ``fixtures/``, which are the owner's (or the fixture tree's) to provide, nor
+``tickets/``, ``reports/rolls/`` and ``reports/proposals/``: exit_ticket.py, roll_analysis.py and propose.py
+create tickets/, reports/rolls/ and reports/proposals/ at their first write (``os.makedirs(exist_ok=True)`` under
+the desk lock; PR 3b decision S9), and only on a run that answers. ``plans/`` holds the exit-plan cards
+``trigger_levels.py --plan`` writes; ``journal/structuring.jsonl`` (``structuring_journal``) is the append-only
+record of every structuring text printed. The tools pass ``args.desk_root`` from
+:class:`aegis_desk.contract.ReadOnlyParser` here, so a tool can never derive a path from anything but the explicit
+root.
 """
 
 from __future__ import annotations
@@ -71,6 +78,10 @@ class DeskPaths:
     reports_dir: str
     incidents_dir: str
     fixtures_dir: str
+    structuring_toml: str
+    rolls_dir: str
+    proposals_dir: str
+    structuring_journal: str
 
     @property
     def tradier_fixtures_dir(self) -> str:
@@ -123,14 +134,18 @@ def for_root(desk_root: str) -> DeskPaths:
         reports_dir=under("reports"),
         incidents_dir=under("incidents"),
         fixtures_dir=under("fixtures"),
+        structuring_toml=under("structuring.toml"),
+        rolls_dir=under("reports", "rolls"),
+        proposals_dir=under("reports", "proposals"),
+        structuring_journal=under("journal", "structuring.jsonl"),
     )
 
 
 def ensure_runtime_dirs(paths: DeskPaths) -> List[str]:
     """Create :data:`RUNTIME_DIRS` under the root (``exist_ok``) and return the ones created.
 
-    Never touches ``desk.toml``, ``positions.csv``, ``rules/``, ``research/``, ``tickets/`` or
-    ``fixtures/``; existing files and directories are left as they are.
+    Never touches ``desk.toml``, ``structuring.toml``, ``positions.csv``, ``rules/``, ``research/``, ``tickets/``,
+    ``reports/rolls/``, ``reports/proposals/`` or ``fixtures/``; existing files and directories are left as they are.
     """
     if not isinstance(paths, DeskPaths):
         raise DeskPathsError("ensure_runtime_dirs() takes a DeskPaths, got %s" % type(paths).__name__)

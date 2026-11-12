@@ -13,13 +13,17 @@ so a chain is arbitrage-consistent with the quote it is tested against. When the
 one hour from its exercise cutoff (the ``post_expiry`` set: closing quotes 10 s before the close)
 no implied volatility is solved, mirroring the book's ``expiring`` rule, and the neighbours are
 written at ``max(intrinsic, 0.01) + 0.05`` (capped at the anchor mid for a contract further out of
-the money than the anchor, so the chain stays monotone). Nothing here is live data; see the
-README's provenance section. ``tests/engine/test_desk_fixtures.py`` checks the output.
+the money than the anchor, so the chain stays monotone). The structuring chains of PR 3b hold no
+anchor contract: they are priced from a stated implied-volatility surface around an anchor sigma
+(:data:`STRUCTURING_CHAINS`, :func:`structuring_entries`; the README's structuring section). Nothing
+here is live data; see the README's provenance section. ``tests/engine/test_desk_fixtures.py``
+checks the output.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -419,6 +423,93 @@ def fallback_value(right: str, spot: Decimal, strike: Decimal) -> Decimal:
     return (max(intrinsic, CENT) + TICK).quantize(CENT)
 
 
+# PR 3b: the structuring chains. Set -> {underlying: (expirations, strikes)}: the regular set's five
+# chains (the covered-call and roll windows of WMT and NVDA, the protection window of SPY) and two
+# expiry_day chains (a replacement chosen on the expiration day of the November calls). They hold no
+# anchor contract: each is priced from a stated implied-volatility surface around sigma0, skewed in
+# log-moneyness and flat in maturity, with the spot, stamp and tau of its own set.
+STRUCTURING_STRIKES = {
+    "WMT": ("95", "97.5", "100", "102.5", "105", "107.5", "110", "112.5", "115", "120"),
+    "NVDA": ("130", "135", "140", "145", "150", "155", "160", "165", "170", "180"),
+    "SPY": ("580", "590", "600", "610", "620", "625", "630", "640", "650", "660", "680", "700"),
+}
+STRUCTURING_CHAINS: Dict[str, Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]]] = {
+    "regular": {
+        "WMT": (("2026-12-18", "2027-01-15"), STRUCTURING_STRIKES["WMT"]),
+        "NVDA": (("2026-12-18", "2027-01-15"), STRUCTURING_STRIKES["NVDA"]),
+        "SPY": (("2027-03-19",), STRUCTURING_STRIKES["SPY"]),
+    },
+    "expiry_day": {
+        "WMT": (("2027-01-15",), STRUCTURING_STRIKES["WMT"]),
+        "NVDA": (("2027-01-15",), STRUCTURING_STRIKES["NVDA"]),
+    },
+}
+# The set whose anchor quote fixes sigma0. On the expiration day the November anchors have 1 h 29 min
+# to their cutoff and almost no time value (the NVDA 150 call's mid is 0.03 above intrinsic inside a
+# 0.12 spread), so their implied volatilities (0.3168 and 0.9547) identify no level for a 56-day
+# surface: the expiry_day chains keep the regular set's sigma0, flat in calendar time.
+STRUCTURING_SIGMA_SET = {"regular": "regular", "expiry_day": "regular"}
+SKEW = {"WMT": 0.25, "NVDA": 0.25, "SPY": 0.50}  # vol points per unit of ln(K / S)
+SIGMA_FLOOR = 0.05
+
+
+def anchor_sigma(underlying: str, fixture: FixtureSet, quotes: Dict[str, Dict[str, Any]]) -> float:
+    """The implied volatility of the underlying's anchor contract at the set's stamp (q = 0)."""
+    anchor_symbol = ANCHOR_FOR[underlying]
+    anchor = quotes[anchor_symbol]
+    meta = OPTION_META[anchor_symbol]
+    spot = quotes[underlying]
+    s_mid = float((D(str(spot["bid"])) + D(str(spot["ask"]))) / 2)
+    tau = (cutoff_utc(meta["expiration"]) - fixture.stamp).total_seconds() / SECONDS_PER_YEAR
+    mid = float((D(str(anchor["bid"])) + D(str(anchor["ask"]))) / 2)
+    right = "CALL" if meta["right"] == "call" else "PUT"
+    solved = iv.implied_vol(mid, right, s_mid, float(meta["strike"]), tau, R, Q)
+    if not solved.ok:
+        raise SystemExit("implied vol for %s in set %s: %s" % (anchor_symbol, fixture.name, solved.status))
+    return solved.sigma
+
+
+def surface_sigma(underlying: str, sigma0: float, strike: float, spot: float) -> float:
+    """sigma(K) = max(0.05, sigma0 - skew x ln(K / S)): the stated surface of the structuring chains."""
+    return max(SIGMA_FLOOR, sigma0 - SKEW[underlying] * math.log(strike / spot))
+
+
+def structuring_entries(underlying: str, expiration: str, strikes: Tuple[str, ...], sigma0: float,
+                        fixture: FixtureSet, quotes: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every strike of one structuring chain, a call and a put each, priced at the stated surface."""
+    spot = quotes[underlying]
+    s_mid = float((D(str(spot["bid"])) + D(str(spot["ask"]))) / 2)
+    s_prev = float(D(str(spot["prevclose"])))
+    s_open = float(D(str(spot["open"])))
+    oi_base = quotes[ANCHOR_FOR[underlying]]["open_interest"]
+    tau = (cutoff_utc(expiration) - fixture.stamp).total_seconds() / SECONDS_PER_YEAR
+    entries: List[Dict[str, Any]] = []
+    for strike_text in strikes:
+        strike = D(strike_text)
+        k = float(strike)
+        for right in ("call", "put"):
+            bsm_right = "CALL" if right == "call" else "PUT"
+            mid = to_tick(bsm.price(bsm_right, s_mid, k, tau, R, Q, surface_sigma(underlying, sigma0, k, s_mid)))
+            prev = to_tick(bsm.price(bsm_right, s_prev, k, tau + 1.0 / 365.0, R, Q,
+                                     surface_sigma(underlying, sigma0, k, s_prev)))
+            opened = to_tick(bsm.price(bsm_right, s_open, k, tau, R, Q, surface_sigma(underlying, sigma0, k, s_open)))
+            half = D("0.10") if mid >= 5 else TICK
+            bid = max(mid - half, D("0")).quantize(CENT)
+            ask = (mid + half).quantize(CENT)
+            high = (max(opened, mid) + TICK).quantize(CENT)
+            low = max(min(opened, mid) - TICK, TICK).quantize(CENT)
+            distance = abs(k - s_mid) / s_mid
+            oi = int(round(oi_base * (0.35 + 0.65 * max(0.0, 1.0 - distance * 12))))
+            book = dict(bid=str(bid), ask=str(ask), last=str(mid), prevclose=str(prev), open=str(opened),
+                        high=str(high), low=str(low), volume=max(10, oi // 7), oi=max(oi, 25),
+                        bidsize=20 + int(strike) % 37, asksize=15 + int(strike) % 29)
+            entry = option_quote(occ_compact(underlying, expiration, right, strike), underlying, expiration, strike,
+                                 right, book, fixture)
+            entry["greeks"] = None  # the sandbox publishes no Greeks
+            entries.append(entry)
+    return entries
+
+
 def chain_entries(underlying: str, fixture: FixtureSet, quotes: Dict[str, Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
     """BSM-consistent chain around the anchor contract (``None`` once the expiration has passed)."""
     expiration = CHAIN_EXPIRY[underlying]
@@ -550,13 +641,8 @@ QUOTE_SUBSETS: Tuple[Tuple[str, ...], ...] = (
 REGULAR_ONLY_SUBSETS: Tuple[Tuple[str, ...], ...] = (("SPX",), ("SPX", "SPY"))
 
 
-def generate_set(fixture: FixtureSet) -> List[str]:
-    directory = os.path.join(HERE, fixture.name)
-    os.makedirs(os.path.join(directory, "errors"), exist_ok=True)
-    for name in os.listdir(directory):
-        path = os.path.join(directory, name)
-        if os.path.isfile(path):
-            os.remove(path)
+def set_quotes(fixture: FixtureSet) -> Dict[str, Dict[str, Any]]:
+    """Every quote of one set (the underlyings and the anchor options its day's book holds)."""
     book = BOOKS[fixture.day]
     quotes: Dict[str, Dict[str, Any]] = {}
     for symbol in UNDERLYING_META:
@@ -565,6 +651,21 @@ def generate_set(fixture: FixtureSet) -> List[str]:
         if symbol in book:
             quotes[symbol] = option_quote(symbol, meta["underlying"], meta["expiration"], D(meta["strike"]),
                                           meta["right"], book[symbol], fixture)
+    return quotes
+
+
+def fixture_set(name: str) -> FixtureSet:
+    return next(fixture for fixture in SETS if fixture.name == name)
+
+
+def generate_set(fixture: FixtureSet) -> List[str]:
+    directory = os.path.join(HERE, fixture.name)
+    os.makedirs(os.path.join(directory, "errors"), exist_ok=True)
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        if os.path.isfile(path):
+            os.remove(path)
+    quotes = set_quotes(fixture)
     written = []
     subsets = QUOTE_SUBSETS + (REGULAR_ONLY_SUBSETS if fixture.name == "regular" else ())
     for subset in subsets:
@@ -601,6 +702,14 @@ def generate_set(fixture: FixtureSet) -> List[str]:
         for underlying, bar in POST_EXPIRY_BARS.items():
             path = os.path.join(directory, "history__%s__%s__%s.json" % (underlying, bar[0], bar[0]))
             write_json(path, history_payload([bar]))
+            written.append(path)
+    for underlying, (expirations, strikes) in STRUCTURING_CHAINS.get(fixture.name, {}).items():
+        sigma_fixture = fixture_set(STRUCTURING_SIGMA_SET[fixture.name])
+        sigma0 = anchor_sigma(underlying, sigma_fixture, set_quotes(sigma_fixture))
+        for expiration in expirations:
+            path = os.path.join(directory, "chains__%s__%s.json" % (underlying, expiration))
+            write_json(path, {"options": {"option": structuring_entries(underlying, expiration, strikes, sigma0,
+                                                                        fixture, quotes)}})
             written.append(path)
     clock = {"clock": {"date": fixture.clock_date.isoformat(), "description": fixture.clock_description,
                        "state": fixture.clock_state, "timestamp": seconds(fixture.now),

@@ -60,6 +60,14 @@ candidate, and ``rules_adopt`` after the close (read back through ``ack.py confi
 hours (refused). The fixture roots hold no runtime state, so every journey that needs acknowledged hashes
 runs ``ack.py config --owner-tapped`` as its first step.
 
+The PR 3b journeys run the Aegis Structuring Desk's three tools on the main root: ``roll_analysis`` (the WMT roll's best
+candidate, the NVDA roll where none qualifies, the stale set), ``propose`` (the SPY protective put on a group that already
+holds a put: NOTHING_TO_PROPOSE) and ``exit_ticket`` (two ROLL tickets, a MONETIZE_PUT ticket and a ROLL on expiration
+day). The fixture root holds no ``structuring.toml``, so each chain writes it on its copy with ``desk_init.py --answers``
+(the fixture answers) and acknowledges it with ``ack.py config --owner-tapped`` first; two journeys prove the tools fail
+closed without it (criteria missing; a copy never acknowledged). The alert lint journeys cover the structuring fixtures
+too: their emitted documents carry ``"footer": "structuring"``.
+
 Usage: ``python3 scripts/cli_journeys.py [--root DIR] [--json]``. ``--root`` is the tree the
 gates are run against (default: this repository); the scripts always come from this checkout.
 Exit 0 when every journey that ran passes, 1 otherwise.
@@ -113,7 +121,8 @@ EXPIRY_DAY_NEXT_RUN = "2026-11-20T21:35:00Z"
 CANDIDATE_RULES = "tests/fixtures/rules/candidate-1.1.0.toml"
 CANDIDATE_SHA256 = "131490c88814cc3a5f17823933275c53d0a68956ce928b610aa904ccc6f355e1"
 ALERT_FIXTURES = "tests/fixtures/alerts"
-ALERT_PASSES: Tuple[str, ...] = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close")
+ALERT_PASSES: Tuple[str, ...] = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close",
+                                 "pass_structuring_ticket", "pass_structuring_roll", "pass_structuring_proposal")
 ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_2x_credit", "number_not_emitted"), ("fail_21_dte", "number_not_emitted"),
     ("fail_pct_52_4", "number_not_emitted"), ("fail_you_should", "forbidden_language"),
@@ -121,6 +130,10 @@ ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
     ("fail_homoglyph", "non_ascii"), ("fail_imperative_execute", "imperative_start"),
     ("fail_imperative_fill", "imperative_start"), ("fail_order_kind", "forbidden_language"),
+    ("fail_structuring_under_rules_footer", "footer_missing"),
+    ("fail_rules_text_under_structuring_footer", "imperative_start"),
+    ("fail_structuring_leg_grammar", "order_field"), ("fail_structuring_go_with", "forbidden_language"),
+    ("fail_structuring_at_price", "order_field"),
 )
 """The alert lint's fixtures (``tests/fixtures/alerts``): the passing messages, and each red-team message with the
 code of its first finding."""
@@ -146,6 +159,14 @@ MORNING_NOW = "2026-11-03T12:35:00Z"
 EOD_NOW = "2026-11-03T21:35:00Z"
 EOD_BRIEF_NOW = "2026-11-03T22:10:00Z"
 HOLIDAY_SLOT_NOW = "2026-11-26T15:05:00Z"
+# PR 3b: the Structuring Desk's criteria. tests/fixtures/desk holds no structuring.toml (designer C's G13); a structuring
+# chain writes it on its copy from desk_init's fixture answers and acknowledges it before the tool runs.
+STRUCTURING_ANSWERS = "tests/fixtures/init/structuring-answers.json"
+STRUCTURING_SHA256 = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
+STRUCTURING_FOOTER = ("computed by the desk's tools from your criteria · posted by an AI assistant · a personalized "
+                      "suggestion for positions you hold, not an order · you decide and act in your brokerage account · "
+                      "data delayed 15 min, as of 19:31 UTC")
+"""The structuring footer at the regular and expiry-day sets' quote stamp (19:31:12 UTC)."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -296,10 +317,13 @@ JOURNEYS: Tuple[Journey, ...] = (
                  {"status": "fired", "tool": "expiry_checklist", "payload.mode": "week", "payload.counts.listed": 2}, now=T1_NOW),
     tool_journey("expiry_checklist --tomorrow t1 (T-1 preview)", ("expiry_checklist.py", "--tomorrow", "--fixture-set", "t1"), 10,
                  {"status": "fired", "payload.mode": "tomorrow", "payload.counts.listed": 2}, now=T1_NOW),
-    tool_journey("expiry_checklist --final-call expiry_day (act by 16:30 ET)",
+    # A short option is closed only while the market trades: its act-by is the session close (16:00 ET), earlier than
+    # the fixture's 16:30 ET broker cutoff (FAI-689).
+    tool_journey("expiry_checklist --final-call expiry_day (short legs act by the 16:00 ET close)",
                  ("expiry_checklist.py", "--final-call", "--fixture-set", "expiry_day"), 10,
                  {"status": "fired", "payload.mode": "final-call", "payload.legs.0.pin.tier": "PIN HIGH",
-                  "payload.legs.1.pin.tier": "PIN WATCH", "payload.legs.1.act_by_utc": "2026-11-20T21:30:00+00:00"},
+                  "payload.legs.1.pin.tier": "PIN WATCH", "payload.legs.1.act_by_utc": "2026-11-20T21:00:00+00:00",
+                  "payload.legs.1.act_by_basis": "session_close"},
                  now=EXPIRY_DAY_NOW),
     tool_journey("expiry_checklist --week regular (nothing due)", ("expiry_checklist.py", "--week", "--fixture-set", "regular"), 0,
                  {"status": "ok", "payload.mode": "week", "payload.counts.listed": 0}),
@@ -521,7 +545,7 @@ JOURNEYS += (
                  {"status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0,
                   "payload.steps.2.exit_code": 10, "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
                   "payload.message": TextMatch(prefix="development run", contains=(
-                      "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+                      "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)",
                       "assignment watch Fri 2026-11-20 (session open): FIRED"))},
                  now=EXPIRY_DAY_NOW),
     tool_journey("routine nope -> usage", ("routine.py", "nope"), 2, {"status": "usage", "error.code": "invalid_arguments"}),
@@ -543,7 +567,7 @@ JOURNEYS += (
     tool_journey("routine_audit --rules-text -> three Auto-review texts within 1000 characters",
                  ("routine_audit.py", "--rules-text"), 0,
                  {"status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-                  "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250},
+                  "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 333},
                   "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
     tool_journey("book --snapshot pre_open, trigger_levels --from-snapshot, then routine preopen 07:30 pre_open -> "
                  "MORNING DESK SHEET",
@@ -585,6 +609,161 @@ JOURNEYS += (
                  {"status": "quiet", "payload.closed_day": True, "payload.quiet": True, "payload.steps": [],
                   "payload.message": None, "payload.heartbeat": "state/heartbeat/book-check.json"},
                  now=HOLIDAY_SLOT_NOW),
+)
+
+
+def structuring_steps(init_now: str, ack_now: str) -> Tuple[Step, ...]:
+    """``desk_init.py`` writes structuring.toml on the copy from the fixture answers (the copy's desk.toml stays), then
+    ``ack.py config --owner-tapped`` acknowledges it with desk.toml, positions.csv and the rulebook."""
+    return (tool_step(("desk_init.py", "--answers", STRUCTURING_ANSWERS), 0,
+                      {"status": "ok", "payload.written": ["structuring.toml"],
+                       "payload.structuring_toml.sha256": STRUCTURING_SHA256}, now=init_now),
+            tool_step(("ack.py", "config", "--owner-tapped"), 0,
+                      {"status": "ok", "payload.action": "config",
+                       "payload.acknowledged_hashes.structuring_toml": STRUCTURING_SHA256}, now=ack_now))
+
+
+# PR 3b: the Aegis Structuring Desk's three tools, only on the owner's request (never a routine step). The chains write and
+# acknowledge structuring.toml two and one minute before the tool; two fail-closed journeys run without it.
+REGULAR_STRUCTURING = structuring_steps("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")
+EXPIRY_DAY_STRUCTURING = structuring_steps("2026-11-20T19:48:00Z", "2026-11-20T19:49:00Z")
+WMT_ROLL_115 = ("exit_ticket.py", "--trade", "AG-20261020-01", "--action", "ROLL", "--new-expiration", "2027-01-15",
+                "--new-strike", "115")
+JOURNEYS += (
+    tool_journey("desk_init structuring, ack config, roll_analysis WMT regular -> BEST (the Jan 115 call)",
+                 ("roll_analysis.py", "--trade", "AG-20261020-01"), 0,
+                 {"status": "ok", "tool": "roll_analysis", "payload.verdict": "BEST", "payload.best": "WMT270115C00115000",
+                  "payload.candidates.0.score": "0.0467", "payload.candidates.0.net_credit": "0.05",
+                  "payload.candidates.0.net_credit_total": "10.00", "payload.passed": 1, "payload.failed": 19,
+                  "payload.after.max_loss": "19006.00", "payload.after.max_profit": "3994.00",
+                  "payload.after.breakeven": "95.03", "payload.requests.made": 4, "payload.requests.chains": 2,
+                  "payload.lint.ok": True, "payload.emitted.footer": "structuring",
+                  "payload.files.json": "reports/rolls/AG-20261020-01-20261103T195000Z.json",
+                  "payload.journal": "journal/structuring.jsonl",
+                  "payload.message": TextMatch(
+                      prefix="STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml "
+                             "(sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+                      contains=("BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day",
+                                "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+                                "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
+                                "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new "
+                                "call's life (by #assign-ok)",
+                                "after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit "
+                                "3994.00 (now 1984.00), breakeven 95.03 (now 95.08)",
+                                STRUCTURING_FOOTER))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES",
+                 ("roll_analysis.py", "--trade", "AG-20261022-02"), 0,
+                 {"status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0,
+                  "payload.failed": 18, "payload.unpriced": 2, "payload.candidates.0.id": "NVDA270115C00160000",
+                  "payload.candidates.0.status": "FAILS_CRITERION", "payload.candidates.0.score": "0.0299",
+                  "payload.requests.made": 4, "payload.lint.ok": True,
+                  "payload.message": TextMatch(
+                      prefix="STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call",
+                      contains=("no candidate passed every criterion: the desk names no best candidate",
+                                "FAILS_CRITERION credit_only: a net debit of 0.05",
+                                "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls "
+                                "inside the new call's life", STRUCTURING_FOOTER),
+                      excludes=("BEST CANDIDATE",))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, roll_analysis WMT stale -> UNAVAILABLE after 1 request",
+                 ("roll_analysis.py", "--trade", "AG-20261020-01", "--fixture-set", "stale"), 20,
+                 {"status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "spot_unusable",
+                  "payload.requests.made": 1, "payload.files": None, "payload.journal": "journal/structuring.jsonl",
+                  "payload.lint.ok": True,
+                  "payload.message": TextMatch(
+                      prefix="UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the underlying",
+                      contains=("data delayed 15 min, as of 19:50 UTC",))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, propose SPY protective_put on the main root -> NOTHING_TO_PROPOSE",
+                 ("propose.py", "--trade", "AG-20261028-03", "--structure", "protective_put"), 0,
+                 {"status": "ok", "tool": "propose", "payload.verdict": "NOTHING_TO_PROPOSE",
+                  "payload.cause": "not_shares_only", "payload.requests.made": 0, "payload.lint.ok": True,
+                  "payload.best": None, "payload.candidates": [],
+                  "payload.message": TextMatch(
+                      prefix="NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already "
+                             "carry 1 long put")},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, exit_ticket WMT ROLL, new 2027-01-15 115 call -> TICKET, net +10.00, "
+                 "peak 700.00", WMT_ROLL_115, 0,
+                 {"status": "ok", "tool": "exit_ticket", "payload.verdict": "TICKET",
+                  "payload.ticket_id": "TK-AG-20261020-01-ROLL-20261103T195000Z",
+                  "payload.cash.net_conservative": "10.00", "payload.cash.net_mid": "35.00",
+                  "payload.cash.peak_needed": "700.00", "payload.replacement.candidate.status": "ELIGIBLE",
+                  "payload.approval.required_level": 1, "payload.requests.made": 2, "payload.lint.ok": True,
+                  "payload.emitted.footer": "structuring", "payload.files.written": True,
+                  "payload.journal": "journal/structuring.jsonl",
+                  "payload.message": TextMatch(
+                      prefix="TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 "
+                             "of desk.toml (margin)",
+                      contains=("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425",
+                                "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60",
+                                "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00",
+                                "after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03",
+                                STRUCTURING_FOOTER))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, exit_ticket NVDA ROLL, new 2027-01-15 160 call -> TICKET with two "
+                 "FAILS_CRITERION lines",
+                 ("exit_ticket.py", "--trade", "AG-20261022-02", "--action", "ROLL", "--new-expiration", "2027-01-15",
+                  "--new-strike", "160"), 0,
+                 {"status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261022-02-ROLL-20261103T195000Z",
+                  "payload.cash.net_conservative": "-10.00", "payload.cash.peak_needed": "660.00",
+                  "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 2,
+                  "payload.lint.ok": True, "payload.files.written": True,
+                  "payload.message": TextMatch(prefix="TICKET AG-20261022-02 | NVDA covered call", contains=(
+                      "FAILS_CRITERION credit_only: a net debit of 0.05",
+                      "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
+                      "call's life",
+                      "after both legs: group delta 137.35, max loss 27640.00, max profit 4360.00, breakeven 138.20",
+                      STRUCTURING_FOOTER))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, exit_ticket SPY MONETIZE_PUT -> TICKET, cash +980.00",
+                 ("exit_ticket.py", "--trade", "AG-20261028-03", "--action", "MONETIZE_PUT"), 0,
+                 {"status": "ok", "payload.verdict": "TICKET",
+                  "payload.ticket_id": "TK-AG-20261028-03-MONETIZE_PUT-20261103T195000Z",
+                  "payload.cash.net_conservative": "980.00", "payload.cash.net_mid": "995.00",
+                  "payload.cash.peak_needed": "0.00", "payload.realized.0.conservative": "-150.00",
+                  "payload.puts.0.itm": False, "payload.requests.made": 1, "payload.lint.ok": True,
+                  "payload.files.written": True,
+                  "payload.message": TextMatch(
+                      prefix="TICKET AG-20261028-03 | SPY protective put | the long put closed for its value (action "
+                             "MONETIZE_PUT) | account 2 of desk.toml (ira)",
+                      contains=("leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95",
+                                "cash: +980.00 at the conservative prices (mid +995.00); the most the steps need at once: 0.00",
+                                "after the leg, your 100 SPY shares carry no put: their downside is unhedged",
+                                STRUCTURING_FOOTER))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, exit_ticket WMT ROLL on expiration day -> TICKET, the held call's ask "
+                 "at grade E", WMT_ROLL_115 + ("--fixture-set", "expiry_day"), 0,
+                 {"status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261020-01-ROLL-20261120T195000Z",
+                  "payload.legs.0.grade": "E", "payload.legs.0.conservative": "0.16",
+                  "payload.cash.net_conservative": "558.00", "payload.cash.peak_needed": "32.00",
+                  "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 2,
+                  "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix="TICKET AG-20261020-01 | WMT covered call", contains=(
+                      "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+                      "grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | quote grade E: the conservative side "
+                      "stands",
+                      "FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown "
+                      "and counts as inside the new call's life",
+                      STRUCTURING_FOOTER))},
+                 now=EXPIRY_DAY_NOW, steps=EXPIRY_DAY_STRUCTURING),
+    # Failing closed (addendum S8): every action, CLOSE included, needs an acknowledged structuring.toml.
+    tool_journey("ack config, exit_ticket WMT CLOSE without structuring.toml -> UNAVAILABLE (criteria_missing)",
+                 ("exit_ticket.py", "--trade", "AG-20261020-01", "--action", "CLOSE"), 20,
+                 {"status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "criteria_missing",
+                  "payload.files": None, "payload.journal": "journal/structuring.jsonl", "payload.lint.ok": True,
+                  "payload.message": TextMatch(
+                      prefix="UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your "
+                             "criteria (SETUP step 9)")},
+                 steps=(tool_step(("ack.py", "config", "--owner-tapped"), 0, {"status": "ok", "payload.action": "config"},
+                                  now="2026-11-03T19:49:00Z"),)),
+    tool_journey("roll_analysis on a copy never acknowledged -> UNAVAILABLE (config_unacknowledged)",
+                 ("roll_analysis.py", "--trade", "AG-20261020-01"), 20,
+                 {"status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "config_unacknowledged",
+                  "payload.files": None, "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix="UNAVAILABLE | CONFIG CHANGED: desk.toml: not acknowledged -> sha "
+                                                      "0af433cf", contains=("acknowledge with ack.py config --owner-tapped",))}),
 )
 
 

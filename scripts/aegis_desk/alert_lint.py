@@ -49,6 +49,26 @@ rule id passed in ``rule_ids``, ``your rule``, a rulebook version ``rules X.Y.Z`
 SIGNAL``, ``WATCH``, ``HOLD``, ``UNAVAILABLE``) under it is the finding ``footer_missing``, so the rules footer
 stays mandatory for anything a rule says. The default is the rules footer.
 
+``footer="structuring"`` requires the structuring footer, ``computed by the desk's tools from your criteria · posted
+by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your
+brokerage account · data delayed 15 min, as of HH:MM UTC`` (:func:`structuring_footer_line`): the accurate footer of
+the Structuring Desk's tickets, roll analyses and proposals, which only the owner's own request produces. It never
+closes rule content either: ``your rule`` (up to two words between, any joining), ``your plan:``, a rulebook version
+or a verdict word (an exit signal in any case or joining; ``WATCH`` and ``HOLD`` in capitals, or ``Watch`` / ``Hold`` at
+a sentence start or after ``verdict``: ``you hold 200 shares`` is not a verdict) under it, or a non-empty ``rule_ids``,
+is ``footer_missing`` (``UNAVAILABLE`` stays allowed: the structuring tools print it). The reverse holds too: the rules
+and snapshot footers never close a structuring text (:data:`_STRUCTURING_CONTENT_RE`): a leg reference anywhere in a
+line (``leg 2 of 2``, ``leg 2/2``, ``leg one of two``, any joining), the leg grammar's effect words (``closes your
+short``, ``opens a new long``, ``of your long WMT shares``), the fixed starts of the structuring texts (TICKET,
+PROPOSAL, STRUCTURING, NOTHING_TO_PROPOSE), an action tag, FAILS_CRITERION, a best or numbered candidate (``best
+candidate``, ``best:``, ``candidate #1``, ``candidate-2``, ``1st candidate``, ``rank 1``), the counts line, the subjects
+of the answers that price nothing (``roll analysis``, ``collar proposal``, ``CLOSE ticket``), the three tool names
+(``roll_analysis.py``, ``propose.py``, ``exit_ticket.py``: the structuring WITHHELD line names its tool, while the
+routine's own ``WITHHELD | book_check: ...`` line closes with the fixed footer) and the approval convention's
+``self-attested level`` under either of them is ``footer_missing`` (``candidate 1.1.0`` and
+``rules/candidate-1.1.0.toml`` are not structuring text). No alert, sheet, brief or routine output can therefore carry a
+leg or a ranked candidate.
+
 Language
 --------
 :data:`FORBIDDEN_LANGUAGE` is the table of forbidden phrases (case-insensitive, word-bounded, any run of
@@ -67,6 +87,28 @@ not boundaries) and after a dash standing between spaces (`` - `` or `` -- ``); 
 and list marks (``-``, ``*``, ``1)``, ``1.``, ``a)``) and the filler words of :data:`FILLER_WORDS` (``so close``,
 ``now close``) are skipped. Two fixed phrases are the exceptions: ``your plan: close`` (the plan word standing
 alone, followed by the end of the line, ``|``, ``(`` or ``;``) and the alert kind ``EXIT SIGNAL`` in capitals.
+
+Structuring mode
+----------------
+With the structuring footer the lint adds rules and relaxes none. ``rule_ids=None`` is read as ``[]`` (no
+capitals-and-digits word is whitelisted as a rule id). A line that holds a leg reference anywhere
+(:data:`STRUCTURING_LEG_DETECT_RE`: any case, any indent or list mark, ``N/M`` or spelled numbers, any word separator)
+or the leg grammar's effect words (:data:`STRUCTURING_EFFECT_RE`) must be one of the fixed leg grammar
+(:data:`STRUCTURING_LEG_RES`): ``leg N of M: closes your long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of
+M: opens a new long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of M: closes Q of your long SYMBOL shares``,
+each optionally followed by `` | `` and exactly one of the quote segments the tools print (``bid P, ask P, mid P |
+quote grade G, Tradier sandbox, N-min delayed, as of HH:MM UTC``, ``ask P | quote grade G, N min old``, the bare
+sides) and the grade E note; any other leg line is ``order_field`` (the effect words are unambiguous: a closing twin of
+a side word would read as the wrong direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
+from any subject, a preference, probability, risk, return, valuation and non-advice claims, an assurance, urgency,
+suitability, the bare instruction verb in any form, order-type, duration and route abbreviations, a trade verb outside
+the base table, and a price after ``at`` or ``for`` or a few words after ``limit``, ``pay`` or ``price``) is matched like
+the base table
+(any case, any word separator; the claim and instruction words with lookarounds, so underscore-joined forms are caught)
+everywhere but the footer line; ``SL14`` and ``SL20`` are ``order_field``, the others ``forbidden_language``; the table
+stays out of :data:`FORBIDDEN_PATTERNS`, so other screens are unchanged. The sentence starts of
+:data:`STRUCTURING_IMPERATIVE_START_WORDS` are refused as ``IS10`` .. ``IS42``, after the base ``IS01`` .. ``IS09``, and
+``your plan: close`` is no exception in structuring mode (a plan word is rule content there).
 
 Alphabet
 --------
@@ -94,10 +136,57 @@ SNAPSHOT_FOOTER_PREFIX: str = ("public market data · posted by an AI assistant 
 SNAPSHOT_FOOTER_RE = re.compile(r"^" + re.escape(SNAPSHOT_FOOTER_PREFIX)
                                 + r"(?P<delay>[0-9]+) min, as of (?P<clock>(?:[01][0-9]|2[0-3]):[0-5][0-9]) UTC$")
 """The market-snapshot footer (module notes): only for rule-free text."""
+STRUCTURING_FOOTER_PREFIX: str = ("computed by the desk's tools from your criteria · posted by an AI assistant · "
+                                  "a personalized suggestion for positions you hold, not an order · you decide and act "
+                                  "in your brokerage account · data delayed ")
+STRUCTURING_FOOTER_RE = re.compile(r"^" + re.escape(STRUCTURING_FOOTER_PREFIX)
+                                   + r"(?P<delay>[0-9]+) min, as of (?P<clock>(?:[01][0-9]|2[0-3]):[0-5][0-9]) UTC$")
+"""The structuring footer (module notes): only for the Structuring Desk's tickets, roll analyses and proposals."""
 FOOTER_RULES: str = "rules"
 FOOTER_SNAPSHOT: str = "snapshot"
-FOOTER_KINDS: Tuple[str, ...] = (FOOTER_RULES, FOOTER_SNAPSHOT)
-_FOOTER_RES = {FOOTER_RULES: FOOTER_RE, FOOTER_SNAPSHOT: SNAPSHOT_FOOTER_RE}
+FOOTER_STRUCTURING: str = "structuring"
+FOOTER_KINDS: Tuple[str, ...] = (FOOTER_RULES, FOOTER_SNAPSHOT, FOOTER_STRUCTURING)
+_FOOTER_RES = {FOOTER_RULES: FOOTER_RE, FOOTER_SNAPSHOT: SNAPSHOT_FOOTER_RE, FOOTER_STRUCTURING: STRUCTURING_FOOTER_RE}
+_FOOTER_PREFIXES = {FOOTER_RULES: FOOTER_PREFIX, FOOTER_SNAPSHOT: SNAPSHOT_FOOTER_PREFIX,
+                    FOOTER_STRUCTURING: STRUCTURING_FOOTER_PREFIX}
+_FOOTER_NAMES = {FOOTER_RULES: "fixed footer", FOOTER_SNAPSHOT: "market-snapshot footer",
+                 FOOTER_STRUCTURING: "structuring footer"}
+_STRUCTURING_RULE_CONTENT_RE = re.compile(
+    r"(?i:\byour(?:[\s_-]+[a-z]+){0,2}?[\s_-]+rules?\b)|(?i:\byour[\s_-]+plan[\s_-]*:)|(?i:\bEXIT[\s_-]*SIGNAL)"
+    r"|\bWATCH\b|\bHOLD\b|(?m:(?:^|[|:;!?]|\.[ \t])[ \t]*(?:Watch|Hold)\b)"
+    r"|(?i:\bverdicts?(?:[\s_-]+[a-z]+){0,2}?[\s_-]+(?:watch|hold|exit))\b"
+    r"|(?i:\brules\s+[0-9]+\.[0-9]+\.[0-9]+)")
+"""Rule content the structuring footer can never close (module notes): ``your ... rule``, ``your plan:``, an exit
+signal in any case or joining, ``WATCH`` and ``HOLD`` in capitals (or ``Watch``/``Hold`` at a sentence start or after
+``verdict``) and a rulebook version; ``UNAVAILABLE`` and a lower-case ``you hold 200 shares`` stay allowed."""
+_LEG_NUMBER = r"(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)"
+STRUCTURING_LEG_DETECT_RE = re.compile(r"(?i)(?<![a-z0-9])leg[\s_-]*" + _LEG_NUMBER + r"[\s_-]*(?:of|/)[\s_-]*"
+                                       + _LEG_NUMBER + r"(?![a-z0-9])")
+"""A leg reference anywhere in a line, in any case, with any word separator, ``N/M`` or a spelled number (review L2-2):
+in structuring mode such a line must be one of :data:`STRUCTURING_LEG_RES`; under the rules or snapshot footer it is
+structuring content."""
+STRUCTURING_EFFECT_RE = re.compile(r"(?i)\bcloses[\s_-]+your[\s_-]+(?:long|short)\b|\bopens[\s_-]+a[\s_-]+new[\s_-]+"
+                                   r"(?:long|short)\b|\bof[\s_-]+your[\s_-]+long[\s_-]+[A-Za-z][A-Za-z0-9.]*[\s_-]+shares\b")
+"""The leg grammar's effect words: a line that holds them is a leg line (structuring mode) and structuring content."""
+_STRUCTURING_CONTENT_RE = re.compile(
+    STRUCTURING_LEG_DETECT_RE.pattern[4:].join(("(?i:", ")"))
+    + "|" + STRUCTURING_EFFECT_RE.pattern[4:].join(("(?i:", ")"))
+    + r"|(?m:^[ \t]*(?:TICKET|PROPOSAL|STRUCTURING|NOTHING_TO_PROPOSE)\b)"
+    r"|\(action (?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL)\)|FAILS_CRITERION"
+    r"|\b(?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL) ticket\b"
+    r"|(?i:\bno[\s_-]+leg[\s_-]+to[\s_-]+enter\b|\bcriteria[\s_-]+structuring\.toml\b|\bno[\s_-]+structuring\.toml\b"
+    r"|\bbest[\s_-]+candidates?\b|\bbest[ \t]*:|\bcandidates?[\s_-]*#?[0-9]+(?![0-9]|\.[0-9])"
+    r"|\b[0-9]+(?:st|nd|rd|th)[\s_-]+candidates?\b|\brank(?:ed)?[\s_-]*#?[0-9]+(?![0-9]|\.[0-9])"
+    r"|\breplacement[\s_-]+candidates?\b|\bpassed[\s_-]+your[\s_-]+criteria\b|\bnames[\s_-]+no[\s_-]+candidate\b"
+    r"|\bprints[\s_-]+no[\s_-]+ticket\b|\broll[\s_-]+analysis\b|\b(?:covered[\s_-]+call|protective[\s_-]+put|collar)"
+    r"[\s_-]+proposal\b|\bself-attested[\s_-]+level\b|\bstructuring[\s_-]+desk\b"
+    r"|\b(?:exit_ticket|roll_analysis|propose)\.py\b)")
+"""Structuring text the rules and snapshot footers can never close (module notes, review L2-4): a leg reference or the
+leg grammar's effect words anywhere, the fixed starts of the structuring texts (TICKET, PROPOSAL, STRUCTURING,
+NOTHING_TO_PROPOSE), an action tag, FAILS_CRITERION, a ranked or numbered candidate (``candidate #1``, ``1st
+candidate``, ``rank 1``, ``best:``), the counts line, the subjects of the answers that price nothing, the three tool
+names (the structuring WITHHELD line names its tool; the routine's ``WITHHELD | <tool>:`` line is rules text) and the
+approval convention's self-attested level (``candidate 1.1.0`` and ``candidate-1.1.0.toml`` do not match)."""
 _SNAPSHOT_RULE_CONTENT_RE = re.compile(r"(?i:\byour\s+rules?\b)|\bEXIT[ _]SIGNAL\b|\bWATCH\b|\bHOLD\b|\bUNAVAILABLE\b"
                                        r"|(?i:\brules\s+[0-9]+\.[0-9]+\.[0-9]+)")
 """Rule content a market-snapshot footer can never close (module notes)."""
@@ -171,13 +260,84 @@ FORBIDDEN_LANGUAGE: Tuple[ForbiddenPhrase, ...] = (
     _phrase("FL24", "order-field", r"\blimit\s+(?:at\s+|of\s+)?(?:\$[0-9]|[0-9]+\.[0-9])", "limit 0.16"),
     _phrase("FL25", "order-kind", r"\bworking\s+orders?\b", "working order"),
 )
-"""The forbidden phrases (module notes): the one table in the repository's code that spells them out."""
+"""The forbidden phrases (module notes): with :data:`STRUCTURING_FORBIDDEN_LANGUAGE`, the one table in the
+repository's code that spells them out."""
 FORBIDDEN_PATTERNS: Tuple["re.Pattern[str]", ...] = tuple(entry.pattern for entry in FORBIDDEN_LANGUAGE)
 
 IMPERATIVE_START_WORDS: Tuple[str, ...] = ("close", "sell", "buy", "roll", "place", "enter", "exit", "execute", "fill")
 """Words a sentence must not start with (any case); a problem names the entry as ``IS01`` .. ``IS09`` (``execute`` and
 ``fill`` joined in PR 2d as starts only: as words they stay allowed, so the level sheet's warning ``a limit at this price
 executes immediately`` passes)."""
+STRUCTURING_IMPERATIVE_START_WORDS: Tuple[str, ...] = (
+    "open", "write", "take", "go", "consider", "choose", "pick", "use", "let", "keep", "hold", "set", "type", "act",
+    "do", "try", "hedge", "protect", "cover", "collar", "unwind", "monetize", "replace", "lock", "add",
+    "purchase", "liquidate", "exercise", "short", "trade", "acquire", "dump", "unload")
+"""Sentence starts refused in structuring mode only, named ``IS10`` .. ``IS42`` in this order (module notes; IS35 ..
+IS42, the trade verbs, from the PR 3b review)."""
+STRUCTURING_FORBIDDEN_LANGUAGE: Tuple[ForbiddenPhrase, ...] = (
+    _phrase("SL01", "advice", r"\b(?:you|one)\s+(?:might|may|could|would)\s+(?:want|wish|like)\s+to\b",
+            "you might want to"),
+    _phrase("SL02", "advice", r"\b(?:i|we)(?:'d|\s+would)\b", "I'd"),
+    _phrase("SL03", "advice", r"\b(?:i|we)\s+(?:suggest|advise|prefer|favou?r|propose|like|think|believe|feel)\b",
+            "I suggest"),
+    _phrase("SL04", "advice", r"\bgo(?:es|ing)?\s+with\b", "go with"),
+    _phrase("SL05", "advice", r"\bthe\s+one\s+to\s+(?:pick|choose|take|use|open)\b", "the one to pick"),
+    _phrase("SL06", "advice", r"\b(?:best|better|smart|smarter|wise|right|good)\s+(?:move|choice|bet|trade|play|idea|deal)\b",
+            "best move"),
+    _phrase("SL07", "advice", r"\byou(?:\s+[a-z']+){0,2}?\s+(?:must|need\s+to|have\s+to|ought\s+to)\b", "you need to"),
+    # SL08, SL09, SL12, SL13 and the claim words below use lookarounds, not \b, so an underscore-joined form
+    # (probability_of_profit, place_it) is caught too (BD7), as base FL02 does
+    _phrase("SL08", "claim", r"(?<![a-z0-9])(?:probabilit(?:y|ies)|probabl[ey]|improbab(?:le|ly|ility)"
+            r"|(?:un)?likel(?:y|ier|iest|ihood)|chances?|odds|pop)(?![a-z0-9])", "probability of profit"),
+    _phrase("SL09", "claim", r"(?<![a-z0-9])(?:guarantee(?:s|d)?|risk[\s-]+free|riskless|can(?:not|'t)\s+lose|sure\s+thing"
+            r"|(?:no|zero|without)\s+risk)(?![a-z0-9])", "risk-free"),
+    _phrase("SL10", "urgency", r"\b(?:act|move)\s+(?:now|fast|quickly|today)\b|\bdon'?t\s+miss\b|\burgent(?:ly)?\b"
+            r"|\bhurr(?:y|ies|ied|ying)\b|\bimmediately\b", "act now"),
+    _phrase("SL11", "advice", r"\bsuit(?:s|ed|able|ability)?\b"
+            r"|\b(?:right|best|good|better|appropriate|ideal)(?:\s+[a-z]+){0,2}?\s+for\s+you\b"
+            r"|\bappropriate(?:ly|ness)?\b|\bfits?\s+you\b", "suitable"),
+    _phrase("SL12", "order-instruction", r"(?<![a-z0-9])plac(?:e|es|ed|ing)(?![a-z0-9])", "place it"),
+    _phrase("SL13", "claim", r"(?<![a-z0-9])saf(?:e|er|est|ely|ety)(?![a-z0-9])", "safe"),
+    _phrase("SL14", "order-field", r"\b(?:at|for)(?:\s+|\s*~\s*)[+-]?\$?(?:[0-9][0-9,]*)?\.[0-9]+\b", "at 1.90"),
+    _phrase("SL15", "claim", r"(?<![a-z0-9])(?:returns?|yield(?:s|ed|ing)?|income|gains?)(?![a-z0-9])",
+            "a return per day"),
+    _phrase("SL16", "claim", r"(?<![a-z0-9])not\s+(?:personali[sz]ed\s+)?(?:investment\s+)?advice(?![a-z0-9])"
+            r"|(?<![a-z0-9])non[\s_-]*advice(?![a-z0-9])", "not investment advice"),
+    _phrase("SL17", "advice", r"\b(?:my|our|top|clear)\s+(?:pick|choice|winner|favou?rite)s?\b"
+            r"|\bit\s+(?:is|would\s+be)\s+(?:best|wise|smart|better)\s+to\b|(?:\bhad|'d)\s+better\b"
+            r"|\b(?:desk|aegis|assistant|tool)\s+(?:suggests|prefers|favou?rs|advises)\b"
+            r"|\b(?:desk|aegis|assistant|tool)'s\s+(?:suggestion|pick|choice|preference|favou?rite)s?\b"
+            r"|\bno[\s_-]*brainer\b", "my pick"),
+    _phrase("SL18", "claim", r"(?<![a-z0-9])sure(?:ly)?(?![a-z0-9])", "a sure gain"),
+    _phrase("SL19", "order-kind", r"(?<![a-z0-9])(?:lmt|mkt|stp|gtd|gfd|ioc|fok|aon|moc|loc|opg|sto|bto|stc|btc)"
+            r"(?![a-z0-9])|(?-i:(?<![A-Za-z0-9])DAY(?![A-Za-z0-9]))|\bgood\s+for\s+the\s+day\b"
+            r"|(?<![a-z0-9])rout(?:e|es|ed|ing)(?![a-z0-9])", "LMT DAY"),
+    _phrase("SL20", "order-field", r"(?<![a-z0-9])(?<!stressed )(?:limit|pay|prices?)(?:\s+[a-z]+){0,4}?\s+\(?\$?"
+            r"[0-9]*\.[0-9]+", "limit of about 3.50"),
+    _phrase("SL21", "trade-verb", r"(?<![a-z0-9])purchas(?:e|es|ed|ing)(?![a-z0-9])", "purchase"),
+    _phrase("SL22", "claim", r"(?<![a-z0-9])(?:attractive|cheap(?:er|est|ly)?|bargains?|undervalued|overvalued"
+            r"|confiden(?:ce|t|tly))(?![a-z0-9])", "an attractive call"),
+)
+"""The structuring mode's phrases (module notes): advice from any subject, probability, risk, return and non-advice
+claims, urgency, suitability, a preference, an assurance, the bare instruction verb in any form, order-type, duration
+and route abbreviations, a price after ``at`` or ``for`` (signed, with a dollar sign, thousands separators or no leading
+digit; clocks, dates and counts carry no decimal point) or a few words after ``limit``, ``pay`` or ``price``, and a
+trade verb outside the base table. ``SL14`` and ``SL20`` are ``order_field`` findings."""
+STRUCTURING_LEG_START_RE = STRUCTURING_LEG_DETECT_RE
+"""The name the leg detector had before the PR 3b review (a line start only): the detector now reads the whole line."""
+_LEG_PRICE = r"[0-9]+\.[0-9]{2,}"
+_LEG_SIDES = (r"(?:bid {p}(?:, ask {p})?(?:, mid {p})?|ask {p}(?:, mid {p})?|mid {p})").format(p=_LEG_PRICE)
+_LEG_TAIL = (r"(?: \| (?:{sides} \| quote grade [A-F], Tradier sandbox, [0-9]+-min delayed, as of "
+             r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|(?:bid|ask) {p} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
+             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, p=_LEG_PRICE)
+STRUCTURING_LEG_RES: Tuple["re.Pattern[str]", ...] = (
+    re.compile(r"^leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
+               r"[A-Z][A-Z0-9]{0,5} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+(?:\.[0-9]+)? (?:call|put)" + _LEG_TAIL),
+    re.compile(r"^leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares" + _LEG_TAIL),
+)
+"""The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, each followed only by
+the quote segments the tools print (review L2-2: no free tail): ``| bid P, ask P, mid P | quote grade G, Tradier sandbox,
+N-min delayed, as of HH:MM UTC``, ``| ask P | quote grade G, N min old``, the bare sides, and the grade E note."""
 FILLER_WORDS: Tuple[str, ...] = ("so", "then", "and", "now", "please", "just", "simply", "also", "kindly")
 """Words skipped at a sentence start before the imperative test (``so close ...`` starts with its verb)."""
 PLAN_CLOSE_PREFIX: str = "your plan: "
@@ -263,6 +423,11 @@ def footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> 
 def snapshot_footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> str:
     """The market-snapshot footer (module notes) with the data's as-of time of day in UTC."""
     return SNAPSHOT_FOOTER_PREFIX + footer_line(as_of, delay_min)[len(FOOTER_PREFIX):]
+
+
+def structuring_footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> str:
+    """The structuring footer (module notes) with the data's as-of time of day in UTC; ``as_of`` must be aware."""
+    return STRUCTURING_FOOTER_PREFIX + footer_line(as_of, delay_min)[len(FOOTER_PREFIX):]
 
 
 def _footer_re(footer: str) -> Any:
@@ -420,8 +585,8 @@ def _sentence_starts(text: str) -> List[int]:
     return starts
 
 
-def _imperative_exception(text: str, start: int, word: str) -> bool:
-    if word == IMPERATIVE_START_WORDS[0] and text[:start].endswith(PLAN_CLOSE_PREFIX):
+def _imperative_exception(text: str, start: int, word: str, structuring: bool = False) -> bool:
+    if word == IMPERATIVE_START_WORDS[0] and text[:start].endswith(PLAN_CLOSE_PREFIX) and not structuring:
         rest = text[start + len(word):]
         stripped = rest.lstrip(" \t")
         return stripped == "" or stripped[0] in "|(;\n"
@@ -466,9 +631,11 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
           as_of: Any = None, footer: str = FOOTER_RULES) -> LintResult:
     """Lint ``text`` against the ``emitted`` number strings (module notes); ``rule_ids`` narrows the rule-id
     whitelist to those exact ids; ``identifiers`` and ``clocks`` narrow the id, sha, version, date and clock spans to
-    those exact texts (strict mode), ``as_of`` pins the footer's clock, and ``footer`` (``rules``, the default, or
-    ``snapshot``) names the footer the last line must be."""
+    those exact texts (strict mode), ``as_of`` pins the footer's clock, and ``footer`` (``rules``, the default,
+    ``snapshot`` or ``structuring``) names the footer the last line must be; ``structuring`` reads ``rule_ids=None`` as
+    ``[]`` and adds the structuring rules (module notes)."""
     footer_re = _footer_re(footer)
+    structuring = footer == FOOTER_STRUCTURING
     findings: List[Finding] = []
     if not isinstance(text, str) or not text.strip():
         finding = Finding(CODE_EMPTY, 0, 0, "the message is empty")
@@ -487,7 +654,7 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
         findings.append(Finding(CODE_NON_ASCII, line, column, "line %d, column %d: character U+%04X is outside the "
                                 "message alphabet (printable ASCII, newline, tab and the footer's middle dot)"
                                 % (line, column, ord(char))))
-    known = list(rule_ids) if rule_ids is not None else None
+    known = list(rule_ids) if rule_ids is not None else ([] if structuring else None)
     allowed_ids = set(identifiers) if identifiers is not None else None
     allowed_clocks = set(clocks) if clocks is not None else None
     for start, end, form in whitelist_spans(text, known, footer=footer):
@@ -515,24 +682,41 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
             code = CODE_ORDER_FIELD if entry.category == "order-field" else CODE_FORBIDDEN
             findings.append(Finding(code, line, column, "line %d, column %d: forbidden language (%s, %s)"
                                     % (line, column, entry.category, entry.code)))
+    if structuring:
+        for number, line_text in enumerate(text.split("\n"), 1):
+            looks_like_a_leg = STRUCTURING_LEG_DETECT_RE.search(line_text) or STRUCTURING_EFFECT_RE.search(line_text)
+            if looks_like_a_leg and not any(leg.match(line_text) for leg in STRUCTURING_LEG_RES):
+                findings.append(Finding(CODE_ORDER_FIELD, number, 1, "line %d, column 1: a leg line outside the fixed "
+                                        "leg grammar" % number))
+        for entry in STRUCTURING_FORBIDDEN_LANGUAGE:
+            for match in entry.pattern.finditer(text):
+                if any(start <= match.start() < end for start, end in footer_spans):
+                    continue  # the footer line is the desk's own fixed text
+                key = (match.start(), entry.category)
+                if key in reported:
+                    continue
+                reported.add(key)
+                line, column = _position(text, match.start())
+                code = CODE_ORDER_FIELD if entry.category == "order-field" else CODE_FORBIDDEN
+                findings.append(Finding(code, line, column, "line %d, column %d: forbidden language (%s, %s)"
+                                        % (line, column, entry.category, entry.code)))
+    start_words = IMPERATIVE_START_WORDS + (STRUCTURING_IMPERATIVE_START_WORDS if structuring else ())
     for start in _sentence_starts(text):
         word_match = _WORD_RE.match(text, start)
         if word_match is None:
             continue
         word = word_match.group(0)
-        if word.lower() not in IMPERATIVE_START_WORDS or _imperative_exception(text, start, word):
+        if word.lower() not in start_words or _imperative_exception(text, start, word, structuring):
             continue
         line, column = _position(text, start)
-        index = IMPERATIVE_START_WORDS.index(word.lower()) + 1
+        index = start_words.index(word.lower()) + 1
         findings.append(Finding(CODE_IMPERATIVE, line, column, "line %d, column %d: imperative sentence start "
                                 "(IS%02d of the lint's list)" % (line, column, index)))
     findings.sort(key=lambda f: (f.line, f.column, CODES.index(f.code)))
     last = footer_re.match(_last_line(text))
     if last is None:
-        prefix = FOOTER_PREFIX if footer == FOOTER_RULES else SNAPSHOT_FOOTER_PREFIX
-        name = "fixed footer" if footer == FOOTER_RULES else "market-snapshot footer"
         findings.append(Finding(CODE_FOOTER, 0, 0, "the last line is not the %s (%sN min, as of HH:MM UTC)"
-                                % (name, prefix)))
+                                % (_FOOTER_NAMES[footer], _FOOTER_PREFIXES[footer])))
     elif as_of is not None and last.group("clock") + " UTC" != _clock_of(as_of):
         findings.append(Finding(CODE_FOOTER, 0, 0, "the footer's as-of time %s UTC is not the data's %s"
                                 % (last.group("clock"), _clock_of(as_of))))
@@ -543,6 +727,19 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
             findings.append(Finding(CODE_FOOTER, line, 0, "the market-snapshot footer cannot close rule content (a rule, "
                                     "a verdict or a rulebook version%s): use the rules footer"
                                     % (", line %d" % line if content is not None else ": rule ids were given")))
+    if structuring:
+        content = _STRUCTURING_RULE_CONTENT_RE.search(text)
+        if content is not None or (known is not None and len(known) > 0):
+            line = _position(text, content.start())[0] if content is not None else 0
+            findings.append(Finding(CODE_FOOTER, line, 0, "the structuring footer cannot close rule content (a rule, a "
+                                    "verdict or a rulebook version%s): an alert keeps the rules footer"
+                                    % (", line %d" % line if content is not None else ": rule ids were given")))
+    else:
+        content = _STRUCTURING_CONTENT_RE.search(text)
+        if content is not None:
+            line = _position(text, content.start())[0]
+            findings.append(Finding(CODE_FOOTER, line, 0, "the %s cannot close a structuring text (a leg or a candidate, "
+                                    "line %d): use the structuring footer" % (_FOOTER_NAMES[footer], line)))
     return LintResult(not findings, [finding.message for finding in findings], findings, checked)
 
 
@@ -632,6 +829,7 @@ __all__ = [
     "FOOTER_RE",
     "FOOTER_RULES",
     "FOOTER_SNAPSHOT",
+    "FOOTER_STRUCTURING",
     "FORBIDDEN_CATEGORIES",
     "FORBIDDEN_LANGUAGE",
     "FORBIDDEN_PATTERNS",
@@ -645,6 +843,14 @@ __all__ = [
     "PLAN_CLOSE_PREFIX",
     "SNAPSHOT_FOOTER_PREFIX",
     "SNAPSHOT_FOOTER_RE",
+    "STRUCTURING_FOOTER_PREFIX",
+    "STRUCTURING_FOOTER_RE",
+    "STRUCTURING_FORBIDDEN_LANGUAGE",
+    "STRUCTURING_IMPERATIVE_START_WORDS",
+    "STRUCTURING_EFFECT_RE",
+    "STRUCTURING_LEG_DETECT_RE",
+    "STRUCTURING_LEG_RES",
+    "STRUCTURING_LEG_START_RE",
     "check",
     "footer_clock",
     "footer_line",
@@ -652,6 +858,7 @@ __all__ = [
     "load_emitted_document",
     "numeric_tokens",
     "snapshot_footer_line",
+    "structuring_footer_line",
     "unwhitelisted_numbers",
     "whitelist_spans",
 ]

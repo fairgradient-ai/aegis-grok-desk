@@ -49,13 +49,16 @@ import desk_doctor
 import desk_init
 import eod_summary
 import exit_check
+import exit_ticket
 import expiry_checklist
 import heartbeat
 import market_clock
 import opening_bell
 import positions_check
+import propose
 import quote_cache
 import quote_qc
+import roll_analysis
 import routine
 import routine_audit
 import rules_adopt
@@ -64,8 +67,8 @@ import trigger_levels
 
 TOOL_MODULES = (
     ack, alert_lint, assignment_watch, book, book_check, calendar_check, csv_recon, desk_doctor, desk_init,
-    eod_summary, exit_check, expiry_checklist, heartbeat, market_clock, opening_bell, positions_check, quote_cache,
-    quote_qc, routine, routine_audit, rules_adopt, rules_diff, trigger_levels,
+    eod_summary, exit_check, exit_ticket, expiry_checklist, heartbeat, market_clock, opening_bell, positions_check,
+    propose, quote_cache, quote_qc, roll_analysis, routine, routine_audit, rules_adopt, rules_diff, trigger_levels,
 )
 """Every desk tool (a ``scripts/*.py`` with ``build_parser`` and ``main``), sorted by name."""
 

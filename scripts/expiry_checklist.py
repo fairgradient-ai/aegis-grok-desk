@@ -14,8 +14,12 @@ trading day is the next trading day (the T-1 preview), ``--final-call`` the cont
 day (the expiry-day sheet). Every line carries the structure, the settlement type (``pm`` or ``am`` from the
 calendar's ``am_settled_roots``), the last trading day, the implication (shares called away for a short
 call, cash needed for a short put as ``K x 100 x contracts``, the delivery of a long put, the cash of a long
-call) and the act-by time (the owner's broker cutoff on the last trading day, ET and UTC; on an early-close day
-the earlier of that cutoff and the 13:00 ET close, marked ``early close ...: confirm your broker's cutoff``);
+call) and the act-by time in ET and UTC (``aegis_desk.expiry.leg_act_by``): for a short leg the earlier of the
+session close of its last trading day (16:00 ET; 13:00 ET on an early close) and the owner's broker cutoff, its text
+ending ``; the session close: a short option is closed only while the market trades`` when the close governs; for a
+long leg the broker cutoff on the last trading day, on an early-close day the earlier of that cutoff and the 13:00 ET
+close, marked ``early close ...: confirm your broker's cutoff``. The Final Call header names the earliest act-by of
+the listed legs when they differ (``; the earliest act-by of the listed contracts (each line names its own)``);
 legs on their last or next-to-last trading day add the dividend and pin tiers and, for verticals, the ``never
 into expiration with the stock between the strikes`` line. Standard data footer. Exit 0 nothing due, 10 when items are
 listed, 20 when a quarantined group exists or a listed item is UNAVAILABLE (quotes or dividend unknown);
@@ -49,9 +53,13 @@ from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "expiry_checklist"
 DESCRIPTION = ("expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open "
-               "option legs: settlement, implications, act-by times from the owner's broker cutoff, dividend and pin tiers")
+               "option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker "
+               "cutoff), dividend and pin tiers")
 NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
 LABEL_NO_QUOTE = "no quote"
+EARLIEST_NOTE = "the earliest act-by of the listed contracts (each line names its own)"
+"""The Final Call header's note when the listed legs' act-bys differ (a short leg's session close, a long leg's broker
+cutoff): the header names the earliest."""
 MODE_FLAGS = (("--week", expiry.MODE_WEEK), ("--tomorrow", expiry.MODE_TOMORROW), ("--final-call", expiry.MODE_FINAL_CALL))
 OUTPUT: Dict[str, Any] = {
     "mode": " | ".join(expiry.MODES),
@@ -143,11 +151,15 @@ def header_line(mode: str, sheet: expiry.ExpirySheet, listed: List[expiry.LegShe
         return "T-1 PREVIEW for %s: %s (today %s)" % (expiry.weekday_date(sheet.next_trading_day), body, today)
     if not listed:
         return "FINAL CALL %s: nothing due today" % today
-    act = listed[0].act_by  # every listed leg is on its last trading day today: one act-by for the sheet
-    del cutoff_et, now  # the leg's act-by already applied the cutoff (and the early close) at ``now``
+    del cutoff_et, now  # each leg's act-by already applied its rule (side, cutoff, early close) at ``now``
+    # Every listed leg is on its last trading day today, but a short leg acts by the session close and a long one by
+    # the broker cutoff (FAI-689): the header names the EARLIEST act-by (conservative), the marked one on a tie.
+    act = min((leg.act_by for leg in listed), key=lambda item: (item.utc, not item.early_close))
     text = "FINAL CALL %s: %s; act by %s ET (%s)%s" % (today, contracts_text(len(listed), "on their last trading day"),
                                                        act.cutoff_et.strftime("%H:%M"), act.utc_text,
                                                        " [passed]" if act.passed else "")
+    if len({leg.act_by.utc for leg in listed}) > 1:
+        text += "; " + EARLIEST_NOTE
     early = act.early_close_text
     if early is not None:
         text += "; " + early

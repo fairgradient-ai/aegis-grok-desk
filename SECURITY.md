@@ -8,7 +8,8 @@ account number or personal record in a report.
 A vulnerability is any prose, manifest or code that could lead a Bot to place, modify or cancel an order, to request,
 store or print a credential, or to report a failed read as a quiet negative verdict. A way around the AST no-write
 gate, the alert lint, the release pin check or the broker-write hook counts too, and so does a tool output that reads
-as an order.
+as an order, a structuring answer the owner did not ask for, or a best candidate named outside the owner's criteria or
+approval level.
 
 ## The no-trade guarantee, honestly
 
@@ -79,18 +80,50 @@ and refused in this release.
    ```text
    Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
-   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py. These record the owner's own decisions: run them only after the owner taps approve on this card.
+   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
 
    Auto-review is model-based and an "Ask first" rule wins over an "Allow" rule. Your tap on an Ask-first card is the
-   signature on every owner-authority command.
+   signature on every owner-authority command, and the record that you asked for each answer of the Structuring
+   Desk.
 7. **Prompts and skills.** Every role answers a request to trade with the boundary sentence. No skill documents a
    write path. Alerts say only that your own rule fired, with the numbers that made it fire and your plan; they carry no
    order fields, no strikes or expiries to move to and no ranked alternatives. Every posted message passes the alert
    lint (`scripts/alert_lint.py`): only numbers the tools emitted, the exact footer, no trade or advice language.
+
+   The Structuring Desk's outputs (its tickets, its roll analyses and its proposals) come only on your request, never
+   from a routine: `routine.py` refuses `exit_ticket`, `roll_analysis` and `propose` as steps, and the alert lint
+   refuses a leg reference, a ranked candidate, an action tag or the first line of a structuring answer under the rules
+   and market-snapshot footers. They carry no order fields: no trade-side word, no order type, no limit or stop price
+   field, no duration, no route and no account number. A leg line names only the effect, the count and the contract
+   (`leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call`), and you supply the limit. They pass the alert lint in
+   its structuring mode, which adds a third footer and a fixed leg grammar, and refuses advice, preference, urgency,
+   suitability, probability, risk, return and valuation language, any claim that a text is not advice, order-type and
+   duration abbreviations, a price after "at", "for", "limit", "pay" or "price", and any line with a leg reference or a
+   leg's effect words outside the fixed grammar. The lint is a pattern screen that refuses the forms it names; the
+   tools' fixed wording is for counsel to sign ([docs/RELEASE.md](docs/RELEASE.md), step 4). They never print an OCC
+   symbol or a cell you typed, such as an account name or a note. The details are in
+   [docs/STRUCTURING.md](docs/STRUCTURING.md).
 8. **Red-team tests.** `scripts/cli_journeys.py` screens the output of every command journey for order-shaped text.
    The alert lint has red-team fixtures (`tests/fixtures/alerts/`: invented numbers, advice, order fields, order kinds
    and imperative starts) that must fail. The hook's tests run its deny and no-opinion samples in every event shape.
+
+## Structuring: what could steer a suggestion
+
+The Structuring Desk names a best candidate from three inputs it does not check against your broker:
+`structuring.toml`, the approval level in `desk.toml` and the shares in `positions.csv`. Each is guarded the same way.
+
+- **Criteria tampering.** An edit to `structuring.toml` could change which candidate scores best. The file joins
+  the CONFIG CHANGED set: a book check posts CONFIG CHANGED for an edit you did not acknowledge, and every structuring
+  tool refuses to answer (exit 20, UNAVAILABLE) until you tap `ack.py config --owner-tapped`. The file's sha is
+  printed in every roll analysis and proposal and recorded in `journal/structuring.jsonl`.
+- **Coverage tampering.** An edit to `positions.csv` that adds shares could make an uncovered call look covered,
+  and an edit to `desk.toml` could raise the approval level. The same fail-closed rule applies: while `desk.toml`,
+  `positions.csv` or `structuring.toml` differ from what you acknowledged, the structuring tools print nothing else.
+  A quarantined group anywhere in `positions.csv` could hide a short call that relies on your shares, so while one
+  exists every structuring answer is UNAVAILABLE (`positions_quarantined`).
+- **Out of scope.** The approval level is self-attested, and the desk does not see your broker's approval, your cash
+  or your other holdings. Your broker's own checks decide what you can enter.
 
 ## The release pin check: what it covers and what it does not
 

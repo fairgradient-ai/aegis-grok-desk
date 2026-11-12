@@ -53,7 +53,7 @@ One exit-code table for every tool:
 
 Payload (`--json` envelope key `payload`):
 
-- `acknowledged_hashes`: `"(config) {desk_toml, positions_csv, rulebook: sha256 | null}"`
+- `acknowledged_hashes`: `"(config) {desk_toml, positions_csv, rulebook, structuring_toml: sha256 | null (a missing file)}"`
 - `acks`: `["(show) the signal's acks.jsonl records"]`
 - `action`: `"list | show | ack | snooze | acted | config | connectors"`
 - `alerts`: `["(show) {signal_id, text, posted_at, lint_ok}: the signal's alerts.jsonl records"]`
@@ -61,7 +61,7 @@ Payload (`--json` envelope key `payload`):
 - `count`: `"(list) integer: the open signals"`
 - `path`: `"(writes) state/acks.jsonl"`
 - `posts`: `"(show) integer"`
-- `record`: `{"action": "ack | snooze | acted | config | connectors", "hashes": "{desk_toml, positions_csv, rulebook: sha256 | null} | null (config)", "rows_sha": "sha256 of the group's positions.csv lines | null (acted)", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null", "until": "ISO-8601 UTC | null (snooze)", "utc": "ISO-8601 UTC"}`
+- `record`: `{"action": "ack | snooze | acted | config | connectors", "hashes": "{desk_toml, positions_csv, rulebook, structuring_toml: sha256 | null} | null (config)", "rows_sha": "sha256 of the group's positions.csv lines | null (acted)", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null", "until": "ISO-8601 UTC | null (snooze)", "utc": "ISO-8601 UTC"}`
 - `rulebook_version`: `"(config) X.Y.Z | null"`
 - `signal`: `{"ack_state": "open | snoozed", "data_quality": "string", "ladder": {"applies": "boolean (EXIT_SIGNAL only)", "cooldown_min": "integer | null", "done": "boolean", "next_repost_after_runs": "integer runs after the first post | null", "not_before": "ISO-8601 UTC | null (the last post plus the primary rule's cooldown_min: book_check counts the ladder's runs only outside it)", "of": "4 | null", "posts": "integer", "rule_id": "the primary EXIT rule | null"}, "last_posted_at": "ISO-8601 UTC | null", "plan": "close | roll_review | hold_review | null", "posted_at": "ISO-8601 UTC (first post)", "posts": "integer (linted alerts.jsonl records of the signal)", "quote_age_at_post": "integer | null", "reasons": ["the signal record's reasons"], "run_lateness_min": "integer | null", "signal_id": "SIG-YYYYMMDD-NNN", "snoozed_until": "ISO-8601 UTC | null", "structure": "string", "trade_id": "string (AG-..., ROW-n or portfolio)", "verdict": "EXIT_SIGNAL | WATCH | UNAVAILABLE"}`
 - `signals`: `["(list) the open signal: see signal"]`
@@ -90,7 +90,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--message-file` | `PATH` | the message text (UTF-8) |
 | `--emitted-file` | `PATH` | the emitted numbers: a JSON list of strings, or the emitted document {emitted_numbers, rule_ids, identifiers, clocks, as_of} book_check.py prints (strict) |
-| `--footer` | `rules \| snapshot` | the footer the last line must be: rules (every alert, sheet and summary) or snapshot (opening_bell.py's rule-free market snapshot only); default: the emitted document's footer key, else rules |
+| `--footer` | `rules \| snapshot \| structuring` | the footer the last line must be: rules (every alert, sheet and summary), snapshot (opening_bell.py's rule-free market snapshot only) or structuring (the Structuring Desk's tickets, roll analyses and proposals only); default: the emitted document's footer key, else rules |
 
 Payload (`--json` envelope key `payload`):
 
@@ -107,7 +107,7 @@ Payload (`--json` envelope key `payload`):
 - script: `scripts/assignment_watch.py`
 - tool version: 0.1.0
 - mode: read-only
-- description: dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times from the owner's broker cutoff; Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown
+- description: dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times (a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown
 - network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
@@ -128,7 +128,7 @@ Payload (`--json` envelope key `payload`):
 - `exit_code`: `"10 | 20 | 0"`
 - `expired`: `[{"expiration": "YYYY-MM-DD", "row_number": "integer", "symbol": "string"}]`
 - `fixture_set`: `"string | null (offline runs)"`
-- `legs`: `[{"account": "string", "act_by_early_close": "boolean (the act-by is the 13:00 ET close of an early-close day: confirm the broker's cutoff)", "act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_passed": "boolean", "act_by_text": "string", "act_by_utc": "ISO-8601 UTC", "act_by_utc_text": "HH:MM UTC", "assign_ok": "boolean (#assign-ok on the row)", "contracts": "decimal string", "dividend": {"amount": "decimal string | null", "bid": "decimal string | null", "dividend_status": "confirmed | estimated | unknown", "downgraded_from": "HIGH | null", "ex_date": "YYYY-MM-DD | null", "extrinsic_bid": "decimal string | null", "fired": "boolean", "intrinsic": "decimal string | null", "itm": "boolean | null", "notes": ["string"], "option_grade": "A-F | null", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "tier": "HIGH | WATCH | LOW | NOTED | UNAVAILABLE", "trading_days_to_ex": "integer | null", "unavailable": "boolean"}, "dte_trading": "integer trading days to the last trading day", "due_today": "boolean", "due_tomorrow": "boolean", "expiration": "YYYY-MM-DD", "fired": "boolean", "group_id": "string", "implication": "string", "in_week": "boolean", "last_trading_day": "YYYY-MM-DD", "pin": {"distance_pct": "decimal string (2 dp) | null", "fired": "boolean", "itm": "boolean | null", "line": "string | null", "on_last_trading_day": "boolean", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "strike": "string", "tier": "PIN HIGH | PIN WATCH | PIN LOW | ITM | UNAVAILABLE", "unavailable": "boolean"}, "quantity": "decimal string (signed open)", "right": "CALL | PUT", "row_number": "integer", "settlement": "pm | am", "side": "long | short", "strike": "decimal string (plain)", "structure": "string", "symbol": "compact OCC symbol", "trade_id": "string | null", "unavailable_reasons": ["string"], "underlying": "string", "vertical": {"between": "boolean | null", "fired": "boolean", "high_strike": "string", "low_strike": "string", "message": "string", "spot_mid": "decimal string | null", "unavailable": "boolean"}}]`
+- `legs`: `[{"account": "string", "act_by_basis": "session_close | broker_cutoff (the instant that governed: a short leg acts by the earlier of the session close of its last trading day and the broker cutoff, a long leg by the broker cutoff, or the 13:00 ET close when that is earlier on an early-close day)", "act_by_early_close": "boolean (a long leg whose act-by falls on an early-close day: confirm the broker's cutoff; always false for a short leg)", "act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_passed": "boolean", "act_by_text": "string (a short leg's ends with '; the session close: a short option is closed only while the market trades' when the session close governs)", "act_by_utc": "ISO-8601 UTC", "act_by_utc_text": "HH:MM UTC", "assign_ok": "boolean (#assign-ok on the row)", "contracts": "decimal string", "dividend": {"amount": "decimal string | null", "bid": "decimal string | null", "dividend_status": "confirmed | estimated | unknown", "downgraded_from": "HIGH | null", "ex_date": "YYYY-MM-DD | null", "extrinsic_bid": "decimal string | null", "fired": "boolean", "intrinsic": "decimal string | null", "itm": "boolean | null", "notes": ["string"], "option_grade": "A-F | null", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "tier": "HIGH | WATCH | LOW | NOTED | UNAVAILABLE", "trading_days_to_ex": "integer | null", "unavailable": "boolean"}, "dte_trading": "integer trading days to the last trading day", "due_today": "boolean", "due_tomorrow": "boolean", "expiration": "YYYY-MM-DD", "fired": "boolean", "group_id": "string", "implication": "string", "in_week": "boolean", "last_trading_day": "YYYY-MM-DD", "pin": {"distance_pct": "decimal string (2 dp) | null", "fired": "boolean", "itm": "boolean | null", "line": "string | null", "on_last_trading_day": "boolean", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "strike": "string", "tier": "PIN HIGH | PIN WATCH | PIN LOW | ITM | UNAVAILABLE", "unavailable": "boolean"}, "quantity": "decimal string (signed open)", "right": "CALL | PUT", "row_number": "integer", "settlement": "pm | am", "side": "long | short", "strike": "decimal string (plain)", "structure": "string", "symbol": "compact OCC symbol", "trade_id": "string | null", "unavailable_reasons": ["string"], "underlying": "string", "vertical": {"between": "boolean | null", "fired": "boolean", "high_strike": "string", "low_strike": "string", "message": "string", "spot_mid": "decimal string | null", "unavailable": "boolean"}}]`
 - `message`: `"string: the human text exactly, without the final newline"`
 - `next_trading_day`: `"YYYY-MM-DD"`
 - `quarantined`: `{"GROUP": ["row or group error strings"]}`
@@ -204,7 +204,7 @@ Payload (`--json` envelope key `payload`):
 Payload (`--json` envelope key `payload`):
 
 - `closed_day`: `"boolean (no session today: nothing evaluated)"`
-- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook", "new": "current sha256 | null", "old": "acknowledged sha256 | null"}]`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null", "old": "acknowledged sha256 | null"}]`
 - `counts`: `{"EXIT_SIGNAL": "n", "HOLD": "n", "UNAVAILABLE": "n", "WATCH": "n"}`
 - `dry_run`: `"boolean (no --post: nothing written; the exit code is the posted run's)"`
 - `emitted`: `{"as_of": "ISO-8601 UTC | null (the footer's instant)", "clocks": ["HH:MM UTC | HH:MM ET"], "emitted_numbers": ["string"], "identifiers": ["string"], "note": "the strict emitted document: alert_lint.py --emitted-file (null keys when nothing is posted)", "rule_ids": ["string"]}`
@@ -346,7 +346,7 @@ Payload (`--json` envelope key `payload`):
 - script: `scripts/desk_init.py`
 - tool version: 0.1.0
 - mode: read-only
-- description: render desk.toml once from the owner's interview answers (and the ex-dividend intake into research/calendar.toml), byte for byte, validated before it is written; owner-authority
+- description: render desk.toml once from the owner's interview answers (the ex-dividend intake into research/calendar.toml and the structuring intake into structuring.toml), byte for byte, validated before it is written; owner-authority
 - network access: none
 
 | Flag | Value | Help |
@@ -364,15 +364,16 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
-- `acknowledge`: `"string | null (the next step for the owner once desk.toml is written)"`
+- `acknowledge`: `"string | null (the next step for the owner once desk.toml or structuring.toml is written)"`
 - `calendar_toml`: `{"bytes": "integer", "note": "null when the answers hold no ex_dividends", "path": "desk-root relative path", "sha256": "hex of the written bytes", "symbols": ["symbol"], "text": "string (the file exactly)"}`
 - `desk_toml`: `{"bytes": "integer", "note": "null when the answers hold no desk", "path": "desk-root relative path", "sha256": "hex of the written bytes", "text": "string (the file exactly)"}`
 - `replaced`: `["the written paths that existed before (--replace --owner-tapped)"]`
-- `written`: `["desk-root relative paths written (desk.toml, research/calendar.toml)"]`
+- `structuring_toml`: `{"bytes": "integer", "note": "null when the answers hold no structuring", "path": "desk-root relative path", "sha256": "hex of the written bytes", "text": "string (the file exactly)"}`
+- `written`: `["desk-root relative paths written (desk.toml, research/calendar.toml, structuring.toml)"]`
 
 Input (`--schema` key `input`):
 
-- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"host": "sandbox (production is refused in this release)", "token_env": "string (the environment variable that holds the sandbox token)", "token_file": "string (optional; a file with no group or other permission bits)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, or both)"}`
+- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"host": "sandbox (production is refused in this release)", "token_env": "string (the environment variable that holds the sandbox token)", "token_file": "string (optional; a file with no group or other permission bits)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, structuring, or any of these together)", "structuring": {"collar": {"cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)", "objective": "cap_within_budget", "strike_floor": "cost_basis | none"}, "covered_call": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, at the bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}, "disclosure_acknowledged": "structuring-suggestions-1 (given only after the owner acknowledges the disclosure the interview shows last)", "general": {"max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)", "max_spread_pct": "decimal string: percent, 0 < x <= 25"}, "protective_put": {"dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "enabled": "boolean", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "objective": "stress_cost_per_day", "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90"}, "roll": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "credit_only": "boolean (a net debit fails it; a zero net passes)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, the new call's bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}}}`
 
 ## eod_summary
 
@@ -397,7 +398,7 @@ Payload (`--json` envelope key `payload`):
 
 - `artifacts`: `[{"date": "YYYY-MM-DD (the record's own date when ok or late) | null", "label": "book snapshot | reconciliation | expiry docket | levels sheet | doctor result | routine manifest", "path": "desk-root relative path", "status": "ok | missing | late | corrupt | invalid"}]`
 - `calendar_findings`: `"integer (brief; null in the morning)"`
-- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook (brief; null in the morning)", "new": "current sha256 | null", "old": "acknowledged sha256 | null"}]`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml (brief; null in the morning)", "new": "current sha256 | null", "old": "acknowledged sha256 | null"}]`
 - `emitted`: `{"as_of": "ISO-8601 UTC (the footer's instant)", "clocks": ["HH:MM UTC | HH:MM ET"], "emitted_numbers": ["string"], "identifiers": ["string"], "rule_ids": ["string"]}`
 - `et_date`: `"YYYY-MM-DD (the ET date of --now)"`
 - `exit_code`: `"0 | 20"`
@@ -437,7 +438,7 @@ Payload (`--json` envelope key `payload`):
 Payload (`--json` envelope key `payload`):
 
 - `book`: `{"as_of_label": "string", "data_exit_code": "0 | 20 (the book's own data verdict)", "generated_at": "ISO-8601 UTC", "origin": "quotes | file", "path": "absolute path | null"}`
-- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
 - `counts`: `{"EXIT_SIGNAL": "n", "HOLD": "n", "UNAVAILABLE": "n", "WATCH": "n"}`
 - `dry_run`: `"boolean"`
 - `et_date`: `"YYYY-MM-DD"`
@@ -454,12 +455,76 @@ Payload (`--json` envelope key `payload`):
 - `verdicts`: `[{"clear": ["rule id (clear rules are silent in prose)"], "cooldown": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "data_quality": "ok | unavailable | null", "fired": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "group_id": "string", "no_history": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "pending": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "quarantined": "boolean", "reasons": ["string"], "structure": "string | null", "suppressed": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "trade_id": "string | null", "unavailable": [{"as_of": "ISO-8601 UTC | null (the oldest input stamp)", "basis": "liq | mid", "conditions": [{"dte_unit": "calendar | trading | null", "kind": "value | not_applicable | unavailable | no_history", "metric": "string", "op": "string", "reason": "string", "threshold": "decimal string | null", "truth": "true | false | unknown", "unit": "string | null", "value": "the metric's value | null"}], "confirmations": "integer (observations needed; 1 when a single observation suffices)", "dte_unit": "calendar | trading | null", "first_observation": "boolean", "input_class": "E | M | G", "inputs": [{"as_of": "ISO-8601 UTC | null", "grade": "A-F | null", "name": "string", "note": "string | null", "source": "book field", "value": "decimal string | integer | boolean | date | null"}], "metric": "the first condition's metric", "new_signal": "boolean (this evaluation would move the rule into fired)", "notes": ["string"], "observations": "integer (TRUE observations recorded, this one included)", "op": "< | <= | > | >= | == | is_true | is_false", "plan": "close | roll_review | hold_review", "quote_grade": "A-F | null (the worst grade of the inputs)", "reason": "string (why unavailable, no history, suppressed or cooling down; empty when fired or pending)", "result": "fired | pending | cooldown | unavailable | no_history | suppressed", "role": "take_profit | loss | time | risk | event | portfolio | watch", "rule_id": "string", "rule_sha": "sha256 of the rule's canonical semantics", "scope": "group | leg | underlying | portfolio", "state_status": "armed | pending | fired | cooldown | null", "subject": "group id | row n SYMBOL | symbol | portfolio", "suppress_tag": "assign-ok | earnings-ok | null", "threshold": "decimal string | null", "title": "string", "transition": "string | null", "unit": "percent | usd | days | delta | multiple | null", "value": "decimal string | integer | boolean | null (the value compared)", "verdict": "EXIT_SIGNAL | WATCH (the rule's own)"}], "underlying": "string | null", "verdict": "EXIT_SIGNAL | UNAVAILABLE | WATCH | HOLD"}]`
 - `warnings`: `["string"]`
 
+## exit_ticket
+
+- script: `scripts/exit_ticket.py`
+- tool version: 0.1.0
+- mode: read-only
+- description: a ticket for a group you hold in positions.csv, only when you ask: the legs of CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT or ROLL in the safe order with their quotes, the approval-level check, the cash and the realized estimate; you supply the limit and act in your brokerage account
+- network access: GET https://sandbox.tradier.com/v1/markets/quotes (one batch of the group's symbols) and, for ROLL, /v1/markets/options/chains of the replacement's expiration, through the quote cache; none with --offline
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--trade` | `AG-YYYYMMDD-NN` | the trade id of the group in positions.csv (required) |
+| `--action` | `CLOSE \| UNWIND_STOCK \| LET_ASSIGN \| MONETIZE_PUT \| ROLL` | CLOSE (the option legs), UNWIND_STOCK (the shares and every option leg), LET_ASSIGN (the short option left to expiry), MONETIZE_PUT (the long put of a protective put or a collar) or ROLL (a covered call's short call or a protective put's long put replaced) (required) |
+| `--new-expiration` | `YYYY-MM-DD` | ROLL only, with --new-strike: the replacement's expiration, later than the held leg's |
+| `--new-strike` | `K` | ROLL only, with --new-expiration: the replacement's strike (its root and right are the held leg's) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+
+Payload (`--json` envelope key `payload`):
+
+- `account`: `"the account cell of positions.csv (JSON only: the text names the account by its desk.toml number) | null"`
+- `account_type`: `"the desk.toml account type (margin, ira, ...) | null"`
+- `action`: `"CLOSE | UNWIND_STOCK | LET_ASSIGN | MONETIZE_PUT | ROLL"`
+- `approval`: `{"check": "the approval-level check", "exposure_step": "integer | null", "ok": "boolean", "owner_level": "integer", "refusal": {"kind": "string", "level": "integer", "step": "integer", "words": "string"}, "required_level": "integer"}`
+- `cash`: `{"net_conservative": "decimal string", "net_mid": "decimal string | null", "peak_needed": "decimal string: the most cash the steps need at once", "prefix": ["decimal string"]}`
+- `cause`: `"why nothing was ticketed: an UNAVAILABLE cause, config_unacknowledged, criteria_missing or a NOT_APPLICABLE code | null"`
+- `computed_utc`: `"ISO-8601 UTC (--now)"`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null", "old": "acknowledged sha256 | null"}]`
+- `criteria`: `"structuring.toml echoed (StructuringConfig.as_dict, its sha256 included) | null"`
+- `emitted`: `{"as_of": "ISO-8601 UTC (the footer's instant)", "clocks": ["HH:MM UTC | HH:MM ET"], "emitted_numbers": ["string"], "footer": "structuring", "identifiers": ["string"], "rule_ids": ["string (none)"]}`
+- `exit_code`: `"0 | 1 | 20"`
+- `files`: `{"json": "tickets/<ticket_id>.json (this envelope without requests, warnings, files, journal and exit_code)", "md": "tickets/<ticket_id>.md (the text exactly as printed)", "written": "boolean (false: identical bytes already there)"}`
+- `group_id`: `"string | null"`
+- `journal`: `"journal/structuring.jsonl | null (nothing printed)"`
+- `legs`: `[{"as_of": "ISO-8601 UTC", "ask": "decimal string | null", "bid": "decimal string | null", "cash_conservative": "decimal string (+ received, - paid)", "cash_mid": "decimal string | null", "conservative": "decimal string (that side)", "conservative_side": "bid | ask (the side the leg is valued at)", "contract": "the contract's symbol (JSON only) or the share symbol", "effect": "open | close", "expiration": "YYYY-MM-DD | null", "grade": "A-E", "instrument": "call | put | shares", "intent": "close_short | close_long | close_shares | open_short | open_long", "mid": "decimal string | null", "multiplier": "integer", "note": "the grade E note | null", "quantity": "integer (contracts or shares) | decimal string (a fractional share count)", "quote_age_min": "integer | null", "quote_status": "string", "right": "CALL | PUT | null", "root": "string", "row_number": "integer (the positions.csv row) | null (the new leg of a ROLL)", "side": "long | short", "spread_pct": "decimal string | null", "step": "integer (1-based, the order the owner enters them)", "strike": "decimal string | null", "tick": "decimal string: the increment of the owner's own limit (display only)"}]`
+- `let_assign`: `[{"act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_passed": "boolean", "act_by_text": "string", "act_by_utc": "ISO-8601 UTC", "cash_if_assigned": "decimal string", "contract": "string", "contracts": "integer", "dividend": {"amount": "decimal string | null", "applicable": "boolean", "cum_day": "YYYY-MM-DD | null", "ex_date": "YYYY-MM-DD | null", "known": "boolean", "reason": "string | null", "status": "string"}, "expiration": "YYYY-MM-DD", "itm": "boolean (the one-cent rule)", "last_trading_day": "YYYY-MM-DD", "realized_if_assigned": "decimal string | null", "right": "CALL | PUT", "row_number": "integer", "shares": "integer", "spot_mid": "decimal string", "strike": "decimal string"}]`
+- `lint`: `{"numbers_checked": "integer", "ok": "boolean", "problems": ["string"]}`
+- `message`: `"string: the text exactly as printed (the last line is the structuring footer)"`
+- `model_note`: `"the European model's note (ROLL) | null"`
+- `owner_level`: `"integer 0-5: desk.toml's self-attested approval level | null"`
+- `puts`: `[{"bid": "decimal string", "expiration": "YYYY-MM-DD", "intrinsic": "decimal string", "itm": "boolean (the one-cent rule)", "row_number": "integer", "spot_mid": "decimal string", "strike": "decimal string", "time_value": "decimal string"}]`
+- `realized`: `[{"conservative": "decimal string", "mid": "decimal string | null", "row_number": "integer"}]`
+- `reason`: `"the desk's own words for the cause | null"`
+- `refused_code`: `"approval_level | intermediate_exposure | null"`
+- `replacement`: `{"before": "structuring.BeforeState.as_dict | null", "candidate": "structuring.Candidate.as_dict (status, reasons, accepted, after, ...)", "held": "structuring.HeldLeg.as_dict", "kind": "replacement_call | replacement_put", "objective": {"direction": "higher | lower", "formula": "string", "id": "string", "unit": "string", "words": "string"}, "section": "roll | protective_put"}`
+- `requests`: `{"budget_left": "integer", "chains": "integer", "made": "integer", "per_run_max_chains": "integer", "per_run_max_requests": "integer"}`
+- `session`: `{"close_utc": "ISO-8601 UTC | null", "et_date": "YYYY-MM-DD", "live": "boolean", "session": "the market_clock session"}`
+- `spot`: `{"as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "grade": "A-F", "mid": "decimal string | null", "symbol": "string"}`
+- `steps`: `[{"after": {"long_calls": "integer", "long_puts": "integer", "shares": "integer | decimal string (a fractional share count)", "short_calls": "integer", "short_puts": "integer"}, "kind": "the approval step kind", "level": "integer", "step": "integer", "uncovered_calls": "integer", "words": "string"}]`
+- `structure`: `"the grouping structure (covered_call, protective_put, ...) | null"`
+- `ticket_id`: `"TK-<trade_id>-<ACTION>-<YYYYMMDDTHHMMSSZ> | null (no ticket)"`
+- `trade_id`: `"AG-YYYYMMDD-NN (--trade)"`
+- `underlying`: `"string | null"`
+- `valid_full`: `"boolean: the full 30 minutes fit before the close | null"`
+- `valid_until`: `"ISO-8601 UTC: min(now + 30 min, the session's close) | null"`
+- `verdict`: `"TICKET | NOT_APPLICABLE | UNAVAILABLE | REFUSED"`
+- `warnings`: `["string"]`
+- `withheld`: `"{codes: [string], text: string (the text that failed the lint; exit 1 lint_failed)} | null"`
+
 ## expiry_checklist
 
 - script: `scripts/expiry_checklist.py`
 - tool version: 0.1.0
 - mode: read-only
-- description: expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open option legs: settlement, implications, act-by times from the owner's broker cutoff, dividend and pin tiers
+- description: expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker cutoff), dividend and pin tiers
 - network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
@@ -483,7 +548,7 @@ Payload (`--json` envelope key `payload`):
 - `exit_code`: `"10 | 20 | 0"`
 - `expired`: `[{"expiration": "YYYY-MM-DD", "row_number": "integer", "symbol": "string"}]`
 - `fixture_set`: `"string | null (offline runs)"`
-- `legs`: `[{"account": "string", "act_by_early_close": "boolean (the act-by is the 13:00 ET close of an early-close day: confirm the broker's cutoff)", "act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_passed": "boolean", "act_by_text": "string", "act_by_utc": "ISO-8601 UTC", "act_by_utc_text": "HH:MM UTC", "assign_ok": "boolean (#assign-ok on the row)", "contracts": "decimal string", "dividend": {"amount": "decimal string | null", "bid": "decimal string | null", "dividend_status": "confirmed | estimated | unknown", "downgraded_from": "HIGH | null", "ex_date": "YYYY-MM-DD | null", "extrinsic_bid": "decimal string | null", "fired": "boolean", "intrinsic": "decimal string | null", "itm": "boolean | null", "notes": ["string"], "option_grade": "A-F | null", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "tier": "HIGH | WATCH | LOW | NOTED | UNAVAILABLE", "trading_days_to_ex": "integer | null", "unavailable": "boolean"}, "dte_trading": "integer trading days to the last trading day", "due_today": "boolean", "due_tomorrow": "boolean", "expiration": "YYYY-MM-DD", "fired": "boolean", "group_id": "string", "implication": "string", "in_week": "boolean", "last_trading_day": "YYYY-MM-DD", "pin": {"distance_pct": "decimal string (2 dp) | null", "fired": "boolean", "itm": "boolean | null", "line": "string | null", "on_last_trading_day": "boolean", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "strike": "string", "tier": "PIN HIGH | PIN WATCH | PIN LOW | ITM | UNAVAILABLE", "unavailable": "boolean"}, "quantity": "decimal string (signed open)", "right": "CALL | PUT", "row_number": "integer", "settlement": "pm | am", "side": "long | short", "strike": "decimal string (plain)", "structure": "string", "symbol": "compact OCC symbol", "trade_id": "string | null", "unavailable_reasons": ["string"], "underlying": "string", "vertical": {"between": "boolean | null", "fired": "boolean", "high_strike": "string", "low_strike": "string", "message": "string", "spot_mid": "decimal string | null", "unavailable": "boolean"}}]`
+- `legs`: `[{"account": "string", "act_by_basis": "session_close | broker_cutoff (the instant that governed: a short leg acts by the earlier of the session close of its last trading day and the broker cutoff, a long leg by the broker cutoff, or the 13:00 ET close when that is earlier on an early-close day)", "act_by_early_close": "boolean (a long leg whose act-by falls on an early-close day: confirm the broker's cutoff; always false for a short leg)", "act_by_et": "YYYY-MM-DD HH:MM ET", "act_by_passed": "boolean", "act_by_text": "string (a short leg's ends with '; the session close: a short option is closed only while the market trades' when the session close governs)", "act_by_utc": "ISO-8601 UTC", "act_by_utc_text": "HH:MM UTC", "assign_ok": "boolean (#assign-ok on the row)", "contracts": "decimal string", "dividend": {"amount": "decimal string | null", "bid": "decimal string | null", "dividend_status": "confirmed | estimated | unknown", "downgraded_from": "HIGH | null", "ex_date": "YYYY-MM-DD | null", "extrinsic_bid": "decimal string | null", "fired": "boolean", "intrinsic": "decimal string | null", "itm": "boolean | null", "notes": ["string"], "option_grade": "A-F | null", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "tier": "HIGH | WATCH | LOW | NOTED | UNAVAILABLE", "trading_days_to_ex": "integer | null", "unavailable": "boolean"}, "dte_trading": "integer trading days to the last trading day", "due_today": "boolean", "due_tomorrow": "boolean", "expiration": "YYYY-MM-DD", "fired": "boolean", "group_id": "string", "implication": "string", "in_week": "boolean", "last_trading_day": "YYYY-MM-DD", "pin": {"distance_pct": "decimal string (2 dp) | null", "fired": "boolean", "itm": "boolean | null", "line": "string | null", "on_last_trading_day": "boolean", "reason": "string (UNAVAILABLE)", "spot_mid": "decimal string | null", "strike": "string", "tier": "PIN HIGH | PIN WATCH | PIN LOW | ITM | UNAVAILABLE", "unavailable": "boolean"}, "quantity": "decimal string (signed open)", "right": "CALL | PUT", "row_number": "integer", "settlement": "pm | am", "side": "long | short", "strike": "decimal string (plain)", "structure": "string", "symbol": "compact OCC symbol", "trade_id": "string | null", "unavailable_reasons": ["string"], "underlying": "string", "vertical": {"between": "boolean | null", "fired": "boolean", "high_strike": "string", "low_strike": "string", "message": "string", "spot_mid": "decimal string | null", "unavailable": "boolean"}}]`
 - `message`: `"string: the human text exactly, without the final newline"`
 - `mode`: `"week | tomorrow | final-call"`
 - `next_trading_day`: `"YYYY-MM-DD"`
@@ -647,6 +712,72 @@ Payload (`--json` envelope key `payload`):
 - `verdict`: `"CLEAN | UNAVAILABLE | ERRORS (ERRORS is reported through the error envelope: error.code positions_invalid, no payload)"`
 - `warnings`: `["string"]`
 
+## propose
+
+- script: `scripts/propose.py`
+- tool version: 0.1.0
+- mode: read-only
+- description: on the owner's request only: a covered call, protective put or collar on a group that holds shares only, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never a new symbol, a spread, an uncovered short or a cash-secured put; never in a routine
+- network access: GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and /v1/markets/options/chains only, through the quote cache (at most 20 requests and 4 chains a run); none with --offline
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--trade` | `AG-YYYYMMDD-NN` | the trade id of a group in positions.csv that holds shares only (required) |
+| `--structure` | `covered_call \| protective_put \| collar` | the overlay: covered_call, protective_put, collar (required) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+
+Payload (`--json` envelope key `payload`):
+
+- `account`: `"the positions.csv account (JSON only; the text never prints it) | null"`
+- `account_type`: `"cash | margin | ira | null (desk.toml [[owner.accounts]])"`
+- `after`: `{"breakeven": "decimal string | null", "breakevens": ["decimal string"], "delta_change": "float | null", "group_delta": "float | null (share-equivalents)", "max_loss": "decimal string | null", "max_profit": "decimal string | null (unbounded)", "realized_on_close": "null (a proposal closes nothing)", "unbounded_up": "boolean"}`
+- `approval`: `"{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, exposure_step, steps: [{index, kind, level, words}]} | null (no check ran: the answer prices nothing)"`
+- `before`: `"{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)"`
+- `best`: `"candidate id | null (rank 1 when ELIGIBLE)"`
+- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null (collar)", "contracts": "integer", "cost_total": "decimal string | null (protective put: ask x 100 x contracts)", "covered_per_share": "decimal string | null (protective put: K - stressed price)", "covered_total": "decimal string | null", "credit_total": "decimal string | null (covered call: bid x 100 x contracts)", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null (covered call)", "floor_pct": "decimal string | null (protective put, collar)", "id": "string (the leg's OCC symbol; a collar '<put>+<call>')", "kind": "covered_call | protective_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "null", "net_credit_total": "null", "net_debit": "decimal string | null (collar: put ask - call bid)", "net_debit_total": "decimal string | null", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `cause`: `"null | the UNAVAILABLE cause (market_closed, group_quarantined, positions_quarantined, spot_unusable, expirations_not_served, chain_not_served, no_candidate_priced, criteria_missing, config_unacknowledged) | the NOTHING_TO_PROPOSE code (not_shares_only, fewer_than_100_shares, no_shares, no_free_shares, not_enough_free_shares) | the NOT_APPLICABLE code (index_underlying, disabled, no_open_legs, no_expiration_in_window) | the REFUSED code (approval_level, intermediate_exposure)"`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
+- `contracts`: `"integer | null (floor(shares / 100))"`
+- `criteria`: `"the structuring.toml echo {schema_version, disclosure, general, covered_call, roll, protective_put, collar, sha256} | null (no criteria file)"`
+- `emitted`: `{"as_of": "ISO-8601 UTC (the footer's instant: the oldest stamp of the data used, else the run's)", "clocks": ["HH:MM UTC"], "emitted_numbers": ["string"], "footer": "structuring (alert_lint re-lints the text with the structuring footer)", "identifiers": ["YYYY-MM-DD | AG-... | sha <8 hex>"], "rule_ids": ["string (none)"]}`
+- `expirations`: `"{listed_in_window: [YYYY-MM-DD], evaluated: [YYYY-MM-DD], not_evaluated: [{expiration, reason}]} | null"`
+- `failed`: `"integer | null (candidates that failed a criterion)"`
+- `failure_counts`: `"{structuring.toml key: n} | null (the failing candidates; the unpriced apart)"`
+- `files`: `"{json: reports/proposals/<trade_id>-<structure>-<YYYYMMDDTHHMMSSZ>.json, md: ....md, written: boolean (false: the same bytes were already there)} | null (written only for BEST and NONE_QUALIFIES, a complete evaluation)"`
+- `group_id`: `"string | null"`
+- `held`: `"null (a proposal replaces no held leg)"`
+- `journal`: `"journal/structuring.jsonl | null (one record per printed text: exit 0 or 20)"`
+- `kind`: `"covered_call | protective_put | collar"`
+- `lint`: `{"numbers_checked": "integer", "ok": "boolean (false: exit 1 lint_failed)", "problems": ["string"]}`
+- `message`: `"string: the text exactly as printed (the WITHHELD line and the footer when the lint fails)"`
+- `model_note`: `"string (European Black-Scholes-Merton; early exercise not modelled)"`
+- `objective`: `{"direction": "higher | lower", "formula": "string", "id": "extrinsic_per_day | stress_cost_per_day | cap_within_budget", "unit": "string", "words": "string"}`
+- `outside_bands`: `"{puts, calls} | null (collar: the legs outside their floor and cap bands, not paired)"`
+- `passed`: `"integer | null"`
+- `reason`: `"string | null (the desk's own words for a verdict that prices nothing)"`
+- `requests`: `"{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)"`
+- `section`: `"the structuring.toml section the candidates are judged under (the structure requested)"`
+- `shares`: `"decimal string | null (the group's open shares)"`
+- `spot`: `"{symbol, bid, ask, mid, grade, as_of} | null"`
+- `stress`: `"{drop_pct, spot} | null (protective put: the owner's stress drop and the stressed price)"`
+- `structure`: `"the group's structure (long_stock when one is proposed) | null"`
+- `structure_requested`: `"covered_call | protective_put | collar"`
+- `tie_break`: `"string | null (the rule that separated the best from an ELIGIBLE runner-up of the same score)"`
+- `tool`: `"propose"`
+- `trade_id`: `"AG-YYYYMMDD-NN"`
+- `underlying`: `"string | null"`
+- `unpriced`: `"integer | null (candidates never priced, so never judged against the criteria)"`
+- `verdict`: `"BEST | NONE_QUALIFIES | NOT_APPLICABLE | NOTHING_TO_PROPOSE | UNAVAILABLE | REFUSED"`
+- `warnings`: `["string"]`
+- `withheld`: `"{codes: [string], text: string (the text that failed)} | null"`
+
 ## quote_cache
 
 - script: `scripts/quote_cache.py`
@@ -711,6 +842,71 @@ Payload (`--json` envelope key `payload`):
 - `session`: `"market_clock.SessionInfo.as_dict() (--now classified with the calendar's full closures: an injected closure is session holiday)"`
 - `symbols`: `[{"age_min_ask": "integer | null", "age_min_bid": "integer | null", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "grade": "A | B | C | D | E | F", "label": "as of HH:MM:SS ET | as of close HH:MM ET | as of prior close YYYY-MM-DD HH:MM ET | NYSE closed | no quote", "mark_liq_long": "decimal string (bid) | null", "mark_liq_short": "decimal string (ask) | null", "mark_mid": "decimal string | null", "reasons": ["string"], "served_from": "fetch | cache | null", "spread_pct": "decimal string (2 dp) | null", "status": "fresh | stale | one_side_stale | undated | closed_day | missing", "symbol": "string", "usable_for_rules": "boolean (grade A-D)"}]`
 - `warnings`: `["string"]`
+
+## roll_analysis
+
+- script: `scripts/roll_analysis.py`
+- tool version: 0.1.0
+- mode: read-only
+- description: on the owner's request only: the replacement candidates for the short call of a covered call, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
+- network access: GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and /v1/markets/options/chains only, through the quote cache (at most 20 requests and 4 chains a run); none with --offline
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--trade` | `AG-YYYYMMDD-NN` | the trade id of a covered call group in positions.csv (required) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+
+Payload (`--json` envelope key `payload`):
+
+- `account`: `"the positions.csv account (JSON only; the text never prints it) | null"`
+- `account_type`: `"cash | margin | ira | null (desk.toml [[owner.accounts]])"`
+- `after`: `{"breakeven": "decimal string | null", "breakevens": ["decimal string"], "delta_change": "float | null", "group_delta": "float | null (share-equivalents)", "max_loss": "decimal string | null", "max_profit": "decimal string | null (unbounded)", "realized_on_close": "decimal string | null (the held leg closed at its conservative side)", "unbounded_up": "boolean"}`
+- `approval`: `"{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, exposure_step, steps: [{index, kind, level, words}]} | null (no check ran: the answer prices nothing)"`
+- `before`: `"{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)"`
+- `best`: `"candidate id | null (rank 1 when ELIGIBLE)"`
+- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null", "contracts": "integer", "cost_total": "decimal string | null", "covered_per_share": "decimal string | null", "covered_total": "decimal string | null", "credit_total": "decimal string | null", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null", "floor_pct": "decimal string | null", "id": "string (the new leg's OCC symbol; a collar '<put>+<call>')", "kind": "covered_call | replacement_call | protective_put | replacement_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "decimal string | null (per share: new bid - held ask)", "net_credit_total": "decimal string | null", "net_debit": "decimal string | null", "net_debit_total": "decimal string | null", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `cause`: `"null | the UNAVAILABLE cause (market_closed, group_quarantined, positions_quarantined, spot_unusable, held_leg_unusable, expirations_not_served, chain_not_served, no_candidate_priced, criteria_missing, config_unacknowledged) | the NOT_APPLICABLE code (structure, index_underlying, disabled, no_open_legs, no_expiration_in_window) | the REFUSED code (approval_level, intermediate_exposure)"`
+- `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
+- `contracts`: `"integer | null"`
+- `criteria`: `"the structuring.toml echo {schema_version, disclosure, general, covered_call, roll, protective_put, collar, sha256} | null (no criteria file)"`
+- `emitted`: `{"as_of": "ISO-8601 UTC (the footer's instant: the oldest stamp of the data used, else the run's)", "clocks": ["HH:MM UTC"], "emitted_numbers": ["string"], "footer": "structuring (alert_lint re-lints the text with the structuring footer)", "identifiers": ["YYYY-MM-DD | AG-... | sha <8 hex>"], "rule_ids": ["string (none)"]}`
+- `expirations`: `"{listed_in_window: [YYYY-MM-DD], evaluated: [YYYY-MM-DD], not_evaluated: [{expiration, reason}]} | null"`
+- `failed`: `"integer | null (candidates that failed a criterion)"`
+- `failure_counts`: `"{structuring.toml key: n} | null (the failing candidates; the unpriced apart)"`
+- `files`: `"{json: reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json, md: ....md, written: boolean (false: the same bytes were already there)} | null (written only for BEST and NONE_QUALIFIES, a complete evaluation)"`
+- `group_id`: `"string | null"`
+- `held`: `"{row_number, occ, root, right, side, contracts, strike, expiration, last_trading_day, bid, ask, mid, spread_pct, grade, quote_status, quote_age_min, as_of, iv, delta, entry_price_per_share, remaining_cost_basis, close_price, close_side, note, realized} | null (the short call every candidate closes, at its fresh ask)"`
+- `journal`: `"journal/structuring.jsonl | null (one record per printed text: exit 0 or 20)"`
+- `kind`: `"replacement_call"`
+- `lint`: `{"numbers_checked": "integer", "ok": "boolean (false: exit 1 lint_failed)", "problems": ["string"]}`
+- `message`: `"string: the text exactly as printed (the WITHHELD line and the footer when the lint fails)"`
+- `model_note`: `"string (European Black-Scholes-Merton; early exercise not modelled)"`
+- `objective`: `{"direction": "higher | lower", "formula": "string", "id": "extrinsic_per_day", "unit": "string", "words": "string"}`
+- `outside_bands`: `"null"`
+- `passed`: `"integer | null"`
+- `reason`: `"string | null (the desk's own words for a verdict that prices nothing)"`
+- `requests`: `"{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)"`
+- `section`: `"roll (the structuring.toml section the candidates are judged under)"`
+- `shares`: `"decimal string | null (the group's open shares)"`
+- `spot`: `"{symbol, bid, ask, mid, grade, as_of} | null"`
+- `stress`: `"null"`
+- `structure`: `"the group's structure | null"`
+- `structure_requested`: `"null"`
+- `tie_break`: `"string | null (the rule that separated the best from an ELIGIBLE runner-up of the same score)"`
+- `tool`: `"roll_analysis"`
+- `trade_id`: `"AG-YYYYMMDD-NN"`
+- `underlying`: `"string | null"`
+- `unpriced`: `"integer | null (candidates never priced, so never judged against the criteria)"`
+- `verdict`: `"BEST | NONE_QUALIFIES | NOT_APPLICABLE | NOTHING_TO_PROPOSE | UNAVAILABLE | REFUSED"`
+- `warnings`: `["string"]`
+- `withheld`: `"{codes: [string], text: string (the text that failed)} | null"`
 
 ## routine
 

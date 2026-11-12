@@ -14,7 +14,11 @@ recipes Aegis Position Control follows.
   verbatim transcription, never an edit and never rows it derived. It then runs `positions_check.py` and reports the
   verdict, the number of rows and the file's sha256 for you to confirm.
 - After any change, the next book check posts CONFIG CHANGED first, naming `positions.csv`, until you tap
-  `ack.py config --owner-tapped`. A change you did not make is visible at once.
+  `ack.py config --owner-tapped`. A change you did not make is visible at once. Until then the Structuring Desk's tools
+  answer UNAVAILABLE, because the share coverage they check comes from this file.
+- A ticket from the Aegis Structuring Desk carries no `positions.csv` lines. After a fill, tell Position Control the
+  fill; it proposes the lines with its close, partial-close and roll recipes, and you apply them. For a short option
+  left to expiry, its post-expiry check proposes them after the expiry.
 - There is no broker import, no sync and no cash balance in the file.
 
 ## Columns
@@ -64,8 +68,10 @@ Every row needs `instrument_type`, `quantity`, and `symbol` or `occ_symbol`. Dat
 - Tags in `note` (a tag silences a rule only when the rule's `suppress_if_tag` key names it; the rules below are the
   example rulebook's):
   - `#assign-ok`: you accept assignment; silences the rules `EXDIV`, `DELTA_WATCH`, `DELTA_SIGNAL` and `CAP` for the
-    group;
-  - `#earnings-ok`: silences `EARN2` for the group;
+    group, and the Structuring Desk's tools accept an ex-dividend date inside a short call's life for the group (the
+    label stays visible as `accepted ex_dividend`);
+  - `#earnings-ok`: silences `EARN2` for the group, and the Structuring Desk's tools accept an earnings date inside a
+    short call's life (`accepted earnings`);
   - `#horizon:YYYY-MM`: your intended horizon;
   - a `#roll-of:AG-...` tag: this group replaced that one;
   - `#from:AG-...`: a stock row that came from that group's assignment or exercise.

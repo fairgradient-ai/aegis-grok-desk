@@ -34,12 +34,15 @@ their posts are the ``journal/alerts.jsonl`` records (``aegis_desk.signals``). A
   the group's physical CSV lines. ``csv_recon.py`` reports ``ACTED_UNCHANGED`` while those rows stay unchanged a
   trading day later (record the close or the new position in ``positions.csv``). A signal with no rows (the
   portfolio) records ``rows_sha`` null. It closes the signal like ``ack``.
-* ``config`` acknowledges the current configuration: the SHA-256 of the bytes of ``desk.toml``, ``positions.csv``
-  and the rulebook file ``rules/ADOPTED`` names (keys ``desk_toml``, ``positions_csv``, ``rulebook``) (``rules/exit_rules-X.Y.Z.toml``; null when nothing is adopted,
-  or for a missing file) is written to ``state/desk_state.json["acknowledged_hashes"]`` (atomically, under the desk
-  lock, every other key kept; a corrupt file is replaced and said so). ``book_check.py`` prints CONFIG CHANGED
-  first on every run until these hashes match the files it evaluates. An unreadable ``rules/ADOPTED`` is
-  ``adopted_invalid`` (exit 1, nothing written).
+* ``config`` acknowledges the current configuration: the SHA-256 of the bytes of ``desk.toml``, ``positions.csv``,
+  the rulebook file ``rules/ADOPTED`` names (``rules/exit_rules-X.Y.Z.toml``) and ``structuring.toml`` (keys
+  ``desk_toml``, ``positions_csv``, ``rulebook``, ``structuring_toml``, :data:`HASH_NAMES`; null when nothing is
+  adopted, or for a missing file: a desk without structuring criteria acknowledges ``structuring_toml`` null) is
+  written to ``state/desk_state.json["acknowledged_hashes"]`` (atomically, under the desk lock, every other key kept;
+  a corrupt file is replaced and said so). ``book_check.py`` prints CONFIG CHANGED first on every run until these
+  hashes match the files it evaluates, and the structuring tools show nothing while desk.toml, positions.csv or
+  structuring.toml differ from them. The printed line names ``structuring.toml sha <8 hex>`` last, and only when the
+  file exists. An unreadable ``rules/ADOPTED`` is ``adopted_invalid`` (exit 1, nothing written).
 * ``connectors`` records that the owner read back the account's Connected apps and MCP servers and confirmed that none
   can place or change an order: the run instant is written to ``state/desk_state.json["connector_readback_utc"]``
   (atomically, under the desk lock, every other key kept; a corrupt file is replaced and said so), the key that
@@ -94,9 +97,10 @@ CONNECTOR_KEY: str = "connector_readback_utc"
 CONNECTOR_REASK_DAYS: int = 30
 """The age after which ``desk_doctor`` asks for the readback again (``doctor.CONNECTOR_MAX_AGE_DAYS``)."""
 ACK_RECORD_KEYS: Tuple[str, ...] = ("utc", "signal_id", "trade_id", "action", "until", "rows_sha", "hashes")
-HASH_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook")
-"""The acknowledged files, in the order CONFIG CHANGED lists them: ``desk.toml``, ``positions.csv`` and the adopted
-rulebook file (the names ``book_check.py`` and ``exit_check.py`` compare)."""
+HASH_NAMES: Tuple[str, ...] = ("desk_toml", "positions_csv", "rulebook", "structuring_toml")
+"""The acknowledged files, in the order CONFIG CHANGED lists them: ``desk.toml``, ``positions.csv``, the adopted
+rulebook file and ``structuring.toml`` (the names ``book_check.HASH_NAMES`` and ``exit_check.CONFIG_NAMES`` compare;
+a test keeps the three equal)."""
 LADDER_POSTS: int = 1 + len(signals.LADDER_RUN_OFFSETS)
 STATE_OPEN = signals.ACK_STATE_OPEN
 STATE_SNOOZED = signals.ACK_STATE_SNOOZED
@@ -132,10 +136,11 @@ OUTPUT: Dict[str, Any] = {
     "record": {"utc": "ISO-8601 UTC", "signal_id": "SIG-YYYYMMDD-NNN | null", "trade_id": "string | null",
                "action": "ack | snooze | acted | config | connectors", "until": "ISO-8601 UTC | null (snooze)",
                "rows_sha": "sha256 of the group's positions.csv lines | null (acted)",
-               "hashes": "{desk_toml, positions_csv, rulebook: sha256 | null} | null (config)"},
+               "hashes": "{desk_toml, positions_csv, rulebook, structuring_toml: sha256 | null} | null (config)"},
     "state_before": "(ack, snooze, acted) the signal's state before the record",
     "state_after": "(ack, snooze, acted) the signal's state after it",
-    "acknowledged_hashes": "(config) {desk_toml, positions_csv, rulebook: sha256 | null}",
+    "acknowledged_hashes": "(config) {desk_toml, positions_csv, rulebook, structuring_toml: sha256 | null (a missing "
+                           "file)}",
     "rulebook_version": "(config) X.Y.Z | null",
     "connector_readback_utc": "(connectors) ISO-8601 UTC: the run instant, written to state/desk_state.json",
     "path": "(writes) state/acks.jsonl",
@@ -381,9 +386,9 @@ def _file_sha(path: str) -> Optional[str]:
 
 
 def current_hashes(paths: desk_paths.DeskPaths) -> Tuple[Dict[str, Optional[str]], Optional[str]]:
-    """``({desk_toml, positions_csv, rulebook: sha256 | None}, adopted version | None)``: the SHA-256 of each file's
-    bytes, the rulebook being the file ``rules/ADOPTED`` names (:class:`ToolError` ``adopted_invalid`` when that
-    file cannot be read)."""
+    """``({desk_toml, positions_csv, rulebook, structuring_toml: sha256 | None}, adopted version | None)``: the SHA-256
+    of each file's bytes, the rulebook being the file ``rules/ADOPTED`` names (:class:`ToolError` ``adopted_invalid``
+    when that file cannot be read)."""
     version: Optional[str] = None
     rulebook: Optional[str] = None
     try:
@@ -395,7 +400,7 @@ def current_hashes(paths: desk_paths.DeskPaths) -> Tuple[Dict[str, Optional[str]
         version = adopted.version
         rulebook = _file_sha(exit_rules.rulebook_path(paths, adopted.version))
     hashes = {"rulebook": rulebook, "desk_toml": _file_sha(paths.desk_toml),
-              "positions_csv": _file_sha(paths.positions_csv)}
+              "positions_csv": _file_sha(paths.positions_csv), "structuring_toml": _file_sha(paths.structuring_toml)}
     return {name: hashes[name] for name in HASH_NAMES}, version
 
 
@@ -534,8 +539,9 @@ def do_config(paths: desk_paths.DeskPaths, now: datetime.datetime) -> Tuple[Dict
 
     rulebook = ("adopted rulebook %s %s" % (version, sha("rulebook")) if version is not None
                 else "adopted rulebook: none adopted")
-    lines = ["configuration acknowledged at %s: desk.toml %s, positions.csv %s, %s" % (
-        _clock(now), sha("desk_toml"), sha("positions_csv"), rulebook)]
+    structuring = ", structuring.toml %s" % sha("structuring_toml") if hashes["structuring_toml"] else ""
+    lines = ["configuration acknowledged at %s: desk.toml %s, positions.csv %s, %s%s" % (
+        _clock(now), sha("desk_toml"), sha("positions_csv"), rulebook, structuring)]
     lines.extend("warning: %s" % warning for warning in warnings)
     payload = {"action": "config", "record": entry, "acknowledged_hashes": hashes, "rulebook_version": version,
                "path": paths.relative(paths.acks_jsonl), "warnings": warnings}

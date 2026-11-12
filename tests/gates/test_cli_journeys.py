@@ -20,7 +20,10 @@ change the listings it compares. No order-shaped word appears in a journey's nam
 (the level sheet and its plan card, the morning sheet and the evening brief, the doctor, desk_init, the opening bell, the
 routine audit and one development run of every Stage-1 routine of the manifest) are pinned with their commands, instants,
 setup chains and the values the tools computed; every desk tool has at least one journey and the two generators have none
-(``check.sh`` steps 9 and 10 run them), and a :class:`TextMatch` can also require parts to be absent.
+(``check.sh`` steps 9 and 10 run them), and a :class:`TextMatch` can also require parts to be absent. The PR 3b journeys
+(the Structuring Desk's ``roll_analysis``, ``propose`` and ``exit_ticket``) are pinned with their commands, instants and
+values; each structuring chain writes and acknowledges ``structuring.toml`` on its copy first (``desk_init.py --answers``,
+then ``ack.py config --owner-tapped``), two fail-closed journeys run without it, and no routine journey runs them.
 """
 
 from __future__ import annotations
@@ -59,8 +62,14 @@ FAIL_FIXTURE_CODES = {
     "fail_imperative_start": "imperative_start", "fail_split_phrase": "forbidden_language", "fail_homoglyph": "non_ascii",
     "fail_imperative_execute": "imperative_start", "fail_imperative_fill": "imperative_start",
     "fail_order_kind": "forbidden_language",
+    # PR 3b: the structuring footer and its cross-refusals, the leg grammar, the SL table.
+    # "your plan: close" is no exception under the structuring footer (PR 3b review L2-7): its first finding
+    "fail_structuring_under_rules_footer": "footer_missing", "fail_rules_text_under_structuring_footer": "imperative_start",
+    "fail_structuring_leg_grammar": "order_field", "fail_structuring_go_with": "forbidden_language",
+    "fail_structuring_at_price": "order_field",
 }
-PASS_FIXTURES = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close")
+PASS_FIXTURES = ("pass_exit_signal", "pass_watch", "pass_unavailable", "pass_composed", "pass_pre_close",
+                 "pass_structuring_ticket", "pass_structuring_roll", "pass_structuring_proposal")
 J6 = "ack config, book_check --post expiry_day at 19:50 (4 signals) and 19:51 (quiet), heartbeat --list, ack list"
 J8_LATE = "ack config, book_check --summary regular at 20:35 -> UNAVAILABLE (quotes 63 min old), pre-close line"
 J8 = "ack config, book_check --summary regular at 19:50 -> pre-close line"
@@ -195,7 +204,7 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "fired", "payload.steps.0.exit_code": 10, "payload.steps.1.exit_code": 0, "payload.steps.2.exit_code": 10,
         "payload.lint.ok": True, "payload.heartbeat": "state/heartbeat/final-call.json",
         "payload.message": harness.TextMatch(prefix="development run", contains=(
-            "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:30 ET (21:30 UTC)",
+            "FINAL CALL Fri 2026-11-20: 2 contracts on their last trading day; act by 16:00 ET (21:00 UTC)",
             "assignment watch Fri 2026-11-20 (session open): FIRED"))}),
     "routine nope -> usage": ("routine.py", 2, harness.FIXTURE_DESK, {"status": "usage", "error.code": "invalid_arguments"}),
     "desk_init answers -> desk.toml": ("desk_init.py", 0, harness.FIXTURE_INIT, {
@@ -211,7 +220,7 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 41, "active": 61}}),
     "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-        "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 250},
+        "payload.lengths": {"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 333},
         "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
     J2D_PREOPEN: ("routine.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
@@ -244,6 +253,153 @@ PR_2D_INSTANTS: Dict[str, Tuple[str, str]] = {
     J2D_PREOPEN: ("2026-11-03T12:35:00Z", "07:30"), J2D_EVENING: ("2026-11-03T22:10:00Z", "17:10"),
     "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": (harness.POST_EXPIRY_NOW, "09:30"),
     "routine book-check 10:05 on Thanksgiving -> quiet (closed day)": ("2026-11-26T15:05:00Z", "10:05"),
+}
+
+
+# The PR 3b journeys (the Structuring Desk's three tools). tests/fixtures/desk holds no structuring.toml (designer C's
+# G13): each structuring chain writes it on its copy with desk_init (the fixture answers) and acknowledges it with
+# ack.py config --owner-tapped, two and one minute before the tool runs; two fail-closed journeys run without it. Every
+# value was computed by the tools on a copy of the main fixture root.
+STRUCTURING_ANSWERS = "tests/fixtures/init/structuring-answers.json"
+STRUCTURING_SHA256 = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
+STRUCTURING_FOOTER_1931 = ("computed by the desk's tools from your criteria · posted by an AI assistant · a personalized "
+                           "suggestion for positions you hold, not an order · you decide and act in your brokerage account · "
+                           "data delayed 15 min, as of 19:31 UTC")
+J3B_ROLL_WMT = "desk_init structuring, ack config, roll_analysis WMT regular -> BEST (the Jan 115 call)"
+J3B_ROLL_NVDA = "desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES"
+J3B_ROLL_STALE = "desk_init structuring, ack config, roll_analysis WMT stale -> UNAVAILABLE after 1 request"
+J3B_PROPOSE_SPY = "desk_init structuring, ack config, propose SPY protective_put on the main root -> NOTHING_TO_PROPOSE"
+J3B_TICKET_WMT = ("desk_init structuring, ack config, exit_ticket WMT ROLL, new 2027-01-15 115 call -> TICKET, net +10.00, "
+                  "peak 700.00")
+J3B_TICKET_NVDA = ("desk_init structuring, ack config, exit_ticket NVDA ROLL, new 2027-01-15 160 call -> TICKET with two "
+                   "FAILS_CRITERION lines")
+J3B_TICKET_SPY = "desk_init structuring, ack config, exit_ticket SPY MONETIZE_PUT -> TICKET, cash +980.00"
+J3B_TICKET_EXPIRY = ("desk_init structuring, ack config, exit_ticket WMT ROLL on expiration day -> TICKET, the held call's "
+                     "ask at grade E")
+J3B_NO_CRITERIA = "ack config, exit_ticket WMT CLOSE without structuring.toml -> UNAVAILABLE (criteria_missing)"
+J3B_NEVER_ACKED = "roll_analysis on a copy never acknowledged -> UNAVAILABLE (config_unacknowledged)"
+WMT_ROLL = ("exit_ticket.py", "--trade", "AG-20261020-01", "--action", "ROLL", "--new-expiration", "2027-01-15",
+            "--new-strike", "115")
+# name -> (the journey's own command, its instant, the instants of the desk_init and ack steps or None).
+PR_3B_COMMANDS: Dict[str, Tuple[Tuple[str, ...], str, Any]] = {
+    J3B_ROLL_WMT: (("roll_analysis.py", "--trade", "AG-20261020-01"), harness.REGULAR_NOW,
+                   ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_ROLL_NVDA: (("roll_analysis.py", "--trade", "AG-20261022-02"), harness.REGULAR_NOW,
+                    ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_ROLL_STALE: (("roll_analysis.py", "--trade", "AG-20261020-01", "--fixture-set", "stale"), harness.REGULAR_NOW,
+                     ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_PROPOSE_SPY: (("propose.py", "--trade", "AG-20261028-03", "--structure", "protective_put"), harness.REGULAR_NOW,
+                      ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_TICKET_WMT: (WMT_ROLL, harness.REGULAR_NOW, ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_TICKET_NVDA: (("exit_ticket.py", "--trade", "AG-20261022-02", "--action", "ROLL", "--new-expiration", "2027-01-15",
+                       "--new-strike", "160"), harness.REGULAR_NOW, ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_TICKET_SPY: (("exit_ticket.py", "--trade", "AG-20261028-03", "--action", "MONETIZE_PUT"), harness.REGULAR_NOW,
+                     ("2026-11-03T19:48:00Z", "2026-11-03T19:49:00Z")),
+    J3B_TICKET_EXPIRY: (WMT_ROLL + ("--fixture-set", "expiry_day"), harness.EXPIRY_DAY_NOW,
+                        ("2026-11-20T19:48:00Z", "2026-11-20T19:49:00Z")),
+    J3B_NO_CRITERIA: (("exit_ticket.py", "--trade", "AG-20261020-01", "--action", "CLOSE"), harness.REGULAR_NOW, None),
+    J3B_NEVER_ACKED: (("roll_analysis.py", "--trade", "AG-20261020-01"), harness.REGULAR_NOW, None),
+}
+PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
+    J3B_ROLL_WMT: ("roll_analysis.py", 0, {
+        "status": "ok", "tool": "roll_analysis", "payload.verdict": "BEST", "payload.best": "WMT270115C00115000",
+        "payload.candidates.0.score": "0.0467", "payload.candidates.0.net_credit": "0.05",
+        "payload.candidates.0.net_credit_total": "10.00", "payload.passed": 1, "payload.failed": 19,
+        "payload.after.max_loss": "19006.00", "payload.after.max_profit": "3994.00", "payload.after.breakeven": "95.03",
+        "payload.requests.made": 4, "payload.requests.chains": 2, "payload.lint.ok": True, "payload.emitted.footer": "structuring",
+        "payload.files.json": "reports/rolls/AG-20261020-01-20261103T195000Z.json", "payload.journal": "journal/structuring.jsonl",
+        "payload.message": harness.TextMatch(
+            prefix="STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | "
+                   "Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+            contains=("BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day",
+                      "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+                      "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
+                      "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life "
+                      "(by #assign-ok)",
+                      "after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 "
+                      "(now 1984.00), breakeven 95.03 (now 95.08)",
+                      STRUCTURING_FOOTER_1931))}),
+    J3B_ROLL_NVDA: ("roll_analysis.py", 0, {
+        "status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0, "payload.failed": 18,
+        "payload.unpriced": 2,
+        "payload.candidates.0.id": "NVDA270115C00160000", "payload.candidates.0.status": "FAILS_CRITERION",
+        "payload.candidates.0.score": "0.0299", "payload.requests.made": 4, "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(
+            prefix="STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call",
+            contains=("no candidate passed every criterion: the desk names no best candidate",
+                      "FAILS_CRITERION credit_only: a net debit of 0.05",
+                      "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
+                      "call's life", STRUCTURING_FOOTER_1931),
+            excludes=("BEST CANDIDATE",))}),
+    J3B_ROLL_STALE: ("roll_analysis.py", 20, {
+        "status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "spot_unusable",
+        "payload.requests.made": 1, "payload.files": None, "payload.journal": "journal/structuring.jsonl",
+        "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(prefix="UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the "
+                                                    "underlying", contains=("data delayed 15 min, as of 19:50 UTC",))}),
+    J3B_PROPOSE_SPY: ("propose.py", 0, {
+        "status": "ok", "tool": "propose", "payload.verdict": "NOTHING_TO_PROPOSE", "payload.cause": "not_shares_only",
+        "payload.requests.made": 0, "payload.lint.ok": True, "payload.best": None, "payload.candidates": [],
+        "payload.message": harness.TextMatch(prefix="NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY "
+                                                    "shares already carry 1 long put")}),
+    J3B_TICKET_WMT: ("exit_ticket.py", 0, {
+        "status": "ok", "tool": "exit_ticket", "payload.verdict": "TICKET",
+        "payload.ticket_id": "TK-AG-20261020-01-ROLL-20261103T195000Z", "payload.cash.net_conservative": "10.00",
+        "payload.cash.net_mid": "35.00", "payload.cash.peak_needed": "700.00",
+        "payload.replacement.candidate.status": "ELIGIBLE", "payload.approval.required_level": 1, "payload.requests.made": 2,
+        "payload.lint.ok": True, "payload.emitted.footer": "structuring", "payload.files.written": True,
+        "payload.journal": "journal/structuring.jsonl",
+        "payload.message": harness.TextMatch(
+            prefix="TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml "
+                   "(margin)",
+            contains=("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425",
+                      "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60",
+                      "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00",
+                      "after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03",
+                      STRUCTURING_FOOTER_1931))}),
+    J3B_TICKET_NVDA: ("exit_ticket.py", 0, {
+        "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261022-02-ROLL-20261103T195000Z",
+        "payload.cash.net_conservative": "-10.00", "payload.cash.peak_needed": "660.00",
+        "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 2, "payload.lint.ok": True,
+        "payload.files.written": True,
+        "payload.message": harness.TextMatch(prefix="TICKET AG-20261022-02 | NVDA covered call", contains=(
+            "FAILS_CRITERION credit_only: a net debit of 0.05",
+            "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life",
+            "after both legs: group delta 137.35, max loss 27640.00, max profit 4360.00, breakeven 138.20",
+            STRUCTURING_FOOTER_1931))}),
+    J3B_TICKET_SPY: ("exit_ticket.py", 0, {
+        "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261028-03-MONETIZE_PUT-20261103T195000Z",
+        "payload.cash.net_conservative": "980.00", "payload.cash.net_mid": "995.00", "payload.cash.peak_needed": "0.00",
+        "payload.realized.0.conservative": "-150.00", "payload.puts.0.itm": False, "payload.requests.made": 1,
+        "payload.lint.ok": True, "payload.files.written": True,
+        "payload.message": harness.TextMatch(
+            prefix="TICKET AG-20261028-03 | SPY protective put | the long put closed for its value (action MONETIZE_PUT) | "
+                   "account 2 of desk.toml (ira)",
+            contains=("leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95",
+                      "cash: +980.00 at the conservative prices (mid +995.00); the most the steps need at once: 0.00",
+                      "after the leg, your 100 SPY shares carry no put: their downside is unhedged",
+                      STRUCTURING_FOOTER_1931))}),
+    J3B_TICKET_EXPIRY: ("exit_ticket.py", 0, {
+        "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261020-01-ROLL-20261120T195000Z",
+        "payload.legs.0.grade": "E", "payload.legs.0.conservative": "0.16", "payload.cash.net_conservative": "558.00",
+        "payload.cash.peak_needed": "32.00", "payload.replacement.candidate.status": "FAILS_CRITERION",
+        "payload.requests.made": 2, "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(prefix="TICKET AG-20261020-01 | WMT covered call", contains=(
+            "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote grade E, Tradier "
+            "sandbox, 15-min delayed, as of 19:31 UTC | quote grade E: the conservative side stands",
+            "FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as "
+            "inside the new call's life",
+            STRUCTURING_FOOTER_1931))}),
+    J3B_NO_CRITERIA: ("exit_ticket.py", 20, {
+        "status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "criteria_missing", "payload.files": None,
+        "payload.journal": "journal/structuring.jsonl", "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(prefix="UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing "
+                                                    "until you set your criteria (SETUP step 9)")}),
+    J3B_NEVER_ACKED: ("roll_analysis.py", 20, {
+        "status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "config_unacknowledged",
+        "payload.files": None, "payload.lint.ok": True,
+        "payload.message": harness.TextMatch(prefix="UNAVAILABLE | CONFIG CHANGED: desk.toml: not acknowledged -> sha 0af433cf",
+                                             contains=("acknowledge with ack.py config --owner-tapped",))}),
 }
 
 
@@ -357,9 +513,10 @@ class CatalogueTest(unittest.TestCase):
             "expiry_checklist --week t1 (2 contracts due)": (
                 "expiry_checklist.py", 10, {"payload.mode": "week", "payload.counts.listed": 2}),
             "expiry_checklist --tomorrow t1 (T-1 preview)": ("expiry_checklist.py", 10, {"payload.mode": "tomorrow"}),
-            "expiry_checklist --final-call expiry_day (act by 16:30 ET)": (
+            "expiry_checklist --final-call expiry_day (short legs act by the 16:00 ET close)": (
                 "expiry_checklist.py", 10, {"payload.legs.0.pin.tier": "PIN HIGH", "payload.legs.1.pin.tier": "PIN WATCH",
-                                            "payload.legs.1.act_by_utc": "2026-11-20T21:30:00+00:00"}),
+                                            "payload.legs.1.act_by_utc": "2026-11-20T21:00:00+00:00",
+                                            "payload.legs.1.act_by_basis": "session_close"}),
             "expiry_checklist --week regular (nothing due)": ("expiry_checklist.py", 0, {"payload.mode": "week"}),
         }
         for name, (script, exit_code, keys) in expected.items():
@@ -565,6 +722,52 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(("state/heartbeat/eod.json", "trigger_levels"), (eod.expected_json["payload.heartbeat"],
                                                                          eod.expected_json["payload.steps.1.tool"]))
 
+    def test_the_pr_3b_journeys_and_their_expectations_are_listed(self) -> None:
+        listed = by_name()
+        for name, (script, exit_code, keys) in PR_3B.items():
+            with self.subTest(journey=name):
+                self.assertIn(name, listed)
+                journey = listed[name]
+                self.assertEqual((script, exit_code, harness.FIXTURE_DESK), (journey.argv[0], journey.expected_exit,
+                                                                            journey.desk_root))
+                self.assertIsNotNone(journey.expected_json)
+                for key, value in keys.items():
+                    self.assertIn(key, journey.expected_json)
+                    self.assertEqual(value, journey.expected_json[key], key)
+
+    def test_the_pr_3b_commands_instants_and_setup_steps(self) -> None:
+        listed = by_name()
+        self.assertEqual(sorted(PR_3B), sorted(PR_3B_COMMANDS))
+        for name, (argv, now, setup) in PR_3B_COMMANDS.items():
+            with self.subTest(journey=name):
+                journey = listed[name]
+                self.assertEqual(harness.tool_argv(argv, now), journey.argv)
+                if setup is None:
+                    expected = [] if name == J3B_NEVER_ACKED else [harness.tool_argv(("ack.py", "config", "--owner-tapped"),
+                                                                                      "2026-11-03T19:49:00Z")]
+                else:
+                    expected = [harness.tool_argv(("desk_init.py", "--answers", STRUCTURING_ANSWERS), setup[0]),
+                                harness.tool_argv(("ack.py", "config", "--owner-tapped"), setup[1])]
+                self.assertEqual(expected, [step.argv for step in journey.steps])
+                self.assertEqual([0] * len(expected), [step.expected_exit for step in journey.steps])
+                if setup is not None:
+                    init, ack = journey.steps
+                    self.assertEqual({"status": "ok", "payload.written": ["structuring.toml"],
+                                      "payload.structuring_toml.sha256": STRUCTURING_SHA256}, init.expected_json)
+                    self.assertEqual(STRUCTURING_SHA256, ack.expected_json["payload.acknowledged_hashes.structuring_toml"])
+        self.assertFalse(os.path.exists(os.path.join(ROOT, harness.FIXTURE_DESK, "structuring.toml")),
+                         "the fixture desk holds no structuring.toml (designer C's G13): the chains write it on their copy")
+        self.assertEqual(STRUCTURING_SHA256, harness.STRUCTURING_SHA256)
+        self.assertEqual(STRUCTURING_ANSWERS, harness.STRUCTURING_ANSWERS)
+
+    def test_the_structuring_tools_never_run_in_a_routine_journey(self) -> None:
+        for journey in harness.JOURNEYS:
+            for argv, _exit in commands(journey):
+                if argv[0] == "routine.py":
+                    self.assertFalse({"exit_ticket.py", "roll_analysis.py", "propose.py"} & set(argv), argv)
+        scripts = {argv[0] for journey in harness.JOURNEYS for argv, _exit in commands(journey)}
+        self.assertTrue({"exit_ticket.py", "roll_analysis.py", "propose.py"} <= scripts)
+
     def test_every_stage_1_routine_has_a_development_journey_at_a_named_slot(self) -> None:
         from aegis_desk import routines
 
@@ -587,7 +790,7 @@ class CatalogueTest(unittest.TestCase):
                     source = handle.read()
                 if "def " + "build_parser(" in source and "def main(" in source:
                     tools.add(name)
-        self.assertEqual(23, len(tools))
+        self.assertEqual(26, len(tools))
         scripts = {argv[0] for journey in harness.JOURNEYS for argv, _exit in commands(journey)}
         self.assertEqual(set(), tools - scripts, "every desk tool runs in at least one journey")
         # check.sh steps 9 and 10 run the generators' --check on the tree under test; a journey without a desk root

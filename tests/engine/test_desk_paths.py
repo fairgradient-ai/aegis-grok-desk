@@ -40,6 +40,10 @@ EXPECTED = {
     "reports_dir": "reports",
     "incidents_dir": "incidents",
     "fixtures_dir": "fixtures",
+    "structuring_toml": "structuring.toml",
+    "rolls_dir": "reports/rolls",
+    "proposals_dir": "reports/proposals",
+    "structuring_journal": "journal/structuring.jsonl",
 }
 RUNTIME = ("state", "state/heartbeat", "data/cache", "data/book", "data/positions", "journal", "levels", "plans",
            "reports", "incidents")
@@ -139,6 +143,24 @@ class EnsureRuntimeDirsTest(unittest.TestCase):
         for rel in ("desk.toml", "positions.csv", "rules", "research", "tickets", "fixtures",
                     "state/desk_state.json", "state/.lock", "rules/ADOPTED"):
             self.assertFalse(os.path.exists(os.path.join(self.root, *rel.split("/"))), rel)
+
+    def test_the_structuring_directories_are_created_by_their_tools_not_here(self) -> None:
+        # PR 3b decision S9 (designer Q's resolution): RUNTIME_DIRS stays as it was; exit_ticket.py, roll_analysis.py
+        # and propose.py create tickets/, reports/rolls/ and reports/proposals/ at their first write.
+        created = desk_paths.ensure_runtime_dirs(self.paths)
+        for path in (self.paths.tickets_dir, self.paths.rolls_dir, self.paths.proposals_dir,
+                     self.paths.structuring_toml, self.paths.structuring_journal):
+            self.assertNotIn(path, created)
+            self.assertFalse(os.path.exists(path), path)
+        self.assertTrue(os.path.isdir(self.paths.reports_dir))
+        self.assertTrue(os.path.isdir(self.paths.journal_dir))
+        self.assertEqual(self.paths.reports_dir, os.path.dirname(self.paths.rolls_dir))
+        self.assertEqual(self.paths.reports_dir, os.path.dirname(self.paths.proposals_dir))
+        self.assertEqual(self.paths.journal_dir, os.path.dirname(self.paths.structuring_journal))
+        note = " ".join((desk_paths.__doc__ or "").split())
+        self.assertIn("exit_ticket.py, roll_analysis.py and propose.py create tickets/, reports/rolls/ and "
+                      "reports/proposals/ at their first write", note)
+        self.assertIn("structuring.toml", note)
 
     def test_plans_is_a_runtime_directory_after_levels(self) -> None:
         # PR 2d decisions D1-10: trigger_levels.py --plan writes plans/<group id>.md, so plans/ is created like levels/.

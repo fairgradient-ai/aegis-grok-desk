@@ -1,6 +1,6 @@
 # Aegis Desk on Claude Code
 
-Claude Code loads the desk as a plugin: its skills, its three role profiles as subagents, and a hook that denies a
+Claude Code loads the desk as a plugin: its skills, its four role profiles as subagents, and a hook that denies a
 shell command or MCP tool call that looks like a broker write. Use it to read the desk, run its tools and work on the
 repository. The desk that runs on its own every trading day lives on [Grok Bot](aegis-grok-bot.md).
 
@@ -29,8 +29,9 @@ default branch, and the pinned clone below is the reviewed way in.
 
 - **The skills** under `skills/`, each as `/aegis-desk:<skill name>`. The list is in
   [skills/README.md](../skills/README.md).
-- **The role profiles** under `agents/` as subagents: the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position
-  Control. Each declares `tools: Read, Grep, Glob, Bash`, so a subagent inherits no MCP tools.
+- **The role profiles** under `agents/` as subagents: the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position
+  Control and the Aegis Structuring Desk. Each declares `tools: Read, Grep, Glob, Bash`, so a subagent inherits no MCP
+  tools.
 - **The hook** from `hooks/hooks.json`, which Claude Code loads on its own. `.claude-plugin/plugin.json` declares no
   `hooks` key, because Claude Code rejects a second declaration of the same hooks file. `scripts/check_manifests.py`
   fails the repository gate if a manifest adds one.
@@ -65,8 +66,10 @@ These are observed at release, before the tag. Observed on 2026-11-05 with Claud
 (`claude -p`), with the plugin loaded by `--plugin-dir` from a clean clone of the release candidate: checks 2 and 3
 were refused with exactly the reasons below, the commands never ran, and a read (`git status --short`) ran with no
 opinion from the hook. Check 1 is interactive and was not observed; both `PreToolUse` groups ran (`PreToolUse:Bash`
-for the sample, `PreToolUse:mcp__blackhole__place_order` for the stub). The marketplace install is checked after the
-tag ([docs/RELEASE.md](RELEASE.md), step 2).
+for the sample, `PreToolUse:mcp__blackhole__place_order` for the stub). The Aegis Structuring Desk then changed the
+plugin's agents and skills, not the hook, so the checks ran again on 2026-11-11 with Claude Code 2.1.322 on a clean
+clone of the Structuring Desk commit, with the same results; the session listed all four agents. Both runs are
+recorded in [docs/RELEASE.md](RELEASE.md), step 2. The marketplace install is checked after the tag (the same step).
 
 1. `/plugin` shows the plugin with no error, such as a duplicate hooks file; `/hooks` lists the two `PreToolUse`
    groups, and the shell matcher names every Claude Code tool that runs a shell command.
