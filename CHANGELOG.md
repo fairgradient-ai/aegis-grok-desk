@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+- Version bump to 0.1.1 (`release_bump.py 0.1.1`): every manifest, marketplace ref, tag pin, template hash, role skill and tool version moves together.
+
 ## 0.1.0 (2026-11-12)
 
 - Release workflow: `.github/workflows/release.yml` tags `main` and publishes the GitHub Release. It runs only when

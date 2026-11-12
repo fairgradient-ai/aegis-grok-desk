@@ -33,7 +33,7 @@ A book check at 14:05 ET, as `routine.py` runs it:
 ```text
 Grok routine (14:05 ET)
   -> python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 14:05
-     1. pin check: is the checkout the clean commit of tag v0.1.0?   no -> INCIDENT line, no step runs
+     1. pin check: is the checkout the clean commit of tag v0.1.1?   no -> INCIDENT line, no step runs
      2. the slot and its chain (routines/manifest.toml); a closed day -> quiet
      3. step: book_check --post, in the same process
           positions.csv --+

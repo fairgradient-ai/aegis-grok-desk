@@ -16,7 +16,7 @@ This installs the latest GitHub release of the repository. The first release is 
 is nothing to install. Without the extension, use the pinned clone:
 
 ```text
-git clone --depth 1 --branch v0.1.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
 ```
 
 ## What loads

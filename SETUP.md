@@ -32,17 +32,17 @@ receipt, and continues with the interactive steps only.
 ## 1. Get the pinned release onto the desk computer
 
 ```text
-git clone --depth 1 --branch v0.1.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 ```
 
-- The tag `v0.1.0` is created when this release is published. If the clone says the tag does not exist, the release
+- The tag `v0.1.1` is created when this release is published. If the clone says the tag does not exist, the release
   is not out yet: the Lead stops and tells you.
 - If `/workspace/aegis-grok-desk` already exists, the Lead leaves it as it is (no overwrite, reset or switch) and
   reports what the doctor says about it.
 - The doctor's check 1 (`release_pin`) is the pin check. On the clean release it passes with the reason
-  `release v0.1.0 at <commit>, clean`. Its check 8 (`desk_files`) fails until step 9 is done; that is expected.
+  `release v0.1.1 at <commit>, clean`. Its check 8 (`desk_files`) fails until step 9 is done; that is expected.
 
 **You, only if git refuses the checkout.** When the doctor or a routine shows
 `git refuses this checkout: it is owned by another user (see SETUP)`, approve exactly this command, run as the

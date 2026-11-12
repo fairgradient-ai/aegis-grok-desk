@@ -39,7 +39,7 @@ continues only the interactive steps.
 ## 1. Get and verify the pinned release
 
 ```text
-git clone --depth 1 --branch v0.1.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
 cd /workspace/aegis-grok-desk
 bash scripts/check.sh
@@ -53,7 +53,7 @@ python3 scripts/desk_doctor.py --desk-root /workspace/aegis-desk
   `ok: all repository gates passed for /workspace/aegis-grok-desk`. Any failure stops the setup. After setup, the
   routine checks are `python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --selftest --desk-root /workspace/aegis-desk`
   and the doctor itself.
-- The doctor's check 1 (`release_pin`) PASSes with `release v0.1.0 at <commit>, clean`. At this point its check 8
+- The doctor's check 1 (`release_pin`) PASSes with `release v0.1.1 at <commit>, clean`. At this point its check 8
   FAILs (no `desk.toml` yet); that is expected until step 7.
 - If check 1 says `git refuses this checkout: it is owned by another user (see SETUP)`, the owner approves exactly
   `git config --global --add safe.directory /workspace/aegis-grok-desk`, run as the account that runs the routines,

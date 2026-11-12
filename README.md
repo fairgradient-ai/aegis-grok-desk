@@ -8,7 +8,7 @@ tools compute every number.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
 
-Status: release 0.1.0 (Stage 1) is being prepared. Its tag `v0.1.0` is created at release, so the Start links below
+Status: release 0.1.0 (Stage 1) is being prepared. Its tag `v0.1.1` is created at release, so the Start links below
 resolve from then on.
 
 ## Try it now
@@ -39,9 +39,9 @@ footer of your rules.
 
 Open Grok Bot, create a new Bot (it becomes your Aegis Desk Lead), and paste:
 
-> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.0/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.0/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
+> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.1/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.1/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
 
-The tag `v0.1.0` is created at release; until then these links do not resolve.
+The tag `v0.1.1` is created at release; until then these links do not resolve.
 
 The Lead clones the pinned release, checks it, creates the Stage-1 Bots and their group chat, installs the skills
 with a readback each, and then asks you for the things only you can do: the sandbox token through the secure
@@ -133,7 +133,7 @@ How each control is enforced, and what it does not cover, is in [SECURITY.md](SE
 | Runtime | How | Page |
 | --- | --- | --- |
 | Grok Bot | the Start prompt above and [SETUP.md](SETUP.md) | [docs/aegis-grok-bot.md](docs/aegis-grok-bot.md) |
-| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.1.0 --trust` | [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
+| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.1.1 --trust` | [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
 | Claude Code | `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk` | [docs/aegis-claude-code.md](docs/aegis-claude-code.md) |
 | Cursor | `.cursor-plugin/plugin.json` (skills, agents, the desk rule and `hooks/cursor-hooks.json`) | [docs/aegis-cursor.md](docs/aegis-cursor.md) |
 | Codex | `.agents/plugins/marketplace.json` | [docs/aegis-codex.md](docs/aegis-codex.md) |
