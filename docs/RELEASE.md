@@ -15,12 +15,12 @@ version, this one included, makes the next version bump refuse to run.
 | Step | Who | State |
 | --- | --- | --- |
 | [1. Offline gates and CI](#1-offline-gates-and-ci) | the maintainer | Stage-1 content done; release commit to record |
-| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | to record |
+| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | done; the marketplace install observed after the tag |
 | [3. The Grok Build observation](#3-the-grok-build-observation) | you | to do |
 | [4. Counsel sign-off](#4-counsel-sign-off) | you | to do |
-| [5. The tag](#5-the-tag) | you | to do |
+| [5. The tag](#5-the-tag) | you | done by the release workflow, 2026-11-12 |
 | [6. The Grok Bot setup receipt](#6-the-grok-bot-setup-receipt) | you, guided by SETUP.md | to do |
-| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | to do |
+| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | Release published (pre-release); the template still to publish |
 | [8. After the tag: the version bump](#8-after-the-tag-the-version-bump) | the maintainer | to do |
 
 Steps 2 to 4 come before the tag, and so does your decision at the end of step 8. If a step fails, stop there. A
@@ -86,7 +86,7 @@ on the release commit and records them in the second table.
 | The shell sample is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Hook exit 2. Tool result: `PreToolUse:Bash hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.` The command never ran. |
 | The stub MCP tool is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Server `blackhole` connected. Hook exit 2. Tool result: `PreToolUse:mcp__blackhole__place_order hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an MCP tool named blackhole__place_order (order)). This desk never places, modifies or cancels orders; you act in your brokerage account.` |
 | The read runs. The hook gives no opinion. | 2026-11-05 | 2.1.318 | Hook exit 0 with no output; `git status --short` ran and printed nothing (a clean clone). |
-| After the tag, and before step 8 merges: `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`, installs the tagged release. | | | |
+| After the tag, and before step 8 merges: `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`, installs the tagged release. | 2026-11-12 | 2.1.322 | Run headless as `claude plugin marketplace add` and `claude plugin install` in an empty config directory. `Successfully added marketplace: aegis-desk`, then `Successfully installed plugin: aegis-desk@aegis-desk (scope: user)`; `claude plugin list` shows version 0.1.0, enabled, and the install record names commit `303971033b4c6d6a9f7efa5387f7209a6d61dd4a`, the tag's commit. |
 
 The re-run on the release commit, after the Structuring Desk:
 
@@ -196,9 +196,9 @@ again: it reuses a tag already on that commit and refuses a tag on any other com
 
 | Item | Value |
 | --- | --- |
-| Tag commit | |
-| Date (UTC) | |
-| The last line of `check_grok_template.py` after the tag | |
+| Tag commit | `303971033b4c6d6a9f7efa5387f7209a6d61dd4a` (the merge of pull request 7; the annotated tag object is `3b86ccc46d240bad2fdd34a155c7f1e67fe519c7`), created by the release workflow's run 1 (https://github.com/fairgradient-ai/aegis-grok-desk/actions/runs/43290288037), which passed both jobs |
+| Date (UTC) | 2026-11-12 19:30 |
+| The last line of `check_grok_template.py` after the tag | `ok: Grok Bot template is unpublished, release 0.1.0, 22 verified skill file(s), exports 1`, with no `skip:` line, on a clean clone of the tag |
 
 ## 6. The Grok Bot setup receipt
 
@@ -246,7 +246,7 @@ ships as 0.1.1.
 
 | Item | Date (UTC) | Link |
 | --- | --- | --- |
-| GitHub Release | | |
+| GitHub Release | 2026-11-12 19:30 | https://github.com/fairgradient-ai/aegis-grok-desk/releases, "Aegis Desk 0.1.0" (pre-release, published by the release workflow with the 0.1.0 section of `CHANGELOG.md`) |
 | Grok Bot template published | | |
 
 ## 8. After the tag: the version bump
