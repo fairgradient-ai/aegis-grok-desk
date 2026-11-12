@@ -178,6 +178,15 @@ git push origin "v$release"
 python3 scripts/check_grok_template.py
 ```
 
+Or, without a clone: on GitHub open Actions, choose **Release**, then **Run workflow** on the branch `main`, enter the
+version as `plugin.json` names it and keep the pre-release box ticked. The workflow
+([release.yml](../.github/workflows/release.yml)) repeats the commands above on the head of `main`. Its read-only
+first job checks that the version matches `plugin.json` and has a section in `CHANGELOG.md`, and runs
+`bash scripts/check.sh` and `release_bump.py --check`. Its second job then creates the annotated tag on that commit,
+pushes it, runs `check_grok_template.py` and publishes the GitHub Release (step 7) with the version's `CHANGELOG.md`
+section as its notes. Only someone with write access can start it. If a run fails after the tag is pushed, run it
+again: it reuses a tag already on that commit and refuses a tag on any other commit.
+
 - The commit that `git log` prints must be the release commit of step 1.
 - If you sign your tags, use `git tag -s` instead of `git tag -a`.
 - Before the tag, `check_grok_template.py` prints a `skip:` line, because there is no tag to compare with. After
@@ -227,7 +236,8 @@ ships as 0.1.1.
 
 ## 7. The GitHub Release and the template
 
-- Create a GitHub Release from the tag. Its notes are the 0.1.0 section of `CHANGELOG.md`.
+- Create a GitHub Release from the tag. Its notes are the 0.1.0 section of `CHANGELOG.md`. The release workflow of
+  step 5 publishes it with the tag; check that it is there.
 - The links in the README's [Start](../README.md#start) work once the tag exists. The README's status line changes
   in the first pull request after the tag, together with the version bump of step 8.
 - Publish the Grok Bot template as

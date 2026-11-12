@@ -110,7 +110,8 @@ means at each phase, because some steps have nothing to check until their inputs
 
 - Never commit directly to `main` after the scaffold commit; CI (`.github/workflows/ci.yml`)
   runs `bash scripts/check.sh` on every push and pull request, and the oracle workflow runs the
-  QuantLib cross-check.
+  QuantLib cross-check. The release workflow (`.github/workflows/release.yml`) runs only by hand, on
+  `main`: it repeats the release gate, creates the tag and publishes the GitHub Release.
 
 ## Releasing
 
@@ -131,7 +132,8 @@ who does each step and the evidence rows):
 3. Grok Build local-path install with the deny tests **observed**: the hook refuses the shell
    sample and the stub MCP tool `blackhole__place_order` (the stub server is
    `tests/fixtures/release/blackhole_mcp.py`, which does nothing).
-4. **Tag** `vX.Y.Z` (pushed by the owner). From this point `check_grok_template.py` compares the
+4. **Tag** `vX.Y.Z`: pushed by the owner, or created by the release workflow (Actions, Release, Run
+   workflow, on `main`), which repeats the release gate first. From this point `check_grok_template.py` compares the
    template's claimed skill bytes with the tag.
 5. The owner's Grok Bot bootstrap from the tag, ending with the receipt line
    "Setup stayed read-only: one sandbox market-data token was added by you; no order was created
