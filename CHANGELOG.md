@@ -1,7 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-11-12)
 
+- Release workflow: `.github/workflows/release.yml` tags `main` and publishes the GitHub Release. It runs only when
+  someone with write access starts it by hand (Actions, Release, Run workflow, on `main`), with the version (as in
+  `plugin.json`) and a pre-release switch. Before the tag it repeats the gate of `docs/RELEASE.md` step 5: the version
+  matches `plugin.json` and has a section here, the tag does not exist yet, `bash scripts/check.sh` and
+  `release_bump.py <version> --check` pass; after the tag it runs `check_grok_template.py` and publishes the Release
+  with this section as its notes. Its write access is scoped to that one job; the version reaches the shell only
+  through `env:`. `tests/gates/test_release_workflow.py` pins these properties (10 more tests).
 - A short option's act-by (FAI-689): the expiry checklist (the FINAL CALL, the T-1 preview and the PIN lines), the
   assignment watch and the morning sheet print a short option leg's act-by as the session close of its last trading
   day (16:00 ET; 13:00 ET on an early close), or `broker_exercise_cutoff_et` when that is earlier, because a short

@@ -1,0 +1,97 @@
+# Aegis Desk release: tags `main` and publishes the GitHub Release, after the same gate as
+# docs/RELEASE.md step 5. It runs only when someone with write access starts it by hand
+# (Actions -> Release -> Run workflow, branch main), and it holds the repository's only write
+# access: the release tag and the Release. It places no order and touches no brokerage.
+#
+# The version input reaches the shell only through env: (never interpolated into a script), and
+# tests/gates/test_release_workflow.py pins these properties.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the letter v, as in plugin.json (e.g. 0.1.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a pre-release"
+        required: true
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      PRERELEASE: ${{ inputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history and tags: the template check compares claimed bytes with the tag.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the version against plugin.json and CHANGELOG.md
+        run: |
+          python3 -I -B - <<'PY'
+          import json, os, re, sys
+          version = os.environ["VERSION"]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              sys.exit("release: version must look like 1.2.3, without the letter v")
+          with open("plugin.json", encoding="utf-8") as handle:
+              manifest = json.load(handle)["version"]
+          if manifest != version:
+              sys.exit("release: plugin.json names " + manifest + ", not " + version)
+          with open("CHANGELOG.md", encoding="utf-8") as handle:
+              headings = re.findall(r"^## (\S+)", handle.read(), re.M)
+          if version not in headings:
+              sys.exit("release: CHANGELOG.md has no section for " + version)
+          print("ok: version " + version + " matches plugin.json and CHANGELOG.md")
+          PY
+      - name: Refuse a tag that already exists
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "release: the tag v$VERSION already exists" >&2
+            exit 1
+          fi
+          echo "ok: no tag v$VERSION yet; tagging $GITHUB_SHA"
+      - name: Repository gate
+        run: bash scripts/check.sh
+      - name: Every pin names the version
+        run: python3 scripts/release_bump.py "$VERSION" --check
+      - name: Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" "$GITHUB_SHA" -m "Aegis Desk $VERSION"
+          git push origin "refs/tags/v$VERSION"
+      - name: Template matches the tag
+        run: python3 scripts/check_grok_template.py
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I -B - <<'PY'
+          import os, re
+          version = os.environ["VERSION"]
+          with open("CHANGELOG.md", encoding="utf-8") as handle:
+              text = handle.read()
+          start = re.search(r"^## " + re.escape(version) + r"\b.*$", text, re.M)
+          end = re.search(r"^## ", text[start.end():], re.M)
+          body = text[start.end():start.end() + end.start()] if end else text[start.end():]
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "notes.md"), "w", encoding="utf-8") as handle:
+              handle.write(body.strip() + "\n")
+          PY
+          flag=""
+          if [ "$PRERELEASE" = "true" ]; then flag="--prerelease"; fi
+          gh release create "v$VERSION" --verify-tag --title "Aegis Desk $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" $flag
