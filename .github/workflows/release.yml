@@ -3,7 +3,12 @@
 # (Actions -> Release -> Run workflow, branch main), and it holds the repository's only write
 # access: the release tag and the Release. It places no order and touches no brokerage.
 #
-# The version input reaches the shell only through env: (never interpolated into a script), and
+# Two jobs: `gate` runs the checks read-only, with no credential left in the checkout; `release`
+# runs only after it passes, on the same commit, and is the one job with contents: write. A run
+# that failed after pushing the tag can be re-run: a tag already on this commit is reused, a tag on
+# any other commit is refused, and an existing Release is left as it is.
+#
+# The inputs reach the shell only through env: (never interpolated into a script), and
 # tests/gates/test_release_workflow.py pins these properties.
 name: Release
 on:
@@ -23,20 +28,19 @@ permissions:
 concurrency:
   group: release
   cancel-in-progress: false
+env:
+  VERSION: ${{ inputs.version }}
+  PRERELEASE: ${{ inputs.prerelease }}
 jobs:
-  release:
+  gate:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      VERSION: ${{ inputs.version }}
-      PRERELEASE: ${{ inputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history and tags: the template check compares claimed bytes with the tag.
+          # Full history and tags, as in ci.yml; no credential is kept for the steps below.
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -57,29 +61,56 @@ jobs:
               sys.exit("release: CHANGELOG.md has no section for " + version)
           print("ok: version " + version + " matches plugin.json and CHANGELOG.md")
           PY
-      - name: Refuse a tag that already exists
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
-            echo "release: the tag v$VERSION already exists" >&2
-            exit 1
-          fi
-          echo "ok: no tag v$VERSION yet; tagging $GITHUB_SHA"
       - name: Repository gate
         run: bash scripts/check.sh
       - name: Every pin names the version
         run: python3 scripts/release_bump.py "$VERSION" --check
-      - name: Tag
+  release:
+    needs: gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag the gated commit
         run: |
+          # An annotated tag is listed twice: the tag object, then the commit it points at (^{}).
+          # List every tag (a ref pattern would drop the ^{} line) and match the exact name.
+          lines=$(git ls-remote --tags origin)
+          peeled=$(printf '%s\n' "$lines" | awk -v ref="refs/tags/v$VERSION^{}" '$2 == ref {print $1}')
+          plain=$(printf '%s\n' "$lines" | awk -v ref="refs/tags/v$VERSION" '$2 == ref {print $1}')
+          remote=${peeled:-$plain}
+          if [ -n "$remote" ]; then
+            if [ "$remote" != "$GITHUB_SHA" ]; then
+              echo "release: the tag v$VERSION already exists on $remote, not on $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "ok: the tag v$VERSION is already on $GITHUB_SHA (resuming)"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$VERSION" "$GITHUB_SHA" -m "Aegis Desk $VERSION"
           git push origin "refs/tags/v$VERSION"
+          echo "ok: tagged $GITHUB_SHA as v$VERSION"
       - name: Template matches the tag
-        run: python3 scripts/check_grok_template.py
+        run: |
+          git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION"
+          python3 scripts/check_grok_template.py
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "ok: the GitHub Release for v$VERSION already exists"
+            exit 0
+          fi
           python3 -I -B - <<'PY'
           import os, re
           version = os.environ["VERSION"]

@@ -4,11 +4,14 @@
 
 - Release workflow: `.github/workflows/release.yml` tags `main` and publishes the GitHub Release. It runs only when
   someone with write access starts it by hand (Actions, Release, Run workflow, on `main`), with the version (as in
-  `plugin.json`) and a pre-release switch. Before the tag it repeats the gate of `docs/RELEASE.md` step 5: the version
-  matches `plugin.json` and has a section here, the tag does not exist yet, `bash scripts/check.sh` and
-  `release_bump.py <version> --check` pass; after the tag it runs `check_grok_template.py` and publishes the Release
-  with this section as its notes. Its write access is scoped to that one job; the version reaches the shell only
-  through `env:`. `tests/gates/test_release_workflow.py` pins these properties (10 more tests).
+  `plugin.json`) and a pre-release switch. A read-only `gate` job, which keeps no credential in its checkout, repeats
+  the gate of `docs/RELEASE.md` step 5: the version matches `plugin.json` and has a section here, and
+  `bash scripts/check.sh` and `release_bump.py <version> --check` pass. Only then does the `release` job, the one job
+  with write access (`contents: write`), create the annotated tag on the same commit, push it, run
+  `check_grok_template.py` and publish the Release with this section as its notes. A re-run after a failure reuses a
+  tag already on that commit and an existing Release, and refuses a tag on any other commit. The inputs reach the
+  shell only through `env:`. `tests/gates/test_release_workflow.py` pins these properties (12 more tests, 3040 in
+  all; floor 3040).
 - A short option's act-by (FAI-689): the expiry checklist (the FINAL CALL, the T-1 preview and the PIN lines), the
   assignment watch and the morning sheet print a short option leg's act-by as the session close of its last trading
   day (16:00 ET; 13:00 ET on an early close), or `broker_exercise_cutoff_et` when that is earlier, because a short
