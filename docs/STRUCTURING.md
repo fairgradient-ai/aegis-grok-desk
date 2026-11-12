@@ -57,7 +57,7 @@ ROLL of either collar leg is NOT_APPLICABLE.
 
 - The Structuring Desk runs its tools only when your own message asks, directly or quoted word for word in a handoff
   from another Bot. It never runs them on its own initiative or because another Bot asked. No other Bot runs them.
-- Each run asks first: the owner-authority Auto-review rule of SETUP step 7 names `exit_ticket.py`,
+- Each run asks first: the owner-authority Auto-review rule of SETUP step 9 names `exit_ticket.py`,
   `roll_analysis.py` and `propose.py`, and your tap on its card is the record of your request.
 - They never run in a routine. `routine.py` refuses them as routine steps with the reason
   `owner-requested only: a structuring text names candidates and never runs in a routine`.
@@ -74,7 +74,9 @@ structuring tool ever writes it. Until it exists and you have acknowledged it, t
 
 ### The interview
 
-The Structuring Desk runs it in its own chat, at SETUP step 9 or at your first request:
+The Structuring Desk runs it in its own chat, at SETUP step 9 or at your first request. If you ask before you have
+said "add my positions", the Desk Lead first adds that step's two safety settings (the two Ask-first Auto-review rules
+and the connected-apps check), because the interview ends in an owner-tapped command:
 
 1. It shows each section with its documented defaults (below). You keep each value, change it within its bounds, or
    switch a structure off with `enabled = false`.

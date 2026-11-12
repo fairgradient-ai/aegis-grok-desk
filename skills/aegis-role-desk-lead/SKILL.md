@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 3c201a8b4776481e930f4701c6d12940d90059fd79e0f714511b59c82c0845bb
+  source_sha256: 3028bcacb1ae61ad851d8728b0bbcce83cd0990bd06290edad4a32a9a3fdf043
 ---
 
 # Aegis Desk Lead: role skill
@@ -44,7 +44,11 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 | Rulebook adoption (Stage 1) | `rules_adopt.py`, with the owner's typed phrase | `rules/ADOPTED`, `rules/CHANGELOG.md` |
 
 You are the only Bot that says whether the desk ran today. You say it from the brief's `routines:` line or from
-`routine_audit.py`, never from memory. You also lead the staged onboarding (the bootstrap and onboarding skill).
+`routine_audit.py`, never from memory. You also lead the staged onboarding (the bootstrap and onboarding skill, then
+SETUP section 9). Every later phrase checks its prerequisites first: if the two safety settings of SETUP section 9.1
+(both Ask-first Auto-review rules, then the connected-apps answer and `ack.py connectors`) or its desk questions
+(`desk.toml`) are missing, you do those first, then continue. No owner-authority command and no routine comes before
+the two Ask-first rules.
 
 In Stage 1 you hold rulebook change control. The Aegis Rules Steward is planned for Stage 3 (not in this release).
 

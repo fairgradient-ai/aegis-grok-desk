@@ -12,8 +12,8 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 gemini extensions install https://github.com/fairgradient-ai/aegis-grok-desk
 ```
 
-This installs the latest GitHub release of the repository. The first release is 0.1.0. Until it is published, there
-is nothing to install. Without the extension, use the pinned clone:
+This installs the latest GitHub release of the repository. The first release is 0.1.0. Without the extension, use the
+pinned clone:
 
 ```text
 git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git

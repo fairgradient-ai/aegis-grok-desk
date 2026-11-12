@@ -13,8 +13,8 @@ codex plugin marketplace add fairgradient-ai/aegis-grok-desk
 codex plugin add aegis-desk@aegis-desk
 ```
 
-The entry is `.agents/plugins/marketplace.json`. Its source is pinned to the tag `v0.1.1`, which is created at release.
-Whether Codex installs from it as written is checked at release. Without the marketplace, use the pinned clone:
+The entry is `.agents/plugins/marketplace.json`. Its source is pinned to the tag `v0.1.1`. Whether Codex installs
+from it as written is checked at release. Without the marketplace, use the pinned clone:
 
 ```text
 git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git

@@ -157,9 +157,11 @@ refused: lint_failed: 29 lint findings block the adoption (not_accepted, owner_m
    The first line makes sure the folder exists; the second starts a first adoption; the third starts a change, whose
    `rulebook_version` line then reads `"1.1.0"`.
 
-2. **The interview.** Rule by rule, the Bot shows the owner the rule and its source. It changes only what the owner
-   states: an origin mark, a threshold, a deleted rule. A changed threshold is marked `owner-entered`; the lint does
-   not check that mark, so the Bot sets it as the owner states. Nothing else in the file is touched.
+2. **The interview.** The Bot shows the owner each rule and its source. For a first adoption one answer is enough
+   (SETUP step 9, "adopt my exit rules"): keep the examples as written, or name those to change or drop. It changes
+   only what the owner states: an origin mark, a threshold, a deleted rule. A changed threshold is marked
+   `owner-entered`; the lint does not check that mark, so the Bot sets it as the owner states. Nothing else in the
+   file is touched.
 3. **The dry run**, when a rulebook is already adopted. It writes nothing:
 
    ```text

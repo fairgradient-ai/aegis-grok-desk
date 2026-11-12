@@ -155,7 +155,7 @@ row below is signed before the tag and before any public release:
 | 3. The roll-analysis text: the candidate lines, the FAILS_CRITERION labels, the best-candidate line and its caveat | [STRUCTURING.md](STRUCTURING.md#a-roll-analysis), [the roll skill](../skills/aegis-roll-decision-framework/SKILL.md) | | | |
 | 4. The proposal text for covered calls, protective puts and collars | [STRUCTURING.md](STRUCTURING.md#a-proposal), [the proposals skill](../skills/aegis-overlay-proposals/SKILL.md) | | | |
 | 5. The approval convention and the REFUSED line | [STRUCTURING.md](STRUCTURING.md#the-approval-level-check), `scripts/aegis_desk/approval.py` | | | |
-| 6. The criteria defaults and how the interview presents them | [STRUCTURING.md](STRUCTURING.md#your-criteria-structuringtoml), [SETUP step 9](../SETUP.md#9-positions-dividends-the-rulebook-and-your-structuring-criteria), [PROVENANCE.md](PROVENANCE.md#structuring-criteria-and-objectives-the-desks-design-choices) | | | |
+| 6. The criteria defaults and how the interview presents them | [STRUCTURING.md](STRUCTURING.md#your-criteria-structuringtoml), [SETUP step 9](../SETUP.md#94-set-up-the-structuring-desk), [PROVENANCE.md](PROVENANCE.md#structuring-criteria-and-objectives-the-desks-design-choices) | | | |
 | 7. The FAQ answer and the README description | [FAQ.md](FAQ.md#is-this-investment-advice), the README's [Meet the desk](../README.md#meet-the-desk) and [Controls](../README.md#controls) | | | |
 | 8. Whether publishing open-source software that names a best candidate for a user's own positions (MIT licence, no compensation, configured by the owner, run on the owner's own account) raises investment-adviser questions for FairGradient or the operator, under the Advisers Act definition and the publisher's exclusion, or under state law | this repository | | | |
 | 9. Whether the README's Start block and the Grok Bot template publication (step 7) may advertise the Structuring Desk, or whether it ships documented but off until counsel signs | the README's [Start](../README.md#start), [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md) | | | |
@@ -204,10 +204,10 @@ again: it reuses a tag already on that commit and refuses a tag on any other com
 
 Open Grok Bot, create a new Bot, and paste the prompt from the README's [Start](../README.md#start). The Lead
 follows [SETUP.md](../SETUP.md) from the tag. The steps marked **You** there are yours. When the Lead returns the
-receipt of [SETUP step 11](../SETUP.md#11-return-the-receipt), tick each item below. If an item fails, the fix
+receipt of [SETUP step 11](../SETUP.md#8-return-the-receipt), tick each item below. If an item fails, the fix
 ships as 0.1.1.
 
-- [ ] Routines work on your plan: the test routine of [SETUP step 0](../SETUP.md#0-prove-routines-work-on-your-plan)
+- [ ] Routines work on your plan: the test routine of [SETUP step 0](../SETUP.md#93-turn-on-monitoring)
   was created, read back and deleted.
 - [ ] The release and the pin check line, and the `check.sh` result.
 - [ ] The four Stage-1 Bots by Name and Job, read back.

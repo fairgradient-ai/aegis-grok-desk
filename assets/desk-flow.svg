@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 452" width="800" height="452" role="img" aria-labelledby="t d">
+<title id="t">How the desk works</title>
+<desc id="d">How the desk works: 1 your positions; 2 marked by the tools; 3 checked against your adopted rules; 4 an alert in your chat; 5 you act in your broker. When you ask "What are my choices?", the Structuring Desk scores choices for a position you hold by your own criteria, on request, and you still decide in your broker. Every number comes from a tool, with its source and time. Data that cannot be fetched is UNAVAILABLE, never a guess.</desc>
+<style>.s{font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif}.m{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}.tx{fill:#e9eef7}.mu{fill:#a3b1c9}.fa{fill:#8a98b3}.az{fill:#62b4ff}.am{fill:#f3b641}.co{fill:#ff8a73}.b{font-weight:700}.sb{font-weight:600}@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}.pulse{animation:pulse 3.6s ease-in-out infinite}.d1{animation-delay:.6s}.d2{animation-delay:1.2s}.d3{animation-delay:1.8s}.d4{animation-delay:2.4s}@media (prefers-reduced-motion:reduce){.pulse{animation:none;opacity:1}}</style>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0c1322"/><stop offset="1" stop-color="#121c30"/></linearGradient><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a3b1c9"/></marker><marker id="ara" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f3b641"/></marker></defs>
+<rect x="0.5" y="0.5" width="799" height="451" rx="18" fill="url(#bg)" stroke="#2c3b5c"/>
+<text x="20" y="40" class="s sb fa" font-size="12" xml:space="preserve">HOW THE DESK WORKS</text>
+<text x="20" y="62" class="s sb tx" font-size="17" xml:space="preserve">From the positions you hold to the decision you make</text>
+<rect x="20" y="84" width="136" height="182" rx="12" fill="#17233a" stroke="#2c3b5c"/>
+<circle cx="44" cy="108" r="12" fill="#1d2b46" stroke="#62b4ff" stroke-width="1.5"/>
+<circle cx="44" cy="108" r="16" fill="none" stroke="#62b4ff" stroke-width="1" class="pulse "/>
+<text x="44" y="112.5" class="s b tx" font-size="12" text-anchor="middle" xml:space="preserve">1</text>
+<text x="34" y="144" class="s b tx" font-size="13" xml:space="preserve">Your positions</text>
+<text x="34" y="167" class="s mu" font-size="11.5" xml:space="preserve">The book you keep</text>
+<text x="34" y="183.5" class="s mu" font-size="11.5" xml:space="preserve">in positions.csv,</text>
+<text x="34" y="200" class="s mu" font-size="11.5" xml:space="preserve">drafted from your</text>
+<text x="34" y="216.5" class="s mu" font-size="11.5" xml:space="preserve">own words.</text>
+<line x1="159" y1="175" x2="173" y2="175" stroke="#a3b1c9" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="176" y="84" width="136" height="182" rx="12" fill="#17233a" stroke="#2c3b5c"/>
+<circle cx="200" cy="108" r="12" fill="#1d2b46" stroke="#62b4ff" stroke-width="1.5"/>
+<circle cx="200" cy="108" r="16" fill="none" stroke="#62b4ff" stroke-width="1" class="pulse d1"/>
+<text x="200" y="112.5" class="s b tx" font-size="12" text-anchor="middle" xml:space="preserve">2</text>
+<text x="190" y="144" class="s b tx" font-size="13" xml:space="preserve">Marked by the</text>
+<text x="190" y="161" class="s b tx" font-size="13" xml:space="preserve">tools</text>
+<text x="190" y="184" class="s mu" font-size="11.5" xml:space="preserve">Quotes, P/L and</text>
+<text x="190" y="200.5" class="s mu" font-size="11.5" xml:space="preserve">Greeks from</text>
+<text x="190" y="217" class="s mu" font-size="11.5" xml:space="preserve">deterministic</text>
+<text x="190" y="233.5" class="s mu" font-size="11.5" xml:space="preserve">tools, never from</text>
+<text x="190" y="250" class="s mu" font-size="11.5" xml:space="preserve">the AI.</text>
+<line x1="315" y1="175" x2="329" y2="175" stroke="#a3b1c9" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="332" y="84" width="136" height="182" rx="12" fill="#17233a" stroke="#2c3b5c"/>
+<circle cx="356" cy="108" r="12" fill="#1d2b46" stroke="#62b4ff" stroke-width="1.5"/>
+<circle cx="356" cy="108" r="16" fill="none" stroke="#62b4ff" stroke-width="1" class="pulse d2"/>
+<text x="356" y="112.5" class="s b tx" font-size="12" text-anchor="middle" xml:space="preserve">3</text>
+<text x="346" y="144" class="s b tx" font-size="13" xml:space="preserve">Your adopted</text>
+<text x="346" y="161" class="s b tx" font-size="13" xml:space="preserve">rules</text>
+<text x="346" y="184" class="s mu" font-size="11.5" xml:space="preserve">Only the exit</text>
+<text x="346" y="200.5" class="s mu" font-size="11.5" xml:space="preserve">rules you said yes</text>
+<text x="346" y="217" class="s mu" font-size="11.5" xml:space="preserve">to are checked.</text>
+<line x1="471" y1="175" x2="485" y2="175" stroke="#a3b1c9" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="488" y="84" width="136" height="182" rx="12" fill="#17233a" stroke="#2c3b5c"/>
+<circle cx="512" cy="108" r="12" fill="#1d2b46" stroke="#f3b641" stroke-width="1.5"/>
+<circle cx="512" cy="108" r="16" fill="none" stroke="#f3b641" stroke-width="1" class="pulse d3"/>
+<text x="512" y="112.5" class="s b tx" font-size="12" text-anchor="middle" xml:space="preserve">4</text>
+<text x="502" y="144" class="s b tx" font-size="13" xml:space="preserve">An alert in</text>
+<text x="502" y="161" class="s b tx" font-size="13" xml:space="preserve">your chat</text>
+<text x="502" y="184" class="s mu" font-size="11.5" xml:space="preserve">Which of your</text>
+<text x="502" y="200.5" class="s mu" font-size="11.5" xml:space="preserve">rules fired and</text>
+<text x="502" y="217" class="s mu" font-size="11.5" xml:space="preserve">why, with the</text>
+<text x="502" y="233.5" class="s mu" font-size="11.5" xml:space="preserve">data's age.</text>
+<line x1="627" y1="175" x2="641" y2="175" stroke="#a3b1c9" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="644" y="84" width="136" height="182" rx="12" fill="#17233a" stroke="#2c3b5c"/>
+<circle cx="668" cy="108" r="12" fill="#1d2b46" stroke="#62b4ff" stroke-width="1.5"/>
+<circle cx="668" cy="108" r="16" fill="none" stroke="#62b4ff" stroke-width="1" class="pulse d4"/>
+<text x="668" y="112.5" class="s b tx" font-size="12" text-anchor="middle" xml:space="preserve">5</text>
+<text x="658" y="144" class="s b tx" font-size="13" xml:space="preserve">You act in</text>
+<text x="658" y="161" class="s b tx" font-size="13" xml:space="preserve">your broker</text>
+<text x="658" y="184" class="s mu" font-size="11.5" xml:space="preserve">The desk never</text>
+<text x="658" y="200.5" class="s mu" font-size="11.5" xml:space="preserve">places, modifies</text>
+<text x="658" y="217" class="s mu" font-size="11.5" xml:space="preserve">or cancels orders.</text>
+<line x1="556" y1="269" x2="556" y2="317" stroke="#f3b641" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#ara)"/>
+<rect x="404" y="320" width="214" height="40" rx="20" fill="#1d2b46" stroke="#f3b641"/>
+<text x="420" y="345" class="s sb am" font-size="12.5" xml:space="preserve">You ask</text>
+<text x="474" y="345" class="s tx" font-size="13" xml:space="preserve">“What are my choices?”</text>
+<line x1="621" y1="340" x2="641" y2="340" stroke="#f3b641" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#ara)"/>
+<rect x="644" y="300" width="136" height="132" rx="12" fill="#17233a" stroke="#f3b641" stroke-dasharray="5 4"/>
+<text x="658" y="326" class="s b tx" font-size="13.5" xml:space="preserve">Structuring Desk</text>
+<text x="658" y="344" class="s sb am" font-size="11.5" xml:space="preserve">on request</text>
+<text x="658" y="366" class="s mu" font-size="11.5" xml:space="preserve">Scores choices for</text>
+<text x="658" y="382.5" class="s mu" font-size="11.5" xml:space="preserve">a position you</text>
+<text x="658" y="399" class="s mu" font-size="11.5" xml:space="preserve">hold, by your own</text>
+<text x="658" y="415.5" class="s mu" font-size="11.5" xml:space="preserve">criteria.</text>
+<line x1="712" y1="297" x2="712" y2="270" stroke="#f3b641" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#ara)"/>
+<text x="20" y="336" class="s mu" font-size="12.5" xml:space="preserve">Every number comes from a tool, with its source and</text>
+<text x="20" y="355" class="s mu" font-size="12.5" xml:space="preserve">time. Data that cannot be fetched is UNAVAILABLE,</text>
+<text x="20" y="374" class="s mu" font-size="12.5" xml:space="preserve">never a guess.</text>
+</svg>

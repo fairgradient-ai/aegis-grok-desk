@@ -21,9 +21,9 @@ Then load the charter first:
 /aegis-desk:aegis-desk-charter
 ```
 
-The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.1.1`, which is created
-at release. Whether Claude Code honours that pin is checked at release. If it does not, the marketplace follows the
-default branch, and the pinned clone below is the reviewed way in.
+The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.1.1`. Whether Claude
+Code honours that pin is checked at release. If it does not, the marketplace follows the default branch, and the
+pinned clone below is the reviewed way in.
 
 ## What loads
 

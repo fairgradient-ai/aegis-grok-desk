@@ -24,6 +24,9 @@ setup chains and the values the tools computed; every desk tool has at least one
 (the Structuring Desk's ``roll_analysis``, ``propose`` and ``exit_ticket``) are pinned with their commands, instants and
 values; each structuring chain writes and acknowledges ``structuring.toml`` on its copy first (``desk_init.py --answers``,
 then ``ack.py config --owner-tapped``), two fail-closed journeys run without it, and no routine journey runs them.
+The README's try-it, ``opening_bell.py --demo --json``, is the one ``checkout_only`` journey: it runs as published (no
+``--desk-root``, ``--offline`` or ``--now`` added, since the tool names its own fixture desk and instant) and, like a tool
+journey, only against this checkout.
 """
 
 from __future__ import annotations
@@ -403,6 +406,18 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
 }
 
 
+# The README's try-it (``opening_bell.py --demo``): the demo line, then the regular set's snapshot of SPY, computed by the
+# tool on a copy of the main fixture root.
+DEMO_JOURNEY = "opening_bell --demo -> synthetic sample snapshot (no desk root, no instant)"
+DEMO_LINE = "Demo: synthetic sample data from the desk's test fixtures, not real market prices; nothing is written"
+DEMO_EXPECTED: Dict[str, Any] = {
+    "status": "ok", "tool": "opening_bell", "payload.demo": True, "payload.fixture_set": "regular", "payload.symbol": "SPY",
+    "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18", "payload.expected_move.straddle": "36.76",
+    "payload.requests_made": 3, "payload.lint.ok": True,
+    "payload.message": harness.TextMatch(prefix=DEMO_LINE + "\nSPY 648.12 mid (bid 648.10, ask 648.14), as of 19:31 UTC",
+                                         contains=("not a signal",)),
+}
+
 def by_name() -> Dict[str, harness.Journey]:
     return {journey.name: journey for journey in harness.JOURNEYS}
 
@@ -445,7 +460,7 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)), names)
 
     def test_gate_journeys_are_exactly_three_and_alone_against_another_tree(self) -> None:
-        gate = [journey for journey in harness.JOURNEYS if journey.desk_root is None]
+        gate = [journey for journey in harness.JOURNEYS if journey.desk_root is None and not journey.checkout_only]
         self.assertEqual(list(GATE_JOURNEYS), [journey.name for journey in gate])
         self.assertTrue(all(not journey.steps for journey in gate), "gate journeys are single commands")
         with tempfile.TemporaryDirectory(prefix="aegis-other-tree-") as other:
@@ -454,6 +469,21 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(len(harness.JOURNEYS) - len(GATE_JOURNEYS), len(skipped))
         selected, skipped = harness.select(ROOT)
         self.assertEqual((len(harness.JOURNEYS), []), (len(selected), skipped))
+
+    def test_the_demo_journey_runs_the_published_try_it_command_as_is(self) -> None:
+        # README "Try it now": python3 scripts/opening_bell.py --demo. The tool names this checkout's own fixture desk and
+        # instant, so the harness adds no --desk-root, --offline or --now; it runs only against this checkout.
+        demo = [journey for journey in harness.JOURNEYS if journey.checkout_only]
+        self.assertEqual([DEMO_JOURNEY], [journey.name for journey in demo])
+        journey = demo[0]
+        self.assertEqual((("opening_bell.py", "--demo", "--json"), 0, None, False, ()),
+                         (journey.argv, journey.expected_exit, journey.desk_root, journey.copy_desk_root, journey.steps))
+        for key, value in DEMO_EXPECTED.items():
+            self.assertIn(key, journey.expected_json)
+            self.assertEqual(value, journey.expected_json[key], key)
+        with tempfile.TemporaryDirectory(prefix="aegis-other-tree-") as other:
+            _selected, skipped = harness.select(other)
+        self.assertIn(journey, skipped)
 
     def test_tool_journeys_run_offline_with_an_instant_on_a_copy_of_a_fixture_root(self) -> None:
         tool_journeys = [journey for journey in harness.JOURNEYS if journey.desk_root is not None]

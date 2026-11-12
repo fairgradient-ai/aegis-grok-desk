@@ -2,6 +2,52 @@
 
 Short answers for the owner, from what this release does. The details are linked.
 
+## What does setup ask me for?
+
+One thing. You paste the Start prompt from the [README](../README.md#start) into a new Grok Bot. The Aegis Desk Lead
+builds the desk, shows you a demo on a sample book, and asks you for one thing: a free Tradier sandbox market-data
+token, added through the secure secret card, never pasted in chat. It checks the token with one live market snapshot
+and returns a receipt. Nothing else is asked in the first run.
+
+Everything else waits until you say so:
+
+| Say | What happens | What you do |
+| --- | --- | --- |
+| "add my positions" | the two safety rules and the connected-apps check first, then the desk settings with suggested answers, then your positions | paste two Auto-review rules, answer one question about connected apps, confirm the settings, describe your positions in your own words and approve the drafted lines |
+| "adopt my exit rules" | the example rules, ready to adopt | keep them or change some, then tap approve and type the adoption phrase |
+| "turn on monitoring" | a check that routines work on your plan, the daily routines created paused, one test run, then switched on | turn on Notifications and set the Timezone on three Bots, paste the Allow rule |
+| "set up the structuring desk" (optional) | the criteria the Structuring Desk scores your choices by | answer its questions and tap approve |
+
+Say "add my positions" first. Whichever phrase you say first, the Lead checks what that step sets up (the two
+Ask-first rules, the connected-apps check and the desk settings) and does any missing part before anything else.
+[SETUP.md](../SETUP.md) section 9 has each step.
+
+## How do I get a Tradier sandbox token?
+
+The desk reads delayed market data from Tradier's sandbox, its free practice (paper trading) environment. You need a
+free Tradier account, then its sandbox token. Tradier no longer offers a developer-only sandbox without an account.
+
+1. **Open a Tradier account.** Go to [tradier.com](https://tradier.com) and choose Sign up. Tradier's API FAQ says
+   API access comes with the account at no extra cost, and that the sandbox is free. Whether the account must be
+   funded first is not confirmed. For personal use you need no Developer Portal.
+2. **Find the tokens.** Log in at [web.tradier.com/login](https://web.tradier.com/login), click your name in the top
+   right corner and choose API Access, or go straight to
+   [web.tradier.com/user/api](https://web.tradier.com/user/api). That page manages the tokens for both the live and
+   the sandbox environments. On a phone, open the same page in your phone's browser (not in a Bot's browser); a path
+   inside Tradier's mobile app is not confirmed.
+3. **Copy the sandbox token, and only that one.** The production token, under Production Account Access, sits on the
+   same page and comes first: leave it alone. Tradier's help calls the sandbox section Sandbox Account Access (Paper
+   trading) and describes enrolling in paper trading there if no sandbox token is listed yet; we could not confirm
+   those labels on the page itself. The token is hidden: tap the eye icon to show it and the copy icon to copy it.
+4. **Add it through the secure secret card** when the Aegis Desk Lead asks, never in chat. Tradier's advice: "Treat
+   your API tokens like passwords ... Anyone with access to your token can make API calls and take actions on your
+   account."
+
+The two tokens are separate. A sandbox token works with `https://sandbox.tradier.com/v1/` and a production token with
+`https://api.tradier.com/v1/`; Tradier lists using one with the other's endpoints as a cause of a 401 error. The desk
+talks only to the sandbox host, and its doctor checks the token with one read of the sandbox clock: a 401 or 403
+fails with `not a sandbox token: remove and rotate`.
+
 ## Can the desk place a trade for me?
 
 No. This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
@@ -13,6 +59,14 @@ answers with the boundary sentence above: the decision and the order are yours, 
 ask the Aegis Structuring Desk for a ticket, it lists the legs with their quotes and carries no order fields: you
 supply the limit and type it into your brokerage account yourself, if you decide to act. See
 [SECURITY.md](../SECURITY.md).
+
+One honest gap: the sandbox token could place paper orders on Tradier's practice host. The Auto-review rule that
+makes Grok Bot ask you before any order, brokerage write or brokerage sign-in is added when you say "add my
+positions", and it comes first whichever later phrase you say first. Between the first run and then, the desk holds
+only that sandbox token, which cannot reach a live account, and the desk's code still has no way to write: its
+market-data client sends GET requests only, and the repository gate proves it. If you paste the production token by
+mistake, the live check in the first run fails with `auth:` and the Lead asks you to delete it from the secret card at
+once; until you do, no Ask-first rule guards it.
 
 ## Why is the data 15 minutes late, and what does the desk do about it?
 
@@ -42,15 +96,17 @@ Brief names every late and missed run. See [MONITORING.md](MONITORING.md).
 ## How do I change a rule?
 
 Tell the Aegis Desk Lead what you want changed. It copies your adopted rulebook to a candidate, changes only what you
-stated, and shows the effect with `rules_diff.py` (it writes nothing). After the close, you tap approve and type the
-phrase `adopt rules X.Y.Z`, and the Lead runs `rules_adopt.py --owner-phrase "adopt rules X.Y.Z"`. The next book
+stated, and shows the effect with `rules_diff.py` (it writes nothing). You tap approve and type the phrase
+`adopt rules X.Y.Z`, and the Lead runs `rules_adopt.py --owner-phrase "adopt rules X.Y.Z"`. Adoption waits for the
+close unless you choose to adopt during market hours, which adds `--allow-rth` and is recorded. The next book
 check posts the digest once, and CONFIG CHANGED stands until you tap `ack.py config --owner-tapped`.
 The [exit rules page](EXIT_RULES.md) has the details.
 
 ## How do I record a trade, a close, an expiry or an assignment?
 
-Tell Aegis Position Control what you did in your broker. It turns it into exact `positions.csv` lines, and you apply
-them; on your explicit request it saves the exact text you supply. For an expiry or an assignment, `csv_recon.py
+Tell Aegis Position Control what you did in your broker, in your own words, for example "I sold 2 NVDA 20-Nov 150
+calls at 3.20 against my 200 shares". It drafts the exact `positions.csv` lines; you approve them, and it saves them
+exactly as approved, or you apply them yourself. For an expiry or an assignment, `csv_recon.py
 --diff` proposes the lines after the expiry, inferred from the official close: check them against your broker before
 you apply them. After any change, CONFIG CHANGED posts until you tap `ack.py config --owner-tapped`. See
 [POSITIONS_CSV.md](POSITIONS_CSV.md).
@@ -66,8 +122,9 @@ See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-
 
 ## Index options and AM settlement?
 
-The sandbox cannot quote index underlyings: an index row gets the warning `UNQUOTABLE_INDEX`, and a rule that needs the
-index level is UNAVAILABLE. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
+The desk treats an index underlying as one it cannot quote: an index row gets the warning `UNQUOTABLE_INDEX`, and a
+rule that needs the index level is UNAVAILABLE. Tradier's older documentation said the sandbox serves no index data;
+what its current documentation says was not confirmed. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
 settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. Sourcing
 those values is planned for Stage 2 (not in this release).
 
@@ -79,7 +136,8 @@ guarantee. A local read-only proxy that would hold it outside the Bots' reach is
 
 ## How are Greeks computed?
 
-The sandbox serves no Greeks or implied volatility, so the desk computes them: implied volatility from the quote's mid
+The desk computes them itself and never takes them from the feed (Tradier's older documentation said the sandbox
+serves no Greeks; its current documentation was not confirmed): implied volatility from the quote's mid
 with the generalised Black-Scholes-Merton model, and European Greeks in desk units (theta per calendar day, vega per
 volatility point). The dividend yield comes from `research/calendar.toml`, or 0 with a warning on the leg. Early
 exercise is not modelled in Stage 1; an American lattice is planned for Stage 2 (not in this release). The
@@ -104,8 +162,8 @@ Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its 
 Ask the Aegis Structuring Desk, in its chat or in the Floor. It answers only your own request, with one of three tool
 texts: a ticket (closing the option legs, unwinding the shares too, letting a short option go to expiry, closing a
 long put for its value, or replacing a leg you name), a roll analysis for a covered call's short call, or a covered
-call, protective put or collar on shares you hold. It needs your criteria in `structuring.toml` first (SETUP step 9);
-without them it shows nothing. The criteria, the outputs and the limits are in [STRUCTURING.md](STRUCTURING.md).
+call, protective put or collar on shares you hold. It needs your criteria in `structuring.toml` first: say "set up the
+structuring desk" (SETUP step 9). Without them it shows nothing. The criteria, the outputs and the limits are in [STRUCTURING.md](STRUCTURING.md).
 
 ## Is this investment advice?
 

@@ -22,8 +22,7 @@ grok plugin marketplace add fairgradient-ai/aegis-grok-desk
 grok plugin install aegis-desk --trust
 ```
 
-The tag `v0.1.1` is created at release; until then the install cannot find it. Grok Build runs a plugin's hooks only
-when the plugin was installed with `--trust`.
+Grok Build runs a plugin's hooks only when the plugin was installed with `--trust`.
 
 ## What loads
 
@@ -147,7 +146,7 @@ clone on your own machine.
   `release v0.1.1 at <commit>, clean`.
 - Keep the desk root outside the clone. A desk root inside it is refused (exit 2), because the run's files would make
   the checkout dirty. Pass it every time: `python3 scripts/routine.py <routine id> --desk-root <your desk directory>`.
-  The desk root holds `desk.toml`, `positions.csv` and your adopted rules (SETUP steps 8 and 9).
+  The desk root holds `desk.toml`, `positions.csv` and your adopted rules (SETUP step 9).
 - First try it offline on a copy of the fixture desk, made outside the clone. It needs no token and no network:
 
   ```text

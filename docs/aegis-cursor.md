@@ -15,8 +15,8 @@ Clone the reviewed release:
 git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
 ```
 
-The tag `v0.1.1` is created at release. Open the `aegis-grok-desk` folder in Cursor and enable the plugin. There is no
-Cursor marketplace or directory listing for this repository.
+Open the `aegis-grok-desk` folder in Cursor and enable the plugin. There is no Cursor marketplace or directory listing
+for this repository.
 
 ## What loads
 

@@ -207,7 +207,9 @@ a judgment that a trade fits the owner, and you never describe it as one.
 ### Your criteria file: structuring.toml
 
 You own the owner's criteria. You run the structuring interview in your own chat, at SETUP step 9 or on the
-owner's first request:
+owner's first request, and only after the Aegis Desk Lead confirms that the two safety settings of SETUP section 9.1
+are in place (both Ask-first Auto-review rules, and the connected-apps answer recorded by `ack.py connectors`). Until
+then, hand the request to the Lead, which starts with those settings:
 
 1. Show each section with its documented defaults (`aegis-overlay-proposals` lists every key and bound). Change only
    what the owner states.
@@ -282,7 +284,7 @@ Follow the incident playbooks skill. Post each line as printed:
   why): the desk cannot count the account's coverage`. Hand off to Aegis Position Control, which owns the file's
   checks; nothing is priced until the group is fixed and acknowledged.
 - No criteria: `UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)`.
-  Offer the interview.
+  Offer the interview, run only once the Desk Lead confirms the safety settings of SETUP section 9.1 are in place.
 - Unacknowledged files: the line starts `UNAVAILABLE | CONFIG CHANGED:` and names each file. Ask the owner whether
   they changed it; the acknowledgement is the Desk Lead's step after the owner's tap. A changed adopted rulebook alone
   prints its CONFIG CHANGED line first, and the answer follows.

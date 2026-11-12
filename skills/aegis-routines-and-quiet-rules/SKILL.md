@@ -189,8 +189,8 @@ active: 61 runs per week (lean plus four paused book-check slots, unpaused only 
 ## Timezone and the owner-side dead-man rule
 
 - Each routine-owning Bot (the Desk Lead, the Exit Sentinel and Position Control in Stage 1) has its Timezone set to
-  America/New_York and notifications on. Both are set at setup and read back in the setup receipt; no tool records
-  them. The Aegis Structuring Desk owns no routine, so it needs neither.
+  America/New_York and notifications on. Both are set when the owner says "turn on monitoring" (SETUP step 9) and read
+  back in that step's receipt; no tool records them. The Aegis Structuring Desk owns no routine, so it needs neither.
 - The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading
   day means the desk is not running. The owner then relies on the broker's own alerts, set from the last
   threshold-level sheet, and answers any prompt that asks to keep the routines running.

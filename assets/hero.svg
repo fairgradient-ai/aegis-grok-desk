@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" width="800" height="400" role="img" aria-labelledby="t d">
+<title id="t">Aegis Desk</title>
+<desc id="d">Aegis Desk: exit alerts from rules you adopted, for the options you already hold. A shield holds a payoff line with an amber threshold. A chat message from the Exit Sentinel reads: WATCH AG-20261028-03 | SPY protective put | your rule ROLL30; your plan: review a roll; not an instruction to trade; you act in your brokerage account. The desk never places, modifies or cancels an order.</desc>
+<style>.s{font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif}.m{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}.tx{fill:#e9eef7}.mu{fill:#a3b1c9}.fa{fill:#8a98b3}.az{fill:#62b4ff}.am{fill:#f3b641}.co{fill:#ff8a73}.b{font-weight:700}.sb{font-weight:600}@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}.pulse{animation:pulse 3.6s ease-in-out infinite}.d1{animation-delay:.6s}.d2{animation-delay:1.2s}.d3{animation-delay:1.8s}.d4{animation-delay:2.4s}@media (prefers-reduced-motion:reduce){.pulse{animation:none;opacity:1}}</style>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0c1322"/><stop offset="1" stop-color="#121c30"/></linearGradient><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a3b1c9"/></marker><marker id="ara" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f3b641"/></marker></defs>
+<rect x="0.5" y="0.5" width="799" height="399" rx="18" fill="url(#bg)" stroke="#2c3b5c"/>
+<g opacity=".5"><line x1="40" y1="64" x2="760" y2="64" stroke="#1d2b46" stroke-width="1"/><line x1="40" y1="236" x2="760" y2="236" stroke="#1d2b46" stroke-width="1"/><line x1="40" y1="352" x2="760" y2="352" stroke="#1d2b46" stroke-width="1"/></g>
+<path d="M62 77.12Q128 57.44 194 77.12L194 154.2Q194 205.04 128 228Q62 205.04 62 154.2Z" fill="#17233a" stroke="#62b4ff" stroke-width="2.5"/>
+<path d="M85.76 175.52L138.56 119.76L170.24 119.76" fill="none" stroke="#62b4ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="81.76" y1="139.44" x2="174.24" y2="139.44" stroke="#f3b641" stroke-width="2" stroke-dasharray="5 5"/>
+<circle cx="119.92" cy="139.44" r="9" fill="#f3b641" opacity=".25" class="pulse"/>
+<circle cx="119.92" cy="139.44" r="4.5" fill="#f3b641"/>
+<text x="236" y="104" class="s b tx" font-size="40" xml:space="preserve">Aegis Desk</text>
+<text x="238" y="142" class="s tx" font-size="20" xml:space="preserve">Exit alerts from rules you adopted,</text>
+<text x="238" y="169" class="s tx" font-size="20" xml:space="preserve">for the options you already hold.</text>
+<text x="238" y="210" class="s mu" font-size="14.5" xml:space="preserve">It never places, modifies or cancels an order.</text>
+<text x="238" y="230" class="s mu" font-size="14.5" xml:space="preserve">You decide and act in your own broker.</text>
+<rect x="236" y="252" width="524" height="107" rx="14" fill="#17233a" stroke="#2c3b5c"/>
+<rect x="248" y="266" width="4" height="79" rx="2" fill="#f3b641"/>
+<circle cx="270" cy="274" r="9" fill="#1d2b46" stroke="#62b4ff"/>
+<text x="270" y="278" class="s b az" font-size="10" text-anchor="middle" xml:space="preserve">E</text>
+<text x="286" y="278.5" class="s sb tx" font-size="13" xml:space="preserve">Exit Sentinel</text>
+<text x="376" y="278.5" class="s mu" font-size="12" xml:space="preserve">in your desk chat</text>
+<text x="264" y="302" class="m tx" font-size="12" xml:space="preserve">WATCH AG-20261028-03 | SPY protective put | your rule ROLL30</text>
+<text x="264" y="321" class="m am" font-size="12" xml:space="preserve">your plan: review a roll</text>
+<text x="264" y="340" class="m mu" font-size="12" xml:space="preserve">not an instruction to trade; you act in your brokerage account.</text>
+<text x="64" y="300" class="s sb fa" font-size="12" xml:space="preserve">read-only</text>
+<text x="64" y="318" class="s sb fa" font-size="12" xml:space="preserve">sandbox market data</text>
+<text x="64" y="336" class="s sb fa" font-size="12" xml:space="preserve">numbers from tools</text>
+</svg>

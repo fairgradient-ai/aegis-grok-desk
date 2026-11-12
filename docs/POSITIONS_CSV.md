@@ -10,9 +10,10 @@ recipes Aegis Position Control follows.
 - No tool writes `positions.csv`. The tools read it, check it, group it and reconcile it.
 - Aegis Position Control turns what you report into exact CSV lines in the file's own column order, and you apply
   them. The amounts always come from your brokerage record, never from a quote.
-- The one exception: on your explicit request, Position Control saves the exact text you supply to the file. It is a
-  verbatim transcription, never an edit and never rows it derived. It then runs `positions_check.py` and reports the
-  verdict, the number of rows and the file's sha256 for you to confirm.
+- The one exception: on your explicit request, Position Control saves to the file the exact text you supply, or the
+  lines it drafted from your own description once you approve the text it shows you. A draft uses only your numbers
+  and dates, so no total is computed. The save is a verbatim transcription, never an edit after your approval. It then
+  runs `positions_check.py` and reports the verdict, the number of rows and the file's sha256 for you to confirm.
 - After any change, the next book check posts CONFIG CHANGED first, naming `positions.csv`, until you tap
   `ack.py config --owner-tapped`. A change you did not make is visible at once. Until then the Structuring Desk's tools
   answer UNAVAILABLE, because the share coverage they check comes from this file.

@@ -652,7 +652,8 @@ Payload (`--json` envelope key `payload`):
 | `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
-| `--symbol` | `SYMBOL` | the underlying, for example SPY (required) |
+| `--symbol` | `SYMBOL` | the underlying, for example SPY (required, except with --demo: SPY) |
+| `--demo` | none | synthetic sample data: --offline on this checkout's tests/fixtures/desk at 2026-11-03T19:50:00Z (the regular fixture set); writes nothing; not with --desk-root, --now, --fixture-set or --token-file |
 | `--rate` | `R` | the risk-free rate the IV is solved at, a decimal in [0, 1) (default 0.04) |
 | `--token-file` | `PATH` | read the sandbox token from this file when TRADIER_API_TOKEN is not set (live runs only) |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
@@ -661,13 +662,14 @@ Payload (`--json` envelope key `payload`):
 
 - `atm_iv`: `"float (the mean of the call and put IV)"`
 - `call`: `{"iv": "float (iv.implied_vol)", "mid": "decimal string (as printed)"}`
+- `demo`: `"boolean (true: --demo, the checkout's synthetic fixture desk; the text opens with the demo line)"`
 - `dte_calendar`: `"integer (calendar days from the ET date of --now)"`
 - `emitted`: `{"as_of": "ISO-8601 UTC (the footer's instant: the oldest quote stamp)", "clocks": ["HH:MM UTC"], "emitted_numbers": ["string"], "footer": "snapshot (the market-snapshot footer; alert_lint re-lints the text with it)", "identifiers": ["YYYY-MM-DD"], "rule_ids": ["string (none)"]}`
 - `expected_move`: `{"one_sigma": "decimal string (S x IV x sqrt(tau), to the cent)", "straddle": "decimal string ((call mid + put mid) x 0.80, to the cent)"}`
 - `expiration`: `"YYYY-MM-DD (the nearest standard expiration at least 20 calendar days out)"`
 - `fixture_set`: `"string | null (offline runs)"`
 - `lint`: `{"numbers_checked": "integer", "ok": "boolean (true: a failing lint is exit 1 lint_failed)", "problems": ["string"]}`
-- `message`: `"string: the text exactly as printed (five lines, then the market-snapshot footer)"`
+- `message`: `"string: the text exactly as printed (five lines, then the market-snapshot footer; a --demo run opens with the demo line)"`
 - `put`: `{"iv": "float (iv.implied_vol)", "mid": "decimal string (as printed)"}`
 - `q`: `"decimal string (0)"`
 - `quote`: `{"as_of": "ISO-8601 UTC (min of the bid and ask stamps)", "ask": "decimal string (as printed)", "bid": "decimal string (at least two decimals, as printed)", "mid": "decimal string (S, as printed)"}`

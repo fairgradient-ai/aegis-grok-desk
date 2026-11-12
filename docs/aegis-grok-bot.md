@@ -9,9 +9,35 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 ## Start
 
 Create a new Bot and paste the Start prompt from the [README](../README.md#start). It points at the bootstrap skill
-and at [SETUP.md](../SETUP.md), both pinned to the tag `v0.1.1`. The tag is created at release; until then the links
-do not resolve. SETUP.md is the full runbook. This page explains what protects you on Grok Bot and how you can check
-it.
+and at [SETUP.md](../SETUP.md), both pinned to the tag `v0.1.1`. SETUP.md is the full runbook. This page explains
+what protects you on Grok Bot and how you can check it.
+
+### The first run
+
+The Lead clones the pinned release, runs the repository gate, creates the four Bots and their group chat, the Aegis
+Options Floor, and installs the skills with a readback of each. It shows you a demo on a copy of the made-up sample
+desk, so you see real tool output before you are asked anything. Then it asks you for one thing: a free Tradier
+sandbox market-data token, added through the secure secret card, never pasted in chat. The
+[FAQ](FAQ.md#how-do-i-get-a-tradier-sandbox-token) explains how to get one. The Lead checks the token with one live
+market snapshot and returns the receipt, which names the phrases below. Its last line is:
+
+```text
+Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
+```
+
+### Then, the phrases
+
+Each later step starts when you say its phrase to the Lead, prerequisites first. Every later phrase first checks
+what "add my positions" sets up before it: the two safety settings (both Ask-first rules and the connected-apps
+answer) and the desk settings (`desk.toml`). If any is missing, the Lead does those first, then continues. No
+owner-tapped command and no routine comes before the two Ask-first rules.
+
+| Say | What the Lead does | What you do |
+| --- | --- | --- |
+| "add my positions" | first the two safety settings, because an owner-tapped command follows; then the desk settings with suggested defaults; then Position Control drafts your positions, checks them and records dividends for the symbols you hold; then the full doctor | paste the two Ask-first Auto-review rules; answer whether any connected app or MCP server can trade and tap approve on the readback; confirm the settings with one "yes" and acknowledge the disclosures; describe your positions and approve the drafted lines |
+| "adopt my exit rules" | proposes the example rulebook, with a suggested value for each threshold the examples leave to you | keep the examples or change some; tap approve and type the adoption phrase, now (recorded) or after the close; acknowledge the change |
+| "turn on monitoring" | checks that routines work on your plan, creates the routines paused, runs one Test run, then unpauses them | turn on Notifications and set the Timezone on the three routine-owning Bots; paste the Allow rule; approve the `safe.directory` fix if the doctor asks |
+| "set up the structuring desk" (optional) | interviews you for your structuring criteria and writes them | answer, tap approve, acknowledge |
 
 No public Grok Bot template is published in this release. [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md) explains the
 template contract and why the paste prompt comes first.
@@ -36,9 +62,12 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    The repository gate proves it, and SETUP runs it once: `bash scripts/check.sh`. [SECURITY.md](../SECURITY.md)
    explains each layer.
 2. **One sandbox token.** The only credential is a Tradier sandbox market-data token. It cannot reach a live account.
-   You add it through the secure secret card and never paste it in chat. A secret added there is visible to every Bot
-   on the computer, as Grok Bot staff have reported, which is why nothing that can reach real money may be added. The
-   full doctor verifies the token with one GET of the sandbox clock:
+   You add it through the secure secret card in the first run and never paste it in chat. A secret added there is
+   visible to every Bot on the computer, as Grok Bot staff have reported, which is why nothing that can reach real
+   money may be added: if the production token is pasted by mistake, the live check fails with `auth:` and the Lead
+   asks you to delete it from the card at once. The token could place paper orders on Tradier's sandbox; the
+   write-side Ask-first rule (item 4) covers that from "add my positions" on, and until then the repository code
+   still has no write path (item 1). The full doctor verifies the token with one GET of the sandbox clock:
 
    ```text
    python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
@@ -46,8 +75,8 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
 
    A 401 or 403 fails its check 5 with `not a sandbox token: remove and rotate`.
 3. **No app or MCP server that can trade.** Connected apps and MCP servers are account-wide: one that can place or
-   change orders would give that ability to every Bot. At setup you read both lists back, and after your tap the Lead
-   records that readback with this owner-authority command:
+   change orders would give that ability to every Bot. When you say "add my positions", you answer whether any of
+   them can trade, and after your tap the Lead records that answer with this owner-authority command:
 
    ```text
    python3 /workspace/aegis-grok-desk/scripts/ack.py connectors --owner-tapped --desk-root /workspace/aegis-desk
@@ -55,8 +84,9 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
 
    It prints `connector readback recorded at HH:MM UTC; desk_doctor re-asks after 30 days`. The doctor's check 10 then
    warns `re-confirm connected apps and MCP servers` once 30 days have passed.
-4. **The Auto-review rules.** You paste three rules at setup (SETUP step 7). The Lead prints them from the routine
-   manifest:
+4. **The Auto-review rules.** You paste the two Ask-first rules when you say "add my positions", before the first
+   owner-tapped command, and the Allow rule when you say "turn on monitoring" (SETUP step 9). The Lead prints them
+   from the routine manifest:
 
    ```text
    python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --rules-text --desk-root /workspace/aegis-desk
@@ -107,14 +137,15 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   `development checkout (no tag)`, `HEAD <commit> is not the commit of v0.1.1 (<commit>)`,
   `the checkout has <n> uncommitted or untracked path(s)`,
   `git status failed (exit <n>); the checkout cannot be verified`, `not a git checkout`, `git is unavailable` or
-  `git refuses this checkout: it is owned by another user (see SETUP)`. For the last one, SETUP step 1 gives the one
-  command you approve: `git config --global --add safe.directory /workspace/aegis-grok-desk`.
+  `git refuses this checkout: it is owned by another user (see SETUP)`. For the last one, SETUP gives the one command
+  you approve: `git config --global --add safe.directory /workspace/aegis-grok-desk`.
 - A run with nothing to post prints the single word `quiet`, and the Bot posts that word. Missed runs are never run
   again later.
 
 ## Checks at setup
 
-- **The repository gate,** once, in SETUP step 2: `bash scripts/check.sh` from the checkout. It takes a few minutes.
+- **The repository gate,** once, in the first run (SETUP step 2): `bash scripts/check.sh` from the checkout. It takes
+  a few minutes.
 - **The engine selftest,** any time after:
 
   ```text
@@ -128,12 +159,12 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   verdict: PASS (2 checks; warnings: none; failures: none); nothing written (selftest)
   ```
 
-- **One Test run** of the `preopen` routine (SETUP step 10). It proves that routines see the token and the desk files,
-  and the Lead reports whether it raised an Ask-first card. It runs the quick doctor, which has no sandbox check: the
-  interactive full doctor verified the sandbox.
-- **Readbacks** of every Bot's Name and Job, every skill (`template`, `installed`, `pointer` or `mismatch`), the
-  Floor's members, Notifications and Timezone on the three routine-owning Bots, and the connected apps and MCP
-  servers.
+- **One Test run** of the `preopen` routine, when you say "turn on monitoring". It proves that routines see the token
+  and the desk files, and the Lead reports whether it raised an Ask-first card. It runs the quick doctor, which has no
+  sandbox check: the interactive full doctor verified the sandbox.
+- **Readbacks** in the first run of every Bot's Name and Job, every skill (`template`, `installed`, `pointer` or
+  `mismatch`) and the Floor's members; of the connected apps and MCP servers when you say "add my positions"; and of
+  Notifications and Timezone on the three routine-owning Bots when you say "turn on monitoring".
 - **The weekly cost** in runs:
 
   ```text

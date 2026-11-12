@@ -124,8 +124,8 @@ was moved to the 2026-11-27 expiry (an early-close day), run with `--tomorrow` o
   UNAVAILABLE AG-20261020-01 WMT261127C00105000 short 2: dividend unknown: the WMT ex-dividend 2026-11-24 has passed; the next is not in calendar.toml (unknown dividend is never zero); act by Fri 2026-11-27 13:00 ET (18:00 UTC) [next trading day]; the session close: a short option is closed only while the market trades
 ```
 
-In Stage 1 the dividends are the owner's: the bootstrap's intake through `desk_init.py`. Sourcing them is
-planned for Stage 2 (not in this release).
+In Stage 1 the dividends are the owner's: the intake through `desk_init.py` when the owner says
+"add my positions" (SETUP step 9). Sourcing them is planned for Stage 2 (not in this release).
 
 ## The expiry week
 
