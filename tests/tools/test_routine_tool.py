@@ -653,7 +653,7 @@ class TransitionsTest(RoutineCopy):
         self.assertEqual(("error", "step_crashed"), (crashed["status"], crashed["error"]["code"]))
         # O8: the 17:10 brief names it (the file's routine and step, never its contents)
         code, body = self.run_json("eod-brief", "17:10", "2026-11-03T22:10:00Z")
-        self.assertIn("**incidents today** 1 (book-check trigger_levels); details in incidents/",
+        self.assertIn("- **Incidents today** 1 (book-check trigger_levels); details in `incidents/`",
                       body["payload"]["message"].split("\n"))
         self.assertNotIn("levels probe", body["payload"]["message"])
 

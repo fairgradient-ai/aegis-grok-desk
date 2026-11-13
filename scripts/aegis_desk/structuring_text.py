@@ -79,9 +79,9 @@ NONE_QUALIFIES_LINE: str = "no candidate passed every criterion: the desk names 
 NO_MID_WORDS: str = "no mid: a quote side is stale"
 """What the cash block says for the mids when a leg has no mid."""
 CASH_BALANCE_LINE: str = "the desk does not see your cash balance"
-LEGS_CAPTION: str = "**the legs:**"
+LEGS_CAPTION: str = "**The legs**"
 """A ticket's caption over its leg items (an analysis's legs sit under its BEST CANDIDATE line)."""
-FAILURES_CAPTION: str = "**why each one fails:**"
+FAILURES_CAPTION: str = "**Why each one fails**"
 """The caption over the reasons the shown candidates fail, when none passed (a list of its own under the candidates)."""
 FIXED_LINES: Tuple[str, ...] = (LIMIT_LINE, ACT_LINE, AFTER_FILL_LINE, AFTER_EXPIRY_LINE, MODEL_LINE, CAVEAT_LINE,
                                 POINTER_LINE, NONE_QUALIFIES_LINE, "**%s**" % NONE_QUALIFIES_LINE, CASH_BALANCE_LINE,
@@ -574,11 +574,12 @@ def _clean(text: str, what: str) -> str:
 
 
 def strip_line(pairs: Sequence[Tuple[str, str]]) -> str:
-    """The context strip as one line: ``**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | ...``."""
+    """The context strip as one italic line right under the title: ``*account 1 of desk.toml (margin) | WMT mid
+    104.23 | ...*``."""
     if not pairs:
         raise ValueError("a strip needs a label")
-    return STRIP_SEPARATOR.join("%s %s" % (bold(_clean(label, "a label")), _clean(value, "a value"))
-                                for label, value in pairs)
+    return "*%s*" % STRIP_SEPARATOR.join("%s %s" % (_clean(label, "a label"), _clean(value, "a value"))
+                                         for label, value in pairs)
 
 
 def status_mark(status: str, keys: Sequence[str] = ()) -> Tuple[str, str]:
@@ -737,8 +738,8 @@ def check_item(row: Sequence[str]) -> str:
 
 def checks_block(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal, s0: Decimal,
                  held_strike: Optional[Decimal] = None, subject: str = "this candidate") -> List[str]:
-    """``**checks for this candidate:**`` and one :func:`check_item` per :func:`check_rows` row."""
-    return [bold("checks for %s:" % subject)] + [
+    """``**Checks for this candidate**`` and one :func:`check_item` per :func:`check_rows` row."""
+    return [bold("Checks for %s" % subject)] + [
         check_item(row) for row in check_rows(w, candidate, section, max_spread_pct, s0, held_strike)]
 
 
@@ -806,7 +807,7 @@ def candidate_items(w: Writer, candidates: Sequence["structuring.Candidate"], ob
 
 def counts_caption(w: Writer, total: int, passed: int, failed: int, unpriced: int, counts: Mapping[str, int],
                    replacement: bool = False) -> str:
-    """``**candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4)``, and ``; 2 not
+    """``**Candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4)``, and ``; 2 not
     priced`` when some were never judged against the criteria."""
     if passed + failed + unpriced != total:
         raise ValueError("the counts %d + %d + %d do not add up to %d candidates" % (passed, failed, unpriced, total))
@@ -814,7 +815,7 @@ def counts_caption(w: Writer, total: int, passed: int, failed: int, unpriced: in
         if key not in structuring.REASON_KEY_ORDER:
             raise ValueError("unknown criteria key %r" % (key,))
     parts = ["%s %s" % (key, w.count(counts[key])) for key in structuring.REASON_KEY_ORDER if key in counts]
-    head = bold("%s by rank:" % ("replacement candidates" if replacement else "candidates"))
+    head = bold("%s by rank" % ("Replacement candidates" if replacement else "Candidates"))
     text = "%s %s of %s passed your criteria; %s failed%s" % (head, w.count(passed), w.count(total), w.count(failed),
                                                              " (%s)" % ", ".join(parts) if parts else "")
     return text + ("; %s not priced" % w.count(unpriced) if unpriced else "")
@@ -885,7 +886,7 @@ def group_block(w: Writer, after: "structuring.AfterState", before: Optional["st
         if before is not None:
             value = "%s now, %s after" % (form(getattr(before, attribute)), value)
         rows.append([name, value])
-    caption = bold("the group %s:" % head) if before is None else bold("the group, now and %s:" % head)
+    caption = bold("The group %s" % head) if before is None else bold("The group, now and %s" % head)
     return [caption] + labelled_items(rows)
 
 
@@ -908,7 +909,7 @@ def american_line(w: Writer, candidate: "structuring.Candidate") -> str:
 # --------------------------------------------------------------------------------------------
 
 
-CASH_CAPTION: str = "**the cash:**"
+CASH_CAPTION: str = "**The cash**"
 
 
 def cash_block(w: Writer, net_conservative: Decimal, net_mid: Optional[Decimal], realized_conservative: Decimal,
@@ -1090,8 +1091,8 @@ def quotes_cell(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY
 
 def context_line(w: Writer, account: str, symbol: str, mid: Decimal, cost: Decimal, as_of: datetime.datetime,
                  delay_min: int = FEED_DELAY_MIN) -> str:
-    """The context strip under an analysis's title, one line: ``**account** 2 of desk.toml (ira) | **SPY mid** 648.12 |
-    **your cost** 632.40 | **quotes** 19:31 UTC, 15-min delayed``."""
+    """The context strip under an analysis's title, one italic line: ``*account 2 of desk.toml (ira) | SPY mid 648.12 |
+    your cost 632.40 | quotes 19:31 UTC, 15-min delayed*``."""
     if not isinstance(symbol, str) or not _SYMBOL_RE.match(symbol):
         raise ValueError("%r is not a share symbol" % (symbol,))
     return strip_line([("account", account), ("%s mid" % symbol, w.price(mid)), ("your cost", w.price(cost)),
@@ -1196,7 +1197,7 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     assert target is not None and target.group is not None and ranking is not None and held is not None
     assert group is not None and answer.pricing is not None and answer.pricing.spot_mid is not None
     account = account_cell(w, group.account, target.market.cfg.owner.accounts, held.row_number)
-    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike), ""]
+    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike)]
     lines.extend([context_line(w, account, group.underlying, answer.pricing.spot_mid,
                                structuring.payoff.quantize_price(group.s0), as_of), ""])
     best = ranking.best
@@ -1243,7 +1244,7 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
     stock = [row for row in target.group.open_legs if row.is_stock_like]
     account = account_cell(w, group.account, target.market.cfg.owner.accounts,
                            stock[0].row_number if stock else target.group.legs[0].row_number)
-    lines = [proposal_header(w, subject, group.underlying, structure, group.shares), ""]
+    lines = [proposal_header(w, subject, group.underlying, structure, group.shares)]
     lines.extend([context_line(w, account, group.underlying, answer.pricing.spot_mid,
                                structuring.payoff.quantize_price(group.s0), as_of), ""])
     if best is not None:

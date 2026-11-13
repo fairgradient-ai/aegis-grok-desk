@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 8dbcf0f50cacf7b7d01398d56d855438d650a9d8590cfccacb968254d7bc63c1
+  source_sha256: 31c569f28a88383e1aeb4a416244a0ea87c82cf85745a1840097c28022b31d37
 ---
 
 # Aegis Desk Lead: role skill
@@ -68,14 +68,14 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod-brief --slot 17:10
 ```
 
 - Post the output verbatim: every line, in order, the footer included. Never shorten, reword, reorder or add to it.
-- The sheet and the brief are markdown (a `###` title, then bold-labelled blocks and items, no table): post them as one
-  message, as they are, never inside a code block and never split.
+- The sheet and the brief are markdown (a `###` title, bold section titles, items with details nested under them, no
+  table): post them as one message, as they are, never inside a code block and never split.
 - The written quiet rules (from `routines/manifest.toml`):
   - preopen: "Always one message: the doctor line, the recon verdict, standing signals, the docket and last night's
     levels; a missing or late upstream artifact is UNAVAILABLE."
   - eod-brief: "Always one message: P/L today, MTD and YTD, signals, the docket, N of N routines ran with late and
     missed runs named, the owner's to-do list."
-- The brief's `**routines**` block counts the day's slots up to the brief; the brief's own run is not counted.
+- The brief's `**Routines**` item counts the day's slots up to the brief; the brief's own run is not counted.
 - On a closed day (weekend, NYSE holiday or a full closure the owner entered) a routine prints the single word
   `quiet`. Post it as printed.
 
@@ -85,7 +85,8 @@ preopen at 2026-11-03 12:35 UTC. A pinned release checkout prints, among its blo
 ```text
 ### MORNING DESK SHEET 2026-11-03
 
-**doctor** PASS, 1 warning: key_source | quick check at 12:35 UTC | state/doctor.json
+**Desk status**
+- **Doctor** PASS, 1 warning: key_source (quick check at 12:35 UTC)
 
 deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 20:59 UTC
 ```
@@ -95,10 +96,10 @@ The same synthetic copy at the 17:10 slot of 2026-11-03 (after the 16:35 eod run
 ```text
 ### EOD DESK BRIEF 2026-11-03
 
-**P/L** | data/book/2026-11-03.json
-- **unrealized** $4,034.00 (liquidation), $4,097.00 (mid)
-- **day** $400.00
-- **realized** today $0.00, month to date $0.00, year to date $425.00
+**P/L**
+- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)
+- **Today** +$400.00
+- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)
 ```
 
 The morning sheet's footer carries the oldest data instant among the records it read, so it never claims fresher

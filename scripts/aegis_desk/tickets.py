@@ -919,14 +919,14 @@ def _let_assign_blocks(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
         if dividend is not None:
             rows.append(["ex-dividend", dividend])
         lines.extend([structuring_text.let_assign_line(w, leg.strike, leg.right, cutoff), ""])
-        lines.append(structuring_text.bold(structuring_text.contract_words(w, leg.expiration, leg.strike, leg.right)
-                                           + ":"))
+        words = structuring_text.contract_words(w, leg.expiration, leg.strike, leg.right)
+        lines.append(structuring_text.bold(words[:1].upper() + words[1:]))
         lines.extend(structuring_text.labelled_items(rows))
         lines.append("")
     return lines
 
 
-PUT_CAPTION: str = "**the put:**"
+PUT_CAPTION: str = "**The put**"
 
 
 def _put_block(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
@@ -1003,8 +1003,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     if ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         words = structuring_text.ROLL_PUT_WORDS
     as_of = ticket_as_of(ticket)
-    lines.extend([structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
-                                                 words), ""])
+    lines.append(structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
+                                                words))
     lines.extend([structuring_text.strip_line([
         ("account", account), ("computed", w.clock(ticket.now)),
         ("valid until", structuring_text.valid_until_cell(w, ticket.valid_until, bool(ticket.valid_full))),

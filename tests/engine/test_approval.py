@@ -318,8 +318,8 @@ class LinesTest(unittest.TestCase):
         emitted: List[str] = []
         lines = approval.approval_lines(WMT, self.ROLL, 2, "WMT", emitted)
         self.assertEqual([
-            "**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your "
-            "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+            "**Approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, "
+            "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
             "- after leg 1: you hold 200 WMT shares, no option | level 0",
             "- after leg 2: you hold 200 WMT shares, 2 short calls | level 1",
             "- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
@@ -332,8 +332,8 @@ class LinesTest(unittest.TestCase):
         emitted: List[str] = []
         lines = approval.approval_lines(WMT, [CLOSE_SHORT_CALL_2], 2, "WMT", emitted)
         self.assertEqual([
-            "**approval-level check:** the highest step needs level 0 by the desk's convention, within your self-attested "
-            "level 2 (desk.toml); your broker's own approval for this account decides",
+            "**Approval-level check:** the highest step needs level 0 by the desk's convention, within your "
+            "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
             "- after leg 1: you hold 200 WMT shares, no option | level 0",
         ], lines)
         result = lint(lines, emitted)
@@ -352,7 +352,7 @@ class LinesTest(unittest.TestCase):
             "- entered as one multi-leg order, some brokers class shares and options together as a combination, which "
             "can need a higher level",
         ], lines[1:])
-        self.assertTrue(lines[0].startswith("**approval-level check (leg 1 first):** the highest step needs level 0 by "
+        self.assertTrue(lines[0].startswith("**Approval-level check (leg 1 first):** the highest step needs level 0 by "
                                             "the desk's convention"))
         result = lint(lines, emitted)
         self.assertTrue(result.ok, result.problems)

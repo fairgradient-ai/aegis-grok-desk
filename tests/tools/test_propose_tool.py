@@ -104,9 +104,7 @@ PP_NOTHING_TEXT = [
 ]
 SPY_COLLAR_BEST_TEXT = [
     "### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold",
-    "",
-    "**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates "
     "that passed every criterion",
@@ -115,7 +113,7 @@ SPY_COLLAR_BEST_TEXT = [
     "",
     "> the score ranks the candidates only on the objective you chose; it is not a forecast",
     "",
-    "**checks for this candidate:**",
+    "**Checks for this candidate**",
     "- \U0001F7E2 **floor** 4.34 % below | your criteria: 3 to 10 %",
     "- \U0001F7E2 **cap** 4.92 % above | your criteria: 2 to 10 %",
     "- \U0001F7E2 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00",
@@ -127,19 +125,19 @@ SPY_COLLAR_BEST_TEXT = [
     "- \U0001F7E1 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by "
     "#assign-ok",
     "",
-    "**the group, now and after both legs:**",
+    "**The group, now and after both legs**",
     "- **max loss** 63,240.00 now, 1,165.00 after",
     "- **max profit** unbounded now, 4,835.00 after",
     "- **breakeven** 632.40 now, 631.65 after",
     "- **group delta** 100.00 now, 24.14 after",
     "",
-    "**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your "
+    "**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your "
     "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
     "- after leg 1: you hold 100 SPY shares, 1 long put | level 2",
     "- after leg 2: you hold 100 SPY shares, 1 short call, 1 long put | level 1",
     "- entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level",
     "",
-    "**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)",
+    "**Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)",
     "- \U0001F7E2 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75",
     "- \U0001F7E2 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30",
     "- \U0001F7E2 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60",
@@ -160,13 +158,11 @@ SPY_COLLAR_BEST_TEXT = [
 ]
 SPY_COLLAR_NONE_TEXT = [
     "### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold",
-    "",
-    "**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**no candidate passed every criterion: the desk names no best candidate**",
     "",
-    "**candidates by rank:** 0 of 10 passed your criteria; 10 failed (max_net_debit 6, ex_dividend 10)",
+    "**Candidates by rank** 0 of 10 passed your criteria; 10 failed (max_net_debit 6, ex_dividend 10)",
     "- \U0001F534 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75 | fails "
     "ex_dividend",
     "- \U0001F534 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30 | fails "
@@ -174,7 +170,7 @@ SPY_COLLAR_NONE_TEXT = [
     "- \U0001F534 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60 | fails "
     "ex_dividend",
     "",
-    "**why each one fails:**",
+    "**Why each one fails**",
     "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the "
     "call's life",
     "- 1, 2, 3 fail ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds "
@@ -195,9 +191,7 @@ SPY_COLLAR_NONE_TEXT = [
 ]
 SPY_PP_TEXT = [
     "### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold",
-    "",
-    "**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 "
     "candidates that passed every criterion",
@@ -205,7 +199,7 @@ SPY_PP_TEXT = [
     "",
     "> the score ranks the candidates only on the objective you chose; it is not a forecast",
     "",
-    "**checks for this candidate:**",
+    "**Checks for this candidate**",
     "- \U0001F7E2 **floor** 5.88 % below | your criteria: 3 to 10 %",
     "- **cost** ask 23.10 (2,310.00 in all)",
     "- \U0001F7E2 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % "
@@ -213,17 +207,17 @@ SPY_PP_TEXT = [
     "- \U0001F7E2 **calendar days** 136 | your criteria: 120 to 210",
     "- \U0001F7E2 **spread** 0.87 % | your criteria: at most 25 %",
     "",
-    "**the group, now and after the leg:**",
+    "**The group, now and after the leg**",
     "- **max loss** 63,240.00 now, 4,550.00 after",
     "- **max profit** unbounded now, unbounded after",
     "- **breakeven** 632.40 now, 655.50 after",
     "- **group delta** 100.00 now, 69.69 after",
     "",
-    "**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested "
+    "**Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested "
     "level 2 (desk.toml); your broker's own approval for this account decides",
     "- after leg 1: you hold 100 SPY shares, 1 long put | level 2",
     "",
-    "**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)",
+    "**Candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)",
     "- \U0001F7E2 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856",
     "- \U0001F7E2 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858",
     "- \U0001F7E2 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868",
@@ -240,9 +234,7 @@ SPY_PP_TEXT = [
 ]
 WMT_BEST_TEXT = [
     "### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares you hold",
-    "",
-    "**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0597**, the highest among the 5 "
     "candidates that passed every criterion",
@@ -250,7 +242,7 @@ WMT_BEST_TEXT = [
     "",
     "> the score ranks the candidates only on the objective you chose; it is not a forecast",
     "",
-    "**checks for this candidate:**",
+    "**Checks for this candidate**",
     "- \U0001F7E2 **strike** 112.5 | your criteria: at or above your cost 98.50",
     "- \U0001F7E2 **absolute delta** 0.32 | your criteria: 0.15 to 0.35",
     "- \U0001F7E2 **bid** 2.80 (560.00 in all) | your criteria: at least 0.50",
@@ -259,17 +251,17 @@ WMT_BEST_TEXT = [
     "- \U0001F7E1 **earnings** 2026-11-17 (before the open), inside the call's life | accepted by #earnings-ok",
     "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the call's life | accepted by #assign-ok",
     "",
-    "**the group, now and after the leg:**",
+    "**The group, now and after the leg**",
     "- **max loss** 19,700.00 now, 19,140.00 after",
     "- **max profit** unbounded now, 3,360.00 after",
     "- **breakeven** 98.50 now, 95.70 after",
     "- **group delta** 200.00 now, 135.05 after",
     "",
-    "**approval-level check:** the highest step needs level 1 by the desk's convention, within your self-attested "
+    "**Approval-level check:** the highest step needs level 1 by the desk's convention, within your self-attested "
     "level 2 (desk.toml); your broker's own approval for this account decides",
     "- after leg 1: you hold 200 WMT shares, 2 short calls | level 1",
     "",
-    "**candidates by rank:** 5 of 20 passed your criteria; 15 failed (abs_delta 15, strike_floor 4)",
+    "**Candidates by rank** 5 of 20 passed your criteria; 15 failed (abs_delta 15, strike_floor 4)",
     "- \U0001F7E2 **1** 2026-12-18 | strike 112.5 | delta 0.32 | bid 2.80 | extrinsic_per_day 0.0597",
     "- \U0001F7E2 **2** 2027-01-15 | strike 115 | delta 0.33 | bid 3.55 | extrinsic_per_day 0.0467",
     "- \U0001F7E2 **3** 2026-12-18 | strike 115 | delta 0.27 | bid 2.10 | extrinsic_per_day 0.0448",
@@ -286,13 +278,11 @@ WMT_BEST_TEXT = [
 ]
 WMT_NONE_TEXT = [
     "### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares you hold",
-    "",
-    "**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**no candidate passed every criterion: the desk names no best candidate**",
     "",
-    "**candidates by rank:** 0 of 20 passed your criteria; 20 failed (abs_delta 15, strike_floor 4, earnings 20, "
+    "**Candidates by rank** 0 of 20 passed your criteria; 20 failed (abs_delta 15, strike_floor 4, earnings 20, "
     "ex_dividend 20)",
     "- \U0001F534 **1** 2026-12-18 | strike 112.5 | delta 0.32 | bid 2.80 | extrinsic_per_day 0.0597 | fails "
     "earnings, ex_dividend",
@@ -301,7 +291,7 @@ WMT_NONE_TEXT = [
     "- \U0001F534 **3** 2026-12-18 | strike 115 | delta 0.27 | bid 2.10 | extrinsic_per_day 0.0448 | fails "
     "earnings, ex_dividend",
     "",
-    "**why each one fails:**",
+    "**Why each one fails**",
     "- 1, 2, 3 fail earnings: earnings on 2026-11-17 (before the open) fall inside the call's life",
     "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's life",
     "",

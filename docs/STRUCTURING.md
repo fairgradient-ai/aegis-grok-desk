@@ -394,8 +394,8 @@ Every example below ran on a copy of `tests/fixtures/desk` with `structuring.tom
 and acknowledged, at 2026-11-03 19:50 UTC (`--offline --now 2026-11-03T19:50:00Z`), on the recorded quotes of 19:31
 UTC. Every value is made up; it is not market data.
 
-Each answer is a desk view in markdown, built to read in a chat on a phone: a title, a context strip of bold labels
-on one line, the legs as list items, captioned items for the checks, the group's numbers and the ranked candidates,
+Each answer is a desk view in markdown, built to read in a chat on a phone: a title, the context in one italic line
+under it, the legs as list items, captioned items for the checks, the group's numbers and the ranked candidates,
 and the notes as a quoted list. It holds no table (a chat client that draws a table as a card of its own splits the
 answer into several bubbles), so it reads as one message. The Aegis Structuring Desk posts it as it is, never inside a
 code block. A status mark opens each check item: a green circle for a criterion that passes, a yellow circle for an earnings or ex-dividend label you accepted
@@ -409,10 +409,7 @@ calls whose row carries `#assign-ok`. One replacement passes every criterion.
 
 ```text
 ### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
-
-| account | WMT mid | your cost | quotes |
-|---|--:|--:|---|
-| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
@@ -420,32 +417,27 @@ calls whose row carries `#assign-ok`. One replacement passes every criterion.
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
-| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
-| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
-| bid | 3.55 | at least 0.50 | 🟢 |
-| calendar days | 73 | 40 to 75 | 🟢 |
-| spread | 2.78 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+**Checks for this candidate**
+- 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
+- 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
+- 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
+- 🟢 **bid** 3.55 | your criteria: at least 0.50
+- 🟢 **calendar days** 73 | your criteria: 40 to 75
+- 🟢 **spread** 2.78 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 19,016.00 | 19,006.00 |
-| max profit | 1,984.00 | 3,994.00 |
-| breakeven | 95.08 | 95.03 |
-| group delta | 101.71 | 134.07 |
+**The group, now and after both legs**
+- **max loss** 19,016.00 now, 19,006.00 after
+- **max profit** 1,984.00 now, 3,994.00 after
+- **breakeven** 95.08 now, 95.03 after
+- **group delta** 101.71 now, 134.07 after
 
-**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+**Replacement candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+- 🟢 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467
+- 🔴 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only
+- 🔴 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only
 
-| # | expiry | new call | net per share | extrinsic_per_day |  |
-|--:|---|---|--:|--:|---|
-| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | 🟢 |
-| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
-| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
-
-- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -467,18 +459,17 @@ candidate; the items under the list say why each shown candidate fails:
 
 ```text
 ### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call
-
-**account** 1 of desk.toml (margin) | **NVDA mid** 148.925 | **your cost** 141.20 | **quotes** 19:31 UTC, 15-min delayed
+*account 1 of desk.toml (margin) | NVDA mid 148.925 | your cost 141.20 | quotes 19:31 UTC, 15-min delayed*
 
 **no candidate passed every criterion: the desk names no best candidate**
 - the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
 
-**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
+**Replacement candidates by rank** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
 - 🔴 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | fails credit_only, ex_dividend
 - 🔴 **2** 2026-12-18 | new call 160 | debit 1.45 | extrinsic_per_day 0.0276 | fails credit_only, ex_dividend
 - 🔴 **3** 2027-01-15 | new call 165 | debit 1.35 | extrinsic_per_day 0.0179 | fails credit_only, ex_dividend
 
-**why each one fails:**
+**Why each one fails**
 - 1 fails credit_only: a net debit of 0.05
 - 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 - 2 fails credit_only: a net debit of 1.45
@@ -504,19 +495,18 @@ named by the roll analysis above:
 
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)
+*account 1 of desk.toml (margin) | computed 19:50 UTC | valid until 20:20 UTC (30 min) | quotes 19:31 UTC, 15-min delayed*
 
-**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC (30 min) | **quotes** 19:31 UTC, 15-min delayed
-
-**the legs:**
+**The legs**
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 - leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B
 
-**the cash:**
+**The cash**
 - **net cash** +10.00 at the conservative prices, +35.00 at the mids
 - **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids
 - **the most the steps need at once** 700.00
 
-**checks for the new call:**
+**Checks for the new call**
 - 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
 - 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
 - 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
@@ -525,13 +515,13 @@ named by the roll analysis above:
 - 🟢 **spread** 2.78 % | your criteria: at most 25 %
 - 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 19,016.00 now, 19,006.00 after
 - **max profit** 1,984.00 now, 3,994.00 after
 - **breakeven** 95.08 now, 95.03 after
 - **group delta** 101.71 now, 134.07 after
 
-**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 200 WMT shares, no option | level 0
 - after leg 2: you hold 200 WMT shares, 2 short calls | level 1
 - in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
@@ -572,19 +562,15 @@ A LET_ASSIGN ticket has no leg to enter:
 
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: the short option left to expiry (action LET_ASSIGN)
-
-| account | computed | valid until | quotes |
-|---|---|---|---|
-| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
+*account 1 of desk.toml (margin) | computed 19:50 UTC | valid until 20:20 UTC (30 min) | quotes 19:31 UTC, 15-min delayed*
 
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
 
-| the 2026-11-20 105 call |  |
-|---|---|
-| now | out of the money: the spot mid 104.23 is below its strike |
-| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades |
-| if assigned | 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00 |
-| ex-dividend | the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20 |
+**The 2026-11-20 105 call**
+- **now** out of the money: the spot mid 104.23 is below its strike
+- **if you decide otherwise** you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
+- **if assigned** 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00
+- **ex-dividend** the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
 
 > - after 20:20 UTC its quotes are too old, and a new ticket needs a new request
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -606,31 +592,30 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 
 ```text
 ### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
-
-**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min delayed
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
 - leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
 - **cost** ask 23.10 (2,310.00 in all)
 - 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
 - 🟢 **calendar days** 136 | your criteria: 120 to 210
 - 🟢 **spread** 0.87 % | your criteria: at most 25 %
 
-**the group, now and after the leg:**
+**The group, now and after the leg**
 - **max loss** 63,240.00 now, 4,550.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 632.40 now, 655.50 after
 - **group delta** 100.00 now, 69.69 after
 
-**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
 
-**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+**Candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
 - 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
 - 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858
 - 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868
@@ -649,8 +634,7 @@ On the same copy, `--structure collar`:
 
 ```text
 ### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold
-
-**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min delayed
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates that passed every criterion
 - leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A
@@ -658,7 +642,7 @@ On the same copy, `--structure collar`:
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **floor** 4.34 % below | your criteria: 3 to 10 %
 - 🟢 **cap** 4.92 % above | your criteria: 2 to 10 %
 - 🟢 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00
@@ -668,18 +652,18 @@ On the same copy, `--structure collar`:
 - 🟡 **ex-dividend** 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok
 - 🟡 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 63,240.00 now, 1,165.00 after
 - **max profit** unbounded now, 4,835.00 after
 - **breakeven** 632.40 now, 631.65 after
 - **group delta** 100.00 now, 24.14 after
 
-**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
 - after leg 2: you hold 100 SPY shares, 1 short call, 1 long put | level 1
 - entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
 
-**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+**Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
 - 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75
 - 🟢 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30
 - 🟢 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60

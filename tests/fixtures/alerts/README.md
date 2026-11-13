@@ -48,7 +48,7 @@ your brokerage account · data delayed 15 min, as of HH:MM UTC`) and their emitt
 `"footer": "structuring"`, so `alert_lint.py` lints them in structuring mode without a `--footer` flag. The three
 passing texts are the desk view (one message, no table), rendered by the tools' own builders (`structuring_text`,
 `tickets`) on a copy of the fixture desk with the fixture criteria at the `regular` instant (quotes 2026-11-03 19:31
-UTC), each with the emitted document its writer recorded: a markdown title, a context strip of bold labels, captioned
+UTC), each with the emitted document its writer recorded: a markdown title, an italic context line under it, captioned
 list items whose status marks are the three status symbols (`alert_lint.STATUS_SYMBOLS`) right after the `- `, the
 legs as list items in the fixed leg grammar, and the notes as a quoted list.
 `rule_ids` is `[]` in every structuring document.

@@ -114,7 +114,7 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 
 The three tools lint their own text in structuring mode before they print it. Post the full text verbatim: every line,
 in order, the footer included. Never shorten, reorder, reword or add to it. The text is markdown laid out as a desk
-view: a title, one line of bold labels for the context, captioned list items and a quoted list of notes. It holds no
+view: a title with an italic context line under it, captioned list items and a quoted list of notes. It holds no
 table, so the chat shows it as one message. Post it as one message, as it is, never inside a code block and never
 split into several posts.
 
@@ -130,8 +130,7 @@ The roll analysis of AG-20261020-01:
 
 ```text
 ### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
-
-**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min delayed
+*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
@@ -139,7 +138,7 @@ The roll analysis of AG-20261020-01:
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
 - 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
 - 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
@@ -148,13 +147,13 @@ The roll analysis of AG-20261020-01:
 - 🟢 **spread** 2.78 % | your criteria: at most 25 %
 - 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 19,016.00 now, 19,006.00 after
 - **max profit** 1,984.00 now, 3,994.00 after
 - **breakeven** 95.08 now, 95.03 after
 - **group delta** 101.71 now, 134.07 after
 
-**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+**Replacement candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
 - 🟢 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467
 - 🔴 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only
 - 🔴 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only
@@ -174,16 +173,18 @@ notes follow):
 
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)
+*account 1 of desk.toml (margin) | computed 19:50 UTC | valid until 20:20 UTC (30 min) | quotes 19:31 UTC, 15-min delayed*
 
-**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC (30 min) | **quotes** 19:31 UTC, 15-min delayed
-
-**the legs:**
+**The legs**
 - leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 
-**the cash:**
+**The cash**
 - **net cash** -700.00 at the conservative prices, -685.00 at the mids
 - **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids
 - **the most the steps need at once** 700.00
+
+**Approval-level check:** the highest step needs level 0 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+- after leg 1: you hold 200 WMT shares, no option | level 0
 ```
 
 A proposal starts `### PROPOSAL <trade id> | a <structure> on the <n> <SYMBOL> shares you hold` and has the same

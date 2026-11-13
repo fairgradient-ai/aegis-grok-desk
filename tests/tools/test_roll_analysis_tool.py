@@ -86,14 +86,12 @@ HOLIDAY_TEXT = [
 ]
 NVDA_TEXT = [
     "### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call",
-    "",
-    "**account** 1 of desk.toml (margin) | **NVDA mid** 148.925 | **your cost** 141.20 | **quotes** 19:31 UTC, "
-    "15-min delayed",
+    "*account 1 of desk.toml (margin) | NVDA mid 148.925 | your cost 141.20 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**no candidate passed every criterion: the desk names no best candidate**",
     "- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
     "",
-    "**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, "
+    "**Replacement candidates by rank** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, "
     "credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced",
     "- \U0001F534 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | fails credit_only, "
     "ex_dividend",
@@ -102,7 +100,7 @@ NVDA_TEXT = [
     "- \U0001F534 **3** 2027-01-15 | new call 165 | debit 1.35 | extrinsic_per_day 0.0179 | fails credit_only, "
     "ex_dividend",
     "",
-    "**why each one fails:**",
+    "**Why each one fails**",
     "- 1 fails credit_only: a net debit of 0.05",
     "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life",
     "- 2 fails credit_only: a net debit of 1.45",
@@ -132,9 +130,7 @@ STALE_TEXT = [
 ]
 WMT_TEXT = [
     "### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call",
-    "",
-    "**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min "
-    "delayed",
+    "*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate "
     "that passed every criterion",
@@ -143,7 +139,7 @@ WMT_TEXT = [
     "",
     "> the score ranks the candidates only on the objective you chose; it is not a forecast",
     "",
-    "**checks for this candidate:**",
+    "**Checks for this candidate**",
     "- \U0001F7E2 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only",
     "- \U0001F7E2 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105",
     "- \U0001F7E2 **absolute delta** 0.33 | your criteria: 0.15 to 0.35",
@@ -152,13 +148,13 @@ WMT_TEXT = [
     "- \U0001F7E2 **spread** 2.78 % | your criteria: at most 25 %",
     "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok",
     "",
-    "**the group, now and after both legs:**",
+    "**The group, now and after both legs**",
     "- **max loss** 19,016.00 now, 19,006.00 after",
     "- **max profit** 1,984.00 now, 3,994.00 after",
     "- **breakeven** 95.08 now, 95.03 after",
     "- **group delta** 101.71 now, 134.07 after",
     "",
-    "**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, "
+    "**Replacement candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, "
     "strike_floor 4)",
     "- \U0001F7E2 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467",
     "- \U0001F534 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only",
@@ -835,8 +831,8 @@ class FixerTest(DeskCopy):
         lines = self.run_text()
         self.assertIn("- \U0001F7E2 **strike** 115 | your criteria: at or above your cost 120.00 or the held strike "
                       "105", lines)
-        self.assertIn("**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 120.00 | **quotes** "
-                      "19:31 UTC, 15-min delayed", lines)
+        self.assertIn("*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 120.00 | quotes 19:31 UTC, "
+                      "15-min delayed*", lines)
 
     def test_fractional_shares_are_analysed(self) -> None:
         self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,200.5,")

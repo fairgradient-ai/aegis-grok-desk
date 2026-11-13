@@ -180,10 +180,10 @@ dates that matter: last trading day 2026-11-20; 21 trading days before it 2026-1
 - 07:30 ET: the Morning Desk Sheet counts last night's levels per group, for example:
 
 ```text
-**last night's levels** | levels/2026-11-02.json
-- AG-20261020-01 1 resting-eligible of 3 price levels
-- AG-20261022-02 1 resting-eligible of 5 price levels
-- AG-20261028-03 0 resting-eligible of 3 price levels
+- **Last night's levels**
+  - AG-20261020-01 1 resting-eligible of 3 price levels
+  - AG-20261022-02 1 resting-eligible of 5 price levels
+  - AG-20261028-03 0 resting-eligible of 3 price levels
 ```
 
 - On request, the Sentinel may post the full text of `trigger_levels.py`, the sheet or a card. The tool lints its own

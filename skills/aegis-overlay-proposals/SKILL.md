@@ -197,31 +197,30 @@ A copy whose SPY put row was removed, so AG-20261028-03 holds 100 SPY shares onl
 
 ```text
 ### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
-
-**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min delayed
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
 - leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
 - **cost** ask 23.10 (2,310.00 in all)
 - 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
 - 🟢 **calendar days** 136 | your criteria: 120 to 210
 - 🟢 **spread** 0.87 % | your criteria: at most 25 %
 
-**the group, now and after the leg:**
+**The group, now and after the leg**
 - **max loss** 63,240.00 now, 4,550.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 632.40 now, 655.50 after
 - **group delta** 100.00 now, 69.69 after
 
-**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
 
-**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+**Candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
 - 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
 - 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858
 - 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868
@@ -242,7 +241,7 @@ The same copy with `#assign-ok` on the share row, `--structure collar`: its chec
 candidates.
 
 ```text
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **floor** 4.34 % below | your criteria: 3 to 10 %
 - 🟢 **cap** 4.92 % above | your criteria: 2 to 10 %
 - 🟢 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00
@@ -252,13 +251,13 @@ candidates.
 - 🟡 **ex-dividend** 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok
 - 🟡 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 63,240.00 now, 1,165.00 after
 - **max profit** unbounded now, 4,835.00 after
 - **breakeven** 632.40 now, 631.65 after
 - **group delta** 100.00 now, 24.14 after
 
-**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+**Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
 - 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75
 - 🟢 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30
 - 🟢 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60

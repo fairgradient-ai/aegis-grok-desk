@@ -33,43 +33,43 @@ none recorded today (<path> missing)`` and stays available.
 
 The blocks (exact shapes; decisions D1-14, O5, O12)
 ---------------------------------------------------
-Both messages are a desk view in markdown a chat renders as one bubble: a ``###`` title, then blocks a blank line
-apart, each a line led by a bold label (the record it was read from at its end, after `` | ``) and its ``- `` items;
-no table.
-Morning (``### MORNING DESK SHEET <D>``): ``**doctor** <PASS|FAIL>, <n> warnings[: <check ids>][; <m> failures:
-<check ids>] | <mode> check at HH:MM UTC | state/doctor.json``; ``**positions.csv reconciliation** <VERDICT>, <n>
-proposed edits (csv_recon.py --diff lists them)[, <u> unavailable items (csv_recon.py shows them)] | <path>``;
-``**open signals** <n>`` and one item per open signal; ``**expiry docket** <n> contracts due[, <u> unavailable
-(expiry_checklist.py --week shows why)] | <path>`` with one ``- <trade_id> <OCC symbol> <long|short> <contracts> |
-<UNDERLYING> <structure words> | last trading day <date> (<n> trading days) | <act-by text>`` item per contract (the
-legs of one group can act by different times: a short leg by the session close, a long one by the broker cutoff, so
-each item names its contract); on an early-close day (O5) ``**early close** today at 13:00 ET: <n> contracts on their
-last trading day; <act-by text>``; and ``**last night's levels** | <path>`` with one ``- <trade_id> <r>
-resting-eligible of <p> price levels`` item per group.
-Brief (``### EOD DESK BRIEF <D>``): ``**P/L** | <path>`` with the items ``- **unrealized** <m> (liquidation), <m>
-(mid)``, ``- **day** <m>`` (a null day prints the book's own day-P/L reason, ``unavailable: ...``) and ``- **realized**
-today <m>, month to date <m>, year to date <m>`` (a null prints ``unavailable``) and, when the book's totals leave
-groups out, ``- totals without <id> (data unavailable); the day total also without <id> (an open leg has no day
-P/L)``, the ids read from the book's own exclusion warnings, never their reasons, which may carry an account name the
-owner typed; then ``**by trade**`` with one item per open group in snapshot order (O12) ``- **<trade_id or ROW-n>**
-<UNDERLYING> <structure words> | unrealized <m> (liquidation), <m> (mid) | day <m> | <data_quality>``, whose day is
-the open leg's own day P/L, or each open leg's with its row (``day $84.00 (row 3), -$50.00 (row 4)``: the snapshot
-keeps no group total and the desk never adds one; ``day unavailable`` when no open leg has one), and ``- **<id>** |
-quarantined: <the desk's own words>`` for a quarantined group;
-``**signals today** <n> (<a> EXIT SIGNAL, <b> WATCH, <c> UNAVAILABLE)``; ``**open signals** <n>`` and the open signals;
-the reconciliation and docket blocks; ``**routines** <ran> of <expected> ran today`` with the items ``- late: <id>
-HH:MM ET (<n> min late)``, ``- missed: <id> HH:MM ET`` and ``- pending: <id> HH:MM ET`` (``none`` for an empty list;
-the day audit of ``aegis_desk.routines``, the brief's own routine excluded, O15); ``**incidents today** <n>
-(<routine> <step>, ...); details in incidents/`` when the day's ``incidents/`` holds files (names only, never their
-contents; O8: a failed 10:05 levels refresh is an incident file the brief names); and the owner's ``**to do**`` with
-one item per task (each open signal ``not acknowledged (ack.py show <SIG>)``, the proposed CSV edits, CONFIG CHANGED
-pending, the calendar findings), or ``**to do** nothing pending``. An open signal reads ``<SIG> | <trade_id>
-<structure words> | <EXIT SIGNAL|WATCH|UNAVAILABLE> | your plan: <plan words> | first posted <date> HH:MM UTC |
-<posts> | not acknowledged`` (or ``snoozed until <date> HH:MM UTC``), the posts being ``posted <p> of 4 times; next
-re-post <k> runs after the first post``, ``...; the re-post ladder is done``, ``posted <p> times; no re-post ladder for
-WATCH`` or ``posted <p> times; re-posted on every run until acknowledged``. A journal with unreadable lines adds a block
-``<file> has lines that do not parse: they were skipped (the file is kept as it is)``; an UNAVAILABLE line is a block
-of its own.
+Both messages are a desk view in markdown a chat renders as one bubble: a ``###`` title, then bold section titles a
+blank line apart, each with ``- `` items whose details are nested ``  - `` sub-items, then the records read in
+italics (``*read from <path>, <path>*``); no table. A gain carries its ``+`` (:meth:`Composer.signed`).
+Morning (``### MORNING DESK SHEET <D>``), one ``**Desk status**`` section: ``- **Doctor** <PASS|FAIL>, <n>
+warnings[: <check ids>][; <m> failures: <check ids>] (<mode> check at HH:MM UTC)``; ``- **positions.csv**
+<VERDICT>, <n> proposed edits (`csv_recon.py --diff` lists them)[, <u> unavailable items (`csv_recon.py` shows
+them)]``; ``- **Open signals** <n>`` and a sub-item per open signal; ``- **Expiry docket** <n> contracts due[, <u>
+unavailable (`expiry_checklist.py --week` shows why)]`` with a ``<trade_id> <OCC symbol> <long|short> <contracts> |
+<UNDERLYING> <structure words> | last trading day <date> (<n> trading days) | <act-by text>`` sub-item per contract
+(the legs of one group can act by different times: a short leg by the session close, a long one by the broker cutoff,
+so each names its contract); on an early-close day (O5) ``- **Early close** today at 13:00 ET: <n> contracts on their
+last trading day; <act-by text>``; and ``- **Last night's levels**`` with a ``<trade_id> <r> resting-eligible of <p>
+price levels`` sub-item per group.
+Brief (``### EOD DESK BRIEF <D>``): ``**P/L**`` with ``- **Unrealized** <m> at the mids (<m> at liquidation)``, ``-
+**Today** <m>`` (a null day prints the book's own reason, ``unavailable: ...``) and ``- **Realized** <m> this year
+(<m> today, <m> this month)`` (a null prints ``unavailable``) and, when the book's totals leave groups out, ``- totals
+without <id> (data unavailable); the day total also without <id> (an open leg has no day P/L)``, the ids read from the
+book's own exclusion warnings, never their reasons, which may carry an account name the owner typed; ``**By trade**``
+with, per open group in snapshot order (O12), ``- **<UNDERLYING> <structure words>** <m> at the mids (<m> at
+liquidation)`` and the sub-item ``*<trade_id or ROW-n> | today <day>[ | data unavailable]*``, whose day is the open
+leg's own day P/L, or each open leg's with its row (``today +$84.00 (row 3), -$50.00 (row 4)``: the snapshot keeps no
+group total and the desk never adds one; ``today unavailable`` when no open leg has one), and ``- **<id>**
+quarantined: <the desk's own words>`` for a quarantined group; ``**Desk status**`` with ``- **Signals today** <n>
+(<a> EXIT SIGNAL, <b> WATCH, <c> UNAVAILABLE)``, the open signals, the reconciliation and docket items, ``-
+**Routines** <ran> of <expected> ran today`` (``, none late or missed`` when so) with the sub-items ``late: <id> HH:MM
+ET (<n> min late)``, ``missed: <id> HH:MM ET`` and ``pending: <id> HH:MM ET`` of the lists that are not empty (the
+day audit of ``aegis_desk.routines``, the brief's own routine excluded, O15), ``- **Incidents today** <n> (<routine>
+<step>, ...); details in `incidents/``` when the day's ``incidents/`` holds files (names only, never their contents;
+O8: a failed 10:05 levels refresh is an incident file the brief names); and ``**To do**`` with one item per task (each
+open signal ``not acknowledged (`ack.py show <SIG>`)``, the proposed CSV edits, CONFIG CHANGED pending, the calendar
+findings), or ``**To do** nothing pending``. An open signal reads ``<SIG> | <trade_id> <structure words> | <EXIT
+SIGNAL|WATCH|UNAVAILABLE> | your plan: <plan words> | first posted <date> HH:MM UTC | <posts> | not acknowledged`` (or
+``snoozed until <date> HH:MM UTC``), the posts being ``posted <p> of 4 times; next re-post <k> runs after the first
+post``, ``...; the re-post ladder is done``, ``posted <p> times; no re-post ladder for WATCH`` or ``posted <p> times;
+re-posted on every run until acknowledged``. A journal with unreadable lines adds an item ``<file> has lines that do
+not parse: they were skipped (the file is kept as it is)``; an UNAVAILABLE line is an item of the section it stands
+for.
 
 The message ends with a blank line and the fixed footer (``alerts.fmt_footer``) at ``alerts.book_as_of`` of the snapshot when one was
 read, else the OLDEST data instant of the records read (the reconciliation's and the docket's ``payload.as_of``,
@@ -98,6 +98,8 @@ BRIEF_HEAD: str = "EOD DESK BRIEF"
 TITLE_MARK: str = "### "
 """The message's first line is a markdown title (``### EOD DESK BRIEF 2026-11-03``): the desk view of a chat."""
 SOURCE_SEPARATOR: str = " | "
+SUB_ITEM: str = "  - "
+"""A detail under an item (an open signal, a docket contract, a routine list, a trade's id): a nested list item."""
 """Between a block's words and the record it was read from (``**doctor** PASS, 0 warnings | quick check at 12:31 UTC |
 state/doctor.json``)."""
 
@@ -125,20 +127,20 @@ LATE_LINE: str = "UNAVAILABLE: %s is from %s (upstream late)"
 CORRUPT_LINE: str = "UNAVAILABLE: %s %s cannot be read (moved aside)"
 INVALID_LINE: str = "UNAVAILABLE: %s %s cannot be read (%s)"
 INVALID_WHY: str = "not the record the desk writes"
-DOCKET_NONE_LINE: str = "**expiry docket** none recorded today (%s missing)"
-LEVELS_NONE_YET_LINE: str = "**last night's levels** none yet (the end-of-day level sheet has not run on this desk)"
+DOCKET_NONE_LINE: str = "- **Expiry docket** none recorded today (%s missing)"
+LEVELS_NONE_YET_LINE: str = "- **Last night's levels** none yet (the end-of-day level sheet has not run on this desk)"
 """The morning sheet's levels line when no level sheet was ever written (a new desk's first mornings): the expected
 state, said plainly instead of an UNAVAILABLE line."""
 PARTIAL_JOURNAL_LINE: str = "%s has lines that do not parse: they were skipped (the file is kept as it is)"
 EARLY_CLOSE_NO_DOCKET: str = "the expiry docket is unavailable, so the contracts on their last trading day are unknown"
-TODO_HEAD: str = "**to do**"
-TODO_NOTHING: str = "**to do** nothing pending"
+TODO_HEAD: str = "**To do**"
+TODO_NOTHING: str = "**To do** nothing pending"
 TOTALS_WITHOUT: str = "totals without %s"
 DAY_TOTAL_WITHOUT: str = "the day total also without %s"
 EXCLUDED_UNAVAILABLE: str = "%s (data unavailable)"
 EXCLUDED_DAY: str = "%s (an open leg has no day P/L)"
-INCIDENTS_LINE: str = "**incidents today** %s (%s); details in incidents/"
-INCIDENTS_TODO: str = "incidents/: %s today"
+INCIDENTS_LINE: str = "- **Incidents today** %s (%s); details in `incidents/`"
+INCIDENTS_TODO: str = "`incidents/`: %s today"
 _EXCLUDED_RE = re.compile(r"^(?P<group>\S+) excluded from the (?P<what>portfolio totals|day P/L total): ")
 LADDER_POSTS: int = 1 + len(signals.LADDER_RUN_OFFSETS)
 """The posts of a full EXIT_SIGNAL ladder: the first post and the re-posts of ``signals.LADDER_RUN_OFFSETS`` (4)."""
@@ -446,6 +448,7 @@ class Composer:
         self.identifiers: List[str] = []
         self.clocks: List[str] = []
         self.unavailable: List[Artifact] = []
+        self.records: List[str] = []
 
     def add(self, line: str) -> None:
         self.lines.append(line)
@@ -484,6 +487,19 @@ class Composer:
         """``fmt_money`` of the record's own Decimal; ``unavailable`` for a null."""
         return "unavailable" if value is None else alerts.fmt_money(value, self.emitted)
 
+    def signed(self, value: Any) -> str:
+        """:meth:`money` with a ``+`` before a gain (``+$1,145.00``, ``-$50.00``, ``$0.00``), the signed text emitted."""
+        text = self.money(value)
+        if value is not None and text != "unavailable" and not text.startswith("-") and text != "$0.00":
+            text = "+" + text
+            self.emitted.append(text)
+        return text
+
+    def record(self, item: Artifact) -> None:
+        """A record the message was composed from (its path, for the ``read from`` line)."""
+        if item.path not in self.records:
+            self.records.append(item.path)
+
     def date(self, value: Any) -> str:
         return self.ident(value.isoformat() if isinstance(value, datetime.date) else str(value))
 
@@ -492,10 +508,10 @@ class Composer:
         utc = moment.astimezone(_UTC)
         return "%s %s" % (self.ident(utc.date().isoformat()), self.clock(utc.strftime("%H:%M UTC")))
 
-    def unavailable_line(self, item: Artifact) -> None:
-        """The record's UNAVAILABLE line as a block of its own, recorded as unavailable."""
+    def unavailable_item(self, item: Artifact) -> str:
+        """The record's UNAVAILABLE line as an item, recorded as unavailable."""
         self.unavailable.append(item)
-        self.block(self.reason(item.line() or ""))
+        return "- " + self.reason(item.line() or "")
 
     def finish(self, mode: str, et_date: datetime.date, as_of: datetime.datetime, delay_min: int) -> Summary:
         footer = alerts.fmt_footer(as_of, delay_min, self.emitted, self.clocks)
@@ -505,7 +521,7 @@ class Composer:
 
 
 def bold_label(text: str) -> str:
-    """A block's or an item's label in bold: ``**day P/L**``."""
+    """A block's or an item's label in bold: ``**Today**``."""
     return "**%s**" % text
 
 
@@ -526,36 +542,37 @@ def _oldest(items: Sequence[Artifact], fallback: datetime.datetime) -> datetime.
 
 
 # --------------------------------------------------------------------------------------------
-# Lines
+# Items (each a ``- `` line, with ``  - `` sub-items for the details)
 # --------------------------------------------------------------------------------------------
 
 
 def doctor_line(c: Composer, item: Artifact) -> str:
-    """``**doctor** <PASS|FAIL>, <n> warnings[: ids][; <m> failures: ids] | <mode> check at HH:MM UTC |
-    state/doctor.json``: the record's verdict and check ids, never a reason."""
+    """``- **Doctor** <PASS|FAIL>, <n> warnings[: ids][; <m> failures: ids] (<mode> check at HH:MM UTC)``: the
+    record's verdict and check ids, never a reason."""
     record = item.document
     run = _instant(record["run_utc"])
     checks = record["checks"]
     warned = [c.reason(check["id"]) for check in checks if check["status"] == doctor.WARN]
     failed = [c.reason(check["id"]) for check in checks if check["status"] == doctor.FAIL]
-    text = "**doctor** %s, %s" % (record["verdict"], c.counted(len(warned), "warning"))
+    text = "- **Doctor** %s, %s" % (record["verdict"], c.counted(len(warned), "warning"))
     if warned:
         text += ": " + ", ".join(warned)
     if failed:
         text += "; %s: %s" % (c.counted(len(failed), "failure"), ", ".join(failed))
-    return text + SOURCE_SEPARATOR.join(("", "%s check at %s" % (record["mode"], c.clock(run.strftime("%H:%M UTC"))),
-                                         c.reason(item.path)))
+    c.record(item)
+    return text + " (%s check at %s)" % (record["mode"], c.clock(run.strftime("%H:%M UTC")))
 
 
 def recon_line(c: Composer, item: Artifact) -> str:
-    """``**positions.csv reconciliation** <VERDICT>, <n> proposed edits (csv_recon.py --diff lists them) | <path>``."""
+    """``- **positions.csv** <VERDICT>, <n> proposed edits (`csv_recon.py --diff` lists them)``."""
     payload = item.document["payload"]
     edits, unavailable = payload["counts"]["edits"], payload["counts"]["unavailable"]
-    text = "**positions.csv reconciliation** %s, %s (csv_recon.py --diff lists %s)" % (
+    text = "- **positions.csv** %s, %s (`csv_recon.py --diff` lists %s)" % (
         payload["verdict"], c.counted(edits, "proposed edit"), _them(edits))
     if unavailable:
-        text += ", %s (csv_recon.py shows %s)" % (c.counted(unavailable, "unavailable item"), _them(unavailable))
-    return text + SOURCE_SEPARATOR + c.reason(item.path)
+        text += ", %s (`csv_recon.py` shows %s)" % (c.counted(unavailable, "unavailable item"), _them(unavailable))
+    c.record(item)
+    return text
 
 
 def signal_line(c: Composer, item: signals.OpenSignal) -> str:
@@ -584,33 +601,34 @@ def signal_line(c: Composer, item: signals.OpenSignal) -> str:
     return " | ".join(segments)
 
 
-def open_signal_lines(c: Composer, items: Sequence[signals.OpenSignal]) -> None:
-    """``**open signals** <n>`` and one ``- `` item per open signal."""
-    c.block("**open signals** %s" % c.count(len(items)), *["- " + signal_line(c, item) for item in items])
+def open_signal_lines(c: Composer, items: Sequence[signals.OpenSignal]) -> List[str]:
+    """``- **Open signals** <n>`` and one sub-item per open signal."""
+    return ["- **Open signals** %s" % c.count(len(items))] + [SUB_ITEM + signal_line(c, item) for item in items]
 
 
-def docket_lines(c: Composer, item: Artifact) -> None:
-    """The docket head and one ``- `` item per listed contract (module notes)."""
+def docket_lines(c: Composer, item: Artifact) -> List[str]:
+    """``- **Expiry docket** <n> contracts due`` and one sub-item per listed contract (module notes)."""
     payload = item.document["payload"]
     listed, unavailable = payload["counts"]["listed"], payload["counts"]["unavailable"]
-    head = "**expiry docket** %s due" % c.counted(listed, "contract")
+    head = "- **Expiry docket** %s due" % c.counted(listed, "contract")
     if unavailable:
-        head += ", %s unavailable (expiry_checklist.py --week shows why)" % c.count(unavailable)
-    lines = [head + SOURCE_SEPARATOR + c.reason(item.path)]
+        head += ", %s unavailable (`expiry_checklist.py --week` shows why)" % c.count(unavailable)
+    lines = [head]
     for leg in payload["legs"]:
         # Each line names its contract, side and size (the checklist's leg head): the legs of one group can act by
         # different times (a short leg by the session close, a long one by the broker cutoff; FAI-689 review L1-1).
-        lines.append("- %s %s | %s %s | last trading day %s (%s) | %s" % (
-            c.ident(leg["trade_id"] or leg["group_id"]),
+        lines.append("%s%s %s | %s %s | last trading day %s (%s) | %s" % (
+            SUB_ITEM, c.ident(leg["trade_id"] or leg["group_id"]),
             c.reason("%s %s %s" % (leg["symbol"], leg["side"], leg["contracts"])), c.reason(leg["underlying"]),
             _words(leg["structure"]), c.date(leg["last_trading_day"]),
             alerts.fmt_days(leg["dte_trading"], c.emitted, "trading"), c.reason(leg["act_by_text"])))
-    c.block(*lines)
+    c.record(item)
+    return lines
 
 
 def early_close_line(c: Composer, close_et: datetime.time, item: Artifact, et_date: datetime.date) -> str:
-    """O5: ``**early close** today at 13:00 ET: <n> contracts on their last trading day; <act-by text>``."""
-    head = "**early close** today at %s" % c.clock(close_et.strftime("%H:%M ET"))
+    """O5: ``- **Early close** today at 13:00 ET: <n> contracts on their last trading day; <act-by text>``."""
+    head = "- **Early close** today at %s" % c.clock(close_et.strftime("%H:%M ET"))
     if not item.ok:
         return "%s: %s" % (head, EARLY_CLOSE_NO_DOCKET)
     legs = [leg for leg in item.document["payload"]["legs"] if leg["last_trading_day"] == et_date.isoformat()]
@@ -626,15 +644,15 @@ def early_close_line(c: Composer, close_et: datetime.time, item: Artifact, et_da
 
 
 def levels_lines(c: Composer, item: Artifact) -> List[str]:
-    """``**last night's levels** | <path>`` and one ``- <trade_id> <r> resting-eligible of <p> price levels`` item
-    per group (``**last night's levels** no open group | <path>`` for none)."""
+    """``- **Last night's levels**`` and one ``<trade_id> <r> resting-eligible of <p> price levels`` sub-item per
+    group (``- **Last night's levels** no open group`` for none)."""
     groups = item.document["groups"]
-    items = ["- %s %s resting-eligible of %s" % (c.ident(group["trade_id"] or group["group_id"]),
-                                                c.count(group["resting_eligible"]),
-                                                c.counted(group["price_levels"], "price level"))
-             for group in groups]
-    head = "**last night's levels**" + ("" if items else " no open group")
-    return [head + SOURCE_SEPARATOR + c.reason(item.path)] + items
+    subs = ["%s%s %s resting-eligible of %s" % (SUB_ITEM, c.ident(group["trade_id"] or group["group_id"]),
+                                               c.count(group["resting_eligible"]),
+                                               c.counted(group["price_levels"], "price level"))
+            for group in groups]
+    c.record(item)
+    return ["- **Last night's levels**" + ("" if subs else " no open group")] + subs
 
 
 def excluded_groups(document: Mapping[str, Any]) -> Tuple[List[str], List[str]]:
@@ -658,9 +676,9 @@ DAY_PL_PREFIX: str = "day P/L "
 
 
 def pl_lines(c: Composer, item: Artifact) -> List[str]:
-    """The brief's P/L block from the snapshot's portfolio fields, each printed as it is (never summed): ``**P/L** |
-    <path>``, then the ``unrealized``, ``day`` and ``realized`` items and, when the book's totals leave groups out,
-    the item that names them (module notes)."""
+    """The brief's P/L block from the snapshot's portfolio fields, each printed as it is (never summed): ``**P/L**``,
+    then the ``Unrealized``, ``Today`` and ``Realized`` items (a gain carries its ``+``) and, when the book's totals
+    leave groups out, the item that names them (module notes)."""
     document = item.document
     portfolio = document["portfolio"]
     day = portfolio.get("day_pl")
@@ -669,14 +687,14 @@ def pl_lines(c: Composer, item: Artifact) -> List[str]:
                         if isinstance(text, str) and text.startswith("day P/L unavailable")), None)
         day_text = c.reason(warning[len(DAY_PL_PREFIX):]) if warning else "unavailable"
     else:
-        day_text = c.money(day)
-    lines = ["**P/L**" + SOURCE_SEPARATOR + c.reason(item.path),
-             "- **unrealized** %s (liquidation), %s (mid)" % (c.money(portfolio.get("unrealized_pl_liq")),
-                                                             c.money(portfolio.get("unrealized_pl_mid"))),
-             "- **day** %s" % day_text,
-             "- **realized** today %s, month to date %s, year to date %s" % (
-                 c.money(portfolio.get("realized_pl_today")), c.money(portfolio.get("realized_pl_mtd")),
-                 c.money(portfolio.get("realized_pl_ytd")))]
+        day_text = c.signed(day)
+    lines = [PL_HEAD,
+             "- **Unrealized** %s at the mids (%s at liquidation)" % (c.signed(portfolio.get("unrealized_pl_mid")),
+                                                                    c.signed(portfolio.get("unrealized_pl_liq"))),
+             "- **Today** %s" % day_text,
+             "- **Realized** %s this year (%s today, %s this month)" % (
+                 c.signed(portfolio.get("realized_pl_ytd")), c.signed(portfolio.get("realized_pl_today")),
+                 c.signed(portfolio.get("realized_pl_mtd")))]
     totals, day_only = excluded_groups(document)
     pieces: List[str] = []
     if totals:
@@ -685,26 +703,31 @@ def pl_lines(c: Composer, item: Artifact) -> List[str]:
         pieces.append(DAY_TOTAL_WITHOUT % ", ".join(EXCLUDED_DAY % c.ident(group_id) for group_id in day_only))
     if pieces:
         lines.append("- " + "; ".join(pieces))
+    c.record(item)
     return lines
 
 
-BY_TRADE_HEAD: str = "**by trade**"
+PL_HEAD: str = "**P/L**"
+BY_TRADE_HEAD: str = "**By trade**"
+STATUS_HEAD: str = "**Desk status**"
 
 
 def _quarantine_line(c: Composer, group_id: str, reasons: Sequence[Any]) -> str:
     words = "; ".join(c.reason(alerts.quarantine_words(str(reason))) for reason in reasons) or alerts.GROUP_WORDS
-    return "- **%s** | quarantined: %s" % (c.ident(group_id), words)
+    return "- **%s** quarantined: %s" % (c.ident(group_id), words)
 
 
-def group_lines(c: Composer, item: Artifact) -> None:
-    """O12: ``**by trade**`` and one ``- `` item per open group of the snapshot, in its order; a quarantined group in
-    the desk's own words. No block when the snapshot holds no open or quarantined group."""
-    lines: List[str] = []
+def group_lines(c: Composer, item: Artifact) -> List[str]:
+    """O12: ``**By trade**`` and, per open group of the snapshot in its order, ``- **<UNDERLYING> <structure words>**
+    <unrealized at the mids> (<at liquidation>)`` with the sub-item ``*<trade id> | today <day>*`` (and ``| data
+    unavailable`` when it is not ok); a quarantined group in the desk's own words. No block when the snapshot holds
+    no open or quarantined group."""
     document = item.document
     legs = {leg.get("row_number"): leg for leg in document.get("legs") or []}
     quarantined = [entry for entry in (document["portfolio"].get("quarantined_groups") or [])
                    if isinstance(entry, Mapping)]
     by_id = {entry.get("group_id"): entry for entry in quarantined}
+    lines: List[str] = []
     printed: List[Any] = []
     for group in document.get("groups") or []:
         group_id = group.get("group_id")
@@ -716,18 +739,21 @@ def group_lines(c: Composer, item: Artifact) -> None:
         if not open_legs:
             continue
         if len(open_legs) == 1 or all(leg.get("day_pl") is None for leg in open_legs):
-            day = c.money(open_legs[0].get("day_pl") if len(open_legs) == 1 else None)
+            day = c.signed(open_legs[0].get("day_pl") if len(open_legs) == 1 else None)
         else:
-            day = ", ".join("%s (row %s)" % (c.money(leg.get("day_pl")), c.count(leg["row_number"])) for leg in open_legs)
-        lines.append("- **%s** %s %s | unrealized %s (liquidation), %s (mid) | day %s | %s" % (
-            c.ident(str(group.get("trade_id") or group_id)), c.reason(str(group.get("underlying"))),
-            _words(group.get("structure")), c.money(group.get("unrealized_pl_liq")),
-            c.money(group.get("unrealized_pl_mid")), day, group.get("data_quality")))
+            day = ", ".join("%s (row %s)" % (c.signed(leg.get("day_pl")), c.count(leg["row_number"]))
+                            for leg in open_legs)
+        lines.append("- **%s %s** %s at the mids (%s at liquidation)" % (
+            c.reason(str(group.get("underlying"))), _words(group.get("structure")),
+            c.signed(group.get("unrealized_pl_mid")), c.signed(group.get("unrealized_pl_liq"))))
+        sub = "%s | today %s" % (c.ident(str(group.get("trade_id") or group_id)), day)
+        if group.get("data_quality") != "ok":
+            sub += " | data %s" % group.get("data_quality")
+        lines.append("%s*%s*" % (SUB_ITEM, sub))
     for entry in quarantined:
         if entry.get("group_id") not in printed:
             lines.append(_quarantine_line(c, str(entry.get("group_id")), entry.get("reasons") or []))
-    if lines:
-        c.block(BY_TRADE_HEAD, *lines)
+    return [BY_TRADE_HEAD] + lines if lines else []
 
 
 def signals_today(records: Sequence[Mapping[str, Any]], et_date: datetime.date) -> Dict[str, int]:
@@ -746,32 +772,36 @@ def signals_today(records: Sequence[Mapping[str, Any]], et_date: datetime.date) 
 
 
 def signals_today_line(c: Composer, records: Sequence[Mapping[str, Any]], et_date: datetime.date) -> str:
-    """``**signals today** <n> (<a> EXIT SIGNAL, <b> WATCH, <c> UNAVAILABLE)``: the records posted on the ET date."""
+    """``- **Signals today** <n> (<a> EXIT SIGNAL, <b> WATCH, <c> UNAVAILABLE)``: the records posted on the ET date."""
     counts = signals_today(records, et_date)
     words = ", ".join("%s %s" % (c.count(counts[verdict]), alerts.VERDICT_WORDS[verdict])
                       for verdict in SIGNAL_VERDICT_ORDER)
-    return "**signals today** %s (%s)" % (c.count(counts["count"]), words)
+    return "- **Signals today** %s (%s)" % (c.count(counts["count"]), words)
 
 
 def routines_lines(c: Composer, audit: routines.DayAudit) -> List[str]:
-    """``**routines** <ran> of <expected> ran today`` and the items ``- late: ...``, ``- missed: ...`` and, when any
-    slot is still to come, ``- pending: ...`` (O15; ``none`` for an empty list)."""
+    """``- **Routines** <ran> of <expected> ran today`` (``, none late or missed`` when so) and the sub-items
+    ``late: ...``, ``missed: ...`` and ``pending: ...`` of the lists that are not empty (O15)."""
 
     def name(slot: routines.SlotAudit) -> str:
         return "%s %s" % (c.reason(slot.routine_id), c.clock("%s ET" % slot.scheduled_et))
 
-    late = ", ".join("%s (%s late)" % (name(slot), alerts.fmt_minutes(slot.lateness_min, c.emitted))
-                     for slot in audit.late) or "none"
-    missed = ", ".join(name(slot) for slot in audit.missed) or "none"
-    lines = ["**routines** %s of %s ran today" % (c.count(len(audit.ran)), c.count(len(audit.expected))),
-             "- late: %s" % late, "- missed: %s" % missed]
+    head = "- **Routines** %s of %s ran today" % (c.count(len(audit.ran)), c.count(len(audit.expected)))
+    if not audit.late and not audit.missed:
+        head += ", none late or missed"
+    lines = [head]
+    if audit.late:
+        lines.append("%slate: %s" % (SUB_ITEM, ", ".join(
+            "%s (%s late)" % (name(slot), alerts.fmt_minutes(slot.lateness_min, c.emitted)) for slot in audit.late)))
+    if audit.missed:
+        lines.append("%smissed: %s" % (SUB_ITEM, ", ".join(name(slot) for slot in audit.missed)))
     if audit.pending:
-        lines.append("- pending: %s" % ", ".join(name(slot) for slot in audit.pending))
+        lines.append("%spending: %s" % (SUB_ITEM, ", ".join(name(slot) for slot in audit.pending)))
     return lines
 
 
 def incidents_line(c: Composer, incidents: Sequence[Tuple[Optional[str], Optional[str]]]) -> str:
-    """``**incidents today** <n> (<routine> <what>, ..., <k> other files); details in incidents/``: names only."""
+    """``- **Incidents today** <n> (<routine> <what>, ..., <k> other files); details in `incidents/```: names only."""
     named: List[str] = []
     others = 0
     for routine_id, what in incidents:
@@ -785,27 +815,33 @@ def incidents_line(c: Composer, incidents: Sequence[Tuple[Optional[str], Optiona
 
 
 def todo_lines(c: Composer, inputs: BriefInputs) -> List[str]:
-    """The owner's to-do list (module notes): ``**to do**`` and one ``- `` item each, or ``**to do** nothing
-    pending``."""
+    """The owner's to-do list (module notes): ``**To do**`` and one item each, or ``**To do** nothing pending``."""
     items: List[str] = []
     for item in inputs.open_signals:
         signal_id = c.ident(item.signal_id)
-        items.append("%s not acknowledged (ack.py show %s)" % (signal_id, signal_id))
+        items.append("%s not acknowledged (`ack.py show %s`)" % (signal_id, signal_id))
     if inputs.recon.ok:
         edits = inputs.recon.document["payload"]["counts"]["edits"]
         if edits:
-            items.append("positions.csv: %s pending (csv_recon.py --diff lists %s)" % (c.counted(edits, "proposed edit"),
-                                                                                      _them(edits)))
+            items.append("positions.csv: %s pending (`csv_recon.py --diff` lists %s)" % (
+                c.counted(edits, "proposed edit"), _them(edits)))
     if inputs.config_changes:
         labels = [alerts.CONFIG_FILE_LABELS.get(str(change.get("name")), str(change.get("name")))
                   for change in inputs.config_changes]
         items.append("CONFIG CHANGED pending: %s (%s)" % (", ".join(labels), alerts.ACKNOWLEDGE_CONFIG))
     if inputs.calendar_findings:
-        items.append("research/calendar.toml: %s (calendar_check.py lists %s)" % (
+        items.append("research/calendar.toml: %s (`calendar_check.py` lists %s)" % (
             c.counted(inputs.calendar_findings, "finding"), _them(inputs.calendar_findings)))
     if inputs.incidents:
         items.append(INCIDENTS_TODO % c.counted(len(inputs.incidents), "file"))
     return [TODO_HEAD] + ["- " + item for item in items] if items else [TODO_NOTHING]
+
+
+def records_line(c: Composer) -> Optional[str]:
+    """``*read from <path>, <path>*``: the records the message was composed from, in italics under it."""
+    if not c.records:
+        return None
+    return "*read from %s*" % ", ".join(c.reason(path) for path in c.records)
 
 
 # --------------------------------------------------------------------------------------------
@@ -814,73 +850,73 @@ def todo_lines(c: Composer, inputs: BriefInputs) -> List[str]:
 
 
 def morning_sheet(inputs: MorningInputs) -> Summary:
-    """The Morning Desk Sheet (module notes): doctor, reconciliation, standing signals, the docket (and the
-    early-close line), last night's levels."""
+    """The Morning Desk Sheet (module notes): one ``**Desk status**`` block of the doctor, the reconciliation, the
+    standing signals, the docket (and the early-close line) and last night's levels, then the records it read."""
     c = Composer()
     c.add("%s%s %s" % (TITLE_MARK, MORNING_HEAD, c.date(inputs.et_date)))
-    if inputs.doctor.ok:
-        c.block(doctor_line(c, inputs.doctor))
-    else:
-        c.unavailable_line(inputs.doctor)
-    if inputs.recon.ok:
-        c.block(recon_line(c, inputs.recon))
-    else:
-        c.unavailable_line(inputs.recon)
-    open_signal_lines(c, inputs.open_signals)
+    items: List[str] = []
+    items.append(doctor_line(c, inputs.doctor) if inputs.doctor.ok else c.unavailable_item(inputs.doctor))
+    items.append(recon_line(c, inputs.recon) if inputs.recon.ok else c.unavailable_item(inputs.recon))
+    items.extend(open_signal_lines(c, inputs.open_signals))
     if inputs.docket.ok:
-        docket_lines(c, inputs.docket)
+        items.extend(docket_lines(c, inputs.docket))
     else:
-        c.unavailable_line(inputs.docket)
+        items.append(c.unavailable_item(inputs.docket))
     if inputs.early_close_et is not None:
-        c.block(early_close_line(c, inputs.early_close_et, inputs.docket, inputs.et_date))
+        items.append(early_close_line(c, inputs.early_close_et, inputs.docket, inputs.et_date))
     if inputs.levels.ok:
-        c.block(*levels_lines(c, inputs.levels))
+        items.extend(levels_lines(c, inputs.levels))
     elif inputs.levels.status == ARTIFACT_MISSING and inputs.levels.found_date is None:
-        c.block(LEVELS_NONE_YET_LINE)  # no level sheet of any date yet: a new desk, not a failure
+        items.append(LEVELS_NONE_YET_LINE)  # no level sheet of any date yet: a new desk, not a failure
     else:
-        c.unavailable_line(inputs.levels)
-    for note in inputs.notes:
-        c.block(c.reason(note))
+        items.append(c.unavailable_item(inputs.levels))
+    items.extend("- " + c.reason(note) for note in inputs.notes)
+    c.block(STATUS_HEAD, *items)
+    sources = records_line(c)
+    if sources:
+        c.block(sources)
     records = [inputs.doctor, inputs.recon, inputs.docket, inputs.levels]
     return c.finish(MODE_MORNING, inputs.et_date, _oldest(records, inputs.now), inputs.delay_min)
 
 
 def eod_brief(inputs: BriefInputs) -> Summary:
-    """The EOD Desk Brief (module notes): P/L and the per-trade lines, signals, the reconciliation, the docket, the
-    routines and the owner's to-do list."""
+    """The EOD Desk Brief (module notes): the P/L and by-trade blocks, the ``**Desk status**`` block (signals, the
+    reconciliation, the docket, the routines, incidents, notes), the owner's to-do list and the records it read."""
     c = Composer()
     c.add("%s%s %s" % (TITLE_MARK, BRIEF_HEAD, c.date(inputs.et_date)))
     if inputs.book.ok:
         c.block(*pl_lines(c, inputs.book))
-        group_lines(c, inputs.book)
+        trades = group_lines(c, inputs.book)
+        if trades:
+            c.block(*trades)
     else:
-        c.unavailable_line(inputs.book)
-    c.block(signals_today_line(c, inputs.signal_records, inputs.et_date))
-    open_signal_lines(c, inputs.open_signals)
-    if inputs.recon.ok:
-        c.block(recon_line(c, inputs.recon))
-    else:
-        c.unavailable_line(inputs.recon)
+        c.block(PL_HEAD, c.unavailable_item(inputs.book))
+    items = [signals_today_line(c, inputs.signal_records, inputs.et_date)]
+    items.extend(open_signal_lines(c, inputs.open_signals))
+    items.append(recon_line(c, inputs.recon) if inputs.recon.ok else c.unavailable_item(inputs.recon))
     if inputs.docket.ok:
-        docket_lines(c, inputs.docket)
+        items.extend(docket_lines(c, inputs.docket))
     elif not inputs.docket.present:
-        c.block(DOCKET_NONE_LINE % c.reason(inputs.docket.path))
+        items.append(DOCKET_NONE_LINE % c.reason(inputs.docket.path))
     else:
-        c.unavailable_line(inputs.docket)
+        items.append(c.unavailable_item(inputs.docket))
     if inputs.audit is not None:
-        c.block(*routines_lines(c, inputs.audit))
+        items.extend(routines_lines(c, inputs.audit))
     elif inputs.audit_problem is not None:
-        c.unavailable_line(inputs.audit_problem)
+        items.append(c.unavailable_item(inputs.audit_problem))
     if inputs.incidents:
-        c.block(incidents_line(c, inputs.incidents))
-    for note in inputs.notes:
-        c.block(c.reason(note))
+        items.append(incidents_line(c, inputs.incidents))
+    items.extend("- " + c.reason(note) for note in inputs.notes)
+    c.block(STATUS_HEAD, *items)
     c.block(*todo_lines(c, inputs))
+    sources = records_line(c)
+    if sources:
+        c.block(sources)
     delay = inputs.delay_min
     if inputs.book.ok:
         as_of = inputs.book.instant or book_instant(inputs.book.document)
-        sources = inputs.book.document.get("sources") or []
-        source_delay = sources[0].get("delay_min") if sources and isinstance(sources[0], Mapping) else None
+        sources_doc = inputs.book.document.get("sources") or []
+        source_delay = sources_doc[0].get("delay_min") if sources_doc and isinstance(sources_doc[0], Mapping) else None
         if isinstance(source_delay, int) and not isinstance(source_delay, bool) and source_delay >= 0:
             delay = source_delay
     else:
@@ -934,6 +970,10 @@ __all__ = [
     "SIGNAL_VERDICT_ORDER",
     "Summary",
     "TODO_HEAD",
+    "PL_HEAD",
+    "STATUS_HEAD",
+    "SUB_ITEM",
+    "records_line",
     "TODO_NOTHING",
     "TITLE_MARK",
     "SOURCE_SEPARATOR",

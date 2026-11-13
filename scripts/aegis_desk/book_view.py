@@ -10,19 +10,21 @@ never does arithmetic.
 
 The layout (no table: a chat client that draws a table as a card of its own would split the message)
 ----------------------------------------------------------------------------------------------------
-* ``### YOUR BOOK <ET date> | <n> open positions``;
-* ``**the whole book**`` and its items: ``unrealized P/L`` (mid, liquidation), ``day P/L`` (or the book's own reason
-  it is unavailable), ``realized`` (today, month to date, year to date), ``net delta``, the groups the totals leave
-  out (their ids only, as the EOD brief names them) and how many other warnings ``book.py`` prints;
-* per open group in book order, ``**<trade id or ROW-n> | <UNDERLYING> <structure words>** | account <n> of
-  desk.toml (<type>)`` (never the account name the owner typed) with ``| data unavailable`` when the group is not
-  ``ok``, then its items: ``P/L`` on both bases with the net cost, ``payoff`` (max profit, or ``unbounded`` with the
-  uncovered shares, max loss, breakevens) and one item per open leg: ``shares`` or ``short calls`` / ``long puts``
-  (contract words, never an OCC symbol), the entry price, the marks with the quote grade, the P/L, the day P/L and,
-  for an option, the IV and the days to expiry;
-* a quarantined group in the desk's own words (``alerts.quarantine_words``);
-* ``**sources**`` with the quote source, its delay and as-of, and the session line; then a blank line and the fixed
-  footer at ``alerts.book_as_of`` of the document.
+* ``### YOUR BOOK <ET date>`` and, in italics under it, ``*<n> open positions | <source>, <n>-min delayed, as of
+  HH:MM UTC*``;
+* ``**The whole book**`` and its items: ``Unrealized`` (at the mids, at liquidation), ``Today`` (the day P/L, or the
+  book's own reason it is unavailable), ``Realized`` (this year, today, this month), ``Net delta``, the groups the
+  totals leave out (their ids only, as the EOD brief names them) and how many other warnings ``book.py`` prints; a
+  gain carries its ``+`` (``Composer.signed``);
+* per open group in book order, ``#### <UNDERLYING> <structure words>``, an italic line ``*<trade id or ROW-n> |
+  account <n> of desk.toml (<type>)*`` (never the account name the owner typed; ``| data unavailable`` when the
+  group is not ``ok``), then its items: ``P/L`` on both bases with the net cost (or credit), ``Payoff`` (max profit,
+  or ``unbounded`` with the uncovered shares, max loss, breakevens) and one item per open leg (``200 WMT shares`` or
+  ``2 short WMT 105 calls, 2026-11-20``: contract words, never an OCC symbol; its cost, mark, P/L and day P/L) with
+  an italic sub-item of the detail (the quote grade, the liquidation mark and, for an option, the IV and the days
+  left);
+* a quarantined group as ``#### <id> quarantined`` and the desk's own words (``alerts.quarantine_words``);
+* the session line in italics; then a blank line and the fixed footer at ``alerts.book_as_of`` of the document.
 
 A group with no open leg (every leg closed) prints nothing: its realized P/L is in the totals.
 """
@@ -37,8 +39,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from . import alert_lint, alerts, data_source, summaries
 
 TITLE: str = "### YOUR BOOK"
-WHOLE_BOOK_HEAD: str = "**the whole book**"
-SOURCES_HEAD: str = "**sources**"
+WHOLE_BOOK_HEAD: str = "**The whole book**"
+GROUP_MARK: str = "####"
 DATA_UNAVAILABLE: str = "data unavailable"
 SHARES_PER_CONTRACT: Decimal = Decimal(100)
 _DAY_PL_PREFIX: str = "day P/L unavailable"
@@ -112,57 +114,60 @@ def _price(c: summaries.Composer, value: Any) -> str:
     return "unavailable" if amount is None else alerts.fmt_price(amount, c.emitted)
 
 
+def _signed(c: summaries.Composer, value: Any) -> str:
+    return c.signed(_decimal(value))
+
+
 def _money(c: summaries.Composer, value: Any) -> str:
     return c.money(_decimal(value))
 
 
-def _contract(c: summaries.Composer, leg: Mapping[str, Any]) -> str:
-    """``NVDA 2027-05-21 175 call``: a contract in words, never its OCC symbol."""
-    strike = _decimal(leg.get("strike"))
-    right = "call" if leg.get("right") == "CALL" else "put"
-    return "%s %s %s %s" % (c.reason(str(leg.get("underlying"))), c.date(leg.get("expiry")),
-                            alerts.fmt_strike(strike, c.emitted) if strike is not None else "unknown strike", right)
-
-
-def _marks(c: summaries.Composer, leg: Mapping[str, Any]) -> str:
+def _grade(leg: Mapping[str, Any]) -> Optional[str]:
     grade = leg.get("quote_grade")
-    marks = "now %s (mid), %s (liquidation)" % (_price(c, leg.get("mark_mid")), _price(c, leg.get("mark_liq")))
-    return marks + (", grade %s" % grade if isinstance(grade, str) and len(grade) == 1 and grade.isalpha() else "")
+    return grade if isinstance(grade, str) and len(grade) == 1 and grade.isalpha() else None
 
 
-def leg_item(c: summaries.Composer, leg: Mapping[str, Any]) -> str:
-    """One open leg: ``- **shares** 321.6301 NVDA at $150.93 | now ... | P/L $3,618.34 (mid) | day unavailable`` (the
-    group's item carries both bases) or ``- **short calls** 3 x NVDA 2027-05-21 175 call at $17.02 | ... | IV 47.70 % | 189
-    calendar days (129 trading days)``."""
+def leg_lines(c: summaries.Composer, leg: Mapping[str, Any]) -> List[str]:
+    """One open leg as an item and its detail sub-item: ``- **2 short WMT 105 calls, 2026-11-20** cost $3.42, now
+    $3.425 | P/L -$1.00 | today -$50.00`` over ``  - *quote grade B | liquidation $3.50 | IV 41.32 % | 17 calendar
+    days (13 trading days) left*`` (contract words, never an OCC symbol; the group's item carries both P/L bases)."""
     quantity = _decimal(leg.get("open_quantity"))
-    size = abs(quantity) if quantity is not None else Decimal(0)
-    entry = _price(c, leg.get("entry_price_per_share"))
+    size = alerts.fmt_number(_plain(abs(quantity) if quantity is not None else Decimal(0)), c.emitted)
+    symbol = c.reason(str(leg.get("underlying") or leg.get("symbol")))
     if leg.get("occ") is None:
-        label = "shares" if quantity is None or quantity >= 0 else "short shares"
-        head = "%s %s at %s" % (alerts.fmt_number(_plain(size), c.emitted), c.reason(str(leg.get("symbol"))), entry)
+        label = "%s %s shares" % (size, symbol) if quantity is None or quantity >= 0 else \
+            "short %s %s shares" % (size, symbol)
     else:
         side = "short" if quantity is not None and quantity < 0 else "long"
-        noun = "call" if leg.get("right") == "CALL" else "put"
-        label = "%s %s%s" % (side, noun, "" if size == 1 else "s")
-        head = "%s x %s at %s" % (alerts.fmt_number(_plain(size), c.emitted), _contract(c, leg), entry)
-    parts = ["%s %s" % (summaries.bold_label(label), head), _marks(c, leg),
-             "P/L %s (mid)" % _money(c, leg.get("unrealized_pl_mid")),
-             "day %s" % _money(c, leg.get("day_pl"))]
+        noun = ("call" if leg.get("right") == "CALL" else "put") + ("" if quantity is not None and abs(quantity) == 1
+                                                                   else "s")
+        strike = _decimal(leg.get("strike"))
+        label = "%s %s %s %s %s, %s" % (size, side, symbol,
+                                        alerts.fmt_strike(strike, c.emitted) if strike is not None else "unknown strike",
+                                        noun, c.date(leg.get("expiry")))
+    head = "- %s cost %s, now %s | P/L %s | today %s" % (
+        summaries.bold_label(label), _price(c, leg.get("entry_price_per_share")), _price(c, leg.get("mark_mid")),
+        _signed(c, leg.get("unrealized_pl_mid")), _signed(c, leg.get("day_pl")))
+    details: List[str] = []
+    grade = _grade(leg)
+    if grade is not None:
+        details.append("quote grade %s" % grade)
+    details.append("liquidation %s" % _price(c, leg.get("mark_liq")))
     if leg.get("occ") is not None:
         iv = leg.get("iv")
         if isinstance(iv, (int, float)) and not isinstance(iv, bool):
-            parts.append("IV %s" % alerts.fmt_pct(float(iv) * 100, c.emitted))
+            details.append("IV %s" % alerts.fmt_pct(float(iv) * 100, c.emitted))
         calendar, trading = leg.get("dte_calendar"), leg.get("dte_trading")
         if isinstance(calendar, int) and not isinstance(calendar, bool) and calendar >= 0:
             days = alerts.fmt_days(calendar, c.emitted, "calendar")
             if isinstance(trading, int) and not isinstance(trading, bool) and trading >= 0:
                 days += " (%s)" % alerts.fmt_days(trading, c.emitted, "trading")
-            parts.append(days)
-    return "- " + summaries.SOURCE_SEPARATOR.join(parts)
+            details.append(days + " left")
+    return [head, "%s*%s*" % (summaries.SUB_ITEM, summaries.SOURCE_SEPARATOR.join(details))]
 
 
 def payoff_item(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[Mapping[str, Any]]) -> str:
-    """``- **payoff** max profit unbounded: 21.6301 of the 321.6301 shares carry no call | max loss $3,252.63 |
+    """``- **Payoff** max profit unbounded (21.6301 of the 321.6301 shares carry no call) | max loss $3,252.63 |
     breakeven $150.0252``."""
     if group.get("unbounded_up"):
         profit = "max profit unbounded"
@@ -171,8 +176,8 @@ def payoff_item(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[
             shares = sum((_decimal(leg.get("open_quantity")) or Decimal(0) for leg in legs
                           if leg.get("occ") is None and (_decimal(leg.get("open_quantity")) or Decimal(0)) > 0),
                          Decimal(0))
-            profit += ": %s of the %s shares carry no call" % (alerts.fmt_number(_plain(rest), c.emitted),
-                                                                alerts.fmt_number(_plain(shares), c.emitted))
+            profit += " (%s of the %s shares carry no call)" % (alerts.fmt_number(_plain(rest), c.emitted),
+                                                                 alerts.fmt_number(_plain(shares), c.emitted))
     else:
         profit = "max profit %s" % _money(c, group.get("max_profit"))
     loss = "max loss unbounded" if group.get("unbounded_down") else "max loss %s" % _money(c, group.get("max_loss"))
@@ -181,31 +186,42 @@ def payoff_item(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[
     if evens:
         parts.append("%s %s" % ("breakeven" if len(evens) == 1 else "breakevens",
                                 " and ".join(alerts.fmt_price(value, c.emitted) for value in evens)))
-    return "- %s %s" % (summaries.bold_label("payoff"), summaries.SOURCE_SEPARATOR.join(parts))
+    return "- %s %s" % (summaries.bold_label("Payoff"), summaries.SOURCE_SEPARATOR.join(parts))
+
+
+def _cost_words(c: summaries.Composer, value: Any) -> str:
+    """``on a $19,016.00 net cost`` (a debit) or ``on a $480.00 net credit`` (a credit)."""
+    amount = _decimal(value)
+    if amount is None:
+        return "on an unavailable net cost"
+    if amount < 0:
+        return "on a %s net credit" % c.money(-amount)
+    return "on a %s net cost" % c.money(amount)
 
 
 def group_block(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[Mapping[str, Any]],
                 accounts: Sequence[Any]) -> List[str]:
-    """The block of one open group: its bold head line and its items (module notes)."""
+    """The block of one open group: ``#### <UNDERLYING> <structure words>``, an italic line with its id and account,
+    then its items (module notes)."""
     ident = c.ident(str(group.get("trade_id") or group.get("group_id")))
     structure = str(group.get("structure"))
     words = alerts.STRUCTURE_WORDS.get(structure, structure.replace("_", " "))
     first_row = min((leg.get("row_number") for leg in legs if isinstance(leg.get("row_number"), int)), default=0)
-    head = "**%s | %s %s**%s%s" % (ident, c.reason(str(group.get("underlying"))), words, summaries.SOURCE_SEPARATOR,
-                                   account_words(group.get("account"), accounts, first_row, c))
+    meta = "%s | %s" % (ident, account_words(group.get("account"), accounts, first_row, c))
     if group.get("data_quality") != "ok":
-        head += summaries.SOURCE_SEPARATOR + DATA_UNAVAILABLE
-    lines = [head,
-             "- %s %s (mid), %s (liquidation) on a net cost of %s" % (
-                 summaries.bold_label("P/L"), _money(c, group.get("unrealized_pl_mid")),
-                 _money(c, group.get("unrealized_pl_liq")), _money(c, group.get("net_cost"))),
+        meta += " | " + DATA_UNAVAILABLE
+    lines = ["%s %s %s" % (GROUP_MARK, c.reason(str(group.get("underlying"))), words), "*%s*" % meta,
+             "- %s %s at the mids (%s at liquidation) %s" % (
+                 summaries.bold_label("P/L"), _signed(c, group.get("unrealized_pl_mid")),
+                 _signed(c, group.get("unrealized_pl_liq")), _cost_words(c, group.get("net_cost"))),
              payoff_item(c, group, legs)]
-    lines.extend(leg_item(c, leg) for leg in legs)
+    for leg in legs:
+        lines.extend(leg_lines(c, leg))
     return lines
 
 
 def whole_book_lines(c: summaries.Composer, document: Mapping[str, Any]) -> List[str]:
-    """``**the whole book**`` and its items (module notes)."""
+    """``**The whole book**`` and its items (module notes)."""
     portfolio = document["portfolio"]
     warnings = [text for text in document.get("warnings") or [] if isinstance(text, str)]
     day = portfolio.get("day_pl")
@@ -213,19 +229,19 @@ def whole_book_lines(c: summaries.Composer, document: Mapping[str, Any]) -> List
         reason = next((text for text in warnings if text.startswith(_DAY_PL_PREFIX)), None)
         day_text = c.reason(reason[len("day P/L "):]) if reason else "unavailable"
     else:
-        day_text = _money(c, day)
+        day_text = _signed(c, day)
     lines = [WHOLE_BOOK_HEAD,
-             "- %s %s (mid), %s (liquidation)" % (summaries.bold_label("unrealized P/L"),
-                                                  _money(c, portfolio.get("unrealized_pl_mid")),
-                                                  _money(c, portfolio.get("unrealized_pl_liq"))),
-             "- %s %s" % (summaries.bold_label("day P/L"), day_text),
-             "- %s today %s, month to date %s, year to date %s" % (
-                 summaries.bold_label("realized"), _money(c, portfolio.get("realized_pl_today")),
-                 _money(c, portfolio.get("realized_pl_mtd")), _money(c, portfolio.get("realized_pl_ytd")))]
+             "- %s %s at the mids (%s at liquidation)" % (summaries.bold_label("Unrealized"),
+                                                         _signed(c, portfolio.get("unrealized_pl_mid")),
+                                                         _signed(c, portfolio.get("unrealized_pl_liq"))),
+             "- %s %s" % (summaries.bold_label("Today"), day_text),
+             "- %s %s this year (%s today, %s this month)" % (
+                 summaries.bold_label("Realized"), _signed(c, portfolio.get("realized_pl_ytd")),
+                 _signed(c, portfolio.get("realized_pl_today")), _signed(c, portfolio.get("realized_pl_mtd")))]
     delta = portfolio.get("net_delta")
     if isinstance(delta, (int, float)) and not isinstance(delta, bool):
-        lines.append("- %s %s (share-equivalents)" % (summaries.bold_label("net delta"),
-                                                      alerts.fmt_delta(float(delta), c.emitted)))
+        lines.append("- %s %s share-equivalents" % (summaries.bold_label("Net delta"),
+                                                    alerts.fmt_delta(float(delta), c.emitted)))
     totals, day_only = summaries.excluded_groups(document)
     pieces: List[str] = []
     if totals:
@@ -239,7 +255,7 @@ def whole_book_lines(c: summaries.Composer, document: Mapping[str, Any]) -> List
     others = [text for text in warnings if not text.startswith(_DAY_PL_PREFIX)
               and not any(prefix in text for prefix in _EXCLUDED_PREFIXES)]
     if others:
-        lines.append("- %s (book.py without --view prints %s)" % (
+        lines.append("- %s (`book.py` without `--view` prints %s)" % (
             c.counted(len(others), "more warning"), "it" if len(others) == 1 else "them"))
     return lines
 
@@ -258,23 +274,23 @@ def render(document: Mapping[str, Any], *, et_date: datetime.date, accounts: Seq
                    if isinstance(entry, Mapping)]
     q_ids = {entry.get("group_id") for entry in quarantined}
     shown = [group for group in groups if group.get("group_id") not in q_ids]
-    c.add("%s %s%s%s" % (TITLE, c.date(et_date), summaries.SOURCE_SEPARATOR,
-                         c.counted(len(shown), "open position")))
+    sources = document.get("sources") or []
+    source = sources[0] if sources and isinstance(sources[0], Mapping) else {}
+    delay = source.get("delay_min")
+    delay = delay if isinstance(delay, int) and not isinstance(delay, bool) and delay >= 0 else 0
+    as_of = alerts.book_as_of(document)
+    c.add("%s %s" % (TITLE, c.date(et_date)))
+    c.add("*%s | %s, %s, as of %s*" % (
+        c.counted(len(shown), "open position"), c.reason(data_source.words_for_label(source.get("name"))),
+        alerts.fmt_delay(delay, c.emitted), c.clock(as_of.astimezone(datetime.timezone.utc).strftime("%H:%M UTC"))))
     c.block(*whole_book_lines(c, document))
     for group in shown:
         c.block(*group_block(c, group, _open_legs(document, group), accounts))
     for entry in quarantined:
         reasons = entry.get("reasons") or []
         words = "; ".join(c.reason(alerts.quarantine_words(str(reason))) for reason in reasons) or alerts.GROUP_WORDS
-        c.block("**%s** | quarantined: %s" % (c.ident(str(entry.get("group_id"))), words))
-    sources = document.get("sources") or []
-    source = sources[0] if sources and isinstance(sources[0], Mapping) else {}
-    delay = source.get("delay_min")
-    delay = delay if isinstance(delay, int) and not isinstance(delay, bool) and delay >= 0 else 0
-    as_of = alerts.book_as_of(document)
-    c.block("%s %s, %s, as of %s; %s" % (
-        SOURCES_HEAD, c.reason(data_source.words_for_label(source.get("name"))), alerts.fmt_delay(delay, c.emitted),
-        c.clock(as_of.astimezone(datetime.timezone.utc).strftime("%H:%M UTC")), c.reason(session_line)))
+        c.block("%s %s quarantined" % (GROUP_MARK, c.ident(str(entry.get("group_id")))), "- " + words)
+    c.block("*%s*" % c.reason(session_line))
     footer = alerts.fmt_footer(as_of, delay, c.emitted, c.clocks)
     text = "\n".join(c.lines + ["", footer])
     emitted = {"emitted_numbers": list(c.emitted), "rule_ids": [], "identifiers": list(c.identifiers),
@@ -284,6 +300,6 @@ def render(document: Mapping[str, Any], *, et_date: datetime.date, accounts: Seq
 
 
 __all__ = [
-    "BookView", "DATA_UNAVAILABLE", "SHARES_PER_CONTRACT", "SOURCES_HEAD", "TITLE", "WHOLE_BOOK_HEAD", "account_words",
-    "group_block", "leg_item", "payoff_item", "render", "uncovered_shares", "whole_book_lines",
+    "BookView", "DATA_UNAVAILABLE", "GROUP_MARK", "SHARES_PER_CONTRACT", "TITLE", "WHOLE_BOOK_HEAD", "account_words",
+    "group_block", "leg_lines", "payoff_item", "render", "uncovered_shares", "whole_book_lines",
 ]

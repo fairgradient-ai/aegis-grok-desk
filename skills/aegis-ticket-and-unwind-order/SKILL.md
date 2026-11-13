@@ -56,19 +56,18 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)
+*account 1 of desk.toml (margin) | computed 19:50 UTC | valid until 20:20 UTC (30 min) | quotes 19:31 UTC, 15-min delayed*
 
-**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC (30 min) | **quotes** 19:31 UTC, 15-min delayed
-
-**the legs:**
+**The legs**
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 - leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B
 
-**the cash:**
+**The cash**
 - **net cash** +10.00 at the conservative prices, +35.00 at the mids
 - **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids
 - **the most the steps need at once** 700.00
 
-**checks for the new call:**
+**Checks for the new call**
 - 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
 - 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
 - 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
@@ -77,13 +76,13 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 - 🟢 **spread** 2.78 % | your criteria: at most 25 %
 - 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 19,016.00 now, 19,006.00 after
 - **max profit** 1,984.00 now, 3,994.00 after
 - **breakeven** 95.08 now, 95.03 after
 - **group delta** 101.71 now, 134.07 after
 
-**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 200 WMT shares, no option | level 0
 - after leg 2: you hold 200 WMT shares, 2 short calls | level 1
 - in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
@@ -197,7 +196,7 @@ combination`), each ending `which can need a higher level`. The roll ticket's li
 From the WMT UNWIND_STOCK ticket of the same run:
 
 ```text
-**the cash:**
+**The cash**
 - **net cash** +20,140.00 at the conservative prices, +20,161.00 at the mids
 - **realized on the closing legs** +1,124.00 at the conservative prices, +1,145.00 at the mids
 - **the most the steps need at once** 700.00
@@ -221,7 +220,7 @@ UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to
 Its legs and the two notes under its approval block:
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 - leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A
 
@@ -239,12 +238,11 @@ to expiry; its notes end with the post-expiry check of Aegis Position Control:
 ```text
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
 
-| the 2026-11-20 105 call |  |
-|---|---|
-| now | out of the money: the spot mid 104.23 is below its strike |
-| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades |
-| if assigned | 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00 |
-| ex-dividend | the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20 |
+**The 2026-11-20 105 call**
+- **now** out of the money: the spot mid 104.23 is below its strike
+- **if you decide otherwise** you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
+- **if assigned** 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00
+- **ex-dividend** the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
 ```
 
 - OCC exercises an option at least 0.01 in the money at expiry by exception. The broker's cutoff in that line,
@@ -261,10 +259,10 @@ no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC ex
 From the SPY protective put (AG-20261028-03), its legs and the put block that follows its cash block:
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B
 
-**the put:**
+**The put**
 - **the 2026-12-18 620 put** out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 is all time value
 - **after the leg** your 100 SPY shares carry no put: their downside is unhedged
 ```
@@ -275,11 +273,11 @@ The same group with `--action ROLL --new-expiration 2027-03-19 --new-strike 610`
 checks read `[protective_put]`.
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 - leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B
 
-**checks for the new put:**
+**Checks for the new put**
 - 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
 - **cost** ask 23.10 (2,310.00 in all)
 - 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)

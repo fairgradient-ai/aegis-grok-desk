@@ -120,8 +120,7 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
 
 ```text
 ### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
-
-**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min delayed
+*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
@@ -129,7 +128,7 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-**checks for this candidate:**
+**Checks for this candidate**
 - 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
 - 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
 - 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
@@ -138,13 +137,13 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
 - 🟢 **spread** 2.78 % | your criteria: at most 25 %
 - 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-**the group, now and after both legs:**
+**The group, now and after both legs**
 - **max loss** 19,016.00 now, 19,006.00 after
 - **max profit** 1,984.00 now, 3,994.00 after
 - **breakeven** 95.08 now, 95.03 after
 - **group delta** 101.71 now, 134.07 after
 
-**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+**Replacement candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
 - 🟢 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467
 - 🔴 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only
 - 🔴 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only
@@ -175,14 +174,12 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 **no candidate passed every criterion: the desk names no best candidate**
 - the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
 
-**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
+**Replacement candidates by rank** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
+- 🔴 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | fails credit_only, ex_dividend
+- 🔴 **2** 2026-12-18 | new call 160 | debit 1.45 | extrinsic_per_day 0.0276 | fails credit_only, ex_dividend
+- 🔴 **3** 2027-01-15 | new call 165 | debit 1.35 | extrinsic_per_day 0.0179 | fails credit_only, ex_dividend
 
-| # | expiry | new call | net per share | extrinsic_per_day |  |
-|--:|---|---|--:|--:|---|
-| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | 🔴 credit_only, ex_dividend |
-| 2 | 2026-12-18 | 160 | debit 1.45 | 0.0276 | 🔴 credit_only, ex_dividend |
-| 3 | 2027-01-15 | 165 | debit 1.35 | 0.0179 | 🔴 credit_only, ex_dividend |
-
+**Why each one fails**
 - 1 fails credit_only: a net debit of 0.05
 - 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 - 2 fails credit_only: a net debit of 1.45

@@ -563,7 +563,8 @@ def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, under
     result = check_legs(state, legs, owner_level)
     if not result.ok:
         raise ValueError("the check is refused at level %d: print the REFUSED line" % result.required_level)
-    caption = "**%s** %s; %s" % (approval_heading(len(result.steps), emitted),
+    heading = approval_heading(len(result.steps), emitted)
+    caption = "**%s** %s; %s" % (heading[:1].upper() + heading[1:],
                                  approval_line(result.required_level, result.owner_level, emitted), BROKER_LINE)
     lines = [caption]
     lines.extend(step_item(step.index, step.level, step.after, underlying, emitted) for step in result.steps)

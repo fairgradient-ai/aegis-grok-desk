@@ -5,35 +5,38 @@
 - Version bump to 0.2.2 (`release_bump.py 0.2.2`): v0.2.1 is tagged, so the skills this release changes are
   claimed at 0.2.2 (`docs/RELEASE.md`, step 8).
 - **One answer, one message.** A chat client that draws a markdown table as a card of its own split every structuring
-  answer into several bubbles. The Structuring Desk's desk view now prints no table: the context strip is one line of
-  bold labels (`**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | ...`), and the checks, the group now and after
-  the legs, the cash, the approval steps, the ranked candidates and a ticket's key-value blocks are captioned list
-  items (`- <green> **floor** 4.34 % below | your criteria: 3 to 10 %`, `- **max loss** 63,240.00 now, 1,165.00
-  after`, `- <red> **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only`).
-  The reasons none passed have their own caption (`**why each one fails:**`), and the ticket pointer and the collar's
-  outside-bands count are plain lines, so no list runs into another. The wording, the numbers, the JSON and the
-  compliance lines are unchanged. `approval.step_row` is `approval.step_item`; `structuring_text.table`,
-  `status_cell`, `context_table`, `checks_table`, `group_table`, `candidates_table` and `cash_table` are replaced by
-  `strip_line`, `status_mark`, `item_line`, `labelled_items`, `context_line`, `checks_block`, `check_item`,
-  `group_block`, `candidate_items` and `cash_block`.
+  answer into several bubbles. The Structuring Desk's desk view now prints no table: the context is one italic line
+  under the title (`*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min
+  delayed*`), and the checks, the group now and after the legs, the cash, the approval steps, the ranked candidates
+  and a ticket's key-value blocks are list items under capitalised captions (`**Checks for this candidate**`, `- <green>
+  **floor** 4.34 % below | your criteria: 3 to 10 %`; `**The group, now and after both legs**`, `- **max loss**
+  63,240.00 now, 1,165.00 after`; `**Candidates by rank**`, `- <red> **2** 2026-12-18 | new call 112.5 | debit 0.70 |
+  extrinsic_per_day 0.0597 | fails credit_only`). The reasons none passed have their own caption (`**Why each one
+  fails**`), and the ticket pointer and the collar's outside-bands count are plain lines, so no list runs into
+  another. The wording, the numbers, the JSON and the compliance lines are unchanged. `approval.step_row` is
+  `approval.step_item`; `structuring_text.table`, `status_cell`, `context_table`, `checks_table`, `group_table`,
+  `candidates_table` and `cash_table` are replaced by `strip_line`, `status_mark`, `item_line`, `labelled_items`,
+  `context_line`, `checks_block`, `check_item`, `group_block`, `candidate_items` and `cash_block`.
 - The alert lint admits the three status circles at the start of a list item (`- ` at the very start of a line, then
   the circle and a space) of a structuring text, beside the start of a table cell; an indented or `*` item, a quoted
   item, a circle inside a word or a number, and any circle under the rules or snapshot footer stay `non_ascii`.
-- **The Morning Desk Sheet and the EOD Desk Brief are a desk view too**: a `###` title, then blocks of a bold label and
-  its items a blank line apart (`**P/L**` with `unrealized`, `day` and `realized` items; `**by trade**` with one item
-  per open group; `**open signals**`; `**positions.csv reconciliation**`; `**expiry docket**`; `**routines**` with
-  `late`, `missed` and `pending` items; `**to do**` with one item per task), the record each block was read from at
-  the end of its line, and a blank line before the fixed footer so a chat never reads the footer as part of the last
-  item. The words and numbers are the same; nothing is summed.
+- **The Morning Desk Sheet and the EOD Desk Brief are a desk view too**: a `###` title, bold section titles (`**P/L**`,
+  `**By trade**`, `**Desk status**`, `**To do**`), items with their details nested under them (`- **WMT covered
+  call** +$1,145.00 at the mids (+$1,124.00 at liquidation)` over `  - *AG-20261020-01 | today +$84.00 (row 3),
+  -$50.00 (row 4)*`; `- **Routines** 1 of 7 ran today` over the late, missed and pending slots), commands in code
+  spans, the records read in one italic line at the end, and a blank line before the fixed footer so a chat never
+  reads the footer as part of the last item. A gain carries its `+`. The numbers are the same; nothing is summed.
 - **`book.py --view`**: the book of record as one linted markdown message for "how's my book?" and "analyze my
-  positions". A `### YOUR BOOK <date> | <n> open positions` title; `**the whole book**` (unrealized P/L at the mids and
-  at liquidation, day P/L or the book's own reason it is unavailable, realized, net delta, the groups the totals leave
-  out); one block per open group with its P/L and net cost, its payoff and one item per open leg in words (`3 x NVDA
-  2027-05-21 175 call at $17.02 | now $18.475 (mid), $18.72 (liquidation), grade B | ...`); then the sources line and the
-  fixed footer. An unbounded max profit names the shares the short calls leave uncovered (`21.6301 of the 321.6301
-  shares carry no call`), so no one subtracts. The account prints as `account <n> of desk.toml (<type>)` and never an
-  OCC symbol. A view that fails its lint prints only `WITHHELD: ...` (exit 1 `lint_failed`); `--json --view` carries
-  the message, its emitted document and the lint. The plain `book.py` output is unchanged.
+  positions". A `### YOUR BOOK <date>` title with an italic line of the open positions and the quotes' source and
+  time; `**The whole book**` (unrealized at the mids and at liquidation, today, realized, net delta, the groups the
+  totals leave out); a `#### <UNDERLYING> <structure>` section per open group with its id and account in italics, its
+  P/L and net cost, its payoff and one item per open leg in words (`**2 short WMT 105 calls, 2026-11-20** cost $3.42,
+  now $3.425 | P/L -$1.00 | today -$50.00`, the quote grade, liquidation mark, IV and days left in an italic sub-item);
+  then the session line and the fixed footer. An unbounded max profit names the shares the short calls leave
+  uncovered (`21.6301 of the 321.6301 shares carry no call`), so no one subtracts. The account prints as `account <n>
+  of desk.toml (<type>)` and never an OCC symbol. A view that fails its lint prints only `WITHHELD: ...` (exit 1
+  `lint_failed`); `--json --view` carries the message, its emitted document and the lint. The plain `book.py` output
+  is unchanged.
 - The Aegis Desk Lead answers "how's my book?" with `book.py --view` and may post it, like the sheet, the brief and the
   opening bell, as one message, as it is, never in a code block, with at most one plain sentence before it and no
   number of its own. The Structuring Desk posts its answers as one message, never split. The agents, the role skills,
