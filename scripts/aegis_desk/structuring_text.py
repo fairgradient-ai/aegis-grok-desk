@@ -62,7 +62,7 @@ SOURCE_WORDS: str = data_source.WORDS
 """The quote source in every structuring text (``Alpaca paper (IEX stocks, indicative options: approximate)``)."""
 
 LIMIT_LINE: str = "you supply the limit; the desk prints none"
-ACT_LINE: str = "if you decide to act, you type it into your brokerage account yourself and you supply the limit"
+ACT_LINE: str = "if you decide to act, you type it into your brokerage account yourself"
 AFTER_FILL_LINE: str = "after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines"
 AFTER_EXPIRY_LINE: str = ("after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv "
                           "lines")
@@ -72,8 +72,16 @@ CAVEAT_LINE: str = "the score ranks the candidates only on the objective you cho
 POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
                      "and strike")
 NONE_QUALIFIES_LINE: str = "no candidate passed every criterion: the desk names no best candidate"
+NO_MID_WORDS: str = "no mid: a quote side is stale"
+"""What the cash table's mid column says when a leg has no mid."""
+CASH_BALANCE_LINE: str = "the desk does not see your cash balance"
+LEGS_CAPTION: str = "**the legs:**"
+"""A ticket's caption over its leg items (an analysis's legs sit under its BEST CANDIDATE line)."""
 FIXED_LINES: Tuple[str, ...] = (LIMIT_LINE, ACT_LINE, AFTER_FILL_LINE, AFTER_EXPIRY_LINE, MODEL_LINE, CAVEAT_LINE,
-                                POINTER_LINE, NONE_QUALIFIES_LINE)
+                                POINTER_LINE, NONE_QUALIFIES_LINE, "**%s**" % NONE_QUALIFIES_LINE, CASH_BALANCE_LINE,
+                                LEGS_CAPTION)
+ITEM: str = "- "
+"""The list mark of an item under a block's first line (the legs, the notes, the reasons none passed)."""
 
 ACTION_WORDS: Dict[str, str] = {
     structuring.ACTION_CLOSE: "the option legs closed",
@@ -167,6 +175,11 @@ class Writer:
         """Money to the cent with its sign (``+10.00``, ``-16.00``, ``0.00``)."""
         text = format(value.quantize(_CENT, rounding=ROUND_HALF_EVEN), "f")
         return self._emit("+" + text if value > 0 else text)
+
+    def amount(self, value: Decimal, signed: bool = False) -> str:
+        """Money to the cent with thousands separators, as a desk table shows it (``63,240.00``, ``+20,140.00``)."""
+        text = "{:,.2f}".format(value.quantize(_CENT, rounding=ROUND_HALF_EVEN))
+        return self._emit("+" + text if signed and value > 0 else text)
 
     def plain(self, value: Any) -> str:
         """A number exactly as written (an owner's threshold: ``0.50``, ``25``, ``0.15``)."""
@@ -293,6 +306,15 @@ def account_words(w: Writer, account: str, accounts: Sequence[Any], row_number: 
     return "the account in row %s of positions.csv" % w.count(row_number)
 
 
+def account_cell(w: Writer, account: str, accounts: Sequence[Any], row_number: int) -> str:
+    """:func:`account_words` as an ``account`` column's cell: ``1 of desk.toml (margin)`` or ``row 9 of positions.csv``."""
+    for index, entry in enumerate(accounts, 1):
+        if entry.name == account:
+            kind = entry.type if isinstance(entry.type, str) and _TYPE_RE.match(entry.type) else "account"
+            return "%s of desk.toml (%s)" % (w.count(index), kind)
+    return "row %s of positions.csv" % w.count(row_number)
+
+
 def contract_words(w: Writer, expiration: datetime.date, strike: Decimal, right: str) -> str:
     """``the 2027-01-15 115 call``: a contract in words, never its OCC symbol."""
     return "the %s %s %s" % (w.date(expiration), w.strike(strike), _right(right))
@@ -302,15 +324,23 @@ def _source(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY_MIN
     return "%s, %s, as of %s" % (SOURCE_WORDS, w._emit("%d-min delayed" % delay_min), w.clock(as_of))
 
 
+def quotes_line(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY_MIN) -> str:
+    """``quotes: <SOURCE_WORDS>, 15-min delayed, as of 19:31 UTC``: the one place a text names its quote source (an
+    item of the header block)."""
+    return "quotes: " + _source(w, as_of, delay_min)
+
+
 def quote_segment(w: Writer, bid: Optional[Decimal], ask: Optional[Decimal], mid: Optional[Decimal], grade: str,
-                  as_of: datetime.datetime, note: Optional[str] = None, delay_min: int = FEED_DELAY_MIN) -> str:
-    """``bid 3.35, ask 3.50, mid 3.425 | quote grade B, <SOURCE_WORDS>, 15-min delayed, as of 19:31 UTC`` (a ticket's
-    and a proposal's leg segment); ``note`` (the grade E note) follows after `` | ``."""
+                  note: Optional[str] = None) -> str:
+    """``bid 3.35, ask 3.50, mid 3.425 | quote grade B`` (a ticket's and a proposal's leg segment; the source is the
+    header's :func:`quotes_line`); ``note`` (the grade E note) follows after `` | ``."""
     sides = []
     for name, value in (("bid", bid), ("ask", ask), ("mid", mid)):
         if value is not None:
             sides.append("%s %s" % (name, w.price(value)))
-    text = "%s | quote grade %s, %s" % (", ".join(sides), grade, _source(w, as_of, delay_min))
+    if not sides:
+        raise ValueError("a quote segment needs at least one side")
+    text = "%s | quote grade %s" % (", ".join(sides), grade)
     return text + (" | " + note if note else "")
 
 
@@ -356,71 +386,71 @@ def share_leg_line(w: Writer, index: int, count: int, quantity: Decimal, symbol:
     return line
 
 
-def ticket_header(w: Writer, trade_id: str, underlying: str, structure: str, action: str, account: str,
-                  computed: datetime.datetime, valid_until: datetime.datetime, full: bool,
+def ticket_header(w: Writer, trade_id: str, underlying: str, structure: str, action: str,
                   action_words: Optional[str] = None) -> str:
-    """``TICKET <trade_id> | <UNDERLYING> <structure words> | <action words> (action <ACTION>) | <account words> |
-    computed HH:MM UTC, valid until HH:MM UTC (30 min)``; ``(30 min)`` only when the ticket runs its full 30 minutes."""
+    """``TICKET <trade_id> | <UNDERLYING> <structure words>: <action words> (action <ACTION>)``: the first line of a
+    ticket; the account, the quotes and the validity are its header items."""
     if action not in ACTION_WORDS:
         raise ValueError("unknown action %r" % (action,))
     words = action_words or ACTION_WORDS[action]
     if words not in tuple(ACTION_WORDS.values()) + (ROLL_PUT_WORDS,):
         raise ValueError("unknown action words %r" % (words,))
+    return "### TICKET %s | %s %s: %s (action %s)" % (w.trade_id(trade_id), _root(underlying),
+                                                     structure_words(structure), words, action)
+
+
+def valid_until_cell(w: Writer, until: datetime.datetime, full: bool) -> str:
+    """``20:20 UTC (30 min)``; ``(30 min)`` only when the ticket runs its full 30 minutes."""
     tail = " (%s)" % w._emit("%d min" % structuring.TICKET_MINUTES) if full else ""
-    return "TICKET %s | %s %s | %s (action %s) | %s | computed %s, valid until %s%s" % (
-        w.trade_id(trade_id), _root(underlying), structure_words(structure), words, action, _guard(account),
-        w.clock(computed), w.clock(valid_until), tail)
+    return w.clock(until) + tail
 
 
-def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, criteria_sha: str,
-                as_of: datetime.datetime) -> str:
-    """``STRUCTURING | <trade_id> roll analysis | <UNDERLYING> <structure words> | criteria structuring.toml (sha <8>) |
-    <SOURCE_WORDS>, 15-min delayed, as of HH:MM UTC``."""
-    return "STRUCTURING | %s roll analysis | %s %s | criteria structuring.toml (%s) | %s" % (
-        w.trade_id(trade_id), _root(underlying), structure_words(structure), w.sha(criteria_sha), _source(w, as_of))
+def validity_line(w: Writer, until: datetime.datetime) -> str:
+    """``after 20:20 UTC its quotes are too old, and a new ticket needs a new request`` (a ticket's note)."""
+    return "after %s its quotes are too old, and a new ticket needs a new request" % w.clock(until)
 
 
-def proposal_header(w: Writer, symbol: str, structure: str, shares: Decimal, account: str, criteria_sha: str,
-                    as_of: datetime.datetime) -> str:
-    """``PROPOSAL <SYMBOL> <structure words> | on <n> <SYMBOL> shares you hold in <account words> | criteria
-    structuring.toml (sha <8>) | <SOURCE_WORDS>, 15-min delayed, as of HH:MM UTC``."""
+def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, expiration: datetime.date,
+                strike: Decimal) -> str:
+    """``### STRUCTURING <trade_id> | <UNDERLYING> <structure words>: the roll analysis of the short <date> <strike>
+    call`` (never ``roll`` at a segment start: the lint reads it as an imperative)."""
+    return "### STRUCTURING %s | %s %s: the roll analysis of the short %s %s call" % (
+        w.trade_id(trade_id), _root(underlying), structure_words(structure), w.date(expiration), w.strike(strike))
+
+
+def proposal_header(w: Writer, trade_id: str, symbol: str, structure: str, shares: Decimal) -> str:
+    """``PROPOSAL <trade_id> | a collar on the <n> <SYMBOL> shares you hold``."""
     if structure not in ARTICLE_WORDS:
         raise ValueError("unknown proposal structure %r" % (structure,))
-    return "PROPOSAL %s %s | on %s %s shares you hold in %s | criteria structuring.toml (%s) | %s" % (
-        _root(symbol), structure_words(structure), w.number(expiry.plain(shares)), symbol, _guard(account),
-        w.sha(criteria_sha), _source(w, as_of))
+    return "### PROPOSAL %s | %s on the %s %s shares you hold" % (w.trade_id(trade_id), ARTICLE_WORDS[structure],
+                                                                  w.number(expiry.plain(shares)), _root(symbol))
+
+
+
+
+def criteria_line(w: Writer, sha: str) -> str:
+    """``criteria: your structuring.toml (sha 5155427c)``: the criteria file an analysis read (a notes item)."""
+    return "criteria: your structuring.toml (%s)" % w.sha(sha)
 
 
 def _unpriced_tail(w: Writer, unpriced: int) -> str:
     return ", %s not priced" % w.count(unpriced) if unpriced else ""
 
 
-def roll_summary_line(w: Writer, held: "structuring.HeldLeg", passed: int, failed: int, unpriced: int = 0) -> str:
-    """``replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed`` and, when some
-    candidates were never priced (never judged against the criteria), ``, 2 not priced``."""
-    return "replacement candidates for the short %s %s %s: %s passed your criteria, %s failed%s" % (
-        w.date(held.expiration), w.strike(held.strike), _right(held.right), w.count(passed), w.count(failed),
-        _unpriced_tail(w, unpriced))
-
-
-def proposal_summary_line(w: Writer, structure: str, shares: Decimal, symbol: str, passed: int, failed: int,
-                          unpriced: int = 0) -> str:
-    """``candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed`` (``, N not priced`` as in
-    :func:`roll_summary_line`)."""
-    if structure not in ARTICLE_WORDS:
-        raise ValueError("unknown proposal structure %r" % (structure,))
-    return "candidates for %s on the %s %s shares: %s passed your criteria, %s failed%s" % (
-        ARTICLE_WORDS[structure], w.number(expiry.plain(shares)), _root(symbol), w.count(passed), w.count(failed),
-        _unpriced_tail(w, unpriced))
 
 
 def best_line(w: Writer, rank: int, total: int, objective: Any, score: Decimal, passed: int) -> str:
-    """``BEST CANDIDATE <k> of <n> by your objective <id> (<words>): <score> | the highest among the <n> candidates that
-    passed every criterion`` (``lowest`` for a lower-first objective)."""
+    """``BEST CANDIDATE <k> of <n> by your objective <id>: <score>, the highest among the <m> candidates that passed
+    every criterion`` (``lowest`` for a lower-first objective); :func:`objective_line` gives the objective's words."""
     extreme = "highest" if objective.direction == "higher" else "lowest"
-    return "BEST CANDIDATE %s of %s by your objective %s (%s): %s | the %s among the %s %s that passed every criterion" % (
-        w.count(rank), w.count(total), objective.id, w.words(objective.words), w.score(score), extreme, w.count(passed),
+    return "**BEST CANDIDATE %s of %s** by your objective %s: **%s**, the %s among the %s %s that passed every criterion" % (
+        w.count(rank), w.count(total), _guard(objective.id), w.score(score), extreme, w.count(passed),
         _plural(passed, "candidate"))
+
+
+def objective_line(w: Writer, objective: Any) -> str:
+    """``extrinsic_per_day: the bid's time value per calendar day, in percent of the share price``."""
+    return "%s: %s" % (_guard(objective.id), w.words(objective.words))
 
 
 def tie_line(w: Writer, objective_id: str, key: str, kind: Optional[str] = None) -> str:
@@ -504,129 +534,283 @@ def reason_words(w: Writer, reason: "structuring.Reason", candidate: Optional["s
     raise ValueError("unknown reason code %r" % (code,))
 
 
-def criterion_line(w: Writer, reason: "structuring.Reason", candidate: Optional["structuring.Candidate"] = None,
-                   replacement: bool = False) -> str:
-    """``FAILS_CRITERION <key>: <words>`` (both failing tiers, S4), or ``not priced: <words>`` for an UNPRICED reason."""
-    if reason.key == structuring.KEY_UNPRICED:
-        return "not priced: %s" % reason_words(w, reason, candidate, replacement)
-    if reason.key not in structuring.REASON_KEY_ORDER:
-        raise ValueError("unknown criteria key %r" % (reason.key,))
-    return "FAILS_CRITERION %s: %s" % (reason.key, reason_words(w, reason, candidate, replacement))
 
 
-def accepted_line(w: Writer, label: "structuring.Accepted", replacement: bool = False) -> str:
-    """``accepted <key>: <words> (by #assign-ok)`` or ``(by your structuring.toml)``."""
-    if label.by not in (structuring.BY_ASSIGN_OK, structuring.BY_EARNINGS_OK, structuring.BY_CRITERIA):
-        raise ValueError("unknown acceptance %r" % (label.by,))
-    reason = structuring.Reason(label.key, label.code, label.value, label.threshold)
-    return "accepted %s: %s (by %s)" % (label.key, reason_words(w, reason, None, replacement), label.by)
 
 
-def reasons_line(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal,
-                 s0: Decimal, held_strike: Optional[Decimal] = None) -> str:
-    """``reasons: <each criterion the candidate passed, with its value and the owner's band>; ...``; a replacement's
-    strike reads above, at, or below the stock cost and not below the held strike (``held_strike``), as the
-    replacement's strike floor reads."""
-    leg = candidate.legs[0]
-    parts: List[str] = []
+# --------------------------------------------------------------------------------------------
+# The desk view: tables and status cells (0.2.1)
+# --------------------------------------------------------------------------------------------
+
+STATUS_PASS: str = alert_lint.STATUS_SYMBOLS[0]
+STATUS_ACCEPTED: str = alert_lint.STATUS_SYMBOLS[1]
+STATUS_FAIL: str = alert_lint.STATUS_SYMBOLS[2]
+"""The status cells (``alert_lint.STATUS_SYMBOLS``): a criterion passed, an event label the owner accepted (by a row
+tag or by structuring.toml), a criterion failed. Each stands only at the start of a table cell."""
+NOT_PRICED_WORDS: str = "not priced"
+_ALIGN_MARKS: Dict[str, str] = {"l": "---", "r": "--:", "c": ":-:"}
+_EVENT_LABELS: Dict[str, str] = {structuring.KEY_EARNINGS: "earnings", structuring.KEY_EX_DIVIDEND: "ex-dividend"}
+
+
+def table(header: Sequence[str], align: str, rows: Sequence[Sequence[str]]) -> List[str]:
+    """A markdown table of the desk view: the header cells, one alignment letter per column (``l``, ``r`` or ``c``)
+    and the rows; no cell holds a pipe or a line break."""
+    if len(header) != len(align) or any(len(row) != len(header) for row in rows):
+        raise ValueError("every row of a table needs one cell per column")
+    if any(mark not in _ALIGN_MARKS for mark in align):
+        raise ValueError("the alignment letters are l, r and c")
+
+    def line(cells: Sequence[str]) -> str:
+        if any("|" in cell or "\n" in cell for cell in cells):
+            raise ValueError("a table cell holds no pipe and no line break")
+        return "| " + " | ".join(cells) + " |"
+
+    return [line(header), "|" + "|".join(_ALIGN_MARKS[mark] for mark in align) + "|"] + [line(row) for row in rows]
+
+
+def status_cell(status: str, keys: Sequence[str] = ()) -> str:
+    """A status cell: the symbol alone, or followed by the criteria keys it names (``<red> credit_only, ex_dividend``)."""
+    if status not in alert_lint.STATUS_SYMBOLS:
+        raise ValueError("%r is not a status symbol" % (status,))
+    for key in keys:
+        if key not in structuring.REASON_KEY_ORDER:
+            raise ValueError("unknown criteria key %r" % (key,))
+    return status + (" " + ", ".join(keys) if keys else "")
+
+
+def bold(text: str) -> str:
+    return "**%s**" % text
+
+
+def _pct_or_none(w: Writer, value: Optional[Decimal]) -> str:
+    return "none" if value is None else w.pct(value)
+
+
+def net_words(w: Writer, net_credit: Decimal, total: Optional[Decimal] = None) -> str:
+    """``credit 0.05 (10.00 in all)`` or ``debit 0.70 (140.00 in all)``: a net per share, signed by its words."""
+    head = "credit %s" % w.price(net_credit) if net_credit >= 0 else "debit %s" % w.price(-net_credit)
+    return head if total is None else "%s (%s in all)" % (head, w.amount(abs(total)))
+
+
+def event_words(w: Writer, reason: "structuring.Reason", replacement: bool = False) -> str:
+    """An earnings or ex-dividend label in a check cell's words: ``2026-11-24 (cum 2026-11-23), inside the new call's
+    life``; ``unknown in research/calendar.toml, counted inside the call's life``."""
+    code, value = reason.code, reason.value
+    life = _life(replacement) + " life"
+    if code == structuring.CODE_CROSSES_EARNINGS:
+        return "%s (%s), inside %s" % (w.date(value["date"]), _TIME_WORDS.get(value["time"], "time unknown"), life)
+    if code == structuring.CODE_CROSSES_EX_DIVIDEND:
+        estimated = "estimated, " if value.get("status") == "estimated" else ""
+        return "%s (%scum %s), inside %s" % (w.date(value["ex_date"]), estimated, w.date(value["cum_day"]), life)
+    if code in (structuring.CODE_EARNINGS_UNKNOWN, structuring.CODE_DIVIDEND_UNKNOWN):
+        status = value.get("status")
+        listed = value.get("date") if code == structuring.CODE_EARNINGS_UNKNOWN else value.get("ex_date")
+        if code == structuring.CODE_DIVIDEND_UNKNOWN and status == "second_ex_date":
+            return "a second ex-date may fall before %s last trading day" % _life(replacement)
+        if status == "passed" and listed is not None:
+            return "%s has passed, the next is unknown: counted inside %s" % (w.date(listed), life)
+        return "unknown in research/calendar.toml, counted inside %s" % life
+    raise ValueError("%r is not an event label" % (code,))
+
+
+def _event_rows(w: Writer, candidate: "structuring.Candidate", replacement: bool) -> List[List[str]]:
+    rows = []
+    for reason in candidate.reasons:
+        if reason.key in _EVENT_LABELS:
+            rows.append([_EVENT_LABELS[reason.key], event_words(w, reason, replacement), "excluded by your structuring.toml",
+                         STATUS_FAIL])
+    for label in candidate.accepted:
+        if label.by not in (structuring.BY_ASSIGN_OK, structuring.BY_EARNINGS_OK, structuring.BY_CRITERIA):
+            raise ValueError("unknown acceptance %r" % (label.by,))
+        reason = structuring.Reason(label.key, label.code, label.value, label.threshold)
+        rows.append([_EVENT_LABELS[label.key], event_words(w, reason, replacement), "accepted by %s" % label.by,
+                     STATUS_ACCEPTED])
+    return rows
+
+
+def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal, s0: Decimal,
+               held_strike: Optional[Decimal] = None) -> List[List[str]]:
+    """The checks table's rows of one priced candidate: each criterion of its section with the candidate's value, the
+    owner's band and a status cell (:data:`STATUS_FAIL` when the candidate fails it), then its earnings and
+    ex-dividend labels (failed, or accepted). A replacement's strike floor reads the held strike too."""
     kind = candidate.kind
-    parts.append("%s inside your window %s" % (w.days(leg.dte_calendar), _band_words(w, section.dte)))
+    leg = candidate.legs[0]
+    failing = [reason.key for reason in candidate.reasons]
+
+    def status(key: str) -> str:
+        return STATUS_FAIL if key in failing else STATUS_PASS
+
+    cost = w.price(structuring.payoff.quantize_price(s0))
+    days = ["calendar days", w.count(leg.dte_calendar), _band_words(w, section.dte), status(structuring.KEY_DTE)]
+    spread_band = "at most %s" % w.pct(max_spread_pct)
+    rows: List[List[str]] = []
     if kind in (structuring.KIND_COVERED_CALL, structuring.KIND_REPLACEMENT_CALL):
-        parts.append("absolute delta %s inside your band %s" % (w.plain(leg.abs_delta), _band_words(w, section.abs_delta)))
-        parts.append("bid %s at or above your minimum %s" % (w.price(leg.bid), w.plain(section.min_credit)))
-        parts.append("spread %s within your maximum %s" % (w.pct(leg.spread_pct), w.pct(max_spread_pct)))
-        if kind == structuring.KIND_REPLACEMENT_CALL and section.credit_only:
-            net = candidate.net_credit
-            parts.append("a net credit of %s (%s in all) passes credit_only" % (w.price(net), w.money(candidate.net_credit_total)))
+        if kind == structuring.KIND_REPLACEMENT_CALL:
+            net = net_words(w, candidate.net_credit, candidate.net_credit_total)
+            rows.append(["net per share", net, "credit only", status(structuring.KEY_CREDIT_ONLY)] if section.credit_only
+                        else ["net per share", net, "", ""])
         if section.strike_floor == "cost_basis":
-            cost = w.price(structuring.payoff.quantize_price(s0))
-            if leg.strike > s0:
-                parts.append("strike %s above your stock cost %s" % (w.strike(leg.strike), cost))
-            elif leg.strike == s0:
-                parts.append("strike %s at your stock cost %s" % (w.strike(leg.strike), cost))
-            elif kind == structuring.KIND_REPLACEMENT_CALL and held_strike is not None and leg.strike >= held_strike:
-                # the replacement floor fails only below both the held strike and the stock cost (review L4-1)
-                parts.append("strike %s below your stock cost %s and not below the held strike %s"
-                             % (w.strike(leg.strike), cost, w.strike(held_strike)))
-            else:
-                raise ValueError("a candidate below the stock cost passed strike_floor = cost_basis")
+            floor = "at or above your cost %s" % cost
+            if kind == structuring.KIND_REPLACEMENT_CALL and held_strike is not None:
+                floor += " or the held strike %s" % w.strike(held_strike)
+            rows.append(["strike", w.strike(leg.strike), floor, status(structuring.KEY_STRIKE_FLOOR)])
+        rows.append(["absolute delta", "none" if leg.abs_delta is None else w.plain(leg.abs_delta),
+                     _band_words(w, section.abs_delta), status(structuring.KEY_ABS_DELTA)])
+        bid = w.price(leg.bid)
+        if kind == structuring.KIND_COVERED_CALL and candidate.credit_total is not None:
+            bid = "%s (%s in all)" % (bid, w.amount(candidate.credit_total))
+        rows.append(["bid", bid, "at least %s" % w.plain(section.min_credit), status(structuring.KEY_MIN_CREDIT)])
+        rows.append(days)
+        rows.append(["spread", _pct_or_none(w, leg.spread_pct), spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
     elif kind in (structuring.KIND_PROTECTIVE_PUT, structuring.KIND_REPLACEMENT_PUT):
-        parts.append("floor %s inside your band %s" % (w.pct(candidate.floor_pct), _band_words(w, section.floor_pct)))
-        parts.append("it covers %s per share (%s in all) at your stress drop of %s (stressed price %s)"
-                     % (w.number(format(candidate.covered_per_share, "f")), w.money(candidate.covered_total),
-                        w.pct(section.stress_drop_pct), w.number(format(leg.strike - candidate.covered_per_share, "f"))))
-        parts.append("spread %s within your maximum %s" % (w.pct(leg.spread_pct), w.pct(max_spread_pct)))
+        rows.append(["floor", "%s below" % w.pct(candidate.floor_pct), "%s %%" % _band_words(w, section.floor_pct),
+                     status(structuring.KEY_FLOOR_PCT)])
+        rows.append(["cost", "ask %s (%s in all)" % (w.price(leg.ask), w.amount(candidate.cost_total)), "", ""])
+        cover = candidate.covered_per_share
+        covered = ("%s per share (%s in all)" % (w.number(format(cover, "f")), w.amount(candidate.covered_total))
+                   if cover > 0 else "none")
+        rows.append(["covered at your stress drop", covered, "drop %s (stressed price %s)" % (
+            w.pct(section.stress_drop_pct), w.number(format(leg.strike - cover, "f"))),
+            status(structuring.KEY_STRESS_DROP_PCT)])
+        rows.append(days)
+        rows.append(["spread", _pct_or_none(w, leg.spread_pct), spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
     elif kind == structuring.KIND_COLLAR:
         put, call = candidate.legs
-        parts.append("floor %s inside your band %s" % (w.pct(candidate.floor_pct), _band_words(w, section.floor_pct)))
-        parts.append("cap %s inside your band %s" % (w.pct(candidate.cap_pct), _band_words(w, section.cap_pct)))
-        debit = candidate.net_debit
-        words = "a net credit of %s" % w.price(-debit) if debit < 0 else "a net debit of %s" % w.price(debit)
-        parts.append("%s within your net-debit budget %s" % (words, w.plain(section.max_net_debit)))
-        parts.append("spreads %s and %s within your maximum %s" % (w.pct(put.spread_pct), w.pct(call.spread_pct),
-                                                                    w.pct(max_spread_pct)))
+        rows.append(["floor", "%s below" % w.pct(candidate.floor_pct), "%s %%" % _band_words(w, section.floor_pct),
+                     status(structuring.KEY_FLOOR_PCT)])
+        rows.append(["cap", "%s above" % w.pct(candidate.cap_pct), "%s %%" % _band_words(w, section.cap_pct),
+                     status(structuring.KEY_CAP_PCT)])
+        rows.append(["net per share", net_words(w, -candidate.net_debit, -candidate.net_debit_total),
+                     "net debit at most %s" % w.plain(section.max_net_debit), status(structuring.KEY_MAX_NET_DEBIT)])
         if section.strike_floor == "cost_basis":
-            if call.strike < s0:
-                raise ValueError("a collar call below the stock cost passed strike_floor = cost_basis")
-            relation = "above" if call.strike > s0 else "at"
-            parts.append("call strike %s %s your stock cost %s" % (w.strike(call.strike), relation,
-                                                                  w.price(structuring.payoff.quantize_price(s0))))
+            rows.append(["call strike", w.strike(call.strike), "at or above your cost %s" % cost,
+                         status(structuring.KEY_STRIKE_FLOOR)])
+        rows.append(days)
+        rows.append(["spreads", "%s and %s" % (_pct_or_none(w, put.spread_pct), _pct_or_none(w, call.spread_pct)),
+                     spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
     else:
         raise ValueError("unknown candidate kind %r" % (kind,))
-    return "reasons: " + "; ".join(parts)
+    rows.extend(_event_rows(w, candidate, kind == structuring.KIND_REPLACEMENT_CALL))
+    return rows
 
 
-def _metric(w: Writer, candidate: "structuring.Candidate") -> Optional[str]:
-    leg = candidate.legs[0]
-    if candidate.kind == structuring.KIND_REPLACEMENT_CALL:
-        return None if candidate.net_credit is None else "net credit %s" % w.price(candidate.net_credit)
-    if candidate.kind == structuring.KIND_COVERED_CALL:
-        return None if leg.bid is None else "bid %s" % w.price(leg.bid)
-    if candidate.kind in (structuring.KIND_PROTECTIVE_PUT, structuring.KIND_REPLACEMENT_PUT):
-        return None if leg.ask is None else "ask %s" % w.price(leg.ask)
-    if candidate.net_debit is None:
-        return None
-    if candidate.net_debit < 0:
-        return "net credit %s" % w.price(-candidate.net_debit)
-    return "net debit %s" % w.price(candidate.net_debit)
+def checks_table(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal, s0: Decimal,
+                 held_strike: Optional[Decimal] = None, subject: str = "this candidate") -> List[str]:
+    """``| check | this candidate | your criteria | |`` with :func:`check_rows`."""
+    return table(["check", subject, "your criteria", ""], "lllc",
+                 check_rows(w, candidate, section, max_spread_pct, s0, held_strike))
 
 
-def candidate_line(w: Writer, candidate: "structuring.Candidate", held: Optional["structuring.HeldLeg"] = None,
-                   objective_id: Optional[str] = None) -> str:
-    """``candidate <k>: <the contracts in words> | <its metric> | <objective> <score>`` and, for a failing candidate,
-    every reason as `` | FAILS_CRITERION <key>: <words>`` (`` | not priced: ...`` when unpriced)."""
-    kind = candidate.kind
-    objective = objective_id or structuring.kind_objective(kind).id
-    if kind == structuring.KIND_REPLACEMENT_CALL:
-        if held is None:
-            raise ValueError("a replacement line needs the held leg")
-        what = "closes %s and opens %s" % (contract_words(w, held.expiration, held.strike, held.right),
-                                           contract_words(w, candidate.expiration, candidate.legs[0].strike, "CALL"))
-    elif kind == structuring.KIND_COLLAR:
-        put, call = candidate.legs
-        what = "%s and %s" % (contract_words(w, put.expiration, put.strike, "PUT"),
-                              contract_words(w, call.expiration, call.strike, "CALL"))
-    else:
+def _keys(candidate: "structuring.Candidate") -> List[str]:
+    keys: List[str] = []
+    for reason in candidate.reasons:
+        if reason.key not in keys and reason.key != structuring.KEY_UNPRICED:
+            keys.append(reason.key)
+    return keys
+
+
+def candidate_status(candidate: "structuring.Candidate") -> str:
+    """The candidates table's status cell: passes, ``not priced``, or the red symbol and the keys it fails."""
+    if candidate.status == structuring.STATUS_UNPRICED:
+        return NOT_PRICED_WORDS
+    if candidate.reasons:
+        return status_cell(STATUS_FAIL, _keys(candidate))
+    return status_cell(STATUS_PASS)
+
+
+def _cell(w: Writer, value: Optional[Any], form: str) -> str:
+    if value is None:
+        return "-"
+    return {"price": w.price, "pct": w.pct, "score": w.score, "plain": w.plain, "strike": w.strike}[form](value)
+
+
+def candidates_table(w: Writer, candidates: Sequence["structuring.Candidate"], objective_id: str) -> List[str]:
+    """The ranked candidates (the best first when there is one), one row each with its contract, the metrics its kind
+    is judged on and its status cell."""
+    if not candidates:
+        raise ValueError("a candidates table needs a candidate")
+    kind = candidates[0].kind
+    rows: List[List[str]] = []
+    for candidate in candidates:
         leg = candidate.legs[0]
-        what = contract_words(w, leg.expiration, leg.strike, leg.right)
-    parts = ["candidate %s: %s" % (w.count(candidate.rank), what)]
-    metric = _metric(w, candidate)
-    if metric is not None:
-        parts.append(metric)
-    if candidate.score is not None:
-        parts.append("%s %s" % (objective, w.score(candidate.score)))
-    replacement = kind == structuring.KIND_REPLACEMENT_CALL
-    parts.extend(criterion_line(w, reason, candidate, replacement) for reason in candidate.reasons)
-    return " | ".join(parts)
+        rank = w.count(candidate.rank)
+        when = w.date(candidate.expiration)
+        if kind == structuring.KIND_COLLAR:
+            put, call = candidate.legs
+            net = "-" if candidate.net_debit is None else net_words(w, -candidate.net_debit)
+            rows.append([rank, when, "%s / %s" % (w.strike(put.strike), w.strike(call.strike)),
+                         _cell(w, candidate.floor_pct, "pct"), _cell(w, candidate.cap_pct, "pct"), net,
+                         candidate_status(candidate)])
+        elif kind == structuring.KIND_REPLACEMENT_CALL:
+            net = "-" if candidate.net_credit is None else net_words(w, candidate.net_credit)
+            rows.append([rank, when, w.strike(leg.strike), net, _cell(w, candidate.score, "score"),
+                         candidate_status(candidate)])
+        elif kind == structuring.KIND_COVERED_CALL:
+            rows.append([rank, when, w.strike(leg.strike), _cell(w, leg.abs_delta, "plain"), _cell(w, leg.bid, "price"),
+                         _cell(w, candidate.score, "score"), candidate_status(candidate)])
+        elif kind in (structuring.KIND_PROTECTIVE_PUT, structuring.KIND_REPLACEMENT_PUT):
+            rows.append([rank, when, w.strike(leg.strike), _cell(w, candidate.floor_pct, "pct"),
+                         _cell(w, leg.ask, "price"), _cell(w, candidate.score, "score"), candidate_status(candidate)])
+        else:
+            raise ValueError("unknown candidate kind %r" % (kind,))
+    objective = _guard(objective_id)
+    if kind == structuring.KIND_COLLAR:
+        return table(["#", "expiry", "put / call", "floor", "cap", "net per share", ""], "rllrrll", rows)
+    if kind == structuring.KIND_REPLACEMENT_CALL:
+        return table(["#", "expiry", "new call", "net per share", objective, ""], "rllrrl", rows)
+    if kind == structuring.KIND_COVERED_CALL:
+        return table(["#", "expiry", "strike", "delta", "bid", objective, ""], "rllrrrl", rows)
+    return table(["#", "expiry", "strike", "floor", "ask", objective, ""], "rllrrrl", rows)
 
 
-def failure_counts_line(w: Writer, failed: int, counts: Mapping[str, int]) -> str:
-    """``failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)`` (keys in the criteria order)."""
+def counts_caption(w: Writer, total: int, passed: int, failed: int, unpriced: int, counts: Mapping[str, int],
+                   replacement: bool = False) -> str:
+    """``**candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4)``, and ``; 2 not
+    priced`` when some were never judged against the criteria."""
+    if passed + failed + unpriced != total:
+        raise ValueError("the counts %d + %d + %d do not add up to %d candidates" % (passed, failed, unpriced, total))
     for key in counts:
         if key not in structuring.REASON_KEY_ORDER:
             raise ValueError("unknown criteria key %r" % (key,))
     parts = ["%s %s" % (key, w.count(counts[key])) for key in structuring.REASON_KEY_ORDER if key in counts]
-    return "failed your criteria: %s%s" % (w.count(failed), " (%s)" % ", ".join(parts) if parts else "")
+    head = bold("%s by rank:" % ("replacement candidates" if replacement else "candidates"))
+    text = "%s %s of %s passed your criteria; %s failed%s" % (head, w.count(passed), w.count(total), w.count(failed),
+                                                             " (%s)" % ", ".join(parts) if parts else "")
+    return text + ("; %s not priced" % w.count(unpriced) if unpriced else "")
+
+
+def failure_lines(w: Writer, candidates: Sequence["structuring.Candidate"], replacement: bool = False) -> List[str]:
+    """Why the shown candidates fail, one item per distinct reason with the ranks it applies to (``- 1, 2, 3 fail
+    ex_dividend: ...``; ``- 4 not priced: ...``)."""
+    order: List[str] = []
+    ranks: Dict[str, List[str]] = {}
+    for candidate in candidates:
+        for reason in candidate.reasons:
+            words = reason_words(w, reason, candidate, replacement)
+            key = "not priced: %s" % words if reason.key == structuring.KEY_UNPRICED else "%s: %s" % (reason.key, words)
+            if key not in ranks:
+                order.append(key)
+                ranks[key] = []
+            if str(candidate.rank) not in ranks[key]:
+                ranks[key].append(w.count(candidate.rank))
+    lines = []
+    for key in order:
+        verb = "" if key.startswith("not priced") else ("fails " if len(ranks[key]) == 1 else "fail ")
+        lines.append("- %s %s%s" % (", ".join(ranks[key]), verb, key))
+    return lines
+
+
+def coverage_line(w: Writer, contracts: int, shares: Decimal, structure: str) -> Optional[str]:
+    """``3 contracts cover 300 of your 321.6301 shares; the other 21.6301 are not part of the collar``, or ``None``
+    when the contracts cover every share (a proposal covers ``floor(shares / 100)`` contracts' worth)."""
+    covered = Decimal(contracts * approval.SHARES_PER_CONTRACT)
+    rest = shares - covered
+    if rest <= 0:
+        return None
+    return "%s %s %s %s of your %s shares; the other %s are not part of the %s" % (
+        w.count(contracts), _plural(contracts, "contract"), "covers" if contracts == 1 else "cover",
+        w.number(expiry.plain(covered)),
+        w.number(expiry.plain(shares)), w.number(expiry.plain(rest)), structure_words(structure))
 
 
 def outside_bands_line(w: Writer, counts: Mapping[str, int]) -> str:
@@ -636,30 +820,33 @@ def outside_bands_line(w: Writer, counts: Mapping[str, int]) -> str:
         w.count(puts), _plural(puts, "put"), w.count(calls), _plural(calls, "call"))
 
 
-def after_line(w: Writer, after: "structuring.AfterState", before: Optional["structuring.BeforeState"] = None,
-               legs: int = 1) -> str:
-    """``after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now
-    1984.00), breakeven 95.03 (now 95.08)``; ``(now ...)`` only with ``before``."""
+def group_table(w: Writer, after: "structuring.AfterState", before: Optional["structuring.BeforeState"] = None,
+                legs: int = 1) -> List[str]:
+    """``| the group | now | after both legs |`` (the now column only with ``before``): max loss, max profit,
+    breakeven and the group delta in share-equivalents."""
     head = "after the leg" if legs == 1 else ("after both legs" if legs == 2 else "after the %s legs" % w.count(legs))
 
-    def delta(value: Optional[float]) -> str:
-        return "unavailable" if value is None else w.delta(value)
-
-    def profit(value: Optional[Decimal]) -> str:
-        return "unbounded" if value is None else w.money(value)
-
-    def loss(value: Optional[Decimal]) -> str:
-        return "unbounded" if value is None else w.money(value)
+    def money(value: Optional[Decimal]) -> str:
+        return "unbounded" if value is None else w.amount(value)
 
     def even(value: Optional[Decimal]) -> str:
         return "none" if value is None else w.price(value)
 
-    items = [("group delta", delta(after.group_delta), None if before is None else delta(before.group_delta)),
-             ("max loss", loss(after.max_loss), None if before is None else loss(before.max_loss)),
-             ("max profit", profit(after.max_profit), None if before is None else profit(before.max_profit)),
-             ("breakeven", even(after.breakeven), None if before is None else even(before.breakeven))]
-    return "%s: %s" % (head, ", ".join("%s %s%s" % (name, now, "" if then is None else " (now %s)" % then)
-                                       for name, now, then in items))
+    def delta(value: Optional[float]) -> str:
+        return "unavailable" if value is None else w.delta(value)
+
+    items = [("max loss", money, "max_loss"), ("max profit", money, "max_profit"), ("breakeven", even, "breakeven"),
+             ("group delta", delta, "group_delta")]
+    rows = []
+    for name, form, attribute in items:
+        row = [name]
+        if before is not None:
+            row.append(form(getattr(before, attribute)))
+        row.append(form(getattr(after, attribute)))
+        rows.append(row)
+    if before is None:
+        return table(["the group", head], "lr", rows)
+    return table(["the group", "now", head], "lrr", rows)
 
 
 def american_line(w: Writer, candidate: "structuring.Candidate") -> str:
@@ -681,22 +868,20 @@ def american_line(w: Writer, candidate: "structuring.Candidate") -> str:
 # --------------------------------------------------------------------------------------------
 
 
-def validity_line(w: Writer, until: datetime.datetime) -> str:
-    """``valid until HH:MM UTC: after that its quotes are too old, and a new ticket needs a new request``."""
-    return "valid until %s: after that its quotes are too old, and a new ticket needs a new request" % w.clock(until)
+def cash_table(w: Writer, net_conservative: Decimal, net_mid: Optional[Decimal], realized_conservative: Decimal,
+               realized_mid: Optional[Decimal], closing_legs: int, peak_needed: Decimal) -> List[str]:
+    """Designer Q's cash and realized figures (S11) as a desk table: the net cash and the realized amount at the
+    conservative prices and at the mids (:data:`NO_MID_WORDS` when a leg has no mid), and the most cash the steps
+    need at once; :data:`CASH_BALANCE_LINE` follows it."""
+    head = "realized on the closing leg" if closing_legs == 1 else "realized on the closing legs"
 
+    def mid(value: Optional[Decimal]) -> str:
+        return NO_MID_WORDS if value is None else w.amount(value, signed=True)
 
-def cash_line(w: Writer, net_conservative: Decimal, net_mid: Decimal, peak_needed: Decimal) -> str:
-    """Designer Q's cash line (S11): the conservative side, the mid, the most cash the steps need at once."""
-    return ("cash: %s at the conservative prices (mid %s); the most the steps need at once: %s; the desk does not see "
-            "your cash balance" % (w.signed_money(net_conservative), w.signed_money(net_mid), w.money(peak_needed)))
-
-
-def realized_line(w: Writer, conservative: Decimal, mid: Decimal, legs: int = 1) -> str:
-    """``realized on the closing leg: -16.00 at the conservative side (mid -1.00)``."""
-    head = "the closing leg" if legs == 1 else "the closing legs"
-    return "realized on %s: %s at the conservative side (mid %s)" % (head, w.signed_money(conservative),
-                                                                     w.signed_money(mid))
+    rows = [["net cash", w.amount(net_conservative, signed=True), mid(net_mid)],
+            [head, w.amount(realized_conservative, signed=True), mid(realized_mid)],
+            ["the most the steps need at once", w.amount(peak_needed), ""]]
+    return table(["cash", "at the conservative prices", "at the mids"], "lrr", rows)
 
 
 def let_assign_line(w: Writer, strike: Decimal, right: str, broker_cutoff_et: Any) -> str:
@@ -855,6 +1040,25 @@ def _quiet_reason(answer: "structuring.Answer") -> str:
     return answer.reason or ""
 
 
+def quotes_cell(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY_MIN) -> str:
+    """``19:31 UTC, 15-min delayed``: the context strip's quotes column (the notes name the source)."""
+    return "%s, %s" % (w.clock(as_of), w._emit("%d-min delayed" % delay_min))
+
+
+def context_table(w: Writer, account: str, symbol: str, mid: Decimal, cost: Decimal, as_of: datetime.datetime,
+                  delay_min: int = FEED_DELAY_MIN) -> List[str]:
+    """The context strip under an analysis's title: ``| account | SPY mid | your cost | quotes |``."""
+    if not isinstance(symbol, str) or not _SYMBOL_RE.match(symbol):
+        raise ValueError("%r is not a share symbol" % (symbol,))
+    return table(["account", "%s mid" % symbol, "your cost", "quotes"], "lrrl",
+                 [[account, w.price(mid), w.price(cost), quotes_cell(w, as_of, delay_min)]])
+
+
+def notes_block(items: Sequence[str]) -> List[str]:
+    """The fine print at the end of a text: one quoted ``- `` item each (``> - ...``)."""
+    return ["> - " + _guard(item) for item in items]
+
+
 def _best_legs_roll(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate") -> List[str]:
     held = answer.held
     assert held is not None and held.close_price is not None and held.grade is not None
@@ -873,36 +1077,60 @@ def _best_legs_proposal(w: Writer, best: "structuring.Candidate") -> List[str]:
     count = len(best.legs)
     for index, leg in enumerate(best.legs, 1):
         side = "long" if leg.right == "PUT" else "short"
-        assert leg.as_of is not None and leg.grade is not None
+        assert leg.grade is not None
         lines.append(leg_line(w, index, count, "open", side, best.contracts, leg.root, leg.expiration, leg.strike,
-                              leg.right, quote_segment(w, leg.bid, leg.ask, leg.mid, leg.grade, leg.as_of)))
+                              leg.right, quote_segment(w, leg.bid, leg.ask, leg.mid, leg.grade)))
     return lines
 
 
-def _best_head(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate") -> List[str]:
+def _best_block(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate", legs: Sequence[str]) -> List[str]:
+    """The BEST CANDIDATE line, its legs as items and the caveat quoted right under them."""
     ranking = answer.ranking
     assert ranking is not None and best.score is not None
-    lines = [best_line(w, best.rank, len(ranking.candidates), ranking.objective, best.score, ranking.passed), CAVEAT_LINE]
-    if ranking.tie_break is not None:
-        lines.append(tie_line(w, ranking.objective.id, ranking.tie_break, best.kind))
-    return lines
+    lines = [best_line(w, best.rank, len(ranking.candidates), ranking.objective, best.score, ranking.passed)]
+    lines.extend(ITEM + leg for leg in legs)
+    return lines + ["", "> " + CAVEAT_LINE]
 
 
-def _best_tail(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate", replacement: bool) -> List[str]:
-    group = answer.group_context
-    assert group is not None and answer.pricing is not None and best.after is not None
-    lines = [reasons_line(w, best, answer.section, answer.pricing.max_spread_pct, group.s0,
-                          None if answer.held is None else answer.held.strike)]
-    lines.extend(accepted_line(w, label, replacement) for label in best.accepted)
-    legs = len(best.legs) + (1 if answer.held is not None else 0)
-    lines.append(after_line(w, best.after, answer.before, legs))
-    return lines
+def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.datetime,
+                    best: Optional["structuring.Candidate"]) -> List[str]:
+    ranking = answer.ranking
+    assert ranking is not None
+    items = [objective_line(w, ranking.objective)]
+    if best is not None and ranking.tie_break is not None:
+        items.append(tie_line(w, ranking.objective.id, ranking.tie_break, best.kind))
+    items.append(quotes_line(w, as_of))
+    items.append(MODEL_LINE)
+    if best is not None and best.american_caveat:
+        items.append(american_line(w, best))
+    items.append(criteria_line(w, answer.criteria.sha256))
+    return items
+
+
+def _candidates_section(w: Writer, answer: "structuring.Answer", best: Optional["structuring.Candidate"],
+                        replacement: bool) -> List[str]:
+    ranking = answer.ranking
+    assert ranking is not None
+    shown = list(ranking.candidates[:max(1, answer.criteria.general.max_candidates_shown)])
+    lines = [counts_caption(w, len(ranking.candidates), ranking.passed, ranking.failed, ranking.unpriced,
+                            ranking.failure_counts, replacement), ""]
+    lines.extend(candidates_table(w, shown, ranking.objective.id))
+    items: List[str] = []
+    if best is None:
+        items.extend(failure_lines(w, shown, replacement))
+    outside = answer.outside_bands
+    if outside is not None and (outside.get("puts", 0) or outside.get("calls", 0)):
+        items.append(ITEM + outside_bands_line(w, outside))
+    if replacement:
+        items.append(ITEM + POINTER_LINE)
+    return lines + ([""] + items if items else [])
 
 
 def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
-    """The roll analysis text of designer C's D6 with S11 (without the footer: :func:`finish` adds it): the header, the
-    counts, the best-candidate block (or :data:`NONE_QUALIFIES_LINE`), up to ``max_candidates_shown`` candidates in
-    all, the failure counts, :data:`POINTER_LINE` and :data:`MODEL_LINE`; one line for an answer that prices nothing."""
+    """The roll analysis in the desk view (0.2.1, without the footer: :func:`finish` adds it): the title, the context
+    strip, the best candidate's block (its legs, the caveat, the checks table and the group table) or
+    :data:`NONE_QUALIFIES_LINE` with the held call's close, the ranked candidates table with the ticket pointer, and the
+    notes; one line for an answer that prices nothing."""
     subject = answer.trade_id
     if answer.verdict in (structuring.VERDICT_NOT_APPLICABLE, structuring.VERDICT_NOTHING_TO_PROPOSE):
         return [not_applicable_line(w, subject, "roll analysis", _quiet_reason(answer), answer.verdict)]
@@ -912,31 +1140,33 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
         return [unavailable_line(w, subject, "roll analysis", answer.reason or "")]
     target, ranking, held, group = answer.target, answer.ranking, answer.held, answer.group_context
     assert target is not None and target.group is not None and ranking is not None and held is not None
-    assert group is not None
-    lines = [roll_header(w, subject, group.underlying, group.structure, answer.criteria.sha256, as_of),
-             roll_summary_line(w, held, ranking.passed, ranking.failed, ranking.unpriced)]
-    shown = answer.criteria.general.max_candidates_shown
-    rest = list(ranking.candidates)
+    assert group is not None and answer.pricing is not None and answer.pricing.spot_mid is not None
+    account = account_cell(w, group.account, target.market.cfg.owner.accounts, held.row_number)
+    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike), ""]
+    lines.extend(context_table(w, account, group.underlying, answer.pricing.spot_mid,
+                               structuring.payoff.quantize_price(group.s0), as_of))
+    lines.append("")
     best = ranking.best
     if best is not None:
-        lines.extend(_best_head(w, answer, best))
-        lines.extend(_best_legs_roll(w, answer, best))
-        lines.extend(_best_tail(w, answer, best, True))
-        if best.american_caveat:
-            lines.append(american_line(w, best))
-        rest, shown = rest[1:], shown - 1
+        lines.extend(_best_block(w, answer, best, _best_legs_roll(w, answer, best)))
+        lines.append("")
+        lines.extend(checks_table(w, best, answer.section, answer.pricing.max_spread_pct, group.s0, held.strike))
+        lines.append("")
+        assert best.after is not None
+        lines.extend(group_table(w, best.after, answer.before, 2))
     else:
-        lines.extend([NONE_QUALIFIES_LINE, held_line(w, held)])
-    lines.extend(candidate_line(w, candidate, held, ranking.objective.id) for candidate in rest[:max(0, shown)])
-    lines.extend([failure_counts_line(w, ranking.failed, ranking.failure_counts), POINTER_LINE, MODEL_LINE])
-    return lines
+        lines.extend([bold(NONE_QUALIFIES_LINE), ITEM + held_line(w, held)])
+    lines.append("")
+    lines.extend(_candidates_section(w, answer, best, True))
+    return lines + [""] + notes_block(_analysis_notes(w, answer, as_of, best))
 
 
 def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) -> List[str]:
-    """The proposal text of designer C's D6 with S11 (without the footer): the header, the counts, the best-candidate
-    block with its leg lines and the approval block, other candidates, the failure counts, the collar's legs outside
-    their bands, :data:`MODEL_LINE`, :data:`LIMIT_LINE` and :data:`ACT_LINE`. A best candidate the approval-level check
-    refuses gives the REFUSED line alone (exit 20 in the tool); an answer that prices nothing gives its one line."""
+    """The proposal in the desk view (0.2.1, without the footer): the title, the context strip, the best candidate's
+    block (its legs, the caveat, the checks table, the group table and the approval block) or
+    :data:`NONE_QUALIFIES_LINE`, the ranked candidates table (the collar's legs outside their bands under it), and the
+    notes with :data:`LIMIT_LINE` and :data:`ACT_LINE`. A best candidate the approval-level check refuses gives the
+    REFUSED line alone (exit 20 in the tool); an answer that prices nothing gives its one line."""
     subject = answer.trade_id
     structure = answer.structure_requested or answer.section_name
     what = "%s proposal" % alerts.STRUCTURE_WORDS.get(structure, structure)
@@ -948,6 +1178,7 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
         return [unavailable_line(w, subject, what, answer.reason or "")]
     target, ranking, group = answer.target, answer.ranking, answer.group_context
     assert target is not None and target.group is not None and ranking is not None and group is not None
+    assert answer.pricing is not None and answer.pricing.spot_mid is not None
     best = ranking.best
     if best is not None:
         result = structuring.approval_check(answer, best, owner_level)
@@ -957,45 +1188,45 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
             uncovered = result.steps[result.exposure_step - 1].after.uncovered_calls
             return [exposure_refused_line(w, subject, group.underlying, group.structure, result.exposure_step, uncovered)]
     stock = [row for row in target.group.open_legs if row.is_stock_like]
-    account = account_words(w, group.account, target.market.cfg.owner.accounts,
-                            stock[0].row_number if stock else target.group.legs[0].row_number)
-    lines = [proposal_header(w, group.underlying, structure, group.shares, account, answer.criteria.sha256, as_of),
-             proposal_summary_line(w, structure, group.shares, group.underlying, ranking.passed, ranking.failed,
-                                   ranking.unpriced)]
-    shown = answer.criteria.general.max_candidates_shown
-    rest = list(ranking.candidates)
+    account = account_cell(w, group.account, target.market.cfg.owner.accounts,
+                           stock[0].row_number if stock else target.group.legs[0].row_number)
+    lines = [proposal_header(w, subject, group.underlying, structure, group.shares), ""]
+    lines.extend(context_table(w, account, group.underlying, answer.pricing.spot_mid,
+                               structuring.payoff.quantize_price(group.s0), as_of))
+    lines.append("")
     if best is not None:
-        lines.extend(_best_head(w, answer, best))
-        lines.extend(_best_legs_proposal(w, best))
-        lines.extend(_best_tail(w, answer, best, False))
+        lines.extend(_best_block(w, answer, best, _best_legs_proposal(w, best)))
+        lines.append("")
+        lines.extend(checks_table(w, best, answer.section, answer.pricing.max_spread_pct, group.s0))
+        lines.append("")
+        assert best.after is not None
+        lines.extend(group_table(w, best.after, answer.before, len(best.legs)))
+        coverage = coverage_line(w, best.contracts, group.shares, structure)
+        if coverage is not None:
+            lines.extend(["", ITEM + coverage])
+        lines.append("")
         lines.extend(approval_block(w, answer, best, owner_level))
-        if best.american_caveat:
-            lines.append(american_line(w, best))
-        rest, shown = rest[1:], shown - 1
     else:
-        lines.append(NONE_QUALIFIES_LINE)
-    lines.extend(candidate_line(w, candidate, None, ranking.objective.id) for candidate in rest[:max(0, shown)])
-    lines.append(failure_counts_line(w, ranking.failed, ranking.failure_counts))
-    if answer.outside_bands is not None:
-        lines.append(outside_bands_line(w, answer.outside_bands))
-    lines.extend([MODEL_LINE, LIMIT_LINE, ACT_LINE])
-    return lines
+        lines.append(bold(NONE_QUALIFIES_LINE))
+    lines.append("")
+    lines.extend(_candidates_section(w, answer, best, False))
+    notes = _analysis_notes(w, answer, as_of, best) + [LIMIT_LINE, ACT_LINE]
+    return lines + [""] + notes_block(notes)
 
 
 def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
-    """The named replacement's lines of a ROLL ticket (S5, S11): each failing reason as ``FAILS_CRITERION <key>:
-    <words>`` (the ticket still prints: the owner named it), the accepted labels, the after-state and the American
-    caveat when it applies."""
+    """A ROLL ticket's named replacement in the desk view (S5, S11): its checks table (``the new call`` or ``the new
+    put``; a failing criterion still prints: the owner named the contract) and, a blank line apart, its group table
+    (now and after both legs). The American caveat, when it applies, is a note (:func:`american_line`)."""
     candidate = answer.candidate
-    if candidate is None:
+    group = answer.group_context
+    if candidate is None or group is None or answer.pricing is None:
         raise ValueError("the answer priced no named replacement")
-    replacement = candidate.kind == structuring.KIND_REPLACEMENT_CALL
-    lines = [criterion_line(w, reason, candidate, replacement) for reason in candidate.reasons]
-    lines.extend(accepted_line(w, label, replacement) for label in candidate.accepted)
+    subject = "the new put" if candidate.kind == structuring.KIND_REPLACEMENT_PUT else "the new call"
+    held_strike = None if answer.held is None else answer.held.strike
+    lines = checks_table(w, candidate, answer.section, answer.pricing.max_spread_pct, group.s0, held_strike, subject)
     if candidate.after is not None:
-        lines.append(after_line(w, candidate.after, None, 2))
-    if candidate.american_caveat:
-        lines.append(american_line(w, candidate))
+        lines.extend([""] + group_table(w, candidate.after, answer.before, 2))
     return lines
 
 
@@ -1011,11 +1242,13 @@ _TEMPLATE_WORDS: str = (
     "broken broker brokerage brokers budget cache calendar call called calls candidate candidates cannot carry "
     "cash cause chain chains change check chose class clock clocks close closed closes closing code codes collar "
     "collars combination computed config configuration conservative contents continuous contract contracts "
-    "convention cost could count counts coverage covered covers credit credits criteria criterion crossed cutoff "
+    "convention cost could count counted counts cover coverage covered covers credit credits criteria criterion crossed "
+    "cutoff "
     "date days debit decide decides deep define defined delayed delivers delta desk differ different differently "
     "digest direction disabled dividend does downside drop each earlier early earnings effect empty enough enter "
     "entered equity estimated evaluated every exception exercise exercises exists expiration expirations expires "
-    "expiring expiry failed fall falls fewer file files fill finish finite first fixed floor footer forecast "
+    "excluded expiring expiry fail failed fails fall falls fewer file files fill finish finite first fixed floor footer "
+    "forecast "
     "formula found free fresh from gamma give grade grades grammar greeks group grouping groups held higher "
     "highest hold holds identifiers implied index inside instrument integer intent into intrinsic json kind known "
     "last later lattice least leaves left legs less level levels lies life limit line lines lint list listed "
@@ -1090,11 +1323,15 @@ class Rendered:
         return {"ok": self.lint.ok, "problems": list(self.lint.problems), "numbers_checked": self.lint.numbers_checked}
 
 
+_MARKUP_RE = re.compile(r"^(?:> )?(?:- )?")
+
+
 def _dynamic_text(text: str) -> str:
-    """The lines of ``text`` the desk composed from data: every fixed line (:data:`FIXED_LINES`) and the footer out."""
+    """The lines of ``text`` the desk composed from data: every fixed line (:data:`FIXED_LINES`, quoted or listed as
+    the desk view prints it) and the footer out."""
     fixed = set(FIXED_LINES)
     return "\n".join(line for line in text.split("\n")
-                     if line not in fixed and not alert_lint.STRUCTURING_FOOTER_RE.match(line))
+                     if _MARKUP_RE.sub("", line) not in fixed and not alert_lint.STRUCTURING_FOOTER_RE.match(line))
 
 
 def _owner_text_found(text: str, owner_texts: Sequence[str]) -> bool:
@@ -1120,7 +1357,7 @@ def finish(w: Writer, lines: Sequence[str], as_of: datetime.datetime, tool: str,
     """Close ``lines`` with the structuring footer at ``as_of`` and lint them strictly (module notes). ``owner_texts``
     are the cells the owner typed that must never print (the account names; texts shorter than four characters or
     equal to the desk's own words are not compared). A failure returns the WITHHELD line with its codes."""
-    attempted = "\n".join(list(lines) + [w.footer(as_of, delay_min)])
+    attempted = "\n".join(list(lines) + ["", w.footer(as_of, delay_min)])
     pre: List[str] = []
     if OCC_RE.search(attempted):
         pre.append(CODE_OCC_SYMBOL)
@@ -1134,7 +1371,7 @@ def finish(w: Writer, lines: Sequence[str], as_of: datetime.datetime, tool: str,
     if not codes:
         return Rendered(True, attempted, attempted, w, w.document(as_of), result, [], as_of)
     withheld = Writer()
-    text = withheld_line(withheld, tool, codes) + "\n" + withheld.footer(as_of, delay_min)
+    text = withheld_line(withheld, tool, codes) + "\n\n" + withheld.footer(as_of, delay_min)
     return Rendered(False, text, attempted, withheld, withheld.document(as_of), result, codes, as_of)
 
 

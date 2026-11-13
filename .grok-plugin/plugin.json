@@ -1,6 +1,6 @@
 {
   "name": "aegis-desk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Read-only options position-monitoring and exit-alert desk roles and skills for Grok Bot and Grok Build.",
   "author": {"name": "FairGradient", "url": "https://github.com/fairgradient-ai"},
   "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
