@@ -39,6 +39,7 @@ contract.python_floor_check(tool="positions_check")
 
 import datetime  # noqa: E402
 import sys  # noqa: E402
+from decimal import ROUND_HALF_EVEN, Decimal  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence  # noqa: E402
 
 from aegis_desk import calendar_events, desk_config, desk_paths, market_clock, positions_csv, quote_cache, recon, state  # noqa: E402
@@ -110,10 +111,19 @@ def plural(count: int, noun: str) -> str:
     return "%d %s%s" % (count, noun, "" if count == 1 else "s")
 
 
+
+def money_cents(value: Optional[Decimal]) -> str:
+    """A group's net cost for the text, to the cent (``48252.630993`` -> ``48252.63``, half to even); the JSON keeps
+    every digit. Fractional shares give cost totals with many decimals that read as noise in a chat."""
+    if value is None:
+        return "-"
+    return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN))
+
+
 def group_line(group: PositionGroup) -> str:
     rows = ", ".join(str(number) for number in group.row_numbers)
     line = "%s %s %s [%s] net_cost %s (%s); rows %s" % (group.group_id, group.structure, group.underlying, group.account,
-                                                        quote_cache.format_money(group.net_cost), group.basis_kind, rows)
+                                                        money_cents(group.net_cost), group.basis_kind, rows)
     if not group.open_legs:
         line += "; closed"
     if group.warnings:

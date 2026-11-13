@@ -35,7 +35,7 @@
 | 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
 | 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
 
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC

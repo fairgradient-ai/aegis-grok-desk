@@ -28,6 +28,10 @@ Files (under ``paths.cache_dir``, written through :mod:`aegis_desk.state`)
   (closed days never change) and served without any TTL; otherwise the quote TTL applies, an
   empty answer included. History is fetched on non-trading days too (the post-expiry Saturday
   routine), and a history request counts against ``per_run_max_requests`` like a chain.
+* ``minute_bars/<SYMBOL>.json``: ``{"schema": 1, "symbol", "start", "fetched_utc", "bars": [<record>, ...]}``: the
+  one-minute bars of one underlying from ``start`` to the fetch (:func:`get_minute_bars`), the stock prices the
+  Structuring Desk reads at an option quote's own stamp. A copy is served while it is inside the TTL, starts no later
+  than the earliest minute asked for and was fetched after the newest stamp asked for; otherwise it is refetched.
 * ``expirations/<SYMBOL>.json``: ``{"schema": 1, "symbol", "fetched_utc", "dates": [YYYY-MM-DD, ...]}`` (PR 3b): the
   listed expirations of one underlying (:func:`get_expirations`), the list the Structuring Desk picks its candidate
   expirations from. An expiration list does not change within a session, so a copy fetched on the ET date of ``now``
@@ -124,6 +128,7 @@ LEDGER_FILE: str = "ledger.jsonl"
 CHAINS_SUBDIR: str = "chains"
 HISTORY_SUBDIR: str = "history"
 EXPIRATIONS_SUBDIR: str = "expirations"
+MINUTE_BARS_SUBDIR: str = "minute_bars"
 _ISO_DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 MAX_BATCH: int = 50
 """Symbols per quotes request (equals ``alpaca_client.MAX_BATCH``; asserted by the tool tests)."""
@@ -1030,6 +1035,147 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
                               receipt_utc, warnings, now)
 
 # --------------------------------------------------------------------------------------------
+# Minute bars: the stock's price at an option quote's own stamp, for the Structuring Desk
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MinuteBarsCacheResult:
+    """What :func:`get_minute_bars` served; ``missing_reason`` is set (and ``bars`` empty) when none could be served.
+    ``bars`` are keyed by the start of their minute (aware UTC)."""
+
+    symbol: str
+    bars: Dict[datetime.datetime, Any]
+    served_from: Optional[str]
+    missing_reason: Optional[str]
+    requests_made: int
+    warnings: List[str]
+
+
+def minute_bars_path(paths: DeskPaths, symbol: str) -> str:
+    return os.path.join(paths.cache_dir, MINUTE_BARS_SUBDIR, "%s.json" % symbol.upper())
+
+
+def floor_minute(moment: datetime.datetime) -> datetime.datetime:
+    """The start of the UTC minute holding ``moment``."""
+    return _require_utc(moment, "moment").astimezone(UTC).replace(second=0, microsecond=0)
+
+
+def _load_minute_bars(paths: DeskPaths, symbol: str, warnings: List[str]) -> Optional[Tuple[List[Any], datetime.datetime,
+                                                                                            datetime.datetime]]:
+    from .alpaca_client import MinuteBar  # the client module stays optional for offline-only imports
+
+    label = "minute-bar cache %s" % symbol
+    document = _load_document(minute_bars_path(paths, symbol), warnings, label)
+    if document is None:
+        return None
+    stamp = _parse_utc(document.get("fetched_utc"))
+    start = _parse_utc(document.get("start"))
+    raws = document.get("bars")
+    if document.get("symbol") != symbol or stamp is None or start is None or not isinstance(raws, list):
+        warnings.append("%s ignored: unexpected contents; refetching" % label)
+        return None
+    bars: List[Any] = []
+    for raw in raws:
+        try:
+            bars.append(MinuteBar.from_record(raw))
+        except MarketTypesError as exc:
+            warnings.append("%s ignored (%s); refetching" % (label, _one_line(exc)))
+            return None
+    return bars, start, stamp
+
+
+def _store_minute_bars(paths: DeskPaths, symbol: str, start: datetime.datetime, now: datetime.datetime,
+                       bars: List[Any], warnings: List[str]) -> None:
+    raws = [bar.raw for bar in bars if isinstance(bar.raw, dict) and bar.raw]
+    if len(raws) != len(bars):
+        warnings.append("minute bars %s not cached: %d bar(s) carry no vendor record" % (symbol, len(bars) - len(raws)))
+        return
+    document = {"schema": SCHEMA, "symbol": symbol, "start": state.format_utc(start), "fetched_utc": state.format_utc(now),
+                "bars": raws}
+    try:
+        with state.locked(paths.lock_path, timeout_s=LOCK_TIMEOUT_S):
+            state.atomic_write_json(minute_bars_path(paths, symbol), document)
+    except state.LockBusy as exc:
+        warnings.append("minute-bar cache not written: %s" % _one_line(exc))
+
+
+def get_minute_bars(symbol: str, stamps: Sequence[datetime.datetime], *, now: datetime.datetime, cfg: CacheConfig,
+                    client: Any, paths: DeskPaths, allow_fetch: bool = True,
+                    run: Optional[RunCounters] = None) -> MinuteBarsCacheResult:
+    """Serve the one-minute bars of ``symbol`` covering every instant of ``stamps`` (module notes), from
+    ``minute_bars/`` or ONE client request from the earliest stamp's minute to ``now``.
+
+    The budget guard, the per-run request cap (a minute-bar request counts against ``per_run_max_requests``; it is not
+    a chain), the run's stop reason, the ``quota`` / credential stop rules and the no-send statuses are those of
+    :func:`get_history`; ``allow_fetch`` false (a non-trading day) serves only a cache copy. An empty answer is served
+    with ``missing_reason`` ``no_bars`` and is not cached. ``OSError`` from the cache directory propagates."""
+    now = _require_utc(now)
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non-blank string, got %r" % (symbol,))
+    symbol = symbol.strip().upper()
+    run = RunCounters() if run is None else run
+    warnings: List[str] = []
+    if not stamps:
+        return MinuteBarsCacheResult(symbol, {}, None, None, 0, warnings)
+    start = floor_minute(min(stamps))
+    newest = max(_require_utc(stamp, "stamp") for stamp in stamps)
+    label = "minute bars %s from %s" % (symbol, state.format_utc(start))
+    if not SYMBOL_RE.fullmatch(symbol):
+        warnings.append("%s is not a valid symbol (%s): nothing sent" % (symbol, SYMBOL_RE.pattern))
+        return MinuteBarsCacheResult(symbol, {}, None, REASON_BAD_SYMBOL, 0, warnings)
+
+    def keyed(bars: Sequence[Any]) -> Dict[datetime.datetime, Any]:
+        return {floor_minute(bar.start_utc): bar for bar in bars}
+
+    ttl = datetime.timedelta(minutes=cfg.ttl_min)
+    cached = _load_minute_bars(paths, symbol, warnings)
+    if cached is not None:
+        bars, cached_start, stamp = cached
+        within_ttl = datetime.timedelta(0) <= now - stamp <= ttl
+        if (within_ttl and cached_start <= start and stamp >= newest) or (not allow_fetch and bars):
+            return MinuteBarsCacheResult(symbol, keyed(bars), SERVED_CACHE, None, 0, warnings)
+
+    def not_fetched(reason: str, requests_made: int = 0) -> MinuteBarsCacheResult:
+        return MinuteBarsCacheResult(symbol, {}, None, reason, requests_made, warnings)
+
+    if not allow_fetch:
+        return not_fetched(REASON_MARKET_CLOSED)
+    if run.stop_reason is not None:
+        warnings.append("%s not fetched: fetching stopped for this run (%s)" % (label, run.stop_reason))
+        return not_fetched(run.stop_reason)
+    if run.requests >= cfg.per_run_max_requests:
+        warnings.append("per-run request cap reached (%d): %s not fetched" % (cfg.per_run_max_requests, label))
+        return not_fetched(REASON_PER_RUN_CAP)
+    if budget_left(paths, now, cfg, run) <= 0:
+        warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): minute bars not fetched"
+                        % (cfg.minute_budget, cfg.minute_headroom))
+        return not_fetched(REASON_QUOTA_GUARD)
+    before = len(run.receipt_stamps)
+    try:
+        result = client.minute_bars(symbol, start, now)
+    except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
+        status = _client_error_status(exc)
+        if status is None:
+            raise
+        spent = _spent(run, before, sent=status not in NO_SEND_STATUSES)
+        run.requests += spent
+        reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
+        if status == STATUS_QUOTA or status in STOP_STATUSES:
+            run.stop_reason = reason
+        warnings.append("minute-bar fetch failed for %s: %s" % (label, _one_line(exc)))
+        return not_fetched(reason, spent)
+    spent = _spent(run, before, result)
+    run.requests += spent
+    bars = list(result.bars)
+    if not bars:
+        warnings.append("%s is empty: the vendor returned no bars" % label)
+        return MinuteBarsCacheResult(symbol, {}, SERVED_FETCH, REASON_NO_BARS, spent, warnings)
+    _store_minute_bars(paths, symbol, start, now, bars, warnings)
+    return MinuteBarsCacheResult(symbol, keyed(bars), SERVED_FETCH, None, spent, warnings)
+
+
+# --------------------------------------------------------------------------------------------
 # Expirations (PR 3b): the listed expirations of one underlying, for the Structuring Desk
 # --------------------------------------------------------------------------------------------
 
@@ -1241,4 +1387,9 @@ __all__ = [
     "requests_counted",
     "requests_in_window",
     "source_label",
+    "MINUTE_BARS_SUBDIR",
+    "MinuteBarsCacheResult",
+    "floor_minute",
+    "get_minute_bars",
+    "minute_bars_path",
 ]

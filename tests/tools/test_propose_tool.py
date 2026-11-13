@@ -591,6 +591,34 @@ class GoldenTest(DeskCopy):
         self.spy_shares_only()
         self.assertEqual(SPY_COLLAR_NONE_TEXT, self.run_text(SPY, "collar"))
 
+    def test_options_quoted_minutes_before_the_stock_use_the_minute_bar(self) -> None:
+        # the owner's WMT collar of 2026-11-13: option stamps minutes older than the stock quote; each option is
+        # priced against the stock's one-minute bar of its own minute, and the text says so after the model line
+        self.spy_shares_only(tags=True)
+        regular = os.path.join(self.root, "fixtures", "alpaca", "regular")
+        for name in os.listdir(regular):
+            if name.startswith("snapshots__SPY__"):
+                path = os.path.join(regular, name)
+                with open(path, encoding="utf-8") as handle:
+                    document = json.load(handle)
+                for snapshot in document["snapshots"].values():
+                    snapshot["latestQuote"]["t"] = "2026-11-03T19:28:12Z"
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(document, handle)
+        bars = {"bars": {"SPY": [{"t": "2026-11-03T19:28:00Z", "o": 648.0, "h": 648.3, "l": 647.9, "c": 648.12,
+                                  "v": 1200, "n": 40, "vw": 648.1}]}, "next_page_token": None}
+        with open(os.path.join(regular, "minute_bars__SPY__20261103T192800Z__20261103T195000Z.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(bars, handle)
+        lines = self.run_text(SPY, "collar")
+        model = lines.index("> - " + structuring_text.MODEL_LINE)
+        self.assertRegex(lines[model + 1], r"^> - spot: \d+ option legs quoted more than 60 seconds from the stock "
+                                           r"quote were priced against the stock's one-minute IEX bar of the minute "
+                                           r"each was quoted in$")
+        payload = self.run_json(SPY, "collar")["payload"]
+        self.assertEqual(("BEST", "SPY270319P00620000+SPY270319C00680000"), (payload["verdict"], payload["best"]))
+        self.assertTrue(all(leg["spot_bar_utc"] for leg in payload["candidates"][0]["legs"]))
+
     def test_spy_collar_with_assign_ok_is_best(self) -> None:
         self.spy_shares_only(tags=True)
         self.assertEqual(SPY_COLLAR_BEST_TEXT, self.run_text(SPY, "collar"))

@@ -108,7 +108,7 @@ NVDA_TEXT = [
     "call's life",
     "- 2 fails credit_only: a net debit of 1.45",
     "- 3 fails credit_only: a net debit of 1.35",
-    "- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and "
+    "- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and "
     "strike",
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
@@ -171,7 +171,7 @@ WMT_TEXT = [
     "| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | \U0001F534 credit_only |",
     "| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | \U0001F534 credit_only |",
     "",
-    "- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and "
+    "- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and "
     "strike",
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",

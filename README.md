@@ -53,14 +53,24 @@ Then, when you want more, say these, starting with the first:
 
 [SETUP.md](SETUP.md) is the full runbook the Bot follows.
 
+## Update a desk you already set up
+
+Open your Aegis Desk Lead's chat and paste:
+
+> Update my Aegis desk to v0.2.1 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.1/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
+
+It tells you what changes for you, moves the desk to the new release after your tap, refreshes each Bot's skills,
+shows you any Auto-review text to re-paste, and ends with an update receipt. Your positions, rules and settings stay
+as they are. [docs/UPDATING.md](docs/UPDATING.md) has every step, how to go back, and what changes in this release.
+
 ## Meet the desk
 
 | Bot | What it does for you |
 | --- | --- |
-| **Aegis Desk Lead** | Your main contact. Answers you or hands you to the right Bot, keeps the desk's settings, and sends a morning sheet and an end-of-day brief. |
+| **Aegis Desk Lead** | The one chat you use. Whatever you ask, it does right there (positions, alerts, your choices, settings), and it sends a morning sheet and an end-of-day brief. |
 | **Aegis Exit Sentinel** | Checks your positions against your rules four times a trading day and tells you when one is met, or when it cannot tell. |
-| **Aegis Position Control** | Keeps your list of positions right: turns "I sold 2 calls" into exact lines for you to approve, and walks you through expiry week. |
-| **Aegis Structuring Desk** | Only when you ask: prices your choices for a position you hold (close it, roll it, or add protection) and names the one your own criteria score best. |
+| **Aegis Position Control** | Keeps your list of positions right and walks you through expiry week (the final call and the Saturday reconciliation). |
+| **Aegis Structuring Desk** | Holds the rules for pricing your choices for a position you hold (close it, roll it, or add protection); the Desk Lead runs them when you ask. |
 
 All four sit together in one private group chat, the **Aegis Options Floor**. Every message starts from your
 positions and delayed market data, and every number in it comes from a tool:
@@ -76,13 +86,13 @@ positions and delayed market data, and every number in it comes from a tool:
 
 **"How's my book?"** The Desk Lead quotes the profit-and-loss lines of the latest end-of-day brief, with its date.
 
-**"What are my choices for the WMT call?"** The Structuring Desk runs a roll analysis of your short call. On the
+**"What are my choices for the WMT call?"** The Desk Lead runs a roll analysis of your short call. On the
 sample portfolio it checks 20 replacement calls against your criteria and names the one that scores best, the
 2027-01-15 115 call for a net credit of 0.05, with each leg's quote and the reasons. You supply the limit and act in
 your broker.
 
-**"I just sold 2 NVDA 20-Nov 150 calls at 3.20 against my 200 shares."** Position Control drafts the exact lines for
-your positions file. You approve them; it saves them as approved and checks them.
+**"I just sold 2 NVDA 20-Nov 150 calls at 3.20 against my 200 shares."** The Desk Lead drafts the exact lines for
+your positions file and shows them; your tap on the card saves them as shown, and it checks them.
 
 **"Take profits at 60 % instead of 50 %."** The Desk Lead copies your rulebook, changes only that rule, shows you what
 would change, and adopts it when you tap approve and type the phrase it gives you.
@@ -128,8 +138,8 @@ Silence between checks means nothing changed. [docs/MONITORING.md](docs/MONITORI
 - **"Cannot tell" is an answer.** Missing or stale data makes a rule UNAVAILABLE, never a quiet "all clear".
 - **The rules are yours.** Only a rule you adopted can fire, every alert names that rule, and any change to your rules,
   settings or positions that you have not confirmed is flagged first.
-- **Your tap is the signature.** Adopting rules, confirming a change and each answer of the Structuring Desk run only
-  after you tap approve in Grok Bot.
+- **Your tap is the signature.** Saving your positions, adopting rules, confirming a change and each answer about your
+  choices run only after you tap approve in Grok Bot; the card is the confirmation, so there is nothing to type.
 - **It checks at intervals; it is not a live watcher.** The data is 15 minutes delayed, and the free option quotes are
   approximate (indicative, not exchange quotes), so set your broker's own alerts at the prices the desk gives you. No
   morning sheet by 08:00 ET on a trading day means the desk is not running.

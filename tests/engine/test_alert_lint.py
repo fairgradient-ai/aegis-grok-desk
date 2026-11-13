@@ -434,10 +434,10 @@ class StructuringFooterTest(unittest.TestCase):
                      "desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)",
                      "you supply the limit; the desk prints none",
                      "valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
-                     "after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+                     "after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
                      "if you decide to act, you type it into your brokerage account yourself and you supply the limit",
                      "the score ranks the candidates only on the objective you chose; it is not a forecast",
-                     "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
+                     "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                      "and strike",
                      "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
                      "options is not modelled",

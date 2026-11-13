@@ -30,7 +30,7 @@ seats):
 
 | Bot | Seat | Owns |
 | --- | --- | --- |
-| Aegis Desk Lead | floor | routing; `desk.toml`; the doctor; the Morning Desk Sheet and the EOD Desk Brief; liveness ("the desk ran today"); rulebook change control in Stage 1 |
+| Aegis Desk Lead | floor | the owner's one front door (every owner request, in its 1:1 chat); `desk.toml`; the doctor; the Morning Desk Sheet and the EOD Desk Brief; liveness ("the desk ran today"); rulebook change control in Stage 1 |
 | Aegis Exit Sentinel | floor | the rule checks and every alert; the threshold-level sheet and plan cards; the end-of-day book snapshot |
 | Aegis Position Control | floor | the honesty of `positions.csv` (never its edits); the expiry week; the Saturday reconciliation |
 | Aegis Structuring Desk | floor | `structuring.toml` (the owner's criteria); the tickets, the roll analyses and the proposals, only when the owner asks; no routine and no alert |
@@ -44,6 +44,36 @@ A Grok Bot group holds two to six Bots, so the Floor keeps room for the planned 
 
 When the owner asks for a planned seat or its work, a Bot says that it is not available in this release.
 
+## The front door
+
+The owner talks to one Bot: the Aegis Desk Lead, in its 1:1 chat. Every owner request is done there, start to
+finish: a question, a position change, a plan card, a ticket, a roll analysis or a proposal, a criteria interview,
+a re-acknowledgement. The Lead runs the tool of whichever seat owns the file, following that seat's agent file, so
+the seats' rules hold whoever runs the tool. The other Bots keep their routines and post in their own chats and the
+Floor.
+
+- **No Bot sends the owner elsewhere.** Never "ask the Structuring Desk", "open Position Control's chat" or "send it
+  this phrase". A Bot the owner writes to directly does the request right there.
+- **Ask-first cards appear only in a 1:1 chat**, never in the Floor. Asked in the Floor, the Lead says in one line
+  that it is doing the request in its chat and continues there itself, so the card is waiting when the owner looks.
+- **The card is the confirmation.** No Bot asks for a typed "approve", "re-ack" or "run it" before a command whose
+  Ask-first card asks the same thing; it says in one message what the card will do, then runs the command. The
+  rulebook phrase `adopt rules X.Y.Z` and the owner's interview answers stay typed.
+- **One request, fewest taps.** The owner-authority commands of one request run as one command line joined with
+  `&&` (for example `ack.py config --owner-tapped && propose.py ...`), so one tap covers them and a failed step
+  stops the rest.
+- **The owner never copies an id.** A Bot finds the trade id from the symbol in `positions.csv` and asks only when
+  the symbol has more than one open group.
+- **One voice in the Floor.** The Lead answers the owner there; the other Bots post routine output, plan cards and
+  handoff receipts, and speak to the owner only to correct a fact with a tool's output.
+- **No fact from memory.** An earnings date, a dividend, a price or a company event that no tool printed and the owner
+  did not give is UNAVAILABLE ("not in research/calendar.toml"), never "has not declared one" or a date recalled;
+  the owner adds it with "update the calendar" (SETUP section 9.5).
+- **One clock.** Times go to the owner in ET, as the tools print them (a footer's UTC stays as printed). Converting
+  to another zone is computing: never mix ET and a converted time in one message.
+- **Quiet until set up.** Until `desk.toml` exists, a Bot other than the Lead says one line about its seat and waits:
+  no tool against the empty desk, no announced schedule, no routine. Routines are created at SETUP section 9.3.
+
 ## One file, one writer
 
 Every desk file lives under `/workspace/aegis-desk`, outside the release checkout `/workspace/aegis-grok-desk`. Tools
@@ -52,7 +82,7 @@ write the files; a Bot never writes or edits one by hand. Each file has one Bot 
 | File | Written by | Spoken about by |
 | --- | --- | --- |
 | `positions.csv` | the owner (see the note below) | Aegis Position Control |
-| `desk.toml`, `research/calendar.toml` (the dividend intake) | `desk_init.py`, after the owner's tap | Aegis Desk Lead |
+| `desk.toml`, `research/calendar.toml` (the dividend and earnings intake) | `desk_init.py`, after the owner's tap | Aegis Desk Lead |
 | `rules/exit_rules-X.Y.Z.toml`, `rules/ADOPTED`, `rules/CHANGELOG.md` | `rules_adopt.py`, with the owner's typed phrase | Aegis Desk Lead |
 | `state/doctor.json` | `desk_doctor.py` | Aegis Desk Lead |
 | `state/acks.jsonl` | `ack.py` | Aegis Exit Sentinel (signals), Aegis Desk Lead (configuration) |
@@ -71,8 +101,10 @@ write the files; a Bot never writes or edits one by hand. Each file has one Bot 
 `state/desk_state.json` holds keys from several tools: the acknowledged hashes (`ack.py config`), the connector
 readback (`ack.py connectors`), the last verdicts (`book_check.py --post`) and the last adoption (`rules_adopt.py`).
 
-The note on `positions.csv`: no tool writes it. On the owner's explicit request, Aegis Position Control saves the
-exact text the owner supplies or approves, a verbatim transcription and never an edit. The next book check then
+The note on `positions.csv`: no tool writes it. On the owner's explicit request, the Bot the owner is talking to
+(usually the Desk Lead, by Aegis Position Control's procedure) saves the exact text the owner supplies or the draft
+it showed, a verbatim transcription and never an edit; the save is an Ask-first action, so the owner's tap on its
+card is the approval. The next book check then
 posts CONFIG CHANGED until the owner taps `ack.py config --owner-tapped`, so the change is visible.
 
 ## Message grammar
@@ -186,8 +218,8 @@ from the tools by `scripts/gen_tools_doc.py`, and `bash scripts/check.sh` fails 
 
 Each message arrives in the chat of the Bot that owns it. The owner turns on notifications for the three
 routine-owning Bots (the Desk Lead, the Exit Sentinel and Position Control) and sets their Timezone to
-America/New_York. The Structuring Desk runs no routine: it answers only in its own chat or in the Floor, only in
-response to the owner.
+America/New_York. The Structuring Desk runs no routine: it answers only in its own chat, only in response to the
+owner; the Desk Lead runs the same tools in its chat on the owner's request.
 
 | Message | Chat |
 | --- | --- |

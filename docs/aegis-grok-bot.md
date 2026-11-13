@@ -101,11 +101,11 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    ```text
    Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, and any request to a brokerage's order, position or account endpoints, including any request to api.alpaca.markets, and any request to paper-api.alpaca.markets other than /v2/clock, /v2/calendar and /v2/options/contracts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
-   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
+   Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or replacing /workspace/aegis-desk/positions.csv. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
 
    The tool reports their lengths: `allow (511 of 1000 characters)`, `ask_first_writes (487 of 1000 characters)` and
-   `ask_first_owner_authority (333 of 1000 characters)`. Auto-review is model-based, and an "Ask first" rule wins over
+   `ask_first_owner_authority (391 of 1000 characters)`. Auto-review is model-based, and an "Ask first" rule wins over
    an "Allow" rule. Staff have reported that it can still ask for approval despite an Allow rule.
 5. **Your tap is the signature.** `desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`,
    `ack.py snooze`, `ack.py acted` and any `--allow-rth` run only after you approve their Ask-first card, and never from

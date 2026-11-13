@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1 (unreleased)
+## 0.2.1 (2026-11-13)
 
 - Version bump to 0.2.1 (`release_bump.py 0.2.1`).
 - The alert lint's fixed leg grammar takes one leading `- ` list mark, and a leg's quote segment may end at its grade
@@ -40,8 +40,48 @@
   skills, `SECURITY.md`, `CONTRIBUTING.md`, `docs/POSITIONS_CSV.md` and the counsel items in `docs/RELEASE.md` follow
   the desk view; the template's skill hashes are updated.
 - 4 more tests, 3108 in all (floor 3108).
+- **One front door.** The owner talks to one Bot, the Aegis Desk Lead, in its 1:1 chat, for setup and everything
+  after it: questions, position changes, plan cards, tickets, roll analyses, proposals, the criteria interview and
+  re-acknowledgements. The Lead runs each seat's tools by that seat's agent file and enables the skills they need; no
+  Bot sends the owner to another chat. The Ask-first card is the confirmation (no typed "approve", "re-ack" or "run
+  it" before a card), the owner-authority commands of one request run as one `&&`-joined command line so one tap
+  covers them, a trade id is found from the symbol instead of copied by the owner, one Bot answers the owner in the
+  Floor, and Bots other than the Lead stay quiet until `desk.toml` exists (no tool on the empty desk, no routine
+  before SETUP section 9.3). Saving `positions.csv` joins the owner-authority Auto-review rule (391 of 1000
+  characters), so the save's card replaces the typed approval. Ticket texts now say `after a fill, tell the Aegis Desk
+  Lead the fill` and `ask the Aegis Desk Lead for a ROLL ticket`.
+- **Options quoted minutes before the stock are priced, not dropped.** On a live paper account the indicative feed
+  updated thinly traded WMT options minutes before the IEX stock quote, and every collar candidate came back
+  UNPRICED `spot_unaligned`. The Structuring Desk now solves such an option's implied volatility against the stock's
+  one-minute IEX bar of the minute the option was quoted in (`alpaca_client.minute_bars`, `timeframe=1Min` on the
+  allow-listed bars path, cached by `quote_cache.get_minute_bars`, one request), and reads its Greeks at the current
+  spot; the text adds `spot: <n> option legs quoted more than 60 seconds from the stock quote were priced against the
+  stock's one-minute IEX bar of the minute each was quoted in`, and the leg JSON carries `spot_bar_utc`. An option
+  with no bar for its minute stays unpriced. A stock quote reused from an earlier run's cache but stamped more than 60
+  seconds before the chains is refetched once first (`structuring.align_spot`). PROVENANCE's open item is closed.
+- **Earnings dates through the intake.** `desk_init.py` takes an `earnings` answer (`{date, time pre | post |
+  unknown, status confirmed | estimated}` or `{status none, source}`) beside `ex_dividends` and writes both into
+  `research/calendar.toml`; SETUP 9.1 asks for each held symbol's next earnings date, and the new phrase "update the
+  calendar" (SETUP 9.5) adds a date later through one card (`--replace --owner-tapped` joined to `ack.py config`).
+- **Criteria that can never pass are said up front.** `structuring_config.never_passing_notes` names each call-writing
+  section whose `dte` window starts past 100 calendar days with `earnings` or `ex_dividend` = `exclude` (the
+  documented collar defaults): every such call spans a quarterly report or ex-date, so no candidate on a reporting or
+  dividend-paying stock passes. `desk_init.py` prints them as `note:` lines and in its payload's new `notes`; the
+  interview asks the owner to choose. Past such a failure the Bots offer `allow` in `structuring.toml` (structuring
+  only, no alert silenced) before the row tags, whose alert silencing they now state.
+- **Plainer first-run lines.** A new desk's first adoption posts `rulebook adopted: your first rulebook, no earlier
+  verdicts to compare | rules X.Y.Z, sha ...` instead of `rulebook changed: digest unavailable (no snapshot)`; the
+  morning sheet says `last night's levels: none yet (the end-of-day level sheet has not run on this desk)` instead of
+  an UNAVAILABLE line while no level sheet exists; `positions_check.py` prints a group's net cost to the cent (the JSON
+  keeps every digit). The charter adds two rules: no date or dividend from memory (UNAVAILABLE, never "has not
+  declared one") and one clock (ET as the tools print it, never a converted time beside it).
+- **Updating a desk already set up.** `docs/UPDATING.md`, the README's "Update a desk you already set up" prompt and
+  SETUP 9.6: the changelog in plain words, the checkout moved to the new tag after the owner's tap, the gate, each
+  Bot's skills refreshed with a readback, any changed Auto-review text re-pasted, the routines re-checked and an
+  update receipt; the desk files are never rewritten, and the page lists what 0.2.1 changes for an existing desk.
+- 12 more tests, 3120 in all (floor 3120).
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-13)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).
 - **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run

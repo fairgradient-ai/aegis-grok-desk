@@ -1124,6 +1124,11 @@ def rulebook_changed_text(previous_version: Optional[str], changed: Optional[int
     if previous_version is not None and (not isinstance(previous_version, str) or not _VERSION_RE.match(previous_version)):
         raise ValueError("the previous rulebook version must be X.Y.Z or None")
     message = _Message(book, run)
+    if previous_version is None and changed is None:
+        # the desk's first rulebook with no snapshot yet: nothing to compare, which is expected, not a missing digest
+        message.lines.append("rulebook adopted: your first rulebook, no earlier verdicts to compare | %s"
+                             % message.rules_segment())
+        return message.finish(KIND_RULEBOOK_CHANGED, None)
     if changed is None:
         digest = "digest unavailable (no snapshot)"
     else:

@@ -1712,5 +1712,121 @@ class FractionalSharesTest(unittest.TestCase):
                                  (proposal.verdict, proposal.cause, proposal.contracts))
 
 
+class SpotRealignTest(unittest.TestCase):
+    """An underlying quote served from an earlier run's cache copy (inside the TTL) but stamped more than 60 s before
+    the option chains: the engine refetches the group's quotes once and prices against the new spot, instead of
+    answering UNAVAILABLE ``spot_unaligned`` for every candidate (the owner's NVDA and WMT collars, 2026-11-13)."""
+
+    OLD_STAMP = datetime.datetime(2026, 11, 3, 19, 29, 0, tzinfo=UTC)  # 132 s before the fixture's 19:31:12Z
+
+    def seeded_desk(self) -> Desk:
+        desk = Desk(self, drop_row=8, replace=SPY_TAG)
+        quote_cache.get_quotes(["SPY"], now=NOW - datetime.timedelta(minutes=1), cfg=desk.market().cache,
+                               client=desk.market().client, paths=desk.market().paths)
+        path = os.path.join(desk.root, "data", "cache", "quotes.json")
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        record = document["quotes"]["SPY"]["quote"]
+        record["bid_date"] = record["ask_date"] = ms(self.OLD_STAMP)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        return desk
+
+    def reference(self) -> "S.Answer":
+        return S.run_proposal(Desk(self, drop_row=8, replace=SPY_TAG).market(), "AG-20261028-03", "collar", CRITERIA)
+
+    def test_a_cached_spot_older_than_the_chains_is_refetched(self) -> None:
+        answer = S.run_proposal(self.seeded_desk().market(), "AG-20261028-03", "collar", CRITERIA)
+        reference = self.reference()
+        self.assertEqual(S.VERDICT_BEST, answer.verdict)
+        self.assertEqual(STAMP, answer.pricing.spot.as_of)
+        self.assertEqual(reference.ranking.best.id, answer.ranking.best.id)
+        self.assertEqual(reference.ranking.best.score, answer.ranking.best.score)
+        # the seeded copy saved the first quotes request and the refetch spent it again
+        self.assertEqual(reference.requests["made"], answer.requests["made"])
+        self.assertIn("SPY quote refetched to line up with the option quotes: the first copy was stamped 19:29:00 UTC, "
+                      "the new one 19:31:12 UTC, the newest option 19:31:12 UTC", answer.warnings)
+
+    def test_an_aligned_spot_is_not_refetched(self) -> None:
+        reference = self.reference()
+        self.assertFalse([w for w in reference.warnings if "refetched" in w or "could not be refetched" in w])
+
+    def test_a_refetch_that_gives_no_newer_spot_keeps_the_answer_unavailable(self) -> None:
+        original = S.load_group_book
+
+        def no_refetch(target: "S.Target", force: bool = False) -> "S.GroupBook":
+            return original(target)  # the cache copy again, as when the forced refetch cannot happen
+
+        with mock.patch.object(S, "load_group_book", side_effect=no_refetch):
+            answer = S.run_proposal(self.seeded_desk().market(), "AG-20261028-03", "collar", CRITERIA)
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_NO_CANDIDATE_PRICED), (answer.verdict, answer.cause))
+        self.assertIn("SPY quote stamped 19:29:00 UTC could not be refetched newer; the newest option is stamped "
+                      "19:31:12 UTC, so candidates more than 60 s from the stock quote stay unpriced", answer.warnings)
+
+
+class SpotBarTest(unittest.TestCase):
+    """Options quoted minutes before the stock (the free indicative feed updates a thinly traded option less often:
+    the owner's WMT collar, option stamps 18:01-18:08 against a stock quote of 18:09): each is priced against the
+    stock's one-minute IEX bar of the minute it was quoted in, never against a spot from a different minute."""
+
+    OPTION_STAMP = "2026-11-03T19:28:12Z"   # 180 s before the stock quote of 19:31:12Z
+    BAR_FILE = "minute_bars__SPY__20261103T192800Z__20261103T195000Z.json"
+
+    def desk(self, bar_close: Optional[str]) -> Desk:
+        desk = Desk(self, drop_row=8, replace=SPY_TAG)
+        regular = os.path.join(desk.root, "fixtures", "alpaca", "regular")
+        for name in os.listdir(regular):
+            if not name.startswith("snapshots__SPY__"):
+                continue
+            path = os.path.join(regular, name)
+            with open(path, encoding="utf-8") as handle:
+                document = json.load(handle)
+            for snapshot in document["snapshots"].values():
+                snapshot["latestQuote"]["t"] = self.OPTION_STAMP
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(document, handle)
+        if bar_close is not None:
+            bars = {"bars": {"SPY": [{"t": "2026-11-03T19:28:00Z", "o": 648.0, "h": 648.3, "l": 647.9,
+                                      "c": float(bar_close), "v": 1200, "n": 40, "vw": 648.1}]},
+                    "next_page_token": None}
+            with open(os.path.join(regular, self.BAR_FILE), "w", encoding="utf-8") as handle:
+                json.dump(bars, handle)
+        return desk
+
+    def test_without_a_bar_every_candidate_stays_unaligned(self) -> None:
+        answer = S.run_proposal(self.desk(None).market(), "AG-20261028-03", "collar", CRITERIA)
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_NO_CANDIDATE_PRICED), (answer.verdict, answer.cause))
+        self.assertIn("the underlying's quote is stamped too far from the option's", answer.reason)
+        self.assertTrue(any("minute-bar fetch failed" in warning for warning in answer.warnings), answer.warnings)
+
+    def test_the_bar_of_the_option_minute_prices_the_candidates(self) -> None:
+        reference = S.run_proposal(Desk(self, drop_row=8, replace=SPY_TAG).market(), "AG-20261028-03", "collar",
+                                   CRITERIA)
+        answer = S.run_proposal(self.desk("648.12").market(), "AG-20261028-03", "collar", CRITERIA)
+        self.assertEqual(S.VERDICT_BEST, answer.verdict)
+        best, expected = answer.ranking.best, reference.ranking.best
+        self.assertEqual((expected.id, expected.score), (best.id, best.score))
+        bar = datetime.datetime(2026, 11, 3, 19, 28, tzinfo=UTC)
+        for leg, ref in zip(best.legs, expected.legs):
+            with self.subTest(leg=leg.occ):
+                self.assertEqual(bar, leg.spot_bar_utc)
+                self.assertIsNone(ref.spot_bar_utc)
+                self.assertEqual(bar.isoformat().replace("+00:00", "Z")[:16],
+                                 leg.as_dict()["spot_bar_utc"].isoformat().replace("+00:00", "Z")[:16])
+        self.assertEqual(reference.requests["made"] + 1, answer.requests["made"])
+        self.assertGreater(S.spot_bar_count(answer), 0)
+        self.assertEqual(0, S.spot_bar_count(reference))
+
+    def test_the_volatility_reads_the_bar_and_the_delta_the_current_spot(self) -> None:
+        answer = S.run_proposal(self.desk("640.00").market(), "AG-20261028-03", "collar", CRITERIA)
+        leg = next(leg for candidate in answer.ranking.candidates for leg in candidate.legs if leg.unpriced is None)
+        sigma = iv.implied_vol(float(leg.mid), leg.right, 640.0, float(leg.strike), leg.tau_years, RATE,
+                               answer.pricing.q).sigma
+        assert_close(self, sigma, leg.iv)
+        delta = greeks.european_greeks(leg.right, float(answer.pricing.spot_mid), float(leg.strike), leg.tau_years,
+                                       RATE, answer.pricing.q, leg.iv).delta
+        assert_close(self, delta, leg.delta)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

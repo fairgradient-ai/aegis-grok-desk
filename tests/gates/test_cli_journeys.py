@@ -223,7 +223,7 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 41, "active": 61}}),
     "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-        "payload.lengths": {"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 333},
+        "payload.lengths": {"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391},
         "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
     J2D_PREOPEN: ("routine.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",

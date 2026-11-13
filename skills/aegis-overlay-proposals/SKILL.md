@@ -100,9 +100,14 @@ the window too, because the next one is not known. The labels and their acceptan
 
 ## The interview and the acknowledgement
 
-The Structuring Desk runs the interview in its own chat, at SETUP step 9 or on the owner's first request:
+The interview runs in the chat the owner is using (the Desk Lead's, the front door), at SETUP step 9 or on the
+owner's first request:
 
-1. Section by section, it shows the defaults above and changes only what the owner states.
+1. Section by section, it shows the defaults above and changes only what the owner states. For a call-writing
+   section whose `dte` window starts past 100 calendar days (the collar's default 120 to 210), it says plainly that
+   `earnings = "exclude"` and `ex_dividend = "exclude"` fail every candidate on a stock that reports earnings or pays a
+   quarterly dividend, and asks the owner to choose `exclude` or `allow` for each; `desk_init.py` prints the same as
+   `note:` lines, which are posted with its output.
 2. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
    they acknowledge it.
 3. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to
@@ -112,7 +117,14 @@ The Structuring Desk runs the interview in its own chat, at SETUP step 9 or on t
 python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
 ```
 
-4. After the owner's next tap, the Aegis Desk Lead acknowledges it with `ack.py config --owner-tapped`.
+4. Joined with `&&` to that command, `ack.py config --owner-tapped` acknowledges it in the same tap.
+
+When candidates fail only on an earnings or ex-dividend date, give the owner both ways past it, with their effects,
+and let them choose: `allow` in the section (a new interview answer and `desk_init.py --replace --owner-tapped`)
+changes only what the structuring tools accept, for every symbol, and silences no alert; the row tags `#earnings-ok`
+and `#assign-ok` act on one position but also silence that group's exit alerts (`EARN2`; `EXDIV`, `DELTA_WATCH`,
+`DELTA_SIGNAL` and `CAP`). Never suggest a tag first, and never add one without the owner choosing it knowing what it
+silences.
 
 On the fixture answers, then the acknowledgement on the fixture desk (synthetic):
 

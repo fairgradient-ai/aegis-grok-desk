@@ -674,7 +674,10 @@ class OtherMessagesTest(DocumentCase):
                  (1, "1.0.0", "rulebook changed: 1 verdict changed | rules 1.0.0 -> rules 1.1.0, sha 3f9a01bc"),
                  (0, None, "rulebook changed: 0 verdicts changed | rules 1.1.0, sha 3f9a01bc"),
                  (None, "1.0.0", "rulebook changed: digest unavailable (no snapshot) | rules 1.0.0 -> rules 1.1.0, sha "
-                                 "3f9a01bc"))
+                                 "3f9a01bc"),
+                 # a new desk's first rulebook before any snapshot: nothing to compare is expected, not a missing digest
+                 (None, None, "rulebook adopted: your first rulebook, no earlier verdicts to compare | rules 1.1.0, "
+                              "sha 3f9a01bc"))
         for changed, previous, first in cases:
             with self.subTest(changed=changed):
                 alert = alerts.rulebook_changed_text(previous, changed, self.doc("regular"), run_info)

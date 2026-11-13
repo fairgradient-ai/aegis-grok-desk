@@ -102,7 +102,7 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 > - the desk does not see your cash balance
-> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+> - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself
 
@@ -302,10 +302,10 @@ checks read `[protective_put]`.
 ## After a fill
 
 - A ticket carries no `positions.csv` lines: the fill price is unknown until the owner reports it, and the file's
-  edits have one owner. The ticket says `after a fill, tell Aegis Position Control the fill; it proposes the
+  edits have one owner. The ticket says `after a fill, tell the Aegis Desk Lead the fill; it proposes the
   positions.csv lines`.
-- Aegis Position Control proposes the lines from the owner's own fill, with the close, partial-close and roll
-  recipes. The owner applies them. The next book check posts CONFIG CHANGED until `ack.py config --owner-tapped`.
+- The Desk Lead proposes the lines from the owner's own fill (Position Control's recipes), saved through the save's
+  card, never asking again for a fill already given; `ack.py config --owner-tapped` joins the next request's card.
 - After a LET_ASSIGN ticket, the post-expiry reconciliation proposes the lines after expiry.
 
 ## Files and the record

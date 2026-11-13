@@ -576,6 +576,33 @@ def _load_bytes(path: str, data: bytes) -> StructuringConfig:
     return _parse_text(text, path, sha256)
 
 
+QUARTER_SPAN_DAYS: int = 100
+"""A call whose life is longer than this many calendar days spans at least one quarterly report or quarterly
+ex-dividend date (companies report about every 91 days; the margin covers a late quarter)."""
+SPAN_NOTE: str = ("%s dte starts at %d calendar days with %s = \"exclude\": every call that long spans a quarterly %s, "
+                  "so a stock that %s never passes; %s = \"allow\" accepts it in the structuring tools only "
+                  "(your exit alerts are unchanged)")
+"""The note :func:`never_passing_notes` gives for one section and event."""
+
+
+def never_passing_notes(config: "StructuringConfig") -> List[str]:
+    """One :data:`SPAN_NOTE` per call-writing section whose ``dte`` window starts past :data:`QUARTER_SPAN_DAYS` with
+    ``earnings`` or ``ex_dividend`` set to ``exclude``: criteria no candidate on a reporting (or quarterly dividend)
+    stock can pass, which the interview shows before the owner accepts them."""
+    notes: List[str] = []
+    for name in (SECTION_COVERED_CALL, SECTION_ROLL, SECTION_COLLAR):
+        section = config.section(name)
+        if not section.enabled or section.dte[0] <= QUARTER_SPAN_DAYS:
+            continue
+        if section.earnings == EVENT_EXCLUDE:
+            notes.append(SPAN_NOTE % ("[%s]" % name, section.dte[0], "earnings", "earnings date",
+                                      "reports earnings", "earnings"))
+        if section.ex_dividend == EVENT_EXCLUDE:
+            notes.append(SPAN_NOTE % ("[%s]" % name, section.dte[0], "ex_dividend", "ex-dividend date",
+                                      "pays a quarterly dividend", "ex_dividend"))
+    return notes
+
+
 def load_structuring_config(path: str) -> StructuringConfig:
     """Read and validate ``structuring.toml`` at ``path`` (module notes); errors are
     :class:`StructuringConfigError`, a missing file included."""
@@ -632,6 +659,7 @@ __all__ = [
     "OBJECTIVE_STRESS_COST_PER_DAY",
     "Objective",
     "ProtectivePutSection",
+    "QUARTER_SPAN_DAYS",
     "RollSection",
     "SCHEMA_VERSION",
     "SECTIONS",
@@ -642,6 +670,7 @@ __all__ = [
     "SECTION_KEYS",
     "SECTION_PROTECTIVE_PUT",
     "SECTION_ROLL",
+    "SPAN_NOTE",
     "STRESS_DROP_PCT_MAX",
     "STRIKE_FLOORS",
     "STRIKE_FLOOR_COST_BASIS",
@@ -652,6 +681,7 @@ __all__ = [
     "UNKNOWN_EVENT_RULE",
     "load_structuring_config",
     "load_structuring_config_if_present",
+    "never_passing_notes",
     "objective_for",
     "parse_structuring_toml_text",
 ]
