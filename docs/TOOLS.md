@@ -159,6 +159,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--snapshot` | none | write data/book/<ET date>.json, the snapshot of record (atomic, under the desk lock) |
 | `--report` | none | write reports/book.md |
+| `--view` | none | print the book view: one linted markdown message for a chat (with --json the payload is {message, emitted, lint, exit_code} instead of the book dict) |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):

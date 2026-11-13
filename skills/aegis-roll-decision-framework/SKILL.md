@@ -29,9 +29,9 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
   and the new call is judged as a fresh trade: every candidate shares the same close, so the score reads the new call
   alone.
 - The net credit per share is the new call's bid minus the held call's ask. A negative net credit is a net debit.
-  The candidates table prints it per share (`credit 0.05`, `debit 0.70`), and the best candidate's checks table in
+  The candidates list prints it per share (`credit 0.05`, `debit 0.70`), and the best candidate's checks in
   all, for example `credit 0.05 (10.00 in all)`.
-- The best candidate's group table shows the group's maximum loss, maximum profit, breakeven and delta now and after
+- The best candidate's group block shows the group's maximum loss, maximum profit, breakeven and delta now and after
   both legs. The tools compute them; a Bot never does.
 - Keeping the call, closing it, or letting it go to expiry are choices too. A CLOSE or a LET_ASSIGN ticket prices
   them (`aegis-ticket-and-unwind-order`).
@@ -87,9 +87,9 @@ Each candidate gets one status, with every reason listed (the JSON's `status` an
 | `OUTSIDE_BANDS` | it falls outside `dte`, `abs_delta`, `min_credit` or `max_spread_pct` |
 | `UNPRICED` | its quote cannot price it: missing, stale, one side stale, crossed, a zero bid, too wide, listed more than once with different quotes, or no implied volatility |
 
-The precedence is UNPRICED, then OUTSIDE_BANDS, then FAILS_CRITERION, then ELIGIBLE. The table lists ELIGIBLE first,
+The precedence is UNPRICED, then OUTSIDE_BANDS, then FAILS_CRITERION, then ELIGIBLE. The list puts ELIGIBLE first,
 then FAILS_CRITERION and OUTSIDE_BANDS (each by score and tie-breaks), then UNPRICED. In the text both failing tiers
-print alike: a red status cell naming the keys, and under the candidates table of an answer with no best candidate,
+print alike: a red status mark naming the keys, and under the candidates list of an answer with no best candidate,
 `<ranks> fail <key>: <words>`; an unpriced quote prints `not priced` and `<rank> not priced: <words>`. The counts keep
 the unpriced apart (`<n> not priced`): a candidate the desk could not price was never judged against the criteria.
 
@@ -112,7 +112,7 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
   day, and the calendar holds only one.
 - The owner can accept the event labels. `#earnings-ok` on any open row of the group, or `earnings = "allow"`, accepts
   an earnings label; `#assign-ok`, or `ex_dividend = "allow"`, accepts a dividend label. An accepted label keeps the
-  candidate ELIGIBLE and prints a checks-table row with a yellow status circle, `accepted by #assign-ok` or `accepted
+  candidate ELIGIBLE and prints a checks item with a yellow status circle, `accepted by #assign-ok` or `accepted
   by your structuring.toml`; a label that fails prints `excluded by your structuring.toml` with a red one.
 - The word FAILS_RULE is never used: on this desk a rule is an adopted exit rule, and these are the owner's criteria.
 
@@ -121,9 +121,7 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
 ```text
 ### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
 
-| account | WMT mid | your cost | quotes |
-|---|--:|--:|---|
-| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min delayed
 
 **BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
@@ -131,32 +129,27 @@ the unpriced apart (`<n> not priced`): a candidate the desk could not price was 
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
-| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
-| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
-| bid | 3.55 | at least 0.50 | 🟢 |
-| calendar days | 73 | 40 to 75 | 🟢 |
-| spread | 2.78 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+**checks for this candidate:**
+- 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
+- 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
+- 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
+- 🟢 **bid** 3.55 | your criteria: at least 0.50
+- 🟢 **calendar days** 73 | your criteria: 40 to 75
+- 🟢 **spread** 2.78 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 19,016.00 | 19,006.00 |
-| max profit | 1,984.00 | 3,994.00 |
-| breakeven | 95.08 | 95.03 |
-| group delta | 101.71 | 134.07 |
+**the group, now and after both legs:**
+- **max loss** 19,016.00 now, 19,006.00 after
+- **max profit** 1,984.00 now, 3,994.00 after
+- **breakeven** 95.08 now, 95.03 after
+- **group delta** 101.71 now, 134.07 after
 
 **replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+- 🟢 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467
+- 🔴 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only
+- 🔴 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only
 
-| # | expiry | new call | net per share | extrinsic_per_day |  |
-|--:|---|---|--:|--:|---|
-| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | 🟢 |
-| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
-| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
-
-- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -169,9 +162,9 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 - The title names the held call; the context strip names the account, the share price, your stock cost and the
   quotes' as-of.
 - `**BEST CANDIDATE k of n**` names the objective it maximised and the score; the caveat is quoted under its legs.
-- The checks table shows each criterion with the new call's value, your band and a status circle (green passes,
-  yellow is a label you accepted, red fails). The group table shows now and after both legs.
-- The ranked candidates table shows up to `max_candidates_shown` candidates (3 in the fixture), the best first.
+- The checks shows each criterion with the new call's value, your band and a status circle (green passes,
+  yellow is a label you accepted, red fails). The group block shows now and after both legs.
+- The ranked candidates list shows up to `max_candidates_shown` candidates (3 in the fixture), the best first.
   Candidate 2 above scores higher but fails `credit_only`: a failing candidate is never the best, whatever its score.
 - The ticket pointer, then the notes (the objective's words, the quote source, the model line, the criteria sha) and
   the footer. The JSON lists every candidate.

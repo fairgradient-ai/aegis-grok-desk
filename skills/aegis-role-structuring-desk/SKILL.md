@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: a6b90a5f9eda62e44b25e0e4c1263c4b3ff5b2c99a941d2fc2152e736cdf9c82
+  source_sha256: df00d76aea71daf291e8f8f8574edcdf3418ef6d690fa219aec123014297eba8
 ---
 
 # Aegis Structuring Desk: role skill
@@ -98,13 +98,14 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 
 The three tools lint their own text in structuring mode before they print it. Post the full text verbatim: every line,
 in order, the footer included. Never shorten, reorder, reword or add to it. The text is markdown laid out as a desk
-view: a title, tables, list items and a quoted list of notes. Post it as it is, never inside a code block, so the chat
-renders the tables.
+view: a title, one line of bold labels for the context, captioned list items and a quoted list of notes. It holds no
+table, so the chat shows it as one message. Post it as one message, as it is, never inside a code block and never
+split into several posts.
 
-- A status column colours each check: a green circle is a criterion the candidate passes, a yellow circle an earnings
+- A status mark opens each check item: a green circle is a criterion the candidate passes, a yellow circle an earnings
   or ex-dividend label the owner accepted (by `#earnings-ok`, `#assign-ok` or `structuring.toml`), and a red circle a
-  criterion it fails, followed by the keys it fails. The lint admits these three symbols only at the start of a table
-  cell of a structuring text.
+  criterion it fails; a failing candidate's item ends with the keys it fails. The lint admits these three symbols only
+  right after the `- ` that opens a list item (or at the start of a table cell) of a structuring text.
 - The quote source is named once, in the notes; a leg's quote segment ends at its grade.
 
 The synthetic examples here and in your skills come from copies of the fixture desk `tests/fixtures/desk`, with the
@@ -114,9 +115,7 @@ The roll analysis of AG-20261020-01:
 ```text
 ### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
 
-| account | WMT mid | your cost | quotes |
-|---|--:|--:|---|
-| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+**account** 1 of desk.toml (margin) | **WMT mid** 104.23 | **your cost** 98.50 | **quotes** 19:31 UTC, 15-min delayed
 
 **BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
@@ -124,32 +123,27 @@ The roll analysis of AG-20261020-01:
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
-| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
-| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
-| bid | 3.55 | at least 0.50 | 🟢 |
-| calendar days | 73 | 40 to 75 | 🟢 |
-| spread | 2.78 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+**checks for this candidate:**
+- 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
+- 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
+- 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
+- 🟢 **bid** 3.55 | your criteria: at least 0.50
+- 🟢 **calendar days** 73 | your criteria: 40 to 75
+- 🟢 **spread** 2.78 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 19,016.00 | 19,006.00 |
-| max profit | 1,984.00 | 3,994.00 |
-| breakeven | 95.08 | 95.03 |
-| group delta | 101.71 | 134.07 |
+**the group, now and after both legs:**
+- **max loss** 19,016.00 now, 19,006.00 after
+- **max profit** 1,984.00 now, 3,994.00 after
+- **breakeven** 95.08 now, 95.03 after
+- **group delta** 101.71 now, 134.07 after
 
 **replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+- 🟢 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467
+- 🔴 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only
+- 🔴 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only
 
-| # | expiry | new call | net per share | extrinsic_per_day |  |
-|--:|---|---|--:|--:|---|
-| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | 🟢 |
-| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
-| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
-
-- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -165,22 +159,19 @@ notes follow):
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)
 
-| account | computed | valid until | quotes |
-|---|---|---|---|
-| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
+**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC (30 min) | **quotes** 19:31 UTC, 15-min delayed
 
 **the legs:**
 - leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 
-| cash | at the conservative prices | at the mids |
-|---|--:|--:|
-| net cash | -700.00 | -685.00 |
-| realized on the closing leg | -16.00 | -1.00 |
-| the most the steps need at once | 700.00 |  |
+**the cash:**
+- **net cash** -700.00 at the conservative prices, -685.00 at the mids
+- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids
+- **the most the steps need at once** 700.00
 ```
 
 A proposal starts `### PROPOSAL <trade id> | a <structure> on the <n> <SYMBOL> shares you hold` and has the same
-blocks, with its approval block after the group table and its notes ending on the two limit and act lines.
+blocks, with its approval block after the group block and its notes ending on the two limit and act lines.
 
 - A leg line names the contract by root, date, strike and right, never by an OCC symbol. It carries the leg's effect,
   never a trade-side word: `closes your short`, `opens a new long`, `closes 200 of your long WMT shares`.
@@ -303,7 +294,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 | 2 | usage: invalid arguments |
 
 These tools never exit 10: they fire nothing. A ROLL ticket whose replacement fails a criterion is still a TICKET:
-its checks table shows each failing criterion as a red row, because the owner named the contract.
+its checks shows each failing criterion as a red item, because the owner named the contract.
 
 ### Failures
 

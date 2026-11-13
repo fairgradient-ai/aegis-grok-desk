@@ -519,16 +519,36 @@ class StructuringFooterTest(unittest.TestCase):
                 self.assertIn("non_ascii", codes(refused), "only a structuring text carries a status symbol")
         misplaced = ("floor " + green + " passes", green + " floor passes", "| floor |" + green + " |",
                      "| floor | " + green + "|", "| floor | " + green + green + " |", "| 4.34 " + green + " |",
-                     "- " + green + " floor", "| bu" + green + "y |", "| 1" + green + "2 |",
+                     "  - " + green + " floor", "* " + green + " floor", "-" + green + " floor",
+                     "- " + green + "floor", "- " + green + green + " floor", "> - " + green + " floor",
+                     "- floor " + green + " passes", "| bu" + green + "y |", "| 1" + green + "2 |",
                      "| floor | " + green + "️ |", "| floor | ✅ |", "| floor | \U0001F7E0 |")
         for line in misplaced:
             with self.subTest(line=line):
                 self.assertIn("non_ascii", codes(structuring_check(line, emitted=["4.34", "1", "2"])))
         # a symbol is a list mark to the sentence-start rule: the word after it is a sentence start
         for word in ("close", "sell", "roll", "hold", "collar"):
-            with self.subTest(word=word):
-                result = structuring_check("| floor | " + red + " " + word + " the 105 call |")
-                self.assertIn("imperative_start", codes(result), result.problems)
+            for line in ("| floor | " + red + " " + word + " the 105 call |", "- " + red + " " + word + " the 105 call"):
+                with self.subTest(word=word, line=line):
+                    result = structuring_check(line)
+                    self.assertIn("imperative_start", codes(result), result.problems)
+
+    def test_the_status_symbols_may_open_a_list_item(self) -> None:
+        # the desk view prints its checks and candidates as list items (one chat bubble, no table): a symbol may
+        # stand right after a "- " that starts a line, followed by a space, and only in a structuring text
+        green, yellow, red = alert_lint.STATUS_SYMBOLS
+        items = ("- " + green + " **floor** 4.34 % below; your criteria: 3 to 10 %",
+                 "- " + yellow + " **ex-dividend** 2026-12-18, inside the call's life; accepted by #assign-ok",
+                 "- " + red + " 2. 2026-12-18 112.5 call | debit 0.70 | fails credit_only")
+        result = structuring_check(*items)
+        self.assertTrue(result.ok, result.problems)
+        first = structuring_check(items[0])
+        self.assertTrue(first.ok, "a symbol on the text's first line opens an item too: %s" % first.problems)
+        for kind, footer in ((alert_lint.FOOTER_RULES, FOOTER),
+                             (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line(AS_OF))):
+            with self.subTest(footer=kind):
+                refused = alert_lint.check(items[0] + "\n" + footer, emitted_of(items[0]), footer=kind)
+                self.assertIn("non_ascii", codes(refused), "only a structuring text carries a status symbol")
 
     def test_the_leg_grammar_takes_a_list_mark_and_a_quote_grade_alone(self) -> None:
         # 0.2.1: the structuring texts print their legs as list items, and a proposal or ticket names the quote source

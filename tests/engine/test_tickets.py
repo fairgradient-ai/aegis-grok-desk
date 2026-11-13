@@ -454,9 +454,12 @@ class LetAssignDividendTest(unittest.TestCase):
         assert_lints(self, rendered)
         lines = rendered.text.split("\n")
         self.assertIn("> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request", lines)
-        # the LET_ASSIGN table's ex-dividend row, or its if-assigned row when there is no dividend line
-        cells = dict(line[2:-2].split(" | ", 1) for line in lines
-                     if line.startswith(("| ex-dividend | ", "| if assigned | ")))
+        # the LET_ASSIGN block's ex-dividend item, or its if-assigned item when there is no dividend line
+        cells = {}
+        for line in lines:
+            for label in ("ex-dividend", "if assigned"):
+                if line.startswith("- **%s** " % label):
+                    cells[label] = line[len("- **%s** " % label):]
         return ticket.let_assign[0], cells.get("ex-dividend") or "if assigned: " + cells["if assigned"]
 
     def test_an_ex_date_before_the_last_trading_day(self) -> None:
@@ -576,25 +579,27 @@ class TextTest(unittest.TestCase):
         self.assert_lints(rendered)
         lines = rendered.text.split("\n")
         self.assertEqual("### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)", lines[0])
-        self.assertEqual(["| account | computed | valid until | quotes |", "|---|---|---|---|",
-                          "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |", "",
+        self.assertEqual(["**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC "
+                          "(30 min) | **quotes** 19:31 UTC, 15-min delayed", "",
                           "**the legs:**",
                           "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
                           "quote grade B",
                           "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | "
                           "quote grade B", "",
-                          "| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
-                          "| net cash | +10.00 | +35.00 |", "| realized on the closing leg | -16.00 | -1.00 |",
-                          "| the most the steps need at once | 700.00 |  |"], lines[2:15])
+                          "**the cash:**",
+                          "- **net cash** +10.00 at the conservative prices, +35.00 at the mids",
+                          "- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids",
+                          "- **the most the steps need at once** 700.00"], lines[2:12])
         self.assertIn("> - the desk does not see your cash balance", lines)
         self.assertEqual(STAMP, rendered.as_of)
 
     def test_a_missing_mid_prints_the_conservative_side_alone(self) -> None:
         w = structuring_text.Writer()
-        self.assertEqual(["| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
-                          "| net cash | -700.00 | no mid: a quote side is stale |",
-                          "| realized on the closing leg | -16.00 | no mid: a quote side is stale |",
-                          "| the most the steps need at once | 700.00 |  |"],
+        self.assertEqual(["**the cash:**",
+                          "- **net cash** -700.00 at the conservative prices, at the mids: no mid: a quote side is stale",
+                          "- **realized on the closing leg** -16.00 at the conservative prices, at the mids: no mid: a "
+                          "quote side is stale",
+                          "- **the most the steps need at once** 700.00"],
                          tickets.cash_lines(w, tickets.cash_summary([(D("-700.00"), None)]),
                                             [tickets.RealizedLeg(4, D("-16.00"), None)]))
         self.assertEqual(["-700.00", "-16.00", "700.00"], w.emitted)
@@ -605,7 +610,8 @@ class TextTest(unittest.TestCase):
         rendered = tickets.render_ticket(ticket)
         self.assert_lints(rendered)
         lines = rendered.text.split("\n")
-        self.assertEqual("| 1 of desk.toml (margin) | 19:50 UTC | 21:00 UTC | 19:31 UTC, 15-min delayed |", lines[4])
+        self.assertEqual("**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 21:00 UTC | "
+                         "**quotes** 19:31 UTC, 15-min delayed", lines[2])
         self.assertIn("> - after 21:00 UTC its quotes are too old, and a new ticket needs a new request", lines)
 
     def test_a_rulebook_change_prints_first_and_does_not_block(self) -> None:
@@ -634,8 +640,8 @@ class FixerTicketTest(unittest.TestCase):
         lines = rendered.text.split("\n")
         self.assertIn("no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by "
                       "exception; your broker's cutoff is 16:30 ET (desk.toml)", lines)
-        self.assertIn("| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left "
-                      "to expiry can be closed only while the session trades |", lines)
+        self.assertIn("- **if you decide otherwise** you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option "
+                      "left to expiry can be closed only while the session trades", lines)
         self.assertNotIn("21:30 UTC", rendered.text)
 
     def test_an_early_close_last_trading_day(self) -> None:

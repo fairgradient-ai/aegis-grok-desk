@@ -149,12 +149,13 @@ TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 tradin
                     "and the days only fall")
 TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
                 "crossed (rule fired)")
-PL_LINE = ("realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), $4,097.00 "
-           "(mid) | day $400.00")
-RECON_CLEAN = "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits"
-DOCKET_NONE_DUE = "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due"
-LEVELS_LAST_NIGHT = ("last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; "
-                     "AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels")
+PL_LINE = ("**P/L** | data/book/2026-11-03.json\n- **unrealized** $4,034.00 (liquidation), $4,097.00 (mid)\n"
+           "- **day** $400.00\n- **realized** today $0.00, month to date $0.00, year to date $425.00")
+RECON_CLEAN = "**positions.csv reconciliation** CLEAN, 0 proposed edits"
+DOCKET_NONE_DUE = "**expiry docket** 0 contracts due | reports/expiry/2026-11-03.week.json"
+LEVELS_LAST_NIGHT = ("**last night's levels** | levels/2026-11-02.json\n- AG-20261020-01 1 resting-eligible of 3 price levels\n"
+                     "- AG-20261022-02 1 resting-eligible of 5 price levels\n- AG-20261028-03 0 resting-eligible of 3 price "
+                     "levels")
 DEV_HEADER = "development run: the checkout is not verified (--allow-dirty)"
 # The morning staging: the doctor, the reconciliation and the week docket at 07:31 ET, the sheet at 07:35 ET; the routines
 # at their slots (preopen 07:35 ET, eod 16:35 ET, eod-brief 17:10 ET, book-check 10:05 ET on Thanksgiving).
@@ -310,6 +311,18 @@ JOURNEYS: Tuple[Journey, ...] = (
                   "payload.portfolio.realized_pl_ytd": "425.00", "payload.portfolio.day_pl": None}),
     tool_journey("book stale -> UNAVAILABLE", ("book.py", "--fixture-set", "stale"), 20,
                  {"status": "unavailable", "payload.portfolio.unrealized_pl_mid": None}),
+    tool_journey("book --view regular -> YOUR BOOK (one linted message, no table)", ("book.py", "--view", "--fixture-set",
+                                                                                    "regular"), 0,
+                 {"status": "ok", "tool": "book", "payload.lint.ok": True, "payload.exit_code": 0,
+                  "payload.emitted.rule_ids": [],
+                  "payload.message": TextMatch(
+                      prefix="### YOUR BOOK 2026-11-03 | 3 open positions\n\n**the whole book**\n"
+                             "- **unrealized P/L** $4,097.00 (mid), $4,034.00 (liquidation)",
+                      contains=("**AG-20261020-01 | WMT covered call** | account 1 of desk.toml (margin)",
+                                "- **payoff** max profit unbounded | max loss $2,370.00 | breakeven $643.70",
+                                "- **short calls** 2 x WMT 2026-11-20 105 call at $3.42 | now $3.425 (mid), $3.50 "
+                                "(liquidation), grade B"),
+                      excludes=("Brokerage (margin)", "Roth IRA", "WMT261120C00105000", "\n|"))}),
     tool_journey("book --snapshot pre_open 2026-11-02 then book regular 2026-11-03 (day P/L from the snapshot)",
                  ("book.py", "--fixture-set", "regular"), 0,
                  {"status": "ok", "payload.portfolio.day_pl": "400.00"},
@@ -503,7 +516,7 @@ JOURNEYS += (
                  ("eod_summary.py", "--brief"), 0,
                  {"status": "ok", "tool": "eod_summary", "payload.mode": "brief", "payload.lint.ok": True,
                   "payload.unavailable": [],
-                  "payload.message": TextMatch(prefix="EOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE)},
+                  "payload.message": TextMatch(prefix="### EOD DESK BRIEF 2026-11-03\n\n" + PL_LINE)},
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
                         tool_step(("book.py", "--snapshot", "--fixture-set", "regular"), 0, {"status": "ok"}),
                         tool_step(("csv_recon.py", "--fixture-set", "regular"), 0, {"payload.verdict": "CLEAN"}))),
@@ -513,8 +526,9 @@ JOURNEYS += (
                  {"status": "ok", "payload.mode": "morning", "payload.lint.ok": True, "payload.unavailable": [],
                   "payload.exit_code": 0,
                   "payload.message": TextMatch(
-                      prefix="MORNING DESK SHEET 2026-11-03\ndoctor (state/doctor.json, quick check at 12:31 UTC): PASS",
-                      contains=(RECON_CLEAN, "open signals: 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+                      prefix="### MORNING DESK SHEET 2026-11-03\n\n**doctor** PASS",
+                      contains=(RECON_CLEAN, "**open signals** 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT,
+                                "| quick check at 12:31 UTC | state/doctor.json"),
                       excludes=("early close", "UNAVAILABLE:"))},
                  now=MORNING_NOW,
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
@@ -529,7 +543,7 @@ JOURNEYS += (
                                   {"payload.mode": "week", "payload.counts.listed": 0}, now=MORNING_STAGE_NOW))),
     tool_journey("eod_summary on a bare copy -> UNAVAILABLE (reconciliation missing)", ("eod_summary.py",), 20,
                  {"status": "unavailable", "payload.mode": "morning", "payload.lint.ok": True, "payload.exit_code": 20,
-                  "payload.message": TextMatch(prefix="MORNING DESK SHEET 2026-11-03", contains=(
+                  "payload.message": TextMatch(prefix="### MORNING DESK SHEET 2026-11-03", contains=(
                       "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",))}),
     # market_status (check 9) is not pinned: it depends on the runner's timezone and only ever WARNs.
     tool_journey("desk_doctor --quick regular -> PASS", ("desk_doctor.py", "--quick"), 0,
@@ -599,7 +613,7 @@ JOURNEYS += (
                   "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
                   "payload.steps.3.tool": "eod_summary", "payload.steps.3.exit_code": 0, "payload.incidents": [],
                   "payload.withheld": [],
-                  "payload.message": TextMatch(prefix=DEV_HEADER + "\nMORNING DESK SHEET 2026-11-03",
+                  "payload.message": TextMatch(prefix=DEV_HEADER + "\n### MORNING DESK SHEET 2026-11-03",
                                                contains=(RECON_CLEAN, DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
                                                excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))},
                  now=MORNING_NOW,
@@ -610,8 +624,8 @@ JOURNEYS += (
                  {"status": "ok", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "17:10",
                   "payload.heartbeat": "state/heartbeat/eod-brief.json", "payload.steps.0.tool": "eod_summary",
                   "payload.message": TextMatch(
-                      prefix=DEV_HEADER + "\nEOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE,
-                      contains=("routines: 1 of 7 ran today",), excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))},
+                      prefix=DEV_HEADER + "\n### EOD DESK BRIEF 2026-11-03\n\n" + PL_LINE,
+                      contains=("**routines** 1 of 7 ran today",), excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))},
                  now=EOD_BRIEF_NOW,
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"}, now=PREV_EOD_NOW),
                         tool_step(("routine.py", "eod", "--slot", "16:35", "--allow-dirty", "--fixture-set", "after_close"), 0,
@@ -669,9 +683,9 @@ JOURNEYS += (
                       contains=("**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**",
                                 "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
                                 "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
-                                "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by "
-                                "#assign-ok | \U0001F7E1 |",
-                                "| max loss | 19,016.00 | 19,006.00 |",
+                                "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | "
+                                "accepted by #assign-ok",
+                                "- **max loss** 19,016.00 now, 19,006.00 after",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES",
@@ -683,7 +697,8 @@ JOURNEYS += (
                   "payload.message": TextMatch(
                       prefix="### STRUCTURING AG-20261022-02 | NVDA covered call",
                       contains=("**no candidate passed every criterion: the desk names no best candidate**",
-                                "| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |",
+                                "- \U0001F534 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | "
+                                "fails credit_only, ex_dividend",
                                 "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls "
                                 "inside the new call's life", STRUCTURING_FOOTER),
                       excludes=("BEST CANDIDATE",))},
@@ -717,13 +732,15 @@ JOURNEYS += (
                   "payload.journal": "journal/structuring.jsonl",
                   "payload.message": TextMatch(
                       prefix="### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)",
-                      contains=("| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                      contains=("**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC "
+                                "(30 min) | **quotes** 19:31 UTC, 15-min delayed",
                                 "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 "
                                 "| quote grade B",
                                 "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 "
                                 "| quote grade B",
-                                "| net cash | +10.00 | +35.00 |", "| the most the steps need at once | 700.00 |  |",
-                                "| max loss | 19,016.00 | 19,006.00 |",
+                                "- **net cash** +10.00 at the conservative prices, +35.00 at the mids",
+                                "- **the most the steps need at once** 700.00",
+                                "- **max loss** 19,016.00 now, 19,006.00 after",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket NVDA ROLL, new 2027-01-15 160 call -> TICKET with two "
@@ -735,10 +752,10 @@ JOURNEYS += (
                   "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 4,
                   "payload.lint.ok": True, "payload.files.written": True,
                   "payload.message": TextMatch(prefix="### TICKET AG-20261022-02 | NVDA covered call", contains=(
-                      "| net per share | debit 0.05 (10.00 in all) | credit only | \U0001F534 |",
-                      "| ex-dividend | 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded by your "
-                      "structuring.toml | \U0001F534 |",
-                      "| max loss | 27,630.00 | 27,640.00 |",
+                      "- \U0001F534 **net per share** debit 0.05 (10.00 in all) | your criteria: credit only",
+                      "- \U0001F534 **ex-dividend** 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded "
+                      "by your structuring.toml",
+                      "- **max loss** 27,630.00 now, 27,640.00 after",
                       STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket SPY MONETIZE_PUT -> TICKET, cash +980.00",
@@ -752,11 +769,13 @@ JOURNEYS += (
                   "payload.message": TextMatch(
                       prefix="### TICKET AG-20261028-03 | SPY protective put: the long put closed for its value "
                              "(action MONETIZE_PUT)",
-                      contains=("| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                      contains=("**account** 2 of desk.toml (ira) | **computed** 19:50 UTC | **valid until** 20:20 UTC "
+                                "(30 min) | **quotes** 19:31 UTC, 15-min delayed",
                                 "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | "
                                 "quote grade B",
-                                "| net cash | +980.00 | +995.00 |", "| the most the steps need at once | 0.00 |  |",
-                                "| after the leg | your 100 SPY shares carry no put: their downside is unhedged |",
+                                "- **net cash** +980.00 at the conservative prices, +995.00 at the mids",
+                                "- **the most the steps need at once** 0.00",
+                                "- **after the leg** your 100 SPY shares carry no put: their downside is unhedged",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket WMT ROLL on expiration day -> TICKET, the held call's ask "
@@ -769,8 +788,8 @@ JOURNEYS += (
                   "payload.message": TextMatch(prefix="### TICKET AG-20261020-01 | WMT covered call", contains=(
                       "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
                       "grade E | quote grade E: the conservative side stands",
-                      "| earnings | 2026-11-17 has passed, the next is unknown: counted inside the new call's life | "
-                      "excluded by your structuring.toml | \U0001F534 |",
+                      "- \U0001F534 **earnings** 2026-11-17 has passed, the next is unknown: counted inside the new "
+                      "call's life | excluded by your structuring.toml",
                       STRUCTURING_FOOTER))},
                  now=EXPIRY_DAY_NOW, steps=EXPIRY_DAY_STRUCTURING),
     # Failing closed (addendum S8): every action, CLOSE included, needs an acknowledged structuring.toml.

@@ -165,7 +165,7 @@ outside the bands too.
 ## The desk view of a proposal
 
 A proposal is markdown laid out as a desk view, built to read in a chat on a phone; the Bot posts it as it is, never
-in a code block, so the tables render. Its blocks, in order:
+in a code block and never split, and it holds no table, so the chat shows it as one message. Its blocks, in order:
 
 - The title `### PROPOSAL <trade id> | a <structure> on the <n> <SYMBOL> shares you hold`, then the context strip:
   the account as `<n> of desk.toml (<type>)` (never the name typed in `positions.csv`), the share price (the mid the
@@ -173,21 +173,21 @@ in a code block, so the tables render. Its blocks, in order:
 - `**BEST CANDIDATE k of n** by your objective <id>: **<score>**, the highest among the m candidates that passed every
   criterion` (`the lowest` for `stress_cost_per_day`), the legs as list items in the fixed leg grammar, and the caveat
   quoted right under them: `the score ranks the candidates only on the objective you chose; it is not a forecast`.
-- The checks table: each criterion with the candidate's value and your band, and a status cell: a green circle for a
+- The checks: each criterion with the candidate's value and your band, and a status mark: a green circle for a
   criterion it passes, a yellow circle for an earnings or ex-dividend label you accepted (`#earnings-ok`,
   `#assign-ok`, or `allow` in the section), a red circle for one it fails. A protective put adds its cost (the ask,
   and its total for the contracts).
-- The group table, now and after the legs: max loss, max profit, breakeven and the group delta. When the contracts
+- The group block, now and after the legs: max loss, max profit, breakeven and the group delta. When the contracts
   do not cover every share (`floor(shares / 100)` contracts), an item says how many shares the structure leaves out.
-- The approval block, then the ranked candidates table (the best first, its status column the same colours, a
-  failing candidate's red cell naming the keys it fails), the counts in its caption and, for a collar, the legs
+- The approval block, then the ranked candidates list (the best first, its status mark the same colours, a
+  failing candidate's red mark naming the keys it fails), the counts in its caption and, for a collar, the legs
   outside their bands.
 - The notes, quoted: the objective's words, the tie-break when one decided, the quote source, the model line, the
   criteria file's sha, `you supply the limit; the desk prints none` and `if you decide to act, you type it into your
   brokerage account yourself`. Then the structuring footer.
 
 `no candidate passed every criterion: the desk names no best candidate` replaces the best candidate's blocks
-(NONE_QUALIFIES, a complete answer), and the items under the candidates table say why each shown candidate fails.
+(NONE_QUALIFIES, a complete answer), and the items under the candidates list say why each shown candidate fails.
 "Best" means only the highest score on the owner's objective among the candidates that passed every criterion. The
 Bot never adds a word from the lint's advice, claim or urgency categories, and never compares candidates.
 
@@ -198,43 +198,33 @@ A copy whose SPY put row was removed, so AG-20261028-03 holds 100 SPY shares onl
 ```text
 ### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
 
-| account | SPY mid | your cost | quotes |
-|---|--:|--:|---|
-| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | **your cost** 632.40 | **quotes** 19:31 UTC, 15-min delayed
 
 **BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
 - leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| floor | 5.88 % below | 3 to 10 % | 🟢 |
-| cost | ask 23.10 (2,310.00 in all) |  |  |
-| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spread | 0.87 % | at most 25 % | 🟢 |
+**checks for this candidate:**
+- 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
+- **cost** ask 23.10 (2,310.00 in all)
+- 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spread** 0.87 % | your criteria: at most 25 %
 
-| the group | now | after the leg |
-|---|--:|--:|
-| max loss | 63,240.00 | 4,550.00 |
-| max profit | unbounded | unbounded |
-| breakeven | 632.40 | 655.50 |
-| group delta | 100.00 | 69.69 |
+**the group, now and after the leg:**
+- **max loss** 63,240.00 now, 4,550.00 after
+- **max profit** unbounded now, unbounded after
+- **breakeven** 632.40 now, 655.50 after
+- **group delta** 100.00 now, 69.69 after
 
 **approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-
-| after | you hold | level |
-|---|---|:-:|
-| leg 1 | 100 SPY shares, 1 long put | 2 |
+- after leg 1: you hold 100 SPY shares, 1 long put | level 2
 
 **candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
-
-| # | expiry | strike | floor | ask | stress_cost_per_day |  |
-|--:|---|---|--:|--:|--:|---|
-| 1 | 2027-03-19 | 610 | 5.88 % | 23.10 | 0.1856 | 🟢 |
-| 2 | 2027-03-19 | 620 | 4.34 % | 25.65 | 0.1858 | 🟢 |
-| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | 🟢 |
+- 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
+- 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858
+- 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868
 
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -248,37 +238,32 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 ## A collar's checks and candidates
 
-The same copy with `#assign-ok` on the share row, `--structure collar`: its checks table, group table and ranked
+The same copy with `#assign-ok` on the share row, `--structure collar`: its checks, group block and ranked
 candidates.
 
 ```text
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| floor | 4.34 % below | 3 to 10 % | 🟢 |
-| cap | 4.92 % above | 2 to 10 % | 🟢 |
-| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | 🟢 |
-| call strike | 680 | at or above your cost 632.40 | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
-| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
+**checks for this candidate:**
+- 🟢 **floor** 4.34 % below | your criteria: 3 to 10 %
+- 🟢 **cap** 4.92 % above | your criteria: 2 to 10 %
+- 🟢 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00
+- 🟢 **call strike** 680 | your criteria: at or above your cost 632.40
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spreads** 0.78 % and 0.75 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok
+- 🟡 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 63,240.00 | 1,165.00 |
-| max profit | unbounded | 4,835.00 |
-| breakeven | 632.40 | 631.65 |
-| group delta | 100.00 | 24.14 |
+**the group, now and after both legs:**
+- **max loss** 63,240.00 now, 1,165.00 after
+- **max profit** unbounded now, 4,835.00 after
+- **breakeven** 632.40 now, 631.65 after
+- **group delta** 100.00 now, 24.14 after
 
 **candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+- 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75
+- 🟢 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30
+- 🟢 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60
 
-| # | expiry | put / call | floor | cap | net per share |  |
-|--:|---|---|--:|--:|---|---|
-| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | 🟢 |
-| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | 🟢 |
-| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | 🟢 |
-
-- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
 ```
 
 Without the tag every pair fails `ex_dividend`, and the same run is NONE_QUALIFIES. Legs outside their own bands are

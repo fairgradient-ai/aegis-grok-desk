@@ -140,13 +140,14 @@ TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 tradin
                     "and the days only fall")
 TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
                 "crossed (rule fired)")
-PL_LINE = ("realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), $4,097.00 "
-           "(mid) | day $400.00")
+PL_LINE = ("**P/L** | data/book/2026-11-03.json\n- **unrealized** $4,034.00 (liquidation), $4,097.00 (mid)\n"
+           "- **day** $400.00\n- **realized** today $0.00, month to date $0.00, year to date $425.00")
 RECON_MISSING = "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing"
-RECON_CLEAN = "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits"
-DOCKET_NONE_DUE = "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due"
-LEVELS_LAST_NIGHT = ("last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; "
-                     "AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels")
+RECON_CLEAN = "**positions.csv reconciliation** CLEAN, 0 proposed edits"
+DOCKET_NONE_DUE = "**expiry docket** 0 contracts due | reports/expiry/2026-11-03.week.json"
+LEVELS_LAST_NIGHT = ("**last night's levels** | levels/2026-11-02.json\n- AG-20261020-01 1 resting-eligible of 3 price levels\n"
+                     "- AG-20261022-02 1 resting-eligible of 5 price levels\n- AG-20261028-03 0 resting-eligible of 3 price "
+                     "levels")
 DEV_HEADER = "development run: the checkout is not verified (--allow-dirty)"
 J2D_LEVELS = "trigger_levels regular -> TP80 0.65 resting-eligible, TP50 cannot fire"
 J2D_CROSSED = "book_check --post expiry_day, then trigger_levels expiry_day -> UNAVAILABLE (TP80 already crossed)"
@@ -175,16 +176,17 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
                                                contains=(TP80_RESTING, "dates that matter: last trading day 2026-11-20"))}),
     J2D_BRIEF: ("eod_summary.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "eod_summary", "payload.mode": "brief", "payload.lint.ok": True, "payload.unavailable": [],
-        "payload.message": harness.TextMatch(prefix="EOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): " + PL_LINE)}),
+        "payload.message": harness.TextMatch(prefix="### EOD DESK BRIEF 2026-11-03\n\n" + PL_LINE)}),
     J2D_MORNING: ("eod_summary.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.mode": "morning", "payload.lint.ok": True, "payload.unavailable": [], "payload.exit_code": 0,
         "payload.message": harness.TextMatch(
-            prefix="MORNING DESK SHEET 2026-11-03\ndoctor (state/doctor.json, quick check at 12:31 UTC): PASS",
-            contains=(RECON_CLEAN, "open signals: 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
+            prefix="### MORNING DESK SHEET 2026-11-03\n\n**doctor** PASS",
+            contains=(RECON_CLEAN, "**open signals** 0", DOCKET_NONE_DUE, LEVELS_LAST_NIGHT,
+                      "| quick check at 12:31 UTC | state/doctor.json"),
             excludes=("early close", "UNAVAILABLE:"))}),
     J2D_BARE: ("eod_summary.py", 20, harness.FIXTURE_DESK, {
         "status": "unavailable", "payload.mode": "morning", "payload.lint.ok": True, "payload.exit_code": 20,
-        "payload.message": harness.TextMatch(prefix="MORNING DESK SHEET 2026-11-03", contains=(RECON_MISSING,))}),
+        "payload.message": harness.TextMatch(prefix="### MORNING DESK SHEET 2026-11-03", contains=(RECON_MISSING,))}),
     "desk_doctor --quick regular -> PASS": ("desk_doctor.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "desk_doctor", "payload.verdict": "PASS", "payload.mode": "quick",
         "payload.checks.0.id": "interpreter", "payload.checks.2.id": "key_source", "payload.checks.2.status": "WARN",
@@ -229,14 +231,14 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
         "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
         "payload.steps.3.tool": "eod_summary", "payload.steps.3.exit_code": 0, "payload.incidents": [], "payload.withheld": [],
-        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\nMORNING DESK SHEET 2026-11-03",
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\n### MORNING DESK SHEET 2026-11-03",
                                              contains=(RECON_CLEAN, DOCKET_NONE_DUE, LEVELS_LAST_NIGHT),
                                              excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))}),
     J2D_EVENING: ("routine.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "17:10",
         "payload.heartbeat": "state/heartbeat/eod-brief.json", "payload.steps.0.tool": "eod_summary",
-        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\nEOD DESK BRIEF 2026-11-03\nP/L (data/book/2026-11-03.json): "
-                                             + PL_LINE, contains=("routines: 1 of 7 ran today",),
+        "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\n### EOD DESK BRIEF 2026-11-03\n\n"
+                                             + PL_LINE, contains=("**routines** 1 of 7 ran today",),
                                              excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))}),
     "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": ("routine.py", 10, harness.FIXTURE_DESK, {
         "status": "fired", "payload.exit_code": 10, "payload.steps.0.tool": "csv_recon", "payload.steps.0.exit_code": 10,
@@ -316,9 +318,9 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
             contains=("**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**",
                       "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
                       "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
-                      "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | "
-                      "\U0001F7E1 |",
-                      "| max loss | 19,016.00 | 19,006.00 |",
+                      "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | "
+                      "accepted by #assign-ok",
+                      "- **max loss** 19,016.00 now, 19,006.00 after",
                       STRUCTURING_FOOTER_1931))}),
     J3B_ROLL_NVDA: ("roll_analysis.py", 0, {
         "status": "ok", "payload.verdict": "NONE_QUALIFIES", "payload.best": None, "payload.passed": 0, "payload.failed": 18,
@@ -328,7 +330,8 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
         "payload.message": harness.TextMatch(
             prefix="### STRUCTURING AG-20261022-02 | NVDA covered call",
             contains=("**no candidate passed every criterion: the desk names no best candidate**",
-                      "| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |",
+                      "- \U0001F534 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | "
+                      "fails credit_only, ex_dividend",
                       "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
                       "call's life", STRUCTURING_FOOTER_1931),
             excludes=("BEST CANDIDATE",))}),
@@ -352,13 +355,15 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
         "payload.journal": "journal/structuring.jsonl",
         "payload.message": harness.TextMatch(
             prefix="### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)",
-            contains=("| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+            contains=("**account** 1 of desk.toml (margin) | **computed** 19:50 UTC | **valid until** 20:20 UTC "
+                      "(30 min) | **quotes** 19:31 UTC, 15-min delayed",
                       "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote "
                       "grade B",
                       "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote "
                       "grade B",
-                      "| net cash | +10.00 | +35.00 |", "| the most the steps need at once | 700.00 |  |",
-                      "| max loss | 19,016.00 | 19,006.00 |",
+                      "- **net cash** +10.00 at the conservative prices, +35.00 at the mids",
+                      "- **the most the steps need at once** 700.00",
+                      "- **max loss** 19,016.00 now, 19,006.00 after",
                       STRUCTURING_FOOTER_1931))}),
     J3B_TICKET_NVDA: ("exit_ticket.py", 0, {
         "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261022-02-ROLL-20261103T195000Z",
@@ -366,10 +371,10 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
         "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 4, "payload.lint.ok": True,
         "payload.files.written": True,
         "payload.message": harness.TextMatch(prefix="### TICKET AG-20261022-02 | NVDA covered call", contains=(
-            "| net per share | debit 0.05 (10.00 in all) | credit only | \U0001F534 |",
-            "| ex-dividend | 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded by your structuring.toml | "
-            "\U0001F534 |",
-            "| max loss | 27,630.00 | 27,640.00 |",
+            "- \U0001F534 **net per share** debit 0.05 (10.00 in all) | your criteria: credit only",
+            "- \U0001F534 **ex-dividend** 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded "
+            "by your structuring.toml",
+            "- **max loss** 27,630.00 now, 27,640.00 after",
             STRUCTURING_FOOTER_1931))}),
     J3B_TICKET_SPY: ("exit_ticket.py", 0, {
         "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261028-03-MONETIZE_PUT-20261103T195000Z",
@@ -378,11 +383,13 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
         "payload.lint.ok": True, "payload.files.written": True,
         "payload.message": harness.TextMatch(
             prefix="### TICKET AG-20261028-03 | SPY protective put: the long put closed for its value (action MONETIZE_PUT)",
-            contains=("| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+            contains=("**account** 2 of desk.toml (ira) | **computed** 19:50 UTC | **valid until** 20:20 UTC "
+                      "(30 min) | **quotes** 19:31 UTC, 15-min delayed",
                       "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
                       "grade B",
-                      "| net cash | +980.00 | +995.00 |", "| the most the steps need at once | 0.00 |  |",
-                      "| after the leg | your 100 SPY shares carry no put: their downside is unhedged |",
+                      "- **net cash** +980.00 at the conservative prices, +995.00 at the mids",
+                      "- **the most the steps need at once** 0.00",
+                      "- **after the leg** your 100 SPY shares carry no put: their downside is unhedged",
                       STRUCTURING_FOOTER_1931))}),
     J3B_TICKET_EXPIRY: ("exit_ticket.py", 0, {
         "status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261020-01-ROLL-20261120T195000Z",
@@ -392,8 +399,8 @@ PR_3B: Dict[str, Tuple[str, int, Dict[str, Any]]] = {
         "payload.message": harness.TextMatch(prefix="### TICKET AG-20261020-01 | WMT covered call", contains=(
             "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote grade E | "
             "quote grade E: the conservative side stands",
-            "| earnings | 2026-11-17 has passed, the next is unknown: counted inside the new call's life | excluded by your "
-            "structuring.toml | \U0001F534 |",
+            "- \U0001F534 **earnings** 2026-11-17 has passed, the next is unknown: counted inside the new "
+            "call's life | excluded by your structuring.toml",
             STRUCTURING_FOOTER_1931))}),
     J3B_NO_CRITERIA: ("exit_ticket.py", 20, {
         "status": "unavailable", "payload.verdict": "UNAVAILABLE", "payload.cause": "criteria_missing", "payload.files": None,

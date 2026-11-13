@@ -46,37 +46,61 @@ FOOTER_1231 = alert_lint.footer_line(contract.parse_utc_instant("2026-11-03T12:3
 FOOTER_2059 = alert_lint.footer_line(contract.parse_utc_instant("2026-11-02T20:59:55Z"))
 FOOTER_1931 = alert_lint.footer_line(contract.parse_utc_instant("2026-11-03T19:31:12Z"))
 MORNING_SHEET = [
-    "MORNING DESK SHEET 2026-11-03",
-    "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: key_source",
-    "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits (csv_recon.py --diff "
-    "lists them)",
-    "open signals: 0",
-    "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due",
-    "last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; AG-20261022-02 1 "
-    "resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels",
+    "### MORNING DESK SHEET 2026-11-03",
+    "",
+    "**doctor** PASS, 1 warning: key_source | quick check at 12:31 UTC | state/doctor.json",
+    "",
+    "**positions.csv reconciliation** CLEAN, 0 proposed edits (csv_recon.py --diff lists them) | "
+    "data/positions/2026-11-03.recon.json",
+    "",
+    "**open signals** 0",
+    "",
+    "**expiry docket** 0 contracts due | reports/expiry/2026-11-03.week.json",
+    "",
+    "**last night's levels** | levels/2026-11-02.json",
+    "- AG-20261020-01 1 resting-eligible of 3 price levels",
+    "- AG-20261022-02 1 resting-eligible of 5 price levels",
+    "- AG-20261028-03 0 resting-eligible of 3 price levels",
+    "",
     FOOTER_2059,
 ]
-PL_GOLDEN = ("realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), "
-             "$4,097.00 (mid) | day $400.00")
+PL_GOLDEN = ("- **unrealized** $4,034.00 (liquidation), $4,097.00 (mid)\n- **day** $400.00\n"
+             "- **realized** today $0.00, month to date $0.00, year to date $425.00")
 BRIEF = [
-    "EOD DESK BRIEF 2026-11-03",
-    "P/L (data/book/2026-11-03.json): " + PL_GOLDEN,
-    "AG-20261020-01 WMT covered call | unrealized $1,124.00 (liquidation), $1,145.00 (mid) | day $84.00 (row 3), -$50.00 "
-    "(row 4) | ok",
-    "AG-20261022-02 NVDA covered call | unrealized $1,490.00 (liquidation), $1,515.00 (mid) | day $264.00 (row 5), "
-    "-$70.00 (row 6) | ok",
-    "AG-20261028-03 SPY protective put | unrealized $1,420.00 (liquidation), $1,437.00 (mid) | day $222.00 (row 7), "
-    "-$50.00 (row 8) | ok",
-    "signals today: 0 (0 EXIT SIGNAL, 0 WATCH, 0 UNAVAILABLE)",
-    "open signals: 0",
-    "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits (csv_recon.py --diff "
-    "lists them)",
-    "expiry docket: none recorded today (reports/expiry/2026-11-03.week.json missing)",
-    "routines: 0 of 4 ran today; late: none; missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, "
-    "book-check 14:05 ET",
-    "to do: CONFIG CHANGED pending: desk.toml, positions.csv, adopted rulebook (acknowledge with ack.py config "
+    "### EOD DESK BRIEF 2026-11-03",
+    "",
+    "**P/L** | data/book/2026-11-03.json",
+    "- **unrealized** $4,034.00 (liquidation), $4,097.00 (mid)",
+    "- **day** $400.00",
+    "- **realized** today $0.00, month to date $0.00, year to date $425.00",
+    "",
+    "**by trade**",
+    "- **AG-20261020-01** WMT covered call | unrealized $1,124.00 (liquidation), $1,145.00 (mid) | day $84.00 (row "
+    "3), -$50.00 (row 4) | ok",
+    "- **AG-20261022-02** NVDA covered call | unrealized $1,490.00 (liquidation), $1,515.00 (mid) | day $264.00 "
+    "(row 5), -$70.00 (row 6) | ok",
+    "- **AG-20261028-03** SPY protective put | unrealized $1,420.00 (liquidation), $1,437.00 (mid) | day $222.00 "
+    "(row 7), -$50.00 (row 8) | ok",
+    "",
+    "**signals today** 0 (0 EXIT SIGNAL, 0 WATCH, 0 UNAVAILABLE)",
+    "",
+    "**open signals** 0",
+    "",
+    "**positions.csv reconciliation** CLEAN, 0 proposed edits (csv_recon.py --diff lists them) | "
+    "data/positions/2026-11-03.recon.json",
+    "",
+    "**expiry docket** none recorded today (reports/expiry/2026-11-03.week.json missing)",
+    "",
+    "**routines** 0 of 4 ran today",
+    "- late: none",
+    "- missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET",
+    "",
+    "**to do**",
+    "- CONFIG CHANGED pending: desk.toml, positions.csv, adopted rulebook (acknowledge with ack.py config "
     "--owner-tapped)",
-    FOOTER_1931,
+    "",
+    "deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data "
+    "delayed 15 min, as of 19:31 UTC",
 ]
 
 
@@ -222,14 +246,20 @@ class MorningSheetTest(DeskCopy):
         code, out = self.run_text(now=REGULAR_NOW)
         self.assertEqual(20, code)
         self.assertEqual([
-            "MORNING DESK SHEET 2026-11-03",
+            "### MORNING DESK SHEET 2026-11-03",
+            "",
             "UNAVAILABLE: doctor result state/doctor.json missing",
+            "",
             "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",
-            "open signals: 0",
+            "",
+            "**open signals** 0",
+            "",
             "UNAVAILABLE: expiry docket reports/expiry/2026-11-03.week.json missing",
-            # no level sheet of any date yet: a new desk's expected state, not an UNAVAILABLE line
-            "last night's levels: none yet (the end-of-day level sheet has not run on this desk)",
-            alert_lint.footer_line(contract.parse_utc_instant(REGULAR_NOW)),
+            "",
+            "**last night's levels** none yet (the end-of-day level sheet has not run on this desk)",
+            "",
+            "deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · "
+            "data delayed 15 min, as of 19:50 UTC",
         ], out.rstrip("\n").split("\n"))
         self.assertEqual(before, self.tree(), "eod_summary writes nothing, not even a runtime directory")
         code, body = self.run_json(now=REGULAR_NOW)
@@ -288,11 +318,11 @@ class MorningSheetTest(DeskCopy):
         code, out = self.run_text()
         self.assertEqual(0, code, out)
         lines = out.split("\n")
-        self.assertIn("open signals: 4", lines)
-        self.assertIn("SIG-20261120-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted "
+        self.assertIn("**open signals** 4", lines)
+        self.assertIn("- SIG-20261120-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted "
                       "2026-11-20 19:50 UTC | posted 1 of 4 times; next re-post 1 run after the first post | not "
                       "acknowledged", lines)
-        self.assertIn("SIG-20261120-004 | portfolio all open groups | WATCH | your plan: review and decide | first "
+        self.assertIn("- SIG-20261120-004 | portfolio all open groups | WATCH | your plan: review and decide | first "
                       "posted 2026-11-20 19:50 UTC | posted 1 time; no re-post ladder for WATCH | not acknowledged",
                       lines)
         self.assertIn(summaries.PARTIAL_JOURNAL_LINE % "journal/signals.jsonl", lines)
@@ -321,11 +351,11 @@ class MorningSheetTest(DeskCopy):
         code, out = self.run_text(now="2026-11-27T12:35:00Z")
         self.assertEqual(0, code, out)
         lines = out.split("\n")
-        self.assertEqual("expiry docket (reports/expiry/2026-11-27.week.json): 1 contract due", lines[4])
-        self.assertEqual("AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day 2026-11-27 "
-                         "(0 trading days) | " + act, lines[5])
-        self.assertEqual("early close today at 13:00 ET: 1 contract on its last trading day; " + act, lines[6])
-        self.assertTrue(lines[7].startswith("last night's levels (levels/2026-11-25.json): "), lines[7])
+        self.assertEqual("**expiry docket** 1 contract due | reports/expiry/2026-11-27.week.json", lines[8])
+        self.assertEqual("- AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day "
+                         "2026-11-27 (0 trading days) | " + act, lines[9])
+        self.assertEqual("**early close** today at 13:00 ET: 1 contract on its last trading day; " + act, lines[11])
+        self.assertEqual("**last night's levels** | levels/2026-11-25.json", lines[13])
 
     def test_a_failing_lint_prints_nothing_and_exits_1(self) -> None:
         self.stage_morning()
@@ -373,9 +403,10 @@ class EodBriefTest(DeskCopy):
         code, out = self.run_text("--brief", now=REGULAR_NOW)
         self.assertEqual(20, code)
         lines = out.split("\n")
-        self.assertEqual("UNAVAILABLE: book snapshot data/book/2026-11-03.json missing", lines[1])
+        self.assertEqual(["### EOD DESK BRIEF 2026-11-03", "", "UNAVAILABLE: book snapshot data/book/2026-11-03.json "
+                          "missing"], lines[:3])
         self.assertIn("UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing", lines)
-        self.assertIn("expiry docket: none recorded today (reports/expiry/2026-11-03.week.json missing)", lines)
+        self.assertIn("**expiry docket** none recorded today (reports/expiry/2026-11-03.week.json missing)", lines)
 
     def test_an_older_snapshot_is_upstream_late(self) -> None:
         self.step(book_tool, PREV_EOD_NOW, "--snapshot", fixture_set="pre_open")
@@ -392,8 +423,10 @@ class EodBriefTest(DeskCopy):
         code, body = self.run_json("--brief", now=BRIEF_SLOT_NOW)
         self.assertEqual(0, code, body)
         lines = body["payload"]["message"].split("\n")
-        self.assertIn("routines: 2 of 7 ran today; late: book-check 10:05 ET (31 min late); missed: book-check 12:05 ET, "
-                      "book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET; pending: eod 16:35 ET", lines)
+        at = lines.index("**routines** 2 of 7 ran today")
+        self.assertEqual(["- late: book-check 10:05 ET (31 min late)",
+                          "- missed: book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET",
+                          "- pending: eod 16:35 ET"], lines[at + 1:at + 4])
         routines = body["payload"]["routines"]
         self.assertEqual("17:10", routines["through_et"])
         self.assertEqual({"expected": 7, "ran": 2, "late": 1, "missed": 4, "pending": 1}, routines["counts"])
@@ -417,18 +450,18 @@ class EodBriefTest(DeskCopy):
         self.assertEqual(0, code, body)
         payload = body["payload"]
         lines = payload["message"].split("\n")
-        self.assertIn("signals today: 4 (2 EXIT SIGNAL, 2 WATCH, 0 UNAVAILABLE)", lines)
-        self.assertIn("open signals: 4", lines)
-        self.assertTrue(lines[1].startswith("P/L (data/book/2026-11-20.json): realized today "), lines[1])
-        self.assertIn("day P/L unavailable: no snapshot for 2026-11-19 (the desk's first day?)", lines[1])
-        self.assertTrue(lines[2].startswith("AG-20261020-01 WMT covered call | unrealized unavailable (liquidation), "
-                                            "unavailable (mid) | day unavailable | unavailable"), lines[2])
-        docket_head = next(line for line in lines if line.startswith("expiry docket (reports/expiry/2026-11-20.week.json)"))
-        self.assertTrue(docket_head.startswith("expiry docket (reports/expiry/2026-11-20.week.json): 2 contracts due"),
+        self.assertIn("**signals today** 4 (2 EXIT SIGNAL, 2 WATCH, 0 UNAVAILABLE)", lines)
+        self.assertIn("**open signals** 4", lines)
+        self.assertEqual("**P/L** | data/book/2026-11-20.json", lines[2])
+        self.assertEqual("- **day** unavailable: no snapshot for 2026-11-19 (the desk's first day?)", lines[4])
+        self.assertTrue(lines[9].startswith("- **AG-20261020-01** WMT covered call | unrealized unavailable "
+                                            "(liquidation), unavailable (mid) | day unavailable | unavailable"), lines[9])
+        docket_head = next(line for line in lines if line.startswith("**expiry docket**"))
+        self.assertTrue(docket_head.startswith("**expiry docket** 2 contracts due | reports/expiry/2026-11-20.week.json"),
                         docket_head)
-        todo = lines[-2]
+        todo = lines[lines.index("**to do**") + 1:-2]
         for signal_id in ("SIG-20261120-001", "SIG-20261120-002", "SIG-20261120-003", "SIG-20261120-004"):
-            self.assertIn("%s not acknowledged (ack.py show %s)" % (signal_id, signal_id), todo)
+            self.assertIn("- %s not acknowledged (ack.py show %s)" % (signal_id, signal_id), todo)
         self.assertEqual({"count": 4, "EXIT_SIGNAL": 2, "WATCH": 2, "UNAVAILABLE": 0}, payload["signals_today"])
         self.assertRelinted(payload)
 
@@ -444,9 +477,9 @@ class ReviewFixTest(DeskCopy):
         self.step(csv_recon_tool, "2026-11-20T19:56:30Z", fixture_set="expiry_day", expected=(0, 10, 20))
         code, body = self.run_json("--brief", now="2026-11-20T19:57:00Z")
         lines = body["payload"]["message"].split("\n")
-        self.assertTrue(lines[1].startswith("P/L (data/book/2026-11-20.json): "), lines[1])
-        self.assertTrue(lines[1].endswith(" | totals without AG-20261020-01 (data unavailable)"), lines[1])
-        self.assertNotIn("no usable mark (E fresh)", lines[1])
+        self.assertEqual("**P/L** | data/book/2026-11-20.json", lines[2])
+        self.assertEqual("- totals without AG-20261020-01 (data unavailable)", lines[6])
+        self.assertNotIn("no usable mark (E fresh)", "\n".join(lines[2:7]))
         self.assertRelinted(body["payload"])
         self.assertIn(code, (0, 20))
 
@@ -460,9 +493,9 @@ class ReviewFixTest(DeskCopy):
             self.write("incidents/" + name, "# " + body + "\n")
         code, body = self.run_json("--brief", now=REGULAR_NOW)
         lines = body["payload"]["message"].split("\n")
-        self.assertIn("incidents today: 4 (book-check trigger_levels, dirty checkout, eod trigger_levels withheld, 1 "
-                      "other file); details in incidents/", lines)
-        self.assertTrue(lines[-2].endswith("; incidents/: 4 files today"), lines[-2])
+        self.assertIn("**incidents today** 4 (book-check trigger_levels, dirty checkout, eod trigger_levels withheld, "
+                      "1 other file); details in incidents/", lines)
+        self.assertEqual("- incidents/: 4 files today", lines[-3])
         self.assertNotIn("se" + "ll", body["payload"]["message"])
         self.assertNotIn("traceback", body["payload"]["message"])
         self.assertEqual([{"file": "incidents/20261103T150500.000000Z-book-check-trigger_levels.md",

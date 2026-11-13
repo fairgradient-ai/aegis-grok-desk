@@ -125,13 +125,13 @@ a live key is deleted, no Ask-first rule guards it.
    and market-snapshot footers. They carry no order fields: no trade-side word, no order type, no limit or stop price
    field, no duration, no route and no account number. A leg line names only the effect, the count and the contract
    (`leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call`), and you supply the limit. The desk view lists the
-   legs as list items in that grammar, never as a table with order columns; its tables hold the checks, the group's
-   numbers, the cash and the ranked candidates. They pass the alert lint in its structuring mode, which adds a third
+   legs as list items in that grammar, never as a table with order columns; captioned list items hold the checks,
+   the group's numbers, the cash and the ranked candidates, so a chat shows one answer as one message. They pass the alert lint in its structuring mode, which adds a third
    footer and a fixed leg grammar, and refuses advice, preference, urgency, suitability, probability, risk, return and
    valuation language, any claim that a text is not advice, order-type and duration abbreviations, a price after "at",
    "for", "limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed
    grammar. Its one exception to plain ASCII is the desk view's three status circles (green, yellow, red), and only at
-   the start of a table cell of a structuring text. The lint is a pattern screen that refuses the forms it names; the
+   the start of a list item or a table cell of a structuring text. The lint is a pattern screen that refuses the forms it names; the
    tools' fixed wording is for counsel to sign ([docs/RELEASE.md](docs/RELEASE.md), step 4). They never print an OCC
    symbol or a cell you typed, such as an account name or a note. The details are in
    [docs/STRUCTURING.md](docs/STRUCTURING.md).

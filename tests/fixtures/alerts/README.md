@@ -46,17 +46,18 @@ The Structuring Desk's texts end with the structuring footer (`computed by the d
 posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in
 your brokerage account · data delayed 15 min, as of HH:MM UTC`) and their emitted documents carry
 `"footer": "structuring"`, so `alert_lint.py` lints them in structuring mode without a `--footer` flag. The three
-passing texts are the 0.2.1 desk view, rendered by the tools' own builders (`structuring_text`, `tickets`) on a copy
-of the fixture desk with the fixture criteria at the `regular` instant (quotes 2026-11-03 19:31 UTC), each with the
-emitted document its writer recorded: a markdown title, tables whose status cells carry the three status symbols
-(`alert_lint.STATUS_SYMBOLS`), the legs as list items in the fixed leg grammar, and the notes as a quoted list.
+passing texts are the desk view (one message, no table), rendered by the tools' own builders (`structuring_text`,
+`tickets`) on a copy of the fixture desk with the fixture criteria at the `regular` instant (quotes 2026-11-03 19:31
+UTC), each with the emitted document its writer recorded: a markdown title, a context strip of bold labels, captioned
+list items whose status marks are the three status symbols (`alert_lint.STATUS_SYMBOLS`) right after the `- `, the
+legs as list items in the fixed leg grammar, and the notes as a quoted list.
 `rule_ids` is `[]` in every structuring document.
 
 | Fixture | Message |
 | --- | --- |
-| `pass_structuring_ticket` | the WMT ROLL ticket: the context strip, the legs (close the 2026-11-20 105 call, open the 2027-01-15 115 call), the cash table, the new call's checks table with its accepted ex-dividend row, the group table, the approval block and the notes |
-| `pass_structuring_roll` | the WMT roll analysis: the best candidate line, its legs and the caveat; the checks table with the accepted ex-dividend row; the group table; the ranked candidates table (two failing `credit_only`) and the ticket pointer; the notes |
-| `pass_structuring_proposal` | the SPY collar proposal on 100 shares: the best pair (620 put, 680 call), its legs and the caveat; the checks table with two accepted ex-dividend rows; the group and approval tables; the ranked candidates and the legs outside their bands; the notes |
+| `pass_structuring_ticket` | the WMT ROLL ticket: the context strip, the legs (close the 2026-11-20 105 call, open the 2027-01-15 115 call), the cash, the new call's checks with its accepted ex-dividend item, the group, the approval block and the notes |
+| `pass_structuring_roll` | the WMT roll analysis: the best candidate line, its legs and the caveat; the checks with the accepted ex-dividend item; the group; the ranked candidates (two failing `credit_only`) and the ticket pointer; the notes |
+| `pass_structuring_proposal` | the SPY collar proposal on 100 shares: the best pair (620 put, 680 call), its legs and the caveat; the checks with two accepted ex-dividend items; the group and the approval block; the ranked candidates and the legs outside their bands; the notes |
 
 Each red-team message is one documented change (`structuring_fail_fixture_table()` in
 `tests/engine/test_alert_lint.py`) and fails for that reason only:

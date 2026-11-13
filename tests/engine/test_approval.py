@@ -309,8 +309,8 @@ class WordsTest(unittest.TestCase):
 
 class LinesTest(unittest.TestCase):
     """The approval block of the desk view (0.2.1): a caption with the level the highest step needs and the broker's
-    own decision, the table of what you hold after each step in the leg order, then the other-order and multi-leg
-    notes as items."""
+    own decision, one item per step of what you hold after it in the leg order, then the other-order and multi-leg
+    notes as items of the same list (no table: one chat bubble)."""
 
     ROLL = [CLOSE_SHORT_CALL_2, OPEN_SHORT_CALL_2]
 
@@ -320,12 +320,8 @@ class LinesTest(unittest.TestCase):
         self.assertEqual([
             "**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your "
             "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
-            "",
-            "| after | you hold | level |",
-            "|---|---|:-:|",
-            "| leg 1 | 200 WMT shares, no option | 0 |",
-            "| leg 2 | 200 WMT shares, 2 short calls | 1 |",
-            "",
+            "- after leg 1: you hold 200 WMT shares, no option | level 0",
+            "- after leg 2: you hold 200 WMT shares, 2 short calls | level 1",
             "- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
             "- entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level",
         ], lines)
@@ -338,10 +334,7 @@ class LinesTest(unittest.TestCase):
         self.assertEqual([
             "**approval-level check:** the highest step needs level 0 by the desk's convention, within your self-attested "
             "level 2 (desk.toml); your broker's own approval for this account decides",
-            "",
-            "| after | you hold | level |",
-            "|---|---|:-:|",
-            "| leg 1 | 200 WMT shares, no option | 0 |",
+            "- after leg 1: you hold 200 WMT shares, no option | level 0",
         ], lines)
         result = lint(lines, emitted)
         self.assertTrue(result.ok, result.problems)
@@ -351,15 +344,14 @@ class LinesTest(unittest.TestCase):
         lines = approval.approval_lines(COLLAR, [close("short", "call", 1), close_shares(100), close("long", "put", 1)],
                                         2, "SPY", emitted)
         self.assertEqual([
-            "| leg 1 | 100 SPY shares, 1 long put | 0 |",
-            "| leg 2 | no SPY shares, 1 long put | 0 |",
-            "| leg 3 | no SPY shares, no option | 0 |",
-            "",
+            "- after leg 1: you hold 100 SPY shares, 1 long put | level 0",
+            "- after leg 2: you hold no SPY shares, 1 long put | level 0",
+            "- after leg 3: you hold no SPY shares, no option | level 0",
             "- in the other order, after leg 2 you would hold 1 uncovered call (level 4)",
             # an unwind is neither a roll nor a spread: shares and options together (reviews L1-5, L2-6, L4-5)
             "- entered as one multi-leg order, some brokers class shares and options together as a combination, which "
             "can need a higher level",
-        ], lines[4:])
+        ], lines[1:])
         self.assertTrue(lines[0].startswith("**approval-level check (leg 1 first):** the highest step needs level 0 by "
                                             "the desk's convention"))
         result = lint(lines, emitted)
@@ -367,10 +359,11 @@ class LinesTest(unittest.TestCase):
 
     def test_a_long_put_roll_and_a_collar_proposal_have_no_other_order_line(self) -> None:
         lines = approval.approval_lines(SPY, [open_("long", "put", 1), close("long", "put", 1)], 2, "SPY")
-        self.assertEqual(["| leg 1 | 100 SPY shares, 2 long puts | 2 |", "| leg 2 | 100 SPY shares, 1 long put | 0 |", "",
-                          "- " + approval.MULTI_LEG_NOTE], lines[4:])
+        self.assertEqual(["- after leg 1: you hold 100 SPY shares, 2 long puts | level 2",
+                          "- after leg 2: you hold 100 SPY shares, 1 long put | level 0",
+                          "- " + approval.MULTI_LEG_NOTE], lines[1:])
         lines = approval.approval_lines(SPY_SHARES, [open_("long", "put", 1), open_("short", "call", 1)], 2, "SPY")
-        self.assertEqual("| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |", lines[5])
+        self.assertEqual("- after leg 2: you hold 100 SPY shares, 1 short call, 1 long put | level 1", lines[2])
         self.assertTrue(lines[0].endswith("the highest step needs level 2 by the desk's convention, within your "
                                           "self-attested level 2 (desk.toml); " + approval.BROKER_LINE))
         self.assertNotIn("in the other order", "\n".join(lines))
@@ -386,8 +379,9 @@ class LinesTest(unittest.TestCase):
         self.assertEqual("approval-level check:", approval.approval_heading(1, emitted))
         self.assertEqual(["1"], emitted)
         emitted = []
-        self.assertEqual("| leg 2 | 200 WMT shares, 4 short calls (2 uncovered) | 4 |",
-                         approval.step_row(2, 4, H(shares=200, short_calls=4), "WMT", emitted))
+        self.assertEqual("- after leg 2: you hold 200 WMT shares, 4 short calls (2 uncovered) | level 4",
+                         approval.step_item(2, 4, H(shares=200, short_calls=4), "WMT", emitted))
+        self.assertEqual(["2", "200", "4", "2", "4"], emitted)
         self.assertEqual("200 WMT shares, 1 long call, 2 short calls, 1 long put",
                          approval.holdings_cell(H(shares=200, long_calls=1, short_calls=2, long_puts=1), "WMT"))
         self.assertEqual("in the other order, after leg 3 you would hold 1 uncovered call (level 4)",
@@ -399,8 +393,8 @@ class LinesTest(unittest.TestCase):
                          "level", approval.MULTI_LEG_NOTE)
         self.assertIsNone(approval.multi_leg_note(1))
         self.assertEqual(approval.MULTI_LEG_NOTE, approval.multi_leg_note(2))
-        for bad in (lambda: approval.approval_heading(0), lambda: approval.step_row(0, 1, H(), "WMT"),
-                    lambda: approval.step_row(1, 6, H(), "WMT"), lambda: approval.other_order_line(2, 0),
+        for bad in (lambda: approval.approval_heading(0), lambda: approval.step_item(0, 1, H(), "WMT"),
+                    lambda: approval.step_item(1, 6, H(), "WMT"), lambda: approval.other_order_line(2, 0),
                     lambda: approval.approval_line(3, 2), lambda: approval.approval_line(-1, 2),
                     lambda: approval.refused_line("WMT", "WMT", "covered call", "x", 2, 2)):
             with self.assertRaises(ValueError):
