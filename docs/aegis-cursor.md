@@ -12,7 +12,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 Clone the reviewed release:
 
 ```text
-git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.2.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
 ```
 
 Open the `aegis-grok-desk` folder in Cursor and enable the plugin. There is no Cursor marketplace or directory listing

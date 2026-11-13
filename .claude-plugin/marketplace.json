@@ -1,13 +1,13 @@
 {
   "name": "aegis-desk",
   "owner": {"name": "FairGradient"},
-  "metadata": {"description": "Read-only options desk roles and skills for Claude Code", "version": "0.2.0"},
+  "metadata": {"description": "Read-only options desk roles and skills for Claude Code", "version": "0.2.1"},
   "plugins": [
     {
       "name": "aegis-desk",
-      "source": {"source": "github", "repo": "fairgradient-ai/aegis-grok-desk", "ref": "v0.2.0"},
+      "source": {"source": "github", "repo": "fairgradient-ai/aegis-grok-desk", "ref": "v0.2.1"},
       "description": "Turn your agent into a read-only options desk: position monitoring, P/L and rule-driven exit alerts. Zero broker writers.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {"name": "FairGradient"},
       "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
       "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",

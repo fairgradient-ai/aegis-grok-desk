@@ -32,7 +32,7 @@ One exit-code table for every tool:
 ## ack
 
 - script: `scripts/ack.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the owner's acknowledgements: list and show the open signals with their re-post ladder, ack, snooze or record acted on a signal, acknowledge the configuration hashes book_check compares, and record the owner's readback of the connected apps and MCP servers
 - network access: none
@@ -74,7 +74,7 @@ Payload (`--json` envelope key `payload`):
 ## alert_lint
 
 - script: `scripts/alert_lint.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: prove that a message carries only numbers the desk emitted, the fixed footer and no trade language (exit 0 passes, 1 fails: the message must not be posted)
 - network access: none
@@ -105,7 +105,7 @@ Payload (`--json` envelope key `payload`):
 ## assignment_watch
 
 - script: `scripts/assignment_watch.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times (a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -143,7 +143,7 @@ Payload (`--json` envelope key `payload`):
 ## book
 
 - script: `scripts/book.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the book of record: every position marked from the desk's quotes with IV, Greeks, P/L, payoff metrics and day P/L against the desk's own snapshot; unavailable is a verdict (exit 20), never a zero
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -179,7 +179,7 @@ Payload (`--json` envelope key `payload`):
 ## book_check
 
 - script: `scripts/book_check.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the routine check: the book, the adopted exit rules, the rule state and the posting rules; prints the linted message to post (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, pre-close, watch alive) or quiet; --post records it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -236,7 +236,7 @@ Payload (`--json` envelope key `payload`):
 ## calendar_check
 
 - script: `scripts/calendar_check.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: freshness lint of research/calendar.toml: STALE, MISSING, UNKNOWN_DIVIDEND and PAST findings against the held symbols and the short-call underlyings; no network, nothing written
 - network access: none
@@ -270,7 +270,7 @@ Payload (`--json` envelope key `payload`):
 ## csv_recon
 
 - script: `scripts/csv_recon.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: reconcile positions.csv: settle expired legs from official closes and settlement values, list proposed edits (never applied), check quotes, coverage, roll links and acknowledged-but-unchanged groups, snapshot the file; CLEAN / EDITS_PENDING / UNAVAILABLE / ERRORS
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v2/stocks/bars only (through the quote cache); none with --offline
@@ -311,7 +311,7 @@ Payload (`--json` envelope key `payload`):
 ## desk_doctor
 
 - script: `scripts/desk_doctor.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the desk doctor: release pin, interpreter, holiday table, key source, paper key, machine role, broker-looking environment names, desk files, market status, connector readback, heartbeats and the engine selftest; PASS / WARN / FAIL per check, one verdict, state/doctor.json
 - network access: GET https://paper-api.alpaca.markets/v2/clock once with the paper key pair (full mode only); none with --offline, --quick or --selftest
@@ -344,7 +344,7 @@ Payload (`--json` envelope key `payload`):
 ## desk_init
 
 - script: `scripts/desk_init.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: render desk.toml once from the owner's interview answers (the ex-dividend intake into research/calendar.toml and the structuring intake into structuring.toml), byte for byte, validated before it is written; owner-authority
 - network access: none
@@ -378,7 +378,7 @@ Input (`--schema` key `input`):
 ## eod_summary
 
 - script: `scripts/eod_summary.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the Morning Desk Sheet (default) or the EOD Desk Brief (--brief): one linted message composed from the desk's own records (doctor, reconciliation, docket, levels, book snapshot, journals, heartbeats); never fetches, writes nothing
 - network access: none
@@ -415,7 +415,7 @@ Payload (`--json` envelope key `payload`):
 ## exit_check
 
 - script: `scripts/exit_check.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the adopted exit rules evaluated against the book: one verdict per group (EXIT_SIGNAL, UNAVAILABLE, WATCH, HOLD) with every fired, pending, unavailable and suppressed rule; reads the rule state, never writes it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
@@ -458,7 +458,7 @@ Payload (`--json` envelope key `payload`):
 ## exit_ticket
 
 - script: `scripts/exit_ticket.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: a ticket for a group you hold in positions.csv, only when you ask: the legs of CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT or ROLL in the safe order with their quotes, the approval-level check, the cash and the realized estimate; you supply the limit and act in your brokerage account
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest (one batch of the group's symbols) and, for ROLL, the replacement expiration's chain (https://paper-api.alpaca.markets/v2/options/contracts, then https://data.alpaca.markets/v1beta1/options/snapshots/<UNDERLYING>), through the quote cache; none with --offline
@@ -522,7 +522,7 @@ Payload (`--json` envelope key `payload`):
 ## expiry_checklist
 
 - script: `scripts/expiry_checklist.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker cutoff), dividend and pin tiers
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -564,7 +564,7 @@ Payload (`--json` envelope key `payload`):
 ## heartbeat
 
 - script: `scripts/heartbeat.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: record one routine heartbeat (state/heartbeat/<id>.json plus history.jsonl) with its lateness against the scheduled ET slot, or list the recorded heartbeats with their ages
 - network access: none
@@ -598,7 +598,7 @@ Payload (`--json` envelope key `payload`):
 ## market_clock
 
 - script: `scripts/market_clock.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: NYSE session, ET time, minutes to close, previous close, next trading day and holiday-table status at an instant; with --expiry the DTE (calendar and trading), last trading day and exercise cutoff
 - network access: none
@@ -638,7 +638,7 @@ Payload (`--json` envelope key `payload`):
 ## opening_bell
 
 - script: `scripts/opening_bell.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: a public market snapshot of one symbol: its quote, the nearest standard expiration at least 20 calendar days out, the ATM implied volatility and the expected move to it, stated two ways; not a signal
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, https://paper-api.alpaca.markets/v2/options/contracts (the expirations, then one expiration's contracts) and https://data.alpaca.markets/v1beta1/options/snapshots/<SYMBOL> only (at least four requests, more when a listing pages); none with --offline
@@ -682,7 +682,7 @@ Payload (`--json` envelope key `payload`):
 ## positions_check
 
 - script: `scripts/positions_check.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: validate positions.csv, group the legs into structures and run the first-observation plausibility check of every open leg against its quote; CLEAN, or the quarantined groups and file errors (never writes the file)
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -717,7 +717,7 @@ Payload (`--json` envelope key `payload`):
 ## propose
 
 - script: `scripts/propose.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: on the owner's request only: a covered call, protective put or collar on a group that holds shares only, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never a new symbol, a spread, an uncovered short or a cash-secured put; never in a routine
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
@@ -783,7 +783,7 @@ Payload (`--json` envelope key `payload`):
 ## quote_cache
 
 - script: `scripts/quote_cache.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: serve quotes from the desk cache or the GET-only Alpaca paper client (TTL, 200/min budget, chains on demand); never places, modifies or cancels an order
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and, for --chain, /v1beta1/options/snapshots/<SYMBOL> with https://paper-api.alpaca.markets/v2/options/contracts only; none with --offline
@@ -818,7 +818,7 @@ Payload (`--json` envelope key `payload`):
 ## quote_qc
 
 - script: `scripts/quote_qc.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: grade quotes A-F: session-aware per-side freshness against the desk's bound, spread bands, fair and liquidation marks; stale or missing is UNAVAILABLE (exit 20), never HOLD
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -848,7 +848,7 @@ Payload (`--json` envelope key `payload`):
 ## roll_analysis
 
 - script: `scripts/roll_analysis.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: on the owner's request only: the replacement candidates for the short call of a covered call, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
@@ -913,7 +913,7 @@ Payload (`--json` envelope key `payload`):
 ## routine
 
 - script: `scripts/routine.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the single routine entry point: checks the release pin, runs one manifest routine's steps in-process with JSON captured, composes and lints the one message the Bot posts verbatim, and records the heartbeat, the journal, the step copies and the run record
 - network access: GET https://data.alpaca.markets/... and https://paper-api.alpaca.markets/v2/options/contracts only (Alpaca paper market data), through the step tools' quote cache; none with --offline
@@ -962,7 +962,7 @@ Payload (`--json` envelope key `payload`):
 ## routine_audit
 
 - script: `scripts/routine_audit.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the routine budget per cadence profile, the Grok Bot Auto-review texts rendered from the manifest, and the day audit of the routine heartbeats (expected, ran, late, missed); posts nothing
 - network access: none
@@ -1002,7 +1002,7 @@ Payload (`--json` envelope key `payload`):
 ## rules_adopt
 
 - script: `scripts/rules_adopt.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: adopt one exit rulebook version, owner-tapped: lint against the held structures, refuse during regular trading hours, copy it immutably, write rules/ADOPTED, append rules/CHANGELOG.md and carry the rule state forward
 - network access: none
@@ -1047,7 +1047,7 @@ Payload (`--json` envelope key `payload`):
 ## rules_diff
 
 - script: `scripts/rules_diff.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the adopted and a candidate rulebook evaluated on one book with a scratch rule state: the group verdicts that would change (exit 10), the rule and section results that differ, the rules added, removed and changed; nothing is written
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
@@ -1092,7 +1092,7 @@ Payload (`--json` envelope key `payload`):
 ## trigger_levels
 
 - script: `scripts/trigger_levels.py`
-- tool version: 0.2.0
+- tool version: 0.2.1
 - mode: read-only
 - description: the threshold-level sheet: every adopted rule of every open group as the option, spread or underlying price, band or date at which its own reading turns, linted; writes levels/<D>.md and levels/<D>.json (and plans/<group>.md with --plan); reads the rule state, never writes it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book

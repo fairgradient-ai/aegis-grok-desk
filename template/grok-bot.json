@@ -2,16 +2,16 @@
   "status": "unpublished",
   "name": "Aegis Desk Lead",
   "title": "Head of the options desk",
-  "description": "Aegis Desk Lead (release 0.2.0): a read-only options position-monitoring and exit-alert desk. Say 'Start the desk.' to begin. The desk never places, modifies or cancels orders.",
-  "source": {"repository": "https://github.com/fairgradient-ai/aegis-grok-desk", "release": "0.2.0"},
+  "description": "Aegis Desk Lead (release 0.2.1): a read-only options position-monitoring and exit-alert desk. Say 'Start the desk.' to begin. The desk never places, modifies or cancels orders.",
+  "source": {"repository": "https://github.com/fairgradient-ai/aegis-grok-desk", "release": "0.2.1"},
   "templateSkillNames": ["aegis-desk-bootstrap-and-onboarding"],
   "skills": {
     "aegis-book-marking-and-greeks-honesty": "8b638c91e33fec1250a4351d7da656dd24f9ec7a1cf18e266b1238c61b08fe1c",
     "aegis-compliance-voice-and-number-discipline": "c7e6d79d6bff23d7f638b15d8d9d20e979124b595ac0e720d1e6fff7d7a806f2",
     "aegis-covered-call-and-cash-secured-put-management": "26acb94ca5e8f29bd6359fd8b105aeb3e905b435de6057490cad973c9bc21bdc",
-    "aegis-desk-bootstrap-and-onboarding": "fe37cbb0a676bd94b2de9e0fdc93f965dadc08015509b8e9e3e85d917df13da1",
+    "aegis-desk-bootstrap-and-onboarding": "48a2d940faa86da532661ced5e631c3d5c71f20c21a5553aca788872fb8d2f34",
     "aegis-desk-charter": "5c7d679594fe06b37628a26ed88417a8841404f9f848f9372b0be62e96e3c381",
-    "aegis-desk-incident-playbooks": "fae0ddf555f4394da15954cd0ddc32662dcc2bc637aeaeb53721dbaf6f3eed49",
+    "aegis-desk-incident-playbooks": "d9ad6266f4298c7b4160e16935d564b72733c1730dda1a8363a9cdde693366fb",
     "aegis-exit-watch-and-signal-protocol": "4206dd4b584102c8d31513a559cdd517b2d5f8615de98cc25f109ace78e20743",
     "aegis-expiry-and-assignment-protocol": "02bdad94825f96c47b36f19cb3d01c48df9b1465817995fa92c6e7a5d18b16c6",
     "aegis-market-data-budget-and-quality": "c62ae8c7b44063366c8fa31aceb63eac89abf99b93529895940d432fc333d9cd",
@@ -19,16 +19,16 @@
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "6dba49db669c1cf49d091e3587dd0dce6880f1273e45015ba454ad8d344fa112",
     "aegis-roll-decision-framework": "3ade5f202a836adb2f8c47c094f05fa075dd9f195c6f69164f09ca6cdd1cc3b1",
-    "aegis-routines-and-quiet-rules": "3058d9091f736743c00ad0c1b3b26ad8ad733361c28746e21ada10a67dad69ec",
+    "aegis-routines-and-quiet-rules": "737be8fd1c39bb084b450fa12530b77459988845fdff2d0e64ab5bd5d12c60b3",
     "aegis-rules-dsl-and-change-control": "9a9b7524ae04db7a1d9bcf3d558c4774e7733a8920ff4610e6b12b283e19d92e",
     "aegis-threshold-levels": "0fd181ec7f695f0bda6b8b28c79a51fb24dea011e0ba38e33eb6cf2e5912669f",
     "aegis-ticket-and-unwind-order": "c2f48c6d43c115728e85b1e40e65d6643fba59662708502a159c6048103f7f1c",
     "aegis-vertical-spread-management": "b7884f66476f8299a5be34845d042470c62cf5820f44e5959b51f704217ac4e8"
   },
   "roleSkills": {
-    "aegis-role-desk-lead": "3638224da8881338b17c5c07fa60588f1cf5f6855f45dfbf553e775c5227a0f1",
-    "aegis-role-exit-sentinel": "7f48edac91867486190033aae096a4e45ca62528477b453451a5f450348deaf7",
-    "aegis-role-position-control": "2a6efbfcab13445b2bbfb58ff47d8f61a6eca7b65f886c125fe32a10121d6f5d",
-    "aegis-role-structuring-desk": "7dbd9ebee01e15248e40791f5f4f232dc3990f5eb01076975a2ecae8f42afa12"
+    "aegis-role-desk-lead": "86d83068af3ca25f6df2d1934a985d1ec250e7e6bb11a40f3c6ba19a0a542427",
+    "aegis-role-exit-sentinel": "194be4f71d2022a39e999f25561ed280957e48511f7e3906c4144d459308d6f2",
+    "aegis-role-position-control": "6ecc995c76fe57e9ebb93316e4a4e7a9e73e7b72dc7c7cad86d3f8f1e2610929",
+    "aegis-role-structuring-desk": "c7c9978b3e7547a4950f03798ca542c52b17f76056e9b569fe9a9f1d4c6cd2b9"
   }
 }

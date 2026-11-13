@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.1 (unreleased)
 
-- Version bump to 0.2.0 (`release_bump.py 0.2.0`).
+- Version bump to 0.2.1 (`release_bump.py 0.2.1`).
 - **One front door.** The owner talks to one Bot, the Aegis Desk Lead, in its 1:1 chat, for setup and everything
   after it: questions, position changes, plan cards, tickets, roll analyses, proposals, the criteria interview and
   re-acknowledgements. The Lead runs each seat's tools by that seat's agent file and enables the skills they need; no
@@ -22,6 +22,10 @@
   stock's one-minute IEX bar of the minute each was quoted in`, and the leg JSON carries `spot_bar_utc`. An option
   with no bar for its minute stays unpriced. A stock quote reused from an earlier run's cache but stamped more than 60
   seconds before the chains is refetched once first (`structuring.align_spot`). PROVENANCE's open item is closed.
+
+## 0.2.0 (2026-11-13)
+
+- Version bump to 0.2.0 (`release_bump.py 0.2.0`).
 - **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run
   action is a free Alpaca paper key pair (a key ID and its secret, from a paper-only account opened with an email
   address), added through the secure secret card as `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, never pasted in chat
