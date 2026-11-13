@@ -7,6 +7,11 @@ secret card, never pasted in chat. Section 9 holds the later steps, each started
 "add my positions", "adopt my exit rules", "turn on monitoring", or optionally "set up the structuring desk". Steps
 marked **You** are the owner's alone.
 
+**One front door.** The owner talks to one Bot, the Aegis Desk Lead, in its 1:1 chat, for setup and for everything
+after it. The Lead runs every seat's tools there, by that seat's agent file; no Bot sends the owner to another chat.
+An Ask-first card is the confirmation (no typed "approve" before a card), and the owner-authority commands of one
+request run as one `&&`-joined command line, so one tap covers them (skill `aegis-desk-charter`, "The front door").
+
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
 
 The checkout is `/workspace/aegis-grok-desk`; the desk root is `/workspace/aegis-desk`, outside it, and every desk
@@ -65,8 +70,11 @@ section 1. Post each output verbatim, labelled "synthetic demo on a sample book:
 | `agents/structuring-desk.md` | Aegis Structuring Desk | On-request choices desk of the options desk |
 
 If you were created for this desk, you are the Desk Lead; otherwise create one. Create the others and read back each
-native Name and Job. A Bot's standing instructions are its role skill, enabled for it only. The Structuring Desk
-answers only when asked and owns no routine. Asked for a later-stage seat, a Bot says it is not in this release.
+native Name and Job. A Bot's standing instructions are its role skill, enabled for it only. The Desk Lead is the
+owner's one front door; the other three keep their routines and post in their own chats and the Floor. Until
+`desk.toml` exists, each of them introduces itself in one line and waits: no tool against the empty desk, no
+announced schedule, no routine. The Structuring Desk answers only when asked and owns no routine. Asked for a
+later-stage seat, a Bot says it is not in this release.
 
 ## 5. Install the skills
 
@@ -77,7 +85,10 @@ Install the 18 desk skills; each Bot enables the ones its agent file lists under
 `aegis-threshold-levels`, `aegis-vertical-spread-management` (Sentinel), `aegis-book-marking-and-greeks-honesty`,
 `aegis-covered-call-and-cash-secured-put-management`, `aegis-protective-put-and-collar-management` (Sentinel,
 Structuring Desk), `aegis-positions-csv-book-of-record`, `aegis-expiry-and-assignment-protocol` (Position Control),
-`aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order` (Structuring Desk).
+`aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order` (Structuring Desk). As the
+front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-threshold-levels`,
+`aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order`,
+`aegis-covered-call-and-cash-secured-put-management` and `aegis-protective-put-and-collar-management`.
 [skills/README.md](skills/README.md) says what each teaches. Read back each stored name, description and body against
 `skills/<name>/SKILL.md` (sha256s in `template/grok-bot.json`). Status: `template` or `installed` (identical),
 `pointer` (points to the checkout file) or `mismatch` (not ready; a shared skill with another body is never enabled).
@@ -133,7 +144,7 @@ One message, opening with three plain lines, for example:
 ```text
 Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v0.2.1.
 Live market data works: SPY was quoted from Alpaca's paper market data, labelled 15-minute delayed.
-Nothing else is needed now. When you want the desk to watch your positions, say "add my positions".
+Nothing else is needed now. Talk to me here for everything; when you want the desk to watch your positions, say "add my positions".
 ```
 
 Then the evidence: the pin check line, the `check.sh` result, the demo commands (synthetic), the Bots by Name and Job,
@@ -176,7 +187,7 @@ Ask first: placing, modifying or cancelling an order; moving funds; any POST, PU
 ```
 
 ```text
-Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
+Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or replacing /workspace/aegis-desk/positions.csv. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
 ```
 
 Then one question: can any Connected app or MCP server in the owner's account place or change orders? They are
@@ -197,9 +208,10 @@ acknowledged. After the tap, the **owner-authority** command writes `desk.toml` 
 `python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/desk-answers.json --desk-root /workspace/aegis-desk`.
 
 **positions.csv.** The owner describes the book in plain words ("I sold 2 NVDA 20-Nov 150 calls at 3.20 against my
-200 shares"). Aegis Position Control drafts the rows from those words ([docs/POSITIONS_CSV.md](docs/POSITIONS_CSV.md)),
-asks for what is missing and shows the text; once the owner approves it, it saves exactly that text to
-`/workspace/aegis-desk/positions.csv` and runs `positions_check.py` and `csv_recon.py`; the owner confirms the verdict.
+200 shares"). In its own chat the Desk Lead drafts the rows from those words, by Aegis Position Control's procedure
+([docs/POSITIONS_CSV.md](docs/POSITIONS_CSV.md)), gives every group a trade id, asks for what is missing and shows
+the text; saving it to `/workspace/aegis-desk/positions.csv` raises its Ask-first card, and the owner's tap is the
+approval. Then it runs `positions_check.py` and `csv_recon.py`, and the owner confirms the verdict.
 
 **Dividends.** For each held symbol, short calls first: the next ex-dividend date, amount and `confirmed` or
 `estimated`, or `none` with a source. A symbol left out is reported UNAVAILABLE, never zero. Write
@@ -266,12 +278,12 @@ day means the desk is not running; rely on the broker's own alerts. More: [docs/
 ### 9.4 "set up the structuring desk"
 
 Prerequisites first: 9.1's safety settings and desk questions, done before this step if missing.
-Optional: the Aegis Structuring Desk prices choices for a held position only when asked, by the owner's criteria in
-`/workspace/aegis-desk/structuring.toml`. In its own chat it runs the interview of [docs/STRUCTURING.md](docs/STRUCTURING.md):
+Optional: the structuring tools price choices for a held position only when asked, by the owner's criteria in
+`/workspace/aegis-desk/structuring.toml`. In its own chat the Desk Lead runs the interview of [docs/STRUCTURING.md](docs/STRUCTURING.md):
 each section with its documented defaults (starting points, not a judgment that they fit), then the disclosure
 `structuring-suggestions-1` word for word, recorded only after the owner acknowledges it. After the tap, the **owner-authority** command
 `python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk`,
-then `ack.py config --owner-tapped` again. Each later request (`exit_ticket.py`, `roll_analysis.py`, `propose.py`)
+joined with `&&` to `ack.py config --owner-tapped` so one tap writes and acknowledges it. Each later request (`exit_ticket.py`, `roll_analysis.py`, `propose.py`)
 raises the owner-authority card; the tap records that the owner asked.
 
 ## 10. If you are not Grok Bot

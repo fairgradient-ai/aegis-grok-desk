@@ -74,7 +74,7 @@ structuring tool ever writes it. Until it exists and you have acknowledged it, t
 
 ### The interview
 
-The Structuring Desk runs it in its own chat, at SETUP step 9 or at your first request. If you ask before you have
+The Desk Lead runs it in its own chat (the one chat you use), at SETUP step 9 or at your first request. If you ask before you have
 said "add my positions", the Desk Lead first adds that step's two safety settings (the two Ask-first Auto-review rules
 and the connected-apps check), because the interview ends in an owner-tapped command:
 
@@ -258,6 +258,14 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   as failing them. When not one candidate of the window could
   be priced, the answer is UNAVAILABLE (exit 20, no report): `no candidate in your window could be priced`, followed by
   the reason they share or by `(the reasons differ; the JSON lists each)`.
+- **The stock price each option is priced against.** An option's implied volatility is solved against a stock price
+  from the same moment: the stock quote when it is stamped within 60 seconds of the option's, otherwise the stock's
+  one-minute IEX bar of the minute the option was quoted in (one extra request; the free indicative feed updates a
+  thinly traded option less often than the stock). The Greeks are then read at the current spot. When a bar was used,
+  a note follows the model line: `spot: <n> option legs quoted more than 60 seconds from the stock quote were priced
+  against the stock's one-minute IEX bar of the minute each was quoted in`, and each such leg's JSON carries
+  `spot_bar_utc`. An option with no bar for its minute stays `not priced` (`the underlying's quote is stamped too far
+  from the option's`). A stock quote reused from an earlier run's cache but older than the chains is refetched first.
 
 ### The objectives
 
@@ -436,7 +444,7 @@ calls whose row carries `#assign-ok`. One replacement passes every criterion.
 | 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
 | 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
 
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -478,7 +486,7 @@ candidate; the items under the table say why each shown candidate fails:
 - 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 - 2 fails credit_only: a net debit of 1.45
 - 3 fails credit_only: a net debit of 1.35
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -544,7 +552,7 @@ named by the roll analysis above:
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 > - the desk does not see your cash balance
-> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+> - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself
 
@@ -807,8 +815,9 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 ## After a fill
 
 A ticket carries no `positions.csv` lines: the fill price is unknown until you have it, and the file has one owner.
-After a fill, tell Aegis Position Control the fill; it proposes the `positions.csv` lines with its close, partial-close
-and roll recipes, and you apply them. After an expiry, its post-expiry check proposes them. Once `positions.csv`
+After a fill, tell the Aegis Desk Lead the fill; it proposes the `positions.csv` lines with Position Control's close,
+partial-close and roll recipes, and your tap on the save's card applies them. After an expiry, Position Control's
+post-expiry check proposes them. Once `positions.csv`
 changes, every structuring tool answers `config_unacknowledged` until you tap `ack.py config --owner-tapped`.
 
 ## Limits

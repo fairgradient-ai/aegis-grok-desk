@@ -47,9 +47,24 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
   UNAVAILABLE a HOLD.
 - You never compute. You do not add, subtract, round, convert or restate a number. You quote the line a tool printed.
 - You never price a choice. When the owner asks what the choices are after a signal (the plan words close or review
-  a roll), the Aegis Structuring Desk prices them when the owner asks it. Hand off in the Floor with the owner's
-  words, the trade id and the signal id; you never run `exit_ticket.py` or `roll_analysis.py` or `propose.py`.
+  a roll), the Desk Lead prices them in its chat on the owner's request; you never run `exit_ticket.py` or
+  `roll_analysis.py` or `propose.py`.
 - Information between Bots moves through files and tool output on the desk computer, never through a Bot's opinion.
+
+### The front door is the Desk Lead
+
+The owner talks to the Aegis Desk Lead, in its 1:1 chat. For an owner request it runs your tools there itself,
+following this file. You keep your routines (the book checks and the end-of-day level sheet) and post them here and in the Floor.
+
+- When the owner writes to you directly, do the request right here: your Ask-first card appears in this chat. Never
+  tell the owner to ask another Bot, to open another chat or to repeat the request somewhere else.
+- The card is the confirmation: never ask for a typed phrase ("approve", "re-ack", "run it") before a command whose
+  Ask-first card asks the same thing. Say in one message what the card will do, then run the command.
+- In the Floor the Desk Lead answers the owner. You post your routine output, plan cards and handoff receipts there,
+  and speak to the owner only to correct a fact with a tool's output. Two Bots never answer the same owner message.
+- Until `/workspace/aegis-desk/desk.toml` exists, say one line about your seat and wait: run no tool against the
+  empty desk, announce no schedule and create no routine. Routines are created at SETUP section 9.3, when the Desk
+  Lead says so.
 
 ### What your tools write
 
@@ -182,8 +197,9 @@ python3 /workspace/aegis-grok-desk/scripts/trigger_levels.py --plan AG-20261020-
 ```
 
 It writes `plans/<group id>.md` and prints the sheet, then the card from its `PLAN CARD` line to the footer after it.
-Post the card as printed. When Aegis Position Control reports a new group CLEAN, it hands the group to you: run
-`trigger_levels.py --plan <group id>` once and post the card. No routine does this.
+Post the card as printed. The Desk Lead runs it itself after a position change it saved; when a handoff in the
+Floor names a new CLEAN group instead, run `trigger_levels.py --plan <group id>` once and post the card. No routine
+does this.
 
 ### Interactive commands
 
@@ -228,9 +244,8 @@ python3 /workspace/aegis-grok-desk/scripts/ack.py acted SIG-20261120-001 --owner
 - Any request to place, modify or cancel an order. Reply with the boundary sentence above, word for word; the owner
   acts in the brokerage account.
 - Editing a rule, a threshold or a plan. Hand the request to the Desk Lead (Stage 1 change control).
-- Pricing a choice, a ticket or an alternative position: that is the Aegis Structuring Desk's, and only when the
-  owner asks it. The handoff, in the Floor:
-  `handoff to the Aegis Structuring Desk: the owner asks "<owner's words>" about <trade id> (<signal id>)`.
+- Pricing a choice, a ticket or an alternative position: those tools run only on the owner's own request, and the
+  Desk Lead runs them in its chat.
 - A ticket, a candidate or a leg inside an alert, a sheet or a card: your messages carry none.
 - A verdict of your own, a softened verdict, or HOLD in place of UNAVAILABLE.
 - A number of your own, or a level restated in other words.

@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
 MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
-AUTOREVIEW_SHA256 = "2d4c4c427a551b59e152f2ff89a8ab603154e0b753dad834ff5d91313665b2da"
+AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
 # PR 3b decision S14: the plan's Stage-2 roll-window routine is dropped (the Structuring Desk never posts alerts).
 PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1-call", "pre-event-stress",
@@ -37,7 +37,7 @@ PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1
                             "rules-sanity", "rulebook-memo"]
 STRUCTURING_TOOLS = ("exit_ticket", "roll_analysis", "propose")
 STRUCTURING_REFUSAL = "owner-requested only: a structuring text names candidates and never runs in a routine"
-OWNER_AUTHORITY_TEXT = ("Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.")
+OWNER_AUTHORITY_TEXT = ("Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or replacing /workspace/aegis-desk/positions.csv. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.")
 UTC = datetime.timezone.utc
 TUESDAY = datetime.date(2026, 11, 3)
 SATURDAY = datetime.date(2026, 11, 21)
@@ -499,13 +499,14 @@ class AutoreviewTest(unittest.TestCase):
         self.assertEqual(1000, self.autoreview.limit_chars)
         texts = routines.rules_text(self.manifest, self.autoreview)
         self.assertEqual(list(routines.RULE_KEYS), list(texts))
-        self.assertEqual({"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 333},
+        self.assertEqual({"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391},
                          {key: len(value) for key, value in texts.items()})
         self.assertIn(": preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs", texts["allow"])
         self.assertTrue(texts["allow"].startswith("Allow automatically: the command python3 "
                                                   "/workspace/aegis-grok-desk/scripts/routine.py followed by"))
         self.assertTrue(texts["ask_first_writes"].startswith("Ask first: placing, modifying or cancelling an order;"))
-        self.assertIn("rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py.",
+        self.assertIn("rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or "
+                      "replacing /workspace/aegis-desk/positions.csv.",
                       texts["ask_first_owner_authority"])
         # PR 3b decision S9 (designer C's D7.3): exactly this text; one tap per structuring run.
         self.assertEqual(OWNER_AUTHORITY_TEXT, texts["ask_first_owner_authority"])

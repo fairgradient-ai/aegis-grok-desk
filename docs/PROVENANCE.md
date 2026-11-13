@@ -157,15 +157,18 @@ From Alpaca's public documentation (read 2026-11-13), as built into the client:
 - on the free plan, stocks come from the IEX feed (the only one a paper-only account is entitled to) and options from
   the indicative feed, which Alpaca describes as delayed 15 minutes and not actual exchange (OPRA) quotes; the desk
   labels those quotes approximate, and `feed_delay_min = 15` is the conservative bound for every quote;
-- open item, inferred and not yet observed on a live account: the IEX stock quotes are real time while the
-  indicative option quotes are delayed, so an option stamp may sit about 15 minutes behind its underlying's stamp.
-  The desk inverts an option price only against a spot stamped within 60 seconds of it
-  (`expiry.SPOT_ALIGNMENT_S`), so in that case the implied-volatility outputs are UNAVAILABLE (the Opening Bell's
-  `stamps_unaligned`, the book's IV and extrinsic, the Structuring Desk's `spot_unaligned`), never a 15-minute-old
-  option price set against a current spot; `tests/tools/test_opening_bell_tool.py` pins that verdict. The fix is the
-  owner's choice once a live read shows the gap: take the spot at the option's stamp (for example a one-minute IEX
-  bar at that instant, on the allow-listed bars path) or a feed-aware tolerance up to the declared delay, disclosed in
-  the text;
+- observed on a live paper account on 2026-11-13: the indicative feed updates a thinly traded option's quote less
+  often than the IEX stock quote, so an option stamp can sit minutes behind its underlying's stamp (WMT option quotes
+  stamped 18:01 to 18:08 UTC against a stock quote of 18:09:09 UTC). The desk inverts an option price only against a
+  stock price from the same moment (within 60 seconds, `expiry.SPOT_ALIGNMENT_S`). The Structuring Desk now takes
+  that price at the option's own stamp: when the stock quote is more than 60 seconds from an option's, it reads the
+  stock's one-minute IEX bar of the minute the option was quoted in (one request on the allow-listed bars path,
+  `timeframe=1Min`), solves the implied volatility from the option's mid and that bar's close, and evaluates the
+  Greeks at the current spot; the text says how many legs were priced this way. An option with no bar for its minute
+  stays UNAVAILABLE `spot_unaligned`, and no price is ever set against a spot from a different minute. A stock quote
+  served from an earlier run's cache copy (inside the TTL) but stamped more than 60 seconds before the chains is
+  refetched first. The Opening Bell's `stamps_unaligned` and the book's IV and extrinsic keep the strict 60-second
+  rule;
 - the market-data limit is 200 requests a minute; a rate-limit fault is HTTP 429 with `X-RateLimit-*` headers, and a
   request the plan does not cover is refused with a message containing "subscription does not permit" (the published
   code numbers disagree, so the client matches the text);

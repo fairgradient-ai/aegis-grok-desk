@@ -236,13 +236,13 @@ class FixedLineTest(unittest.TestCase):
     def test_the_fixed_words(self) -> None:
         self.assertEqual("you supply the limit; the desk prints none", T.LIMIT_LINE)
         self.assertEqual("if you decide to act, you type it into your brokerage account yourself", T.ACT_LINE)
-        self.assertEqual("after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        self.assertEqual("after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
                          T.AFTER_FILL_LINE)
         self.assertEqual("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
                          "American-style options is not modelled", T.MODEL_LINE)
         self.assertEqual("the score ranks the candidates only on the objective you chose; it is not a forecast",
                          T.CAVEAT_LINE)
-        self.assertEqual("a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
+        self.assertEqual("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                          "and strike", T.POINTER_LINE)
         self.assertEqual(("\U0001F7E2", "\U0001F7E1", "\U0001F534"), (T.STATUS_PASS, T.STATUS_ACCEPTED, T.STATUS_FAIL))
         self.assertEqual(alert_lint.STATUS_SYMBOLS, (T.STATUS_PASS, T.STATUS_ACCEPTED, T.STATUS_FAIL))
@@ -421,7 +421,7 @@ WMT_ROLL = """### STRUCTURING AG-20261020-01 | WMT covered call: the roll analys
 | 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | \U0001F534 credit_only |
 | 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | \U0001F534 credit_only |
 
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -453,7 +453,7 @@ NVDA_ROLL = """### STRUCTURING AG-20261022-02 | NVDA covered call: the roll anal
 - 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 - 2 fails credit_only: a net debit of 1.45
 - 3 fails credit_only: a net debit of 1.35
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
@@ -648,7 +648,7 @@ EXPIRY_DAY = """### STRUCTURING AG-20261020-01 | WMT covered call: the roll anal
 
 - 1, 2, 3 fail earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
 - 3 fails abs_delta: absolute delta 0.54 outside your band 0.15 to 0.35
-- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
