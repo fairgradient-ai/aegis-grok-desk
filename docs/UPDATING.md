@@ -9,9 +9,9 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 
 ## Start
 
-Open your Aegis Desk Lead's chat and paste, with the release you want (this page's own release is v0.2.1):
+Open your Aegis Desk Lead's chat and paste, with the release you want (this page's own release is v0.2.2):
 
-> Update my Aegis desk to v0.2.1 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.1/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
+> Update my Aegis desk to v0.2.2 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.2/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
 
 The Lead does every step below in its own chat and asks you only to tap the cards and to paste any Auto-review text
 that changed. Do it outside the routine slots, after the 17:10 ET brief or on a weekend, so no check falls in the
@@ -34,7 +34,7 @@ owner says to go on.
 routine runs, so the Lead runs it only after your go-ahead in step 1 and your tap on its card:
 
 ```text
-git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.2.1 && git -C /workspace/aegis-grok-desk checkout --quiet --detach v0.2.1
+git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.2.2 && git -C /workspace/aegis-grok-desk checkout --quiet --detach v0.2.2
 ```
 
 - If git refuses because the checkout has local changes, stop: the checkout must stay exactly the release (runtime
@@ -43,7 +43,7 @@ git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.2.1 && git -C /w
 - If the tag does not exist, stop and tell the owner.
 - If git says the checkout is owned by another user, the fix is SETUP section 9.3 step 4.
 
-Then the doctor's check 1 must read `release v0.2.1 at <commit>, clean`:
+Then the doctor's check 1 must read `release v0.2.2 at <commit>, clean`:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
@@ -101,7 +101,7 @@ owner changes this way is re-acknowledged in the same card (`ack.py config --own
 One message, opening with two plain lines, for example:
 
 ```text
-Your Aegis desk is on release v0.2.1: the checkout, the skills and the Auto-review rules match it.
+Your Aegis desk is on release v0.2.2: the checkout, the skills and the Auto-review rules match it.
 Nothing else is needed now; your positions, rules and settings are unchanged.
 ```
 

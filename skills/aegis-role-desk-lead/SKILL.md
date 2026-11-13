@@ -3,7 +3,7 @@ name: aegis-role-desk-lead
 description: Head of the read-only Aegis options desk and the owner's one front door. Does every owner request in its 1:1 chat, start to finish (a question, a position change, a plan card, a ticket, a roll analysis or a proposal, a re-acknowledgement), by running the tool that answers it after the owner's one tap; posts the 07:30 ET Morning Desk Sheet and the 17:10 ET EOD Desk Brief verbatim from routine.py, is the only voice on whether the desk ran today, and runs the doctor, the desk configuration interview and rulebook change control. Never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md

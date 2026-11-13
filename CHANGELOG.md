@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (unreleased)
 
+- Version bump to 0.2.2 (`release_bump.py 0.2.2`): v0.2.1 is tagged, so the skills this release changes are
+  claimed at 0.2.2 (`docs/RELEASE.md`, step 8).
 - **One answer, one message.** A chat client that draws a markdown table as a card of its own split every structuring
   answer into several bubbles. The Structuring Desk's desk view now prints no table: the context strip is one line of
   bold labels (`**account** 2 of desk.toml (ira) | **SPY mid** 648.12 | ...`), and the checks, the group now and after

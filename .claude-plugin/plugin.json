@@ -1,7 +1,7 @@
 {
   "name": "aegis-desk",
   "description": "A read-only options desk, Stage 1: the Aegis Desk Lead, Exit Sentinel, Position Control and Structuring Desk role profiles and their skills for position monitoring, P/L, alerts from the exit rules you adopt and, only when you ask, choices for positions you hold. The desk never places, modifies or cancels an order.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "author": {"name": "FairGradient", "url": "https://github.com/fairgradient-ai"},
   "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
   "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",

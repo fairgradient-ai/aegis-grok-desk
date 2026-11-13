@@ -3,7 +3,7 @@ name: aegis-role-structuring-desk
 description: The on-request choices desk of the read-only Aegis options desk, for positions the owner already holds. Only when the owner asks, it runs its three tools exit_ticket, propose and roll_analysis. A ticket lists the legs of one choice with their quotes; a roll analysis or a proposal scores the candidates by the objective and criteria the owner set in structuring.toml and names one best candidate with its reasons. It posts their linted text verbatim. It never fires an alert, owns no routine, never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
