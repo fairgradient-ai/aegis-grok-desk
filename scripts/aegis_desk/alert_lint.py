@@ -117,7 +117,12 @@ Alphabet
 --------
 A message is printable ASCII plus newline and tab, and the middle dot (U+00B7) inside the footer line only: a
 homoglyph, an invisible character (zero-width space, no-break space), a full-width digit, a typographic minus or a
-middle dot between two words cannot hide a number, a phrase or a sentence start from the rules above.
+middle dot between two words cannot hide a number, a phrase or a sentence start from the rules above. One exception,
+structuring mode only (0.2.1): the three status symbols of :data:`STATUS_SYMBOLS` (a green, a yellow and a red circle,
+U+1F7E2, U+1F7E1 and U+1F534, without a variation selector) may each stand at the start of a table cell, right after
+``| `` and followed by a space; anywhere else, doubled, or under the rules or snapshot footer they are ``non_ascii``.
+The sentence-start rule reads a status symbol as a list mark, so the word after it is checked as a sentence start,
+and a symbol inside a word or a number is refused, so none can split a phrase, a number or a sentence start.
 """
 
 from __future__ import annotations
@@ -176,7 +181,7 @@ STRUCTURING_EFFECT_RE = re.compile(r"(?i)\bcloses[\s_-]+your[\s_-]+(?:long|short
 _STRUCTURING_CONTENT_RE = re.compile(
     STRUCTURING_LEG_DETECT_RE.pattern[4:].join(("(?i:", ")"))
     + "|" + STRUCTURING_EFFECT_RE.pattern[4:].join(("(?i:", ")"))
-    + r"|(?m:^[ \t]*(?:TICKET|PROPOSAL|STRUCTURING|NOTHING_TO_PROPOSE)\b)"
+    + r"|(?m:^[ \t]*(?:#{1,6}[ \t]+|\*\*)?(?:TICKET|PROPOSAL|STRUCTURING|NOTHING_TO_PROPOSE)\b)"
     r"|\(action (?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL)\)|FAILS_CRITERION"
     r"|\b(?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL) ticket\b"
     r"|(?i:\bno[\s_-]+leg[\s_-]+to[\s_-]+enter\b|\bcriteria[\s_-]+structuring\.toml\b|\bno[\s_-]+structuring\.toml\b"
@@ -188,7 +193,7 @@ _STRUCTURING_CONTENT_RE = re.compile(
     r"|\b(?:exit_ticket|roll_analysis|propose)\.py\b)")
 """Structuring text the rules and snapshot footers can never close (module notes, review L2-4): a leg reference or the
 leg grammar's effect words anywhere, the fixed starts of the structuring texts (TICKET, PROPOSAL, STRUCTURING,
-NOTHING_TO_PROPOSE), an action tag, FAILS_CRITERION, a ranked or numbered candidate (``candidate #1``, ``1st
+NOTHING_TO_PROPOSE, also after a markdown heading mark or in bold), an action tag, FAILS_CRITERION, a ranked or numbered candidate (``candidate #1``, ``1st
 candidate``, ``rank 1``, ``best:``), the counts line, the subjects of the answers that price nothing, the three tool
 names (the structuring WITHHELD line names its tool; the routine's ``WITHHELD | <tool>:`` line is rules text) and the
 approval convention's self-attested level (``candidate 1.1.0`` and ``candidate-1.1.0.toml`` do not match)."""
@@ -196,6 +201,10 @@ _SNAPSHOT_RULE_CONTENT_RE = re.compile(r"(?i:\byour\s+rules?\b)|\bEXIT[ _]SIGNAL
                                        r"|(?i:\brules\s+[0-9]+\.[0-9]+\.[0-9]+)")
 """Rule content a market-snapshot footer can never close (module notes)."""
 ALLOWED_EXTRA_CHARACTERS: Tuple[str, ...] = ("\n", "\t", MIDDLE_DOT)
+STATUS_SYMBOLS: Tuple[str, ...] = ("\U0001F7E2", "\U0001F7E1", "\U0001F534")
+"""The structuring texts' status colours (module notes, "Alphabet"): passes, accepted by the owner, fails. Each may
+stand only at the start of a table cell of a structuring text (``| <symbol> ``)."""
+STATUS_CELL_LEAD: str = "| "
 
 CODE_EMPTY: str = "empty_message"
 CODE_NON_ASCII: str = "non_ascii"
@@ -372,7 +381,7 @@ _DIGITS_RE = re.compile(r"(?<![0-9])\.?[0-9][0-9.,]*")
 _WORD_RE = re.compile(r"[A-Za-z]+")
 _SENTENCE_END_CHARS = ".!?;:|"
 _HARD_BOUNDARY_CHARS = "!?;:|,"
-_OPENERS = "\"'([{*_~>`#-"
+_OPENERS = "\"'([{*_~>`#-" + "".join(STATUS_SYMBOLS)
 _LIST_MARK_RE = re.compile(r"(?:[0-9]{1,3}[.)]|[A-Za-z]\))[ \t]+")
 _IDENTIFIER_FORMS: Tuple[str, ...] = ("trade_id", "signal_id", "group_id", "rules_version", "sha", "date")
 
@@ -658,6 +667,14 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
         if (" " <= char <= "~") or char in ("\n", "\t"):
             continue
         line, column = _position(text, index)
+        if char in STATUS_SYMBOLS:
+            at_cell_start = (text[max(0, index - len(STATUS_CELL_LEAD)):index] == STATUS_CELL_LEAD
+                             and text[index + 1:index + 2] == " ")
+            if structuring and at_cell_start and not any(start <= index < end for start, end in footer_spans):
+                continue
+            findings.append(Finding(CODE_NON_ASCII, line, column, "line %d, column %d: a status symbol stands only at "
+                                    "the start of a table cell of a structuring text" % (line, column)))
+            continue
         if char == MIDDLE_DOT:
             if any(start <= index < end for start, end in footer_spans):
                 continue
@@ -856,6 +873,8 @@ __all__ = [
     "PLAN_CLOSE_PREFIX",
     "SNAPSHOT_FOOTER_PREFIX",
     "SNAPSHOT_FOOTER_RE",
+    "STATUS_CELL_LEAD",
+    "STATUS_SYMBOLS",
     "STRUCTURING_FOOTER_PREFIX",
     "STRUCTURING_FOOTER_RE",
     "STRUCTURING_FORBIDDEN_LANGUAGE",

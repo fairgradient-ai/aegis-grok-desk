@@ -15,20 +15,20 @@
     "aegis-exit-watch-and-signal-protocol": "4206dd4b584102c8d31513a559cdd517b2d5f8615de98cc25f109ace78e20743",
     "aegis-expiry-and-assignment-protocol": "02bdad94825f96c47b36f19cb3d01c48df9b1465817995fa92c6e7a5d18b16c6",
     "aegis-market-data-budget-and-quality": "c62ae8c7b44063366c8fa31aceb63eac89abf99b93529895940d432fc333d9cd",
-    "aegis-overlay-proposals": "078fcb62cee67a9dee946b6c0ce40bfb6e1c9f308c50e250c7829bbcaf4322d6",
+    "aegis-overlay-proposals": "b422dabfad5ce5e0919706e0c3a69ed39d738a90e8a222ceed45e8bfa10d68ef",
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "6dba49db669c1cf49d091e3587dd0dce6880f1273e45015ba454ad8d344fa112",
-    "aegis-roll-decision-framework": "691cf3e1b15abc6d987c6957166aac7ca7bf11163fe19b190a8c321906b7fb84",
+    "aegis-roll-decision-framework": "c98feee459c4b5bc67eaedec0c354a9be65164f3c5bc5105fce813ca805f42d1",
     "aegis-routines-and-quiet-rules": "737be8fd1c39bb084b450fa12530b77459988845fdff2d0e64ab5bd5d12c60b3",
     "aegis-rules-dsl-and-change-control": "9a9b7524ae04db7a1d9bcf3d558c4774e7733a8920ff4610e6b12b283e19d92e",
     "aegis-threshold-levels": "0fd181ec7f695f0bda6b8b28c79a51fb24dea011e0ba38e33eb6cf2e5912669f",
-    "aegis-ticket-and-unwind-order": "d090cf29f00302af5ea596541b52271c68fc9ed029dff41d773956bb0cd477f2",
+    "aegis-ticket-and-unwind-order": "8651112516ed1fbbc1c0ce826752ae4c5b1bd3d5ea9b8d9b061062acd54ed629",
     "aegis-vertical-spread-management": "b7884f66476f8299a5be34845d042470c62cf5820f44e5959b51f704217ac4e8"
   },
   "roleSkills": {
     "aegis-role-desk-lead": "a033cb4e15db72b5a552db5f247deba5a65b939f4727acc28d90c74b30ba90c3",
     "aegis-role-exit-sentinel": "edc95f343f6d1f6cc4e4e2343b7b6c2574c29bd4e97a2adc84dc071706a087b4",
     "aegis-role-position-control": "9468f326dcf74e9489d65b89835cc51617f6d1c04bc947d4c8fb16862e117b9c",
-    "aegis-role-structuring-desk": "d56daa919d192c047c4040b20e5576a85581b420a1392bf3ee6f84880e10fcb5"
+    "aegis-role-structuring-desk": "f735cc097fd0b1f475ed9c3a6f419773dd8d1f94bf1a7c05bfc255db32e826da"
   }
 }

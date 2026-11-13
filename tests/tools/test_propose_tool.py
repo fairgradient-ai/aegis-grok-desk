@@ -58,142 +58,298 @@ def footer(clock: str) -> str:
 
 
 FOOTER_1931 = footer("19:31")
-SOURCE = "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC"
-MODEL = ("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is "
-         "not modelled")
-LIMIT = "you supply the limit; the desk prints none"
-ACT = "if you decide to act, you type it into your brokerage account yourself and you supply the limit"
-CAVEAT = "the score ranks the candidates only on the objective you chose; it is not a forecast"
-WMT_HEADER = ("PROPOSAL WMT covered call | on 200 WMT shares you hold in account 1 of desk.toml (margin) | criteria "
-              "structuring.toml (sha 5155427c) | " + SOURCE)
-SPY_PP_HEADER = ("PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria "
-                 "structuring.toml (sha 5155427c) | " + SOURCE)
-SPY_COLLAR_HEADER = ("PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria "
-                     "structuring.toml (sha 5155427c) | " + SOURCE)
-WMT_EVENTS = ("FAILS_CRITERION earnings: earnings on 2026-11-17 (before the open) fall inside the call's life | "
-              "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's life")
-WMT_NONE_TEXT = [
-    WMT_HEADER,
-    "candidates for a covered call on the 200 WMT shares: 0 passed your criteria, 20 failed",
-    "no candidate passed every criterion: the desk names no best candidate",
-    "candidate 1: the 2026-12-18 112.5 call | bid 2.80 | extrinsic_per_day 0.0597 | " + WMT_EVENTS,
-    "candidate 2: the 2027-01-15 115 call | bid 3.55 | extrinsic_per_day 0.0467 | " + WMT_EVENTS,
-    "candidate 3: the 2026-12-18 115 call | bid 2.10 | extrinsic_per_day 0.0448 | " + WMT_EVENTS,
-    "failed your criteria: 20 (abs_delta 15, strike_floor 4, earnings 20, ex_dividend 20)",
-    MODEL, LIMIT, ACT, FOOTER_1931,
+CC_NOTHING_TEXT = [
+    "NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask for a "
+    "roll analysis",
+    "",
+    footer("19:50"),
 ]
-WMT_BEST_TEXT = [
-    WMT_HEADER,
-    "candidates for a covered call on the 200 WMT shares: 5 passed your criteria, 15 failed",
-    "BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of "
-    "the share price): 0.0597 | the highest among the 5 candidates that passed every criterion",
-    CAVEAT,
-    "leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote grade B, " + SOURCE,
-    "reasons: 45 calendar days inside your window 40 to 75; absolute delta 0.32 inside your band 0.15 to 0.35; bid 2.80 "
-    "at or above your minimum 0.50; spread 3.51 % within your maximum 25 %; strike 112.5 above your stock cost 98.50",
-    "accepted earnings: earnings on 2026-11-17 (before the open) fall inside the call's life (by #earnings-ok)",
-    "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's life (by "
-    "#assign-ok)",
-    "after the leg: group delta 135.05 (now 200.00), max loss 19140.00 (now 19700.00), max profit 3360.00 (now "
-    "unbounded), breakeven 95.70 (now 98.50)",
-    "leg order: after leg 1 you hold 200 WMT shares and 2 short calls (level 1 by the desk's convention)",
-    "approval: the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); "
-    "your broker's own approval for this account decides",
-    "candidate 2: the 2027-01-15 115 call | bid 3.55 | extrinsic_per_day 0.0467",
-    "candidate 3: the 2026-12-18 115 call | bid 2.10 | extrinsic_per_day 0.0448",
-    "failed your criteria: 15 (abs_delta 15, strike_floor 4)",
-    MODEL, LIMIT, ACT, FOOTER_1931,
+CC_REFUSED_TEXT = [
+    "REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs "
+    "level 1 by the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing "
+    "above your level; your broker's own approval decides what you can enter",
+    "",
+    footer("19:50"),
+]
+COLLAR_DISABLED_TEXT = [
+    "NOT_APPLICABLE | AG-20261028-03 collar proposal | the collar section is disabled in your "
+    "structuring.toml",
+    "",
+    footer("19:50"),
+]
+COLLAR_REFUSED_TEXT = [
+    "REFUSED AG-20261028-03 | SPY collar | opening 1 new long put needs level 2 by the desk's convention; "
+    "desk.toml records your self-attested level 1 | the desk shows nothing above your level; your broker's "
+    "own approval decides what you can enter",
+    "",
+    footer("19:50"),
+]
+CRITERIA_MISSING_TEXT = [
+    "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria "
+    "(SETUP step 9)",
+    "",
+    footer("19:50"),
+]
+NO_FREE_SHARES_TEXT = [
+    "NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | no free shares: 200 WMT shares are covered "
+    "by 2 short calls; the desk proposes no covered call",
+    "",
+    footer("19:50"),
+]
+PP_NOTHING_TEXT = [
+    "NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long "
+    "put",
+    "",
+    footer("19:50"),
+]
+SPY_COLLAR_BEST_TEXT = [
+    "### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold",
+    "",
+    "| account | SPY mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 "
+    "candidates that passed every criterion",
+    "- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote "
+    "grade A",
+    "- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote "
+    "grade A",
+    "",
+    "> the score ranks the candidates only on the objective you chose; it is not a forecast",
+    "",
+    "| check | this candidate | your criteria |  |",
+    "|---|---|---|:-:|",
+    "| floor | 4.34 % below | 3 to 10 % | \U0001F7E2 |",
+    "| cap | 4.92 % above | 2 to 10 % | \U0001F7E2 |",
+    "| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | \U0001F7E2 |",
+    "| call strike | 680 | at or above your cost 632.40 | \U0001F7E2 |",
+    "| calendar days | 136 | 120 to 210 | \U0001F7E2 |",
+    "| spreads | 0.78 % and 0.75 % | at most 25 % | \U0001F7E2 |",
+    "| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok "
+    "| \U0001F7E1 |",
+    "| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | "
+    "\U0001F7E1 |",
+    "",
+    "| the group | now | after both legs |",
+    "|---|--:|--:|",
+    "| max loss | 63,240.00 | 1,165.00 |",
+    "| max profit | unbounded | 4,835.00 |",
+    "| breakeven | 632.40 | 631.65 |",
+    "| group delta | 100.00 | 24.14 |",
+    "",
+    "**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within "
+    "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+    "",
+    "| after | you hold | level |",
+    "|---|---|:-:|",
+    "| leg 1 | 100 SPY shares, 1 long put | 2 |",
+    "| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |",
+    "",
+    "- entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level",
+    "",
+    "**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)",
+    "",
+    "| # | expiry | put / call | floor | cap | net per share |  |",
+    "|--:|---|---|--:|--:|---|---|",
+    "| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | \U0001F7E2 |",
+    "| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | \U0001F7E2 |",
+    "| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | \U0001F7E2 |",
+    "",
+    "- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band",
+    "",
+    "> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your "
+    "net-debit budget",
+    "> - tie on cap_within_budget broken by the put strike (higher first)",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER_1931,
+]
+SPY_COLLAR_NONE_TEXT = [
+    "### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold",
+    "",
+    "| account | SPY mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**no candidate passed every criterion: the desk names no best candidate**",
+    "",
+    "**candidates by rank:** 0 of 10 passed your criteria; 10 failed (max_net_debit 6, ex_dividend 10)",
+    "",
+    "| # | expiry | put / call | floor | cap | net per share |  |",
+    "|--:|---|---|--:|--:|---|---|",
+    "| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | \U0001F534 ex_dividend |",
+    "| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | \U0001F534 ex_dividend |",
+    "| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | \U0001F534 ex_dividend |",
+    "",
+    "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside "
+    "the call's life",
+    "- 1, 2, 3 fail ex_dividend: a second ex-date may fall before the call's last trading day; the calendar "
+    "holds one",
+    "- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band",
+    "",
+    "> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your "
+    "net-debit budget",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER_1931,
 ]
 SPY_PP_TEXT = [
-    SPY_PP_HEADER,
-    "candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed",
-    "BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it "
-    "offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion",
-    CAVEAT,
-    "leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, " + SOURCE,
-    "reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 "
-    "per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum "
-    "25 %",
-    "after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now "
-    "unbounded), breakeven 655.50 (now 632.40)",
-    "leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)",
-    "approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); "
-    "your broker's own approval for this account decides",
-    "candidate 2: the 2027-03-19 620 put | ask 25.65 | stress_cost_per_day 0.1858",
-    "candidate 3: the 2027-03-19 625 put | ask 27.05 | stress_cost_per_day 0.1868",
-    "failed your criteria: 7 (floor_pct 7)",
-    MODEL, LIMIT, ACT, FOOTER_1931,
+    "### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold",
+    "",
+    "| account | SPY mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 "
+    "candidates that passed every criterion",
+    "- leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote "
+    "grade A",
+    "",
+    "> the score ranks the candidates only on the objective you chose; it is not a forecast",
+    "",
+    "| check | this candidate | your criteria |  |",
+    "|---|---|---|:-:|",
+    "| floor | 5.88 % below | 3 to 10 % | \U0001F7E2 |",
+    "| cost | ask 23.10 (2,310.00 in all) |  |  |",
+    "| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) "
+    "| \U0001F7E2 |",
+    "| calendar days | 136 | 120 to 210 | \U0001F7E2 |",
+    "| spread | 0.87 % | at most 25 % | \U0001F7E2 |",
+    "",
+    "| the group | now | after the leg |",
+    "|---|--:|--:|",
+    "| max loss | 63,240.00 | 4,550.00 |",
+    "| max profit | unbounded | unbounded |",
+    "| breakeven | 632.40 | 655.50 |",
+    "| group delta | 100.00 | 69.69 |",
+    "",
+    "**approval-level check:** the highest step needs level 2 by the desk's convention, within your "
+    "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+    "",
+    "| after | you hold | level |",
+    "|---|---|:-:|",
+    "| leg 1 | 100 SPY shares, 1 long put | 2 |",
+    "",
+    "**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)",
+    "",
+    "| # | expiry | strike | floor | ask | stress_cost_per_day |  |",
+    "|--:|---|---|--:|--:|--:|---|",
+    "| 1 | 2027-03-19 | 610 | 5.88 % | 23.10 | 0.1856 | \U0001F7E2 |",
+    "| 2 | 2027-03-19 | 620 | 4.34 % | 25.65 | 0.1858 | \U0001F7E2 |",
+    "| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | \U0001F7E2 |",
+    "",
+    "> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER_1931,
+]
+WMT_BEST_TEXT = [
+    "### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares you hold",
+    "",
+    "| account | WMT mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0597**, the highest among the 5 "
+    "candidates that passed every criterion",
+    "- leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote "
+    "grade B",
+    "",
+    "> the score ranks the candidates only on the objective you chose; it is not a forecast",
+    "",
+    "| check | this candidate | your criteria |  |",
+    "|---|---|---|:-:|",
+    "| strike | 112.5 | at or above your cost 98.50 | \U0001F7E2 |",
+    "| absolute delta | 0.32 | 0.15 to 0.35 | \U0001F7E2 |",
+    "| bid | 2.80 (560.00 in all) | at least 0.50 | \U0001F7E2 |",
+    "| calendar days | 45 | 40 to 75 | \U0001F7E2 |",
+    "| spread | 3.51 % | at most 25 % | \U0001F7E2 |",
+    "| earnings | 2026-11-17 (before the open), inside the call's life | accepted by #earnings-ok | \U0001F7E1 |",
+    "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the call's life | accepted by #assign-ok | \U0001F7E1 |",
+    "",
+    "| the group | now | after the leg |",
+    "|---|--:|--:|",
+    "| max loss | 19,700.00 | 19,140.00 |",
+    "| max profit | unbounded | 3,360.00 |",
+    "| breakeven | 98.50 | 95.70 |",
+    "| group delta | 200.00 | 135.05 |",
+    "",
+    "**approval-level check:** the highest step needs level 1 by the desk's convention, within your "
+    "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+    "",
+    "| after | you hold | level |",
+    "|---|---|:-:|",
+    "| leg 1 | 200 WMT shares, 2 short calls | 1 |",
+    "",
+    "**candidates by rank:** 5 of 20 passed your criteria; 15 failed (abs_delta 15, strike_floor 4)",
+    "",
+    "| # | expiry | strike | delta | bid | extrinsic_per_day |  |",
+    "|--:|---|---|--:|--:|--:|---|",
+    "| 1 | 2026-12-18 | 112.5 | 0.32 | 2.80 | 0.0597 | \U0001F7E2 |",
+    "| 2 | 2027-01-15 | 115 | 0.33 | 3.55 | 0.0467 | \U0001F7E2 |",
+    "| 3 | 2026-12-18 | 115 | 0.27 | 2.10 | 0.0448 | \U0001F7E2 |",
+    "",
+    "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER_1931,
+]
+WMT_NONE_TEXT = [
+    "### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares you hold",
+    "",
+    "| account | WMT mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**no candidate passed every criterion: the desk names no best candidate**",
+    "",
+    "**candidates by rank:** 0 of 20 passed your criteria; 20 failed (abs_delta 15, strike_floor 4, earnings "
+    "20, ex_dividend 20)",
+    "",
+    "| # | expiry | strike | delta | bid | extrinsic_per_day |  |",
+    "|--:|---|---|--:|--:|--:|---|",
+    "| 1 | 2026-12-18 | 112.5 | 0.32 | 2.80 | 0.0597 | \U0001F534 earnings, ex_dividend |",
+    "| 2 | 2027-01-15 | 115 | 0.33 | 3.55 | 0.0467 | \U0001F534 earnings, ex_dividend |",
+    "| 3 | 2026-12-18 | 115 | 0.27 | 2.10 | 0.0448 | \U0001F534 earnings, ex_dividend |",
+    "",
+    "- 1, 2, 3 fail earnings: earnings on 2026-11-17 (before the open) fall inside the call's life",
+    "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's "
+    "life",
+    "",
+    "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER_1931,
 ]
 SPY_EX = ("FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the "
           "call's life | FAILS_CRITERION ex_dividend: a second ex-date may fall before the call's last trading day; the "
           "calendar holds one")
-OUTSIDE = "not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band"
-SPY_COLLAR_NONE_TEXT = [
-    SPY_COLLAR_HEADER,
-    "candidates for a collar on the 100 SPY shares: 0 passed your criteria, 10 failed",
-    "no candidate passed every criterion: the desk names no best candidate",
-    "candidate 1: the 2027-03-19 620 put and the 2027-03-19 680 call | net credit 0.75 | cap_within_budget 4.92 | "
-    + SPY_EX,
-    "candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92 | "
-    + SPY_EX,
-    "candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92 | "
-    + SPY_EX,
-    "failed your criteria: 10 (max_net_debit 6, ex_dividend 10)",
-    OUTSIDE, MODEL, LIMIT, ACT, FOOTER_1931,
-]
-SPY_COLLAR_BEST_TEXT = [
-    SPY_COLLAR_HEADER,
-    "candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed",
-    "BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, "
-    "among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion",
-    CAVEAT,
-    "tie on cap_within_budget broken by the put strike (higher first)",
-    "leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, " + SOURCE,
-    "leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, "
-    + SOURCE,
-    "reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside "
-    "your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your "
-    "maximum 25 %; call strike 680 above your stock cost 632.40",
-    "accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by "
-    "#assign-ok)",
-    "accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by "
-    "#assign-ok)",
-    "after both legs: group delta 24.14 (now 100.00), max loss 1165.00 (now 63240.00), max profit 4835.00 (now "
-    "unbounded), breakeven 631.65 (now 632.40)",
-    "leg order: leg 1 first; after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention); "
-    "after leg 2 you hold 100 SPY shares, 1 short call and 1 long put (level 1)",
-    "entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level",
-    "approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); "
-    "your broker's own approval for this account decides",
-    "candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92",
-    "candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92",
-    "failed your criteria: 6 (max_net_debit 6)",
-    OUTSIDE, MODEL, LIMIT, ACT, FOOTER_1931,
-]
-PP_NOTHING_TEXT = ["NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 "
-                   "long put", footer("19:50")]
-CC_NOTHING_TEXT = ["NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask "
-                   "for a roll analysis", footer("19:50")]
-NO_FREE_SHARES_TEXT = ["NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | no free shares: 200 WMT shares are "
-                       "covered by 2 short calls; the desk proposes no covered call", footer("19:50")]
-COLLAR_REFUSED_TEXT = [
-    "REFUSED AG-20261028-03 | SPY collar | opening 1 new long put needs level 2 by the desk's convention; desk.toml "
-    "records your self-attested level 1 | the desk shows nothing above your level; your broker's own approval decides "
-    "what you can enter",
-    footer("19:50"),
-]
-CC_REFUSED_TEXT = [
-    "REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs level 1 by "
-    "the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing above your level; "
-    "your broker's own approval decides what you can enter",
-    footer("19:50"),
-]
-COLLAR_DISABLED_TEXT = ["NOT_APPLICABLE | AG-20261028-03 collar proposal | the collar section is disabled in your "
-                        "structuring.toml", footer("19:50")]
-CRITERIA_MISSING_TEXT = [
-    "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)",
-    footer("19:50"),
-]
 UNACKNOWLEDGED_TAIL = ("the desk names no candidate and prints no ticket while desk.toml, positions.csv or structuring.toml "
                        "differ from what you acknowledged | acknowledge with ack.py config --owner-tapped")
 
@@ -535,7 +691,7 @@ class FailClosedTest(DeskCopy):
         after = sha256_file(self.paths.positions_csv)
         expected = ["UNAVAILABLE | CONFIG CHANGED: positions.csv: sha %s -> sha %s | %s" % (before[:8], after[:8],
                                                                                         UNACKNOWLEDGED_TAIL),
-                    footer("19:50")]
+                    "", footer("19:50")]
         self.assertEqual(expected, self.run_text(SPY, "collar", expected=20))
         payload = self.run_json(SPY, "collar", expected=20)["payload"]
         self.assertEqual(("UNAVAILABLE", "config_unacknowledged"), (payload["verdict"], payload["cause"]))
@@ -562,14 +718,14 @@ class MarketDataTest(DeskCopy):
         self.spy_shares_only()
         lines = self.run_text(SPY, "protective_put", fixture_set="stale", expected=20)
         self.assertEqual(["UNAVAILABLE | AG-20261028-03 protective put proposal | no usable quote of the underlying",
-                          footer("19:50")], lines)
+                          "", footer("19:50")], lines)
         self.assertEqual(1, len(self.ledger()))
         self.assertEqual([], self.reports())
 
     def test_a_holiday_makes_no_request(self) -> None:
         self.spy_shares_only()
         lines = self.run_text(SPY, "collar", now=HOLIDAY_NOW, fixture_set="holiday", expected=20)
-        self.assertEqual(["UNAVAILABLE | AG-20261028-03 collar proposal | the market is closed today",
+        self.assertEqual(["UNAVAILABLE | AG-20261028-03 collar proposal | the market is closed today", "",
                           alert_lint.structuring_footer_line(contract.parse_utc_instant(HOLIDAY_NOW))], lines)
         self.assertEqual([], self.ledger())
 

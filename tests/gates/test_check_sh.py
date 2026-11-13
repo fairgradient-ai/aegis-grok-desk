@@ -218,6 +218,26 @@ class CheckShTests(unittest.TestCase):
         self.assertEqual(1, code, output)
         self.assertIn("skills/: at least one aegis- skill is required", output)
 
+    def test_the_status_symbols_pass_only_inside_a_fenced_example(self) -> None:
+        # 0.2.1: the Structuring Desk's desk view colours its checks with three symbols, and the documents quote
+        # its output in fenced blocks; every other emoji, and these three outside a fence, still fail
+        status = "| floor | 4.34 % below | 3 to 10 % | \U0001F7E2 |\n| cap | 9.73 % above | 2 to 10 % | \U0001F7E1 |\n" \
+                 "| 2 | 2026-12-18 112.5 | debit 0.70 | \U0001F534 credit_only |\n"
+        with fixture_tree() as root:
+            write(root, "docs/FAQ.md", "# FAQ\n\nA desk view, synthetic:\n\n```text\n" + status + "```\n")
+            code, output = run_check(root)
+        self.assertEqual(0, code, output)
+        for name, text in (("outside", "# FAQ\n\nA green circle \U0001F7E2 outside a fence.\n"),
+                           ("other", "# FAQ\n\n```text\n| floor | ✅ |\n```\n"),
+                           ("selector", "# FAQ\n\n```text\n| floor | \U0001F7E2️ |\n```\n"),
+                           ("unclosed", "# FAQ\n\n```text\n| floor | \U0001F7E2 |\n")):
+            with self.subTest(case=name):
+                with fixture_tree() as root:
+                    write(root, "docs/FAQ.md", text)
+                    code, output = run_check(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("docs/FAQ.md: contains emoji", output)
+
     def test_emoji_outside_the_original_blocks_fail(self) -> None:
         # U+2B50 white medium star, U+23F0 alarm clock, U+1F197 OK button, U+1F0CF playing
         # card and a regional-indicator flag, one file each so every code point is attributable.

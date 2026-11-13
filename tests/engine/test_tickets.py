@@ -453,9 +453,11 @@ class LetAssignDividendTest(unittest.TestCase):
         rendered = tickets.render_ticket(ticket)
         assert_lints(self, rendered)
         lines = rendered.text.split("\n")
-        self.assertEqual("valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
-                         lines[-3])
-        return ticket.let_assign[0], lines[-4]
+        self.assertIn("> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request", lines)
+        # the LET_ASSIGN table's ex-dividend row, or its if-assigned row when there is no dividend line
+        cells = dict(line[2:-2].split(" | ", 1) for line in lines
+                     if line.startswith(("| ex-dividend | ", "| if assigned | ")))
+        return ticket.let_assign[0], cells.get("ex-dividend") or "if assigned: " + cells["if assigned"]
 
     def test_an_ex_date_before_the_last_trading_day(self) -> None:
         leg, line = self.dividend_line(WMT_EX_DIVIDEND.replace("2026-11-24", "2026-11-19"))
@@ -480,7 +482,7 @@ class LetAssignDividendTest(unittest.TestCase):
         leg, line = self.dividend_line('ex_dividend = { status = "none", source = "owner-entered (fixture)", '
                                        'checked_utc = 2026-11-01T12:00:00Z }\n')
         self.assertEqual(("none", True, None), (leg.dividend.status, leg.dividend.known, leg.dividend.ex_date))
-        self.assertTrue(line.startswith("if assigned: 200 WMT shares are called away at the strike, cash +21000.00"),
+        self.assertTrue(line.startswith("if assigned: 200 WMT shares are called away at the strike, cash +21,000.00"),
                         line)
 
 
@@ -573,24 +575,29 @@ class TextTest(unittest.TestCase):
         rendered = tickets.render_ticket(run(self, WMT, "ROLL", expiration=JAN15, strike="115"))
         self.assert_lints(rendered)
         lines = rendered.text.split("\n")
-        self.assertEqual("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 "
-                         "of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)", lines[0])
-        self.assertEqual("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
-                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", lines[1])
-        self.assertEqual("leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | "
-                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", lines[2])
-        self.assertIn("cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; "
-                      "the desk does not see your cash balance", lines)
+        self.assertEqual("### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)", lines[0])
+        self.assertEqual(["| account | computed | valid until | quotes |", "|---|---|---|---|",
+                          "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |", "",
+                          "**the legs:**",
+                          "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
+                          "quote grade B",
+                          "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | "
+                          "quote grade B", "",
+                          "| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
+                          "| net cash | +10.00 | +35.00 |", "| realized on the closing leg | -16.00 | -1.00 |",
+                          "| the most the steps need at once | 700.00 |  |"], lines[2:15])
+        self.assertIn("> - the desk does not see your cash balance", lines)
         self.assertEqual(STAMP, rendered.as_of)
 
     def test_a_missing_mid_prints_the_conservative_side_alone(self) -> None:
         w = structuring_text.Writer()
-        self.assertEqual("cash: -700.00 at the conservative prices (no mid: a quote side is stale); the most the steps "
-                         "need at once: 700.00; the desk does not see your cash balance",
-                         tickets.cash_words(w, tickets.cash_summary([(D("-700.00"), None)])))
-        self.assertEqual("realized on the closing leg: -16.00 at the conservative side (no mid: a quote side is stale)",
-                         tickets.realized_words(w, [tickets.RealizedLeg(4, D("-16.00"), None)]))
-        self.assertEqual(["-700.00", "700.00", "-16.00"], w.emitted)
+        self.assertEqual(["| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
+                          "| net cash | -700.00 | no mid: a quote side is stale |",
+                          "| realized on the closing leg | -16.00 | no mid: a quote side is stale |",
+                          "| the most the steps need at once | 700.00 |  |"],
+                         tickets.cash_lines(w, tickets.cash_summary([(D("-700.00"), None)]),
+                                            [tickets.RealizedLeg(4, D("-16.00"), None)]))
+        self.assertEqual(["-700.00", "-16.00", "700.00"], w.emitted)
 
     def test_a_window_cut_short_by_the_close(self) -> None:
         ticket = run(self, WMT, "CLOSE")
@@ -598,9 +605,8 @@ class TextTest(unittest.TestCase):
         rendered = tickets.render_ticket(ticket)
         self.assert_lints(rendered)
         lines = rendered.text.split("\n")
-        self.assertTrue(lines[0].endswith("| computed 19:50 UTC, valid until 21:00 UTC"), lines[0])
-        self.assertIn("valid until 21:00 UTC: after that its quotes are too old, and a new ticket needs a new request",
-                      lines)
+        self.assertEqual("| 1 of desk.toml (margin) | 19:50 UTC | 21:00 UTC | 19:31 UTC, 15-min delayed |", lines[4])
+        self.assertIn("> - after 21:00 UTC its quotes are too old, and a new ticket needs a new request", lines)
 
     def test_a_rulebook_change_prints_first_and_does_not_block(self) -> None:
         change = [{"name": "rulebook", "old": "a" * 64, "new": "b" * 64}]
@@ -608,6 +614,8 @@ class TextTest(unittest.TestCase):
         self.assert_lints(rendered)
         self.assertTrue(rendered.text.startswith("CONFIG CHANGED: adopted rulebook: sha aaaaaaaa -> sha bbbbbbbb | the "
                                                  "structuring text below reads the files as they are now"))
+        self.assertEqual(["", "### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)"],
+                         rendered.text.split("\n")[1:3])
 
 
 QUARANTINED_GROUP = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,"
@@ -626,8 +634,8 @@ class FixerTicketTest(unittest.TestCase):
         lines = rendered.text.split("\n")
         self.assertIn("no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by "
                       "exception; your broker's cutoff is 16:30 ET (desk.toml)", lines)
-        self.assertIn("if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left "
-                      "to expiry can be closed only while the session trades", lines)
+        self.assertIn("| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left "
+                      "to expiry can be closed only while the session trades |", lines)
         self.assertNotIn("21:30 UTC", rendered.text)
 
     def test_an_early_close_last_trading_day(self) -> None:
@@ -695,8 +703,8 @@ class FixerTicketTest(unittest.TestCase):
         self.assertEqual((D("200.5"), D("20892.10")), (shares.plan.quantity, shares.cash_conservative))
         rendered = tickets.render_ticket(ticket)
         assert_lints(self, rendered)
-        self.assertIn("leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote "
-                      "grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", rendered.text.split("\n"))
+        self.assertIn("- leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote "
+                      "grade A", rendered.text.split("\n"))
         roll = run(self, WMT, "ROLL", expiration=JAN15, strike="115", replace=("equity,WMT,,200,", "equity,WMT,,200.5,"))
         self.assertEqual("TICKET", roll.verdict)
 

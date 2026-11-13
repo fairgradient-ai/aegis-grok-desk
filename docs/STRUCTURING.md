@@ -249,10 +249,13 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   | `FAILS_CRITERION` | fails `strike_floor`, `credit_only`, `earnings` or `ex_dividend` |
   | `ELIGIBLE` | passes every criterion |
 
-  In the text, both failing tiers print as `FAILS_CRITERION <key>: <words>` with the value and your band. The JSON
-  carries each reason as `{key, code, value, threshold}`.
-- **Not priced.** An UNPRICED candidate prints `not priced: <words>` and is counted apart, as `<n> not priced`: it was
-  never judged against your criteria, so it never counts as failing them. When not one candidate of the window could
+  In the text, both failing tiers print alike: a red status cell with the keys a candidate fails and, under the
+  candidates table of an answer with no best candidate, `<ranks> fail <key>: <words>` with the value and your band. A
+  ticket's checks table shows a failing criterion as a red row. The JSON carries each reason as `{key, code, value,
+  threshold}`.
+- **Not priced.** An UNPRICED candidate's status cell reads `not priced`, with `<rank> not priced: <words>` under the
+  table, and it is counted apart, as `<n> not priced`: it was never judged against your criteria, so it never counts
+  as failing them. When not one candidate of the window could
   be priced, the answer is UNAVAILABLE (exit 20, no report): `no candidate in your window could be priced`, followed by
   the reason they share or by `(the reasons differ; the JSON lists each)`.
 
@@ -301,20 +304,24 @@ A short call (a covered call, a replacement call, a collar's call) is checked ag
   only when the held call's life did not already include it). `#assign-ok` on any open row of the group, or
   `ex_dividend = "allow"`, accepts it.
 - A listed earnings or ex-dividend date that has already passed counts as unknown and inside the call's life,
-  because the next one is not known. Synthetic, the expiry-day ROLL ticket of AG-20261020-01 for the 2027-01-15 115
-  call (`--fixture-set expiry_day` at 2026-11-20 19:50 UTC):
+  because the next one is not known. Synthetic, the expiry-day roll analysis of AG-20261020-01 (`--fixture-set
+  expiry_day` at 2026-11-20 19:50 UTC), which names no best candidate, says under its candidates table:
 
   ```text
-  FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
+  - 1, 2, 3 fail earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
   ```
+
+  The same day's ROLL ticket for the 2027-01-15 115 call shows it as a red row of its checks table: `earnings`,
+  `2026-11-17 has passed, the next is unknown: counted inside the new call's life`, `excluded by your structuring.toml`.
 
 - The calendar holds one next ex-date per symbol. When a call's last trading day is at least 80 calendar days after
   that date, a second ex-date may fall inside its life, so the call also gets `a second ex-date may fall before the
   call's last trading day; the calendar holds one`.
-- An accepted label stays visible: `accepted <key>: <words> (by #assign-ok)` or `(by your structuring.toml)`.
+- An accepted label stays visible, as a yellow row whose criteria cell reads `accepted by #assign-ok`, `accepted by
+  #earnings-ok` or `accepted by your structuring.toml`.
 - A short call in the money whose bid's time value is below a dividend before its last trading day, or a long put
-  with an absolute delta of 0.80 or more, gets an `american-style note:` line: early exercise can matter there, and
-  the European model does not price it.
+  with an absolute delta of 0.80 or more, gets an `american-style note:` in the notes: early exercise can matter
+  there, and the European model does not price it.
 
 ## The approval-level check
 
@@ -379,49 +386,105 @@ Every example below ran on a copy of `tests/fixtures/desk` with `structuring.tom
 and acknowledged, at 2026-11-03 19:50 UTC (`--offline --now 2026-11-03T19:50:00Z`), on the recorded quotes of 19:31
 UTC. Every value is made up; it is not market data.
 
+Each answer is a desk view in markdown, built to read in a chat on a phone: a title, a context strip, the legs as list
+items, tables for the checks, the group's numbers and the ranked candidates, and the notes as a quoted list. The
+Aegis Structuring Desk posts it as it is, never inside a code block, so the tables render. A status column colours each
+check: a green circle for a criterion that passes, a yellow circle for an earnings or ex-dividend label you accepted
+(`#earnings-ok`, `#assign-ok`, or `allow` in the section), and a red circle for a criterion that fails, with the keys
+it fails. The quote source is named once, in the notes.
+
 ### A roll analysis
 
 `roll_analysis.py --trade AG-20261020-01`: the WMT covered call, 200 shares at 98.50 and 2 short 2026-11-20 105
 calls whose row carries `#assign-ok`. One replacement passes every criterion.
 
 ```text
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
-BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
-reasons: 73 calendar days inside your window 40 to 75; absolute delta 0.33 inside your band 0.15 to 0.35; bid 3.55 at or above your minimum 0.50; spread 2.78 % within your maximum 25 %; a net credit of 0.05 (10.00 in all) passes credit_only; strike 115 above your stock cost 98.50
-accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
-after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now 1984.00), breakeven 95.03 (now 95.08)
-candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
-candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
-failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
+
+| account | WMT mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
+- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
+- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
+| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
+| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
+| bid | 3.55 | at least 0.50 | 🟢 |
+| calendar days | 73 | 40 to 75 | 🟢 |
+| spread | 2.78 % | at most 25 % | 🟢 |
+| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 19,016.00 | 19,006.00 |
+| max profit | 1,984.00 | 3,994.00 |
+| breakeven | 95.08 | 95.03 |
+| group delta | 101.71 | 134.07 |
+
+**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | 🟢 |
+| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
+| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
+
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
-- `leg 1 of 2: closes your short ... | leg 2 of 2: opens a new short ...` is the fixed leg grammar. It names the
+- `leg 1 of 2: closes your short ...` and `leg 2 of 2: opens a new short ...` are the fixed leg grammar. They name the
   effect, the count, the root, the expiration, the strike and the right, and no trade-side word or order field.
-- The best candidate's lines carry its reasons and the state after both legs; the other candidates print their net
-  credit, their score and every criterion they fail. The JSON lists every candidate with its after-state.
-- `failed your criteria` counts each key a candidate fails, so one candidate can count twice.
+- The best candidate's checks table shows each criterion with its value and your band; its group table shows the
+  group now and after both legs. The candidates table ranks the candidates, the best first, each with its net per
+  share, its score and its status. The JSON lists every candidate with its after-state.
+- The caption's counts list each key the failing candidates fail, so one candidate can count twice.
 
 The same request for the NVDA covered call, whose row carries `#earnings-ok` but not `#assign-ok`, names no best
-candidate:
+candidate; the items under the table say why each shown candidate fails:
 
 ```text
-STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
-no candidate passed every criterion: the desk names no best candidate
-the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
-candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call
+
+| account | NVDA mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 148.925 | 141.20 | 19:31 UTC, 15-min delayed |
+
+**no candidate passed every criterion: the desk names no best candidate**
+- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
+
+**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | 🔴 credit_only, ex_dividend |
+| 2 | 2026-12-18 | 160 | debit 1.45 | 0.0276 | 🔴 credit_only, ex_dividend |
+| 3 | 2027-01-15 | 165 | debit 1.35 | 0.0179 | 🔴 credit_only, ex_dividend |
+
+- 1 fails credit_only: a net debit of 0.05
+- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
+- 2 fails credit_only: a net debit of 1.45
+- 3 fails credit_only: a net debit of 1.35
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
@@ -434,34 +497,69 @@ are never counted as failing your criteria.
 named by the roll analysis above:
 
 ```text
-TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold 200 WMT shares and 2 short calls (level 1)
-in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
-entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
-approval: the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; the desk does not see your cash balance
-realized on the closing leg: -16.00 at the conservative side (mid -1.00)
-accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
-after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
-after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)
+
+| account | computed | valid until | quotes |
+|---|---|---|---|
+| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
+
+**the legs:**
+- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
+- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B
+
+| cash | at the conservative prices | at the mids |
+|---|--:|--:|
+| net cash | +10.00 | +35.00 |
+| realized on the closing leg | -16.00 | -1.00 |
+| the most the steps need at once | 700.00 |  |
+
+| check | the new call | your criteria |  |
+|---|---|---|:-:|
+| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
+| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
+| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
+| bid | 3.55 | at least 0.50 | 🟢 |
+| calendar days | 73 | 40 to 75 | 🟢 |
+| spread | 2.78 % | at most 25 % | 🟢 |
+| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 19,016.00 | 19,006.00 |
+| max profit | 1,984.00 | 3,994.00 |
+| breakeven | 95.08 | 95.03 |
+| group delta | 101.71 | 134.07 |
+
+**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 200 WMT shares, no option | 0 |
+| leg 2 | 200 WMT shares, 2 short calls | 1 |
+
+- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
+- entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
+
+> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - the desk does not see your cash balance
+> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
-- Each leg shows its bid, ask and mid, its quote grade and the quotes' time. You supply the limit; the desk prints
-  none.
-- `cash` is at the conservative side of each leg (the bid for what you would receive, the ask for what you would pay),
-  then at the mid. "The most the steps need at once" is the largest amount paid out before a later leg brings cash in.
-  The desk does not see your cash balance.
+- Each leg shows its bid, ask and mid and its quote grade; the context strip gives the quotes' time. You supply the
+  limit; the desk prints none.
+- The cash table is at the conservative side of each leg (the bid for what you would receive, the ask for what you
+  would pay), then at the mid. "The most the steps need at once" is the largest amount paid out before a later leg
+  brings cash in. The desk does not see your cash balance.
 - `realized on the closing leg` estimates the realized P/L of the closed leg at the conservative side and at the mid.
 - A ticket is computed only while the session is open. It stays valid for 30 minutes, or until the close if that
   comes first; after that its quotes are too old, and a new ticket needs a new request.
-- A replacement that fails a criterion is still a ticket (exit 0), with its `FAILS_CRITERION` lines: you named it.
+- A replacement that fails a criterion is still a ticket (exit 0), its failing criteria in red: you named it.
 - A replacement the desk cannot price is UNAVAILABLE (exit 20, `replacement_unpriced`), with the reason. Synthetic,
   two ROLL tickets of the NVDA group:
 
@@ -476,14 +574,25 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 A LET_ASSIGN ticket has no leg to enter:
 
 ```text
-TICKET AG-20261020-01 | WMT covered call | the short option left to expiry (action LET_ASSIGN) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
+### TICKET AG-20261020-01 | WMT covered call: the short option left to expiry (action LET_ASSIGN)
+
+| account | computed | valid until | quotes |
+|---|---|---|---|
+| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
+
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
-the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike
-if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
-if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares +1984.00
-the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
-valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
-after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines
+
+| the 2026-11-20 105 call |  |
+|---|---|
+| now | out of the money: the spot mid 104.23 is below its strike |
+| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades |
+| if assigned | 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00 |
+| ex-dividend | the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20 |
+
+> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
@@ -499,55 +608,127 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 long put row, so the SPY group holds shares only, and whose share row carries `#assign-ok`:
 
 ```text
-PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
-BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum 25 %
-after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now unbounded), breakeven 655.50 (now 632.40)
-leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)
-approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-candidate 2: the 2027-03-19 620 put | ask 25.65 | stress_cost_per_day 0.1858
-candidate 3: the 2027-03-19 625 put | ask 27.05 | stress_cost_per_day 0.1868
-failed your criteria: 7 (floor_pct 7)
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
+
+| account | SPY mid | your cost | quotes |
+|---|--:|--:|---|
+| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
+- leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| floor | 5.88 % below | 3 to 10 % | 🟢 |
+| cost | ask 23.10 (2,310.00 in all) |  |  |
+| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | 🟢 |
+| calendar days | 136 | 120 to 210 | 🟢 |
+| spread | 0.87 % | at most 25 % | 🟢 |
+
+| the group | now | after the leg |
+|---|--:|--:|
+| max loss | 63,240.00 | 4,550.00 |
+| max profit | unbounded | unbounded |
+| breakeven | 632.40 | 655.50 |
+| group delta | 100.00 | 69.69 |
+
+**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 100 SPY shares, 1 long put | 2 |
+
+**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+
+| # | expiry | strike | floor | ask | stress_cost_per_day |  |
+|--:|---|---|--:|--:|--:|---|
+| 1 | 2027-03-19 | 610 | 5.88 % | 23.10 | 0.1856 | 🟢 |
+| 2 | 2027-03-19 | 620 | 4.34 % | 25.65 | 0.1858 | 🟢 |
+| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | 🟢 |
+
+> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
 On the same copy, `--structure collar`:
 
 ```text
-PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed
-BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-tie on cap_within_budget broken by the put strike (higher first)
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your maximum 25 %; call strike 680 above your stock cost 632.40
-accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
-accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
-after both legs: group delta 24.14 (now 100.00), max loss 1165.00 (now 63240.00), max profit 4835.00 (now unbounded), breakeven 631.65 (now 632.40)
-leg order: leg 1 first; after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention); after leg 2 you hold 100 SPY shares, 1 short call and 1 long put (level 1)
-entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
-approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92
-candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92
-failed your criteria: 6 (max_net_debit 6)
-not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold
+
+| account | SPY mid | your cost | quotes |
+|---|--:|--:|---|
+| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates that passed every criterion
+- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A
+- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| floor | 4.34 % below | 3 to 10 % | 🟢 |
+| cap | 4.92 % above | 2 to 10 % | 🟢 |
+| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | 🟢 |
+| call strike | 680 | at or above your cost 632.40 | 🟢 |
+| calendar days | 136 | 120 to 210 | 🟢 |
+| spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
+| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
+| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 63,240.00 | 1,165.00 |
+| max profit | unbounded | 4,835.00 |
+| breakeven | 632.40 | 631.65 |
+| group delta | 100.00 | 24.14 |
+
+**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 100 SPY shares, 1 long put | 2 |
+| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |
+
+- entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+
+**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+
+| # | expiry | put / call | floor | cap | net per share |  |
+|--:|---|---|--:|--:|---|---|
+| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | 🟢 |
+| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | 🟢 |
+| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | 🟢 |
+
+- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+
+> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
+> - tie on cap_within_budget broken by the put strike (higher first)
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
+
+When the contracts do not cover every share (`floor(shares / 100)` contracts), an item under the group table says so,
+for example `2 contracts cover 200 of your 250.5 shares; the other 50.5 are not part of the covered call`.
 
 On the fixture itself, the SPY shares already carry a put, so a proposal has nothing to add:
 
 ```text
 NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
 ```
 
@@ -557,6 +738,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
   ```text
   NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
+
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
   ```
 
@@ -564,11 +746,12 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
   ```text
   UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to act on: the session is not open
+
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 22:00 UTC
   ```
 
 - On a lint failure the tool prints only `WITHHELD | the text of <tool>.py failed the alert lint (<codes>) and is
-  withheld; the JSON of <tool>.py --json shows it` and the footer, and exits 1.
+  withheld; the JSON of <tool>.py --json shows it`, a blank line and the footer, and exits 1.
 
 ## What each answer exits with, and what it writes
 
@@ -610,7 +793,9 @@ tickets, its roll analyses and its proposals. It refuses rule content under the 
 reference, a ranked candidate, an action tag or the first line of a structuring answer under the other two. In
 structuring mode it also refuses advice, preference, urgency, suitability, probability, risk, return and valuation
 language, any claim that a text is not advice, order-type and duration abbreviations, a price after "at", "for",
-"limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed grammar.
+"limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed grammar. Its
+one exception to plain ASCII is the desk view's three status circles, and only at the start of a table cell of a
+structuring text.
 
 The one-time disclosure, `structuring-suggestions-1`, which the interview shows last and `structuring.toml` records as
 acknowledged:

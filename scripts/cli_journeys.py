@@ -134,7 +134,7 @@ ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
     ("fail_homoglyph", "non_ascii"), ("fail_imperative_execute", "imperative_start"),
     ("fail_imperative_fill", "imperative_start"), ("fail_order_kind", "forbidden_language"),
-    ("fail_structuring_under_rules_footer", "footer_missing"),
+    ("fail_structuring_under_rules_footer", "non_ascii"),
     ("fail_rules_text_under_structuring_footer", "imperative_start"),
     ("fail_structuring_leg_grammar", "order_field"), ("fail_structuring_go_with", "forbidden_language"),
     ("fail_structuring_at_price", "order_field"),
@@ -664,15 +664,14 @@ JOURNEYS += (
                   "payload.files.json": "reports/rolls/AG-20261020-01-20261103T195000Z.json",
                   "payload.journal": "journal/structuring.jsonl",
                   "payload.message": TextMatch(
-                      prefix="STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml "
-                             "(sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-                      contains=("BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day",
-                                "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
-                                "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
-                                "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new "
-                                "call's life (by #assign-ok)",
-                                "after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit "
-                                "3994.00 (now 1984.00), breakeven 95.03 (now 95.08)",
+                      prefix="### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short "
+                             "2026-11-20 105 call",
+                      contains=("**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**",
+                                "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+                                "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
+                                "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by "
+                                "#assign-ok | \U0001F7E1 |",
+                                "| max loss | 19,016.00 | 19,006.00 |",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES",
@@ -682,10 +681,10 @@ JOURNEYS += (
                   "payload.candidates.0.status": "FAILS_CRITERION", "payload.candidates.0.score": "0.0299",
                   "payload.requests.made": 7, "payload.lint.ok": True,
                   "payload.message": TextMatch(
-                      prefix="STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call",
-                      contains=("no candidate passed every criterion: the desk names no best candidate",
-                                "FAILS_CRITERION credit_only: a net debit of 0.05",
-                                "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls "
+                      prefix="### STRUCTURING AG-20261022-02 | NVDA covered call",
+                      contains=("**no candidate passed every criterion: the desk names no best candidate**",
+                                "| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |",
+                                "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls "
                                 "inside the new call's life", STRUCTURING_FOOTER),
                       excludes=("BEST CANDIDATE",))},
                  steps=REGULAR_STRUCTURING),
@@ -717,27 +716,29 @@ JOURNEYS += (
                   "payload.emitted.footer": "structuring", "payload.files.written": True,
                   "payload.journal": "journal/structuring.jsonl",
                   "payload.message": TextMatch(
-                      prefix="TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 "
-                             "of desk.toml (margin)",
-                      contains=("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425",
-                                "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60",
-                                "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00",
-                                "after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03",
+                      prefix="### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)",
+                      contains=("| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                                "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 "
+                                "| quote grade B",
+                                "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 "
+                                "| quote grade B",
+                                "| net cash | +10.00 | +35.00 |", "| the most the steps need at once | 700.00 |  |",
+                                "| max loss | 19,016.00 | 19,006.00 |",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket NVDA ROLL, new 2027-01-15 160 call -> TICKET with two "
-                 "FAILS_CRITERION lines",
+                 "failed criteria",
                  ("exit_ticket.py", "--trade", "AG-20261022-02", "--action", "ROLL", "--new-expiration", "2027-01-15",
                   "--new-strike", "160"), 0,
                  {"status": "ok", "payload.verdict": "TICKET", "payload.ticket_id": "TK-AG-20261022-02-ROLL-20261103T195000Z",
                   "payload.cash.net_conservative": "-10.00", "payload.cash.peak_needed": "660.00",
                   "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 4,
                   "payload.lint.ok": True, "payload.files.written": True,
-                  "payload.message": TextMatch(prefix="TICKET AG-20261022-02 | NVDA covered call", contains=(
-                      "FAILS_CRITERION credit_only: a net debit of 0.05",
-                      "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
-                      "call's life",
-                      "after both legs: group delta 137.35, max loss 27640.00, max profit 4360.00, breakeven 138.20",
+                  "payload.message": TextMatch(prefix="### TICKET AG-20261022-02 | NVDA covered call", contains=(
+                      "| net per share | debit 0.05 (10.00 in all) | credit only | \U0001F534 |",
+                      "| ex-dividend | 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded by your "
+                      "structuring.toml | \U0001F534 |",
+                      "| max loss | 27,630.00 | 27,640.00 |",
                       STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket SPY MONETIZE_PUT -> TICKET, cash +980.00",
@@ -749,11 +750,13 @@ JOURNEYS += (
                   "payload.puts.0.itm": False, "payload.requests.made": 2, "payload.lint.ok": True,
                   "payload.files.written": True,
                   "payload.message": TextMatch(
-                      prefix="TICKET AG-20261028-03 | SPY protective put | the long put closed for its value (action "
-                             "MONETIZE_PUT) | account 2 of desk.toml (ira)",
-                      contains=("leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95",
-                                "cash: +980.00 at the conservative prices (mid +995.00); the most the steps need at once: 0.00",
-                                "after the leg, your 100 SPY shares carry no put: their downside is unhedged",
+                      prefix="### TICKET AG-20261028-03 | SPY protective put: the long put closed for its value "
+                             "(action MONETIZE_PUT)",
+                      contains=("| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                                "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | "
+                                "quote grade B",
+                                "| net cash | +980.00 | +995.00 |", "| the most the steps need at once | 0.00 |  |",
+                                "| after the leg | your 100 SPY shares carry no put: their downside is unhedged |",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, exit_ticket WMT ROLL on expiration day -> TICKET, the held call's ask "
@@ -763,12 +766,11 @@ JOURNEYS += (
                   "payload.cash.net_conservative": "558.00", "payload.cash.peak_needed": "32.00",
                   "payload.replacement.candidate.status": "FAILS_CRITERION", "payload.requests.made": 4,
                   "payload.lint.ok": True,
-                  "payload.message": TextMatch(prefix="TICKET AG-20261020-01 | WMT covered call", contains=(
-                      "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
-                      "grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | quote grade E: the conservative side "
-                      "stands",
-                      "FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown "
-                      "and counts as inside the new call's life",
+                  "payload.message": TextMatch(prefix="### TICKET AG-20261020-01 | WMT covered call", contains=(
+                      "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+                      "grade E | quote grade E: the conservative side stands",
+                      "| earnings | 2026-11-17 has passed, the next is unknown: counted inside the new call's life | "
+                      "excluded by your structuring.toml | \U0001F534 |",
                       STRUCTURING_FOOTER))},
                  now=EXPIRY_DAY_NOW, steps=EXPIRY_DAY_STRUCTURING),
     # Failing closed (addendum S8): every action, CLOSE included, needs an acknowledged structuring.toml.

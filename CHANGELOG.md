@@ -7,6 +7,39 @@
   (`| bid P, ask P, mid P | quote grade G`) when the text names its quote source once in its header: the groundwork
   for the Structuring Desk's easier-to-read layout. Any other list mark, an indent or a free tail after a leg is
   still `order_field`.
+- **The Structuring Desk's answers are now a desk view in markdown**, built to read in a chat on a phone instead of
+  long `|`-joined lines. A roll analysis, a proposal and a ticket each print a `###` title; a context strip (the
+  account, the underlying's mid, your cost or the ticket's times, the quotes' time); the legs as list items in the
+  fixed leg grammar (never a table with order columns); the caveat as a quote; a checks table with each criterion's
+  value, your band and a status column; the group now and after the legs; the approval-level check with a table of
+  the steps; the ranked candidates with their status; and the notes as a quoted list (the objective's words, the
+  quote source named once, the model line, the criteria sha, the limit and act lines), then a blank line and the
+  footer. Amounts carry thousands separators, the best candidate's rank and score are bold, and a net prints in words
+  (`credit 0.05 (10.00 in all)`, `debit 0.70`) instead of a negative net credit. The Aegis Structuring Desk posts the
+  text as it is, never in a code block.
+- The status column: a green circle (U+1F7E2) for a criterion that passes, a yellow circle (U+1F7E1) for an earnings
+  or ex-dividend label you accepted (`accepted by #assign-ok`, `#earnings-ok` or `your structuring.toml`), a red
+  circle (U+1F534) with the keys a candidate fails. An answer with no best candidate lists under its candidates table
+  why each shown candidate fails (`1, 2, 3 fail ex_dividend: ...`, `4 not priced: ...`).
+- A proposal whose contracts cover fewer shares than the group holds says so under the group table (`3 contracts
+  cover 300 of your 321.6301 shares; the other 21.6301 are not part of the collar`), which explains an unbounded max
+  profit on an odd lot.
+- Tickets: the cash at the conservative prices and at the mids, the realized P/L of a closing leg and the most the
+  steps need at once form one table; a LET_ASSIGN ticket's short options and a MONETIZE_PUT ticket's puts are
+  key-value tables; the act
+  line reads `if you decide to act, you type it into your brokerage account yourself`, beside the unchanged `you
+  supply the limit; the desk prints none`. `approval.approval_lines` returns the heading line and a steps table
+  (`leg_order_line` and `step_line` are gone).
+- The alert lint's one exception to plain ASCII: the three status circles, only at the start of a table cell (`| `
+  before, a space after) of a structuring text and never in its footer; anywhere else they are `non_ascii`. The
+  structuring-content check also finds a first line behind `###` or `**`. `check.sh` step 3 exempts the three circles
+  from the docs emoji gate only inside a closed fenced block that quotes the desk's output.
+- The alert fixtures `pass_structuring_*` are regenerated and the `fail_structuring_*` fixtures re-derived from the
+  desk view (`fail_structuring_under_rules_footer` now also fails `non_ascii`); the CLI journeys match the new text.
+  The guide's examples (`docs/STRUCTURING.md`), the agent's "Reading the output", the roll, proposals, ticket and role
+  skills, `SECURITY.md`, `CONTRIBUTING.md`, `docs/POSITIONS_CSV.md` and the counsel items in `docs/RELEASE.md` follow
+  the desk view; the template's skill hashes are updated.
+- 4 more tests, 3108 in all (floor 3108).
 
 ## 0.2.0 (unreleased)
 
