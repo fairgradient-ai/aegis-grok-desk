@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-13)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).
 - **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run
