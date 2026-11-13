@@ -48,9 +48,9 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 What the desk never does: it proposes no new symbol, no spread, no uncovered short option and no cash-secured put. A
 group that already holds an option leg, or fewer than 100 shares, or whose shares a short call of another group in the
 same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index underlyings are NOT_APPLICABLE, because
-the sandbox cannot quote them. The roll analysis of long puts, short puts and collars, weekly expirations, the American
-lattice, scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for Stage 2 (not in
-this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
+the data source cannot quote index options. The roll analysis of long puts, short puts and collars, weekly
+expirations, the American lattice, scenario and iv_snapshot, a cash-balance check and per-account approval levels are
+planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
 ROLL of either collar leg is NOT_APPLICABLE.
 
 ## Only when you ask
@@ -99,7 +99,7 @@ and the connected-apps check), because the interview ends in an owner-tapped com
 4. The Aegis Desk Lead then runs `ack.py config --owner-tapped` after your tap. Synthetic, the same copy:
 
    ```text
-   configuration acknowledged at 2026-11-03 19:49 UTC: desk.toml sha 0af433cf, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c
+   configuration acknowledged at 2026-11-03 19:49 UTC: desk.toml sha f08a18dc, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c
    ```
 
 An existing `structuring.toml` is refused (exit 1, `structuring_exists`) unless you tap `--replace --owner-tapped`,
@@ -385,7 +385,7 @@ UTC. Every value is made up; it is not market data.
 calls whose row carries `#assign-ok`. One replacement passes every criterion.
 
 ```text
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
@@ -412,7 +412,7 @@ The same request for the NVDA covered call, whose row carries `#earnings-ok` but
 candidate:
 
 ```text
-STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
@@ -435,8 +435,8 @@ named by the roll analysis above:
 
 ```text
 TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold 200 WMT shares and 2 short calls (level 1)
 in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
 entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
@@ -499,11 +499,11 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 long put row, so the SPY group holds shares only, and whose share row carries `#assign-ok`:
 
 ```text
-PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
 BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum 25 %
 after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now unbounded), breakeven 655.50 (now 632.40)
 leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)
@@ -520,13 +520,13 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 On the same copy, `--structure collar`:
 
 ```text
-PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed
 BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
 tie on cap_within_budget broken by the put strike (higher first)
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your maximum 25 %; call strike 680 above your stock cost 632.40
 accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
 accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
@@ -575,7 +575,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 | Code | Answers | Files | Journal record |
 | --- | --- | --- | --- |
 | 0 | BEST, NONE_QUALIFIES, NOT_APPLICABLE and NOTHING_TO_PROPOSE (roll analyses and proposals); TICKET and NOT_APPLICABLE (tickets) | a roll analysis or a proposal writes its report only for BEST and NONE_QUALIFIES (a complete evaluation); NOT_APPLICABLE and NOTHING_TO_PROPOSE write no report, only their journal record; a ticket writes its file only on TICKET | yes |
-| 20 | UNAVAILABLE (a quote, an expiration list or a chain the answer needs is missing or stale, `no_candidate_priced`, a quarantined group in `positions.csv` (`positions_quarantined`), a closed session for a ticket, `replacement_not_listed`, `replacement_unpriced`, `criteria_missing`, `config_unacknowledged`, and the market-data refusals `no_token`, `production_host`, `token_file_mode` and `holiday_table_expired`) and REFUSED (`approval_level`, or `intermediate_exposure`, which the fixed leg order rules out) | none | yes |
+| 20 | UNAVAILABLE (a quote, an expiration list or a chain the answer needs is missing or stale, `no_candidate_priced`, a quarantined group in `positions.csv` (`positions_quarantined`), a closed session for a ticket, `replacement_not_listed`, `replacement_unpriced`, `criteria_missing`, `config_unacknowledged`, and the market-data refusals `no_credential`, `live_host`, `credential_file_mode` and `holiday_table_expired`) and REFUSED (`approval_level`, or `intermediate_exposure`, which the fixed leg order rules out) | none | yes |
 | 1 | `unknown_trade`, `desk_root`, `config_invalid`, `positions_invalid`, `calendar_invalid`, `structuring_invalid`, `io_error`, `ticket_exists`, `lint_failed` (the WITHHELD line) | none | none |
 | 2 | usage: a missing or malformed flag | none | none |
 
@@ -616,7 +616,7 @@ The one-time disclosure, `structuring-suggestions-1`, which the interview shows 
 acknowledged:
 
 ```text
-The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list candidates from delayed Tradier sandbox quotes: closing or unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and the approval level you stated; it does not see your cash, your other holdings, your objectives or your taxes. It never places anything: you decide, you supply the limit and you act in your brokerage account. Options involve substantial risk; you confirm that you received the OCC booklet Characteristics and Risks of Standardized Options.
+The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list candidates from delayed Alpaca paper quotes (indicative option quotes, which are approximate): closing or unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and the approval level you stated; it does not see your cash, your other holdings, your objectives or your taxes. It never places anything: you decide, you supply the limit and you act in your brokerage account. Options involve substantial risk; you confirm that you received the OCC booklet Characteristics and Risks of Standardized Options.
 ```
 
 ## After a fill
@@ -631,7 +631,9 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
 - **Pricing.** European Black-Scholes-Merton with a continuous dividend yield, on the quotes' mids. US equity options
   are American-style, and early exercise is not modelled; the `american-style note:` line marks the cases where it can
   matter. The American lattice is planned for Stage 2 (not in this release).
-- **Data.** The Tradier sandbox feed, delayed 15 minutes. A ticket is computed only while the session is open, and it
+- **Data.** Alpaca's free feed: IEX stock quotes (real time, IEX only) and indicative option quotes, delayed 15
+  minutes and approximate (not exchange quotes), so every option price a structuring text names is approximate; the
+  desk treats every quote as 15 minutes delayed. A ticket is computed only while the session is open, and it
   is valid for 30 minutes at most.
 - **What the desk knows.** Your positions, your criteria and the approval level you stated. It does not see your cash,
   your other holdings, your objectives or your taxes, and it makes no cash check.
@@ -640,7 +642,9 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
 - **Dates.** One next earnings date and one next ex-dividend date per symbol, from `research/calendar.toml`. A date
   that is unknown, not listed or already passed counts as inside a call's life, and a call whose last trading day is
   at least 80 calendar days after the known ex-date also gets the second-ex-date label.
-- **Budget.** At most 20 requests and 4 chains per run, inside the desk-wide 60 requests per minute. A chain the run
+- **Budget.** No new fetch starts once a run has made 40 requests, and at most 4 chains per run, inside the desk-wide
+  200 requests per minute (a chain costs at least 2: the contract listing, then the snapshots, and starts only while
+  those 2 still fit; a paginated answer can finish past 40). A chain the run
   cannot get makes the answer UNAVAILABLE: no best candidate is named on partial data. An empty expiration list from
   the vendor is never cached; it counts as missing, and the answer is UNAVAILABLE.
 
@@ -654,7 +658,7 @@ own use of these answers is investment advice is a question for your counsel.
 
 ## Reproduce the examples
 
-From a clone of this repository, with no token. The fixture copy goes outside the clone:
+From a clone of this repository, with no key. The fixture copy goes outside the clone:
 
 ```text
 cp -r tests/fixtures/desk ../aegis-structuring-desk

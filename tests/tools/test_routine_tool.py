@@ -121,7 +121,7 @@ def alert_fixture(name: str) -> Tuple[str, Dict[str, Any]]:
 
 
 def step_envelope(tool_name: str, payload: Dict[str, Any], status: str, at: str) -> Dict[str, Any]:
-    return contract.envelope(tool_name, RELEASE, payload, source="tradier:sandbox", delay_min=15,
+    return contract.envelope(tool_name, RELEASE, payload, source="alpaca:paper", delay_min=15,
                              generated_at=instant(at), status=status)
 
 
@@ -574,7 +574,7 @@ class TransitionsTest(RoutineCopy):
         step = payload["steps"][0]
         self.assertEqual(("book_check", 0), (step["tool"], step["exit_code"]))
         self.assertTrue(payload["lint"]["ok"])
-        for piece in ("CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf",
+        for piece in ("CONFIG CHANGED | desk.toml: not acknowledged -> sha f08a18dc",
                       "WATCH AG-20261020-01 | WMT covered call | your rule DTE21", "run 45 min late"):
             self.assertIn(piece, payload["message"])
         self.assertEqual(["--post", "--json", "--desk-root", self.root, "--timeout", "10.0", "--now",

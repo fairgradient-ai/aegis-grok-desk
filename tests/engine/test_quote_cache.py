@@ -1,9 +1,10 @@
-"""Quote cache (``aegis_desk.quote_cache``): TTL serving, batching, the 60/min ledger and guards.
+"""Quote cache (``aegis_desk.quote_cache``): TTL serving, batching, the per-minute ledger and guards.
 
 The client is a small in-test fake that exposes the brief's ``quotes`` / ``option_chain`` return
 shapes, calls the ``on_request`` hook for every attempt (as the real client does) and raises an
-error shaped like ``TradierError`` (``.status``), so this module never depends on the network
-client. Everything on disk is checked byte-for-byte against the documented envelopes.
+error shaped like ``AlpacaError`` (``.status``), so this module never depends on the network
+client (only the offline plumbing tests build the real one). Most tests run the guard with a 60/min budget and a
+headroom of 5 (``CacheTestCase.cfg``) so the window arithmetic stays small; the defaults are pinned separately. Everything on disk is checked byte-for-byte against the documented envelopes.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 from unittest import mock
 
-from aegis_desk import desk_config, desk_paths, market_clock, quote_cache, state, tradier_client
+from aegis_desk import alpaca_client, desk_config, desk_paths, market_clock, quote_cache, state
 from aegis_desk.market_types import Quote, RequestReceipt
 
 UTC = timezone.utc
@@ -31,15 +32,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
 NOW = datetime(2026, 11, 3, 19, 50, 0, tzinfo=UTC)
 STAMP_MS = 1793734272000  # 2026-11-03T19:31:12Z
-QUOTES_PATH = "/v1/markets/quotes"
-CHAINS_PATH = "/v1/markets/options/chains"
-EXPIRATIONS_PATH = "/v1/markets/options/expirations"
+QUOTES_PATH = "/v2/stocks/quotes/latest"
+CHAINS_PATH = "/v1beta1/options/snapshots/WMT"
+EXPIRATIONS_PATH = "/v2/options/contracts"
 WMT_EXPIRATIONS = ["2026-11-06", "2026-11-13", "2026-11-20", "2026-12-18", "2027-01-15"]
 EXPIRY = date(2026, 11, 20)
 
 
 def raw_quote(symbol: str, bid: float, ask: float, stamp_ms: int = STAMP_MS, **extra: Any) -> Dict[str, Any]:
-    """A vendor-shaped quote record (JSON numbers, epoch milliseconds)."""
+    """A normalised quote record (the ``Quote`` field names; JSON numbers, epoch milliseconds)."""
     record: Dict[str, Any] = {
         "symbol": symbol, "description": symbol, "exch": "P", "type": "stock", "last": round((bid + ask) / 2, 2),
         "change": 0.1, "volume": 1000, "open": bid, "high": ask, "low": bid, "close": None, "bid": bid, "ask": ask,
@@ -66,11 +67,11 @@ BOOK: Dict[str, Dict[str, Any]] = {
 CHAIN_WMT = [raw_option("WMT261120C00100000", 100.0, "call", 6.15, 6.35),
              raw_option("WMT261120P00100000", 100.0, "put", 1.75, 1.85),
              raw_option("WMT261120C00105000", 105.0, "call", 3.35, 3.50)]
-HTTP_STATUS = {"quota": 400, "auth": 401, "http": 500, "network": None, "timeout": None, "decode": 200}
+HTTP_STATUS = {"quota": 429, "auth": 401, "subscription": 403, "http": 500, "network": None, "timeout": None, "decode": 200}
 
 
 class ClientError(Exception):
-    """Shaped like ``tradier_client.TradierError``: ``status``, ``http_status``, ``path``, ``message``."""
+    """Shaped like ``alpaca_client.AlpacaError``: ``status``, ``http_status``, ``path``, ``message``."""
 
     def __init__(self, status: str, http_status: Optional[int], path: str) -> None:
         self.status = status
@@ -127,6 +128,7 @@ class FakeClient:
         self.tick = tick
         self.attempts = 0
         self.calls: List[tuple] = []
+        self.starts: List[date] = []
 
     def _attempt(self, path: str, count: int) -> RequestReceipt:
         status = self.errors.pop(0) if self.errors else None
@@ -142,7 +144,7 @@ class FakeClient:
             raise ClientError(status, http_status, path)
         return receipt
 
-    def quotes(self, symbols: Sequence[str], *, greeks: bool = False) -> FakeQuotesResult:
+    def quotes(self, symbols: Sequence[str]) -> FakeQuotesResult:
         symbols = list(symbols)
         self.calls.append(("quotes", symbols))
         receipt = self._attempt(QUOTES_PATH, len(symbols))
@@ -159,17 +161,19 @@ class FakeClient:
             if raw is None:
                 unmatched.append(key)
             else:
-                quotes[key] = Quote.from_vendor(raw)
+                quotes[key] = Quote.from_record(raw)
         return FakeQuotesResult(quotes, unmatched, receipt)
 
-    def option_chain(self, symbol: str, expiration: date, *, greeks: bool = False) -> FakeChainResult:
+    def option_chain(self, symbol: str, expiration: date) -> FakeChainResult:
         self.calls.append(("chain", symbol, expiration))
         receipt = self._attempt(CHAINS_PATH, 1)
         raws = self.chains.get((symbol.upper(), expiration), [])
-        return FakeChainResult([Quote.from_vendor(raw) for raw in raws], receipt)
+        return FakeChainResult([Quote.from_record(raw) for raw in raws], receipt)
 
-    def option_expirations(self, symbol: str, *, include_all_roots: bool = True) -> FakeExpirationsResult:
+    def option_expirations(self, symbol: str, start: date, *,
+                           window_days: int = alpaca_client.EXPIRATIONS_WINDOW_DAYS) -> FakeExpirationsResult:
         self.calls.append(("expirations", symbol))
+        self.starts.append(start)
         receipt = self._attempt(EXPIRATIONS_PATH, 1)
         listed = self.expirations.get(symbol.upper(), [])
         return FakeExpirationsResult([date.fromisoformat(day) for day in listed], receipt)
@@ -185,7 +189,7 @@ class CacheTestCase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory(prefix="aegis-cache-")
         self.root = os.path.realpath(self._tmp.name)
         self.paths = desk_paths.for_root(self.root)
-        self.cfg = quote_cache.CacheConfig(ttl_min=5)
+        self.cfg = quote_cache.CacheConfig(ttl_min=5, minute_budget=60, minute_headroom=5)
         self.hook = quote_cache.ledger_hook(self.paths)
 
     def tearDown(self) -> None:
@@ -226,16 +230,27 @@ class CacheConfigTest(unittest.TestCase):
     def test_from_desk_uses_quote_ttl_and_the_defaults(self) -> None:
         cfg = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
         cache = quote_cache.CacheConfig.from_desk(cfg)
-        self.assertEqual(quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=20, per_run_max_chains=4,
-                                                 minute_budget=60, minute_headroom=5), cache)
+        self.assertEqual(quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=40, per_run_max_chains=4,
+                                                 minute_budget=200, minute_headroom=20), cache)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             cache.ttl_min = 1  # type: ignore[misc]
 
     def test_defaults(self) -> None:
         cache = quote_cache.CacheConfig(ttl_min=7)
-        self.assertEqual((7, 20, 4, 60, 5), (cache.ttl_min, cache.per_run_max_requests, cache.per_run_max_chains,
-                                             cache.minute_budget, cache.minute_headroom))
+        self.assertEqual((7, 40, 4, 200, 20), (cache.ttl_min, cache.per_run_max_requests, cache.per_run_max_chains,
+                                               cache.minute_budget, cache.minute_headroom))
         self.assertEqual(50, quote_cache.MAX_BATCH)
+
+    def test_the_budget_follows_the_vendor(self) -> None:
+        self.assertEqual(alpaca_client.RATE_LIMIT_PER_MIN, quote_cache.MINUTE_BUDGET)
+        self.assertEqual(alpaca_client.MAX_BATCH, quote_cache.MAX_BATCH)
+        self.assertEqual(alpaca_client.SYMBOL_RE.pattern, quote_cache.SYMBOL_RE.pattern)
+        # the headroom covers the most one call can send past the guard: two paginated listings (a chain)
+        self.assertGreaterEqual(quote_cache.MINUTE_HEADROOM, 2 * alpaca_client.MAX_PAGES)
+        self.assertLess(quote_cache.MINUTE_HEADROOM, quote_cache.MINUTE_BUDGET // 4)
+        # one run never spends the minute on its own, and every chain of the cap fits in the request cap
+        self.assertLess(quote_cache.PER_RUN_MAX_REQUESTS, quote_cache.MINUTE_BUDGET - quote_cache.MINUTE_HEADROOM)
+        self.assertGreaterEqual(quote_cache.PER_RUN_MAX_REQUESTS, 2 * quote_cache.PER_RUN_MAX_CHAINS + 8)
 
 
 class GetQuotesTest(CacheTestCase):
@@ -334,7 +349,7 @@ class GetQuotesTest(CacheTestCase):
         self.assertIsNone(result.receipt_utc, "no response was received; the attempt is in the ledger")
         self.assertTrue(any("quota" in w for w in result.warnings), result.warnings)
         lines = self.ledger_lines()
-        self.assertEqual(("quota", 400), (lines[-1]["status"], lines[-1]["http_status"]))
+        self.assertEqual(("quota", 429), (lines[-1]["status"], lines[-1]["http_status"]))
         self.assertEqual("2026-11-03T19:50:00+00:00", self.read_cache()["quotes"]["SPY"]["fetched_utc"],
                          "a failed fetch never rewrites the cache")
 
@@ -347,7 +362,7 @@ class GetQuotesTest(CacheTestCase):
 
     def test_unexpected_exceptions_propagate(self) -> None:
         class Broken(FakeClient):
-            def quotes(self, symbols, *, greeks=False):
+            def quotes(self, symbols):
                 raise TypeError("a bug, not a vendor error")
 
         with self.assertRaises(TypeError):
@@ -521,6 +536,20 @@ class RunGuardsTest(CacheTestCase):
         chain = self.chain(self.client(chains={("WMT", EXPIRY): CHAIN_WMT}), run=run)
         self.assertEqual("fetch_failed:auth", chain.missing_reason)
 
+    def test_a_subscription_refusal_stops_the_run(self) -> None:
+        # Alpaca's "subscription does not permit ..." answer recurs on every later request of the run
+        self.assertIn("subscription", quote_cache.STOP_STATUSES)
+        self.assertIn("no_credential", quote_cache.STOP_STATUSES)
+        self.assertIn("credential_file_mode", quote_cache.STOP_STATUSES)
+        self.assertNotIn("incomplete", quote_cache.STOP_STATUSES)
+        run = quote_cache.RunCounters()
+        result = self.get(["SPY"], self.client(errors=["subscription"]), run=run)
+        self.assertEqual({"SPY": "fetch_failed:subscription"}, result.missing)
+        self.assertEqual("fetch_failed:subscription", run.stop_reason)
+        client = self.client()
+        self.assertEqual({"WMT": "fetch_failed:subscription"}, self.get(["WMT"], client, run=run).missing)
+        self.assertEqual([], client.calls)
+
     def test_transient_errors_do_not_stop_the_run(self) -> None:
         run = quote_cache.RunCounters()
         self.get(["SPY"], self.client(errors=["network"]), run=run)
@@ -563,6 +592,85 @@ class RunGuardsTest(CacheTestCase):
         sent = quote_cache.RunCounters()
         failed = self.chain(self.client(errors=["network"]), run=sent)
         self.assertEqual((1, 1, 1), (failed.requests_made, sent.requests, sent.chains), "a sent request counts")
+
+
+class RequestCountTest(CacheTestCase):
+    """One client call can send several requests (equities then options; a chain's contract listing then its snapshot
+    pages): every request the transport saw counts toward the per-run cap and the minute budget."""
+
+    def multi(self, per_call: int, **kwargs: Any) -> FakeClient:
+        class Multi(FakeClient):
+            def _attempt(self, path: str, count: int) -> RequestReceipt:
+                receipt = super()._attempt(path, count)
+                for _ in range(per_call - 1):
+                    receipt = super()._attempt(path, count)
+                return receipt
+
+        return Multi(**kwargs)
+
+    def test_a_wired_hook_counts_every_receipt_of_a_call(self) -> None:
+        run = quote_cache.RunCounters()
+        hook = quote_cache.ledger_hook(self.paths, run)
+        result = self.get(["SPY", "WMT261120C00105000"], self.multi(2, on_request=hook), run=run)
+        self.assertEqual((2, 2), (result.requests_made, run.requests))
+        chain = self.chain(self.multi(3, on_request=hook, chains={("WMT", EXPIRY): CHAIN_WMT}), run=run)
+        self.assertEqual((3, 5, 1), (chain.requests_made, run.requests, run.chains))
+        self.assertEqual(5, len(self.ledger_lines()))
+        self.assertEqual(5, quote_cache.requests_counted(self.paths, NOW, run))
+
+    def test_without_a_wired_hook_the_result_receipts_count(self) -> None:
+        @dataclasses.dataclass
+        class Paged:
+            options: List[Quote]
+            receipt: RequestReceipt
+            receipts: tuple
+
+        class Client(FakeClient):
+            def option_chain(self, symbol: str, expiration: date) -> Any:
+                plain = super().option_chain(symbol, expiration)
+                return Paged(plain.options, plain.receipt, (plain.receipt,) * 4)
+
+        run = quote_cache.RunCounters()
+        chain = self.chain(Client(on_request=self.hook, chains={("WMT", EXPIRY): CHAIN_WMT}), run=run)
+        self.assertEqual((4, 4, 1), (chain.requests_made, run.requests, run.chains))
+
+    def test_a_failure_after_some_pages_counts_the_pages_sent(self) -> None:
+        run = quote_cache.RunCounters()
+        hook = quote_cache.ledger_hook(self.paths, run)
+        client = self.multi(3, on_request=hook, errors=[None, None, "network"])
+        chain = self.chain(client, run=run)
+        self.assertEqual(("fetch_failed:network", 3, 3, 1), (chain.missing_reason, chain.requests_made, run.requests,
+                                                             run.chains))
+
+    def test_the_per_run_cap_is_checked_before_each_call(self) -> None:
+        run = quote_cache.RunCounters()
+        hook = quote_cache.ledger_hook(self.paths, run)
+        cfg = quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=4)
+        chains = {("WMT", EXPIRY): CHAIN_WMT, ("WMT", date(2026, 12, 18)): CHAIN_WMT}
+        first = self.chain(self.multi(2, on_request=hook, chains=chains), cfg=cfg, run=run)
+        second = self.chain(self.multi(2, on_request=hook, chains=chains), expiration=date(2026, 12, 18), cfg=cfg,
+                            run=run)
+        third = self.chain(self.multi(2, on_request=hook, chains=chains), cfg=cfg, run=run, force=True)
+        self.assertEqual(("fetch", "fetch", 4), (first.served_from, second.served_from, run.requests))
+        self.assertEqual("cache", third.served_from, "over the cap: the forced refetch falls back to the cached copy")
+        self.assertTrue(any("per-run cap reached" in w for w in third.warnings), third.warnings)
+
+    def test_a_chain_starts_only_when_its_minimum_cost_fits_under_the_cap(self) -> None:
+        # A chain costs at least CHAIN_MIN_REQUESTS (the contract listing, then the snapshots): at 39 of 40 requests
+        # it is refused with nothing sent; at 38 it starts (pagination may still carry one call past the cap).
+        self.assertEqual(2, quote_cache.CHAIN_MIN_REQUESTS)
+        cfg = quote_cache.CacheConfig(ttl_min=5, per_run_max_requests=40)
+        run = quote_cache.RunCounters(requests=39)
+        client = self.multi(2, chains={("WMT", EXPIRY): CHAIN_WMT})
+        chain = self.chain(client, cfg=cfg, run=run)
+        self.assertEqual(("per_run_cap", 0, 39, 0), (chain.missing_reason, chain.requests_made, run.requests,
+                                                     run.chains))
+        self.assertEqual([], client.calls)
+        self.assertTrue(any("per-run cap reached" in w for w in chain.warnings), chain.warnings)
+        run = quote_cache.RunCounters(requests=38)
+        chain = self.chain(self.multi(2, on_request=quote_cache.ledger_hook(self.paths, run),
+                                      chains={("WMT", EXPIRY): CHAIN_WMT}), cfg=cfg, run=run)
+        self.assertEqual(("fetch", 40, 1), (chain.served_from, run.requests, run.chains))
 
 
 class ForceTest(CacheTestCase):
@@ -914,6 +1022,7 @@ class GetExpirationsTest(CacheTestCase):
         client = self.client(expirations=self.listed())
         result = self.expirations(client, symbol=" wmt ", run=run)
         self.assertEqual([("expirations", "WMT")], client.calls)
+        self.assertEqual([date(2026, 11, 3)], client.starts, "the listing starts on the ET date of now")
         self.assertEqual(("WMT", "fetch", None, 1, NOW, NOW), (result.symbol, result.served_from, result.missing_reason,
                                                                result.requests_made, result.receipt_utc, result.fetched_utc))
         self.assertEqual([date.fromisoformat(day) for day in WMT_EXPIRATIONS], result.dates)
@@ -1112,7 +1221,7 @@ class GetExpirationsTest(CacheTestCase):
 
     def test_unexpected_exceptions_and_arguments(self) -> None:
         class Broken(FakeClient):
-            def option_expirations(self, symbol: str, *, include_all_roots: bool = True) -> FakeExpirationsResult:
+            def option_expirations(self, symbol: str, start: date, **kwargs: Any) -> FakeExpirationsResult:
                 raise RuntimeError("a bug, not a client error")
 
         with self.assertRaises(RuntimeError):
@@ -1142,8 +1251,8 @@ class GetExpirationsTest(CacheTestCase):
 
 
 class OfflineExpirationsTest(unittest.TestCase):
-    """Offline, ``get_expirations`` reads the recorded ``expirations__<SYMBOL>.json`` of the fixture set through the
-    existing transport (``open_market_data`` on a copy of ``tests/fixtures/desk``; nothing under ``tests/fixtures`` is
+    """Offline, ``get_expirations`` reads the recorded contract listing ``contracts__<SYMBOL>__<start>__<start+400>.json``
+    of the fixture set (``start`` the ET date of ``now``) through the existing transport (``open_market_data`` on a copy of ``tests/fixtures/desk``; nothing under ``tests/fixtures`` is
     written)."""
 
     def setUp(self) -> None:
@@ -1154,10 +1263,14 @@ class OfflineExpirationsTest(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def recorded(self, fixture_set: str, symbol: str) -> List[date]:
-        path = os.path.join(FIXTURE_DESK, "fixtures", "tradier", fixture_set, "expirations__%s.json" % symbol)
+    def recorded(self, fixture_set: str, symbol: str, now: datetime) -> List[date]:
+        start = market_clock.to_et(now).date()
+        name = "contracts__%s__%s__%s.json" % (symbol, start.isoformat(),
+                                               (start + timedelta(days=alpaca_client.EXPIRATIONS_WINDOW_DAYS)).isoformat())
+        path = os.path.join(FIXTURE_DESK, "fixtures", "alpaca", fixture_set, name)
         with open(path, encoding="utf-8") as handle:
-            return [date.fromisoformat(day) for day in json.load(handle)["expirations"]["date"]]
+            listed = json.load(handle)["option_contracts"]
+        return sorted({date.fromisoformat(contract["expiration_date"]) for contract in listed})
 
     def market(self, fixture_set: str, now: datetime) -> quote_cache.MarketData:
         return quote_cache.open_market_data(self.root, now=now, offline=True, fixture_set=fixture_set, timeout_s=10.0,
@@ -1168,10 +1281,11 @@ class OfflineExpirationsTest(unittest.TestCase):
             for symbol in ("WMT", "NVDA", "SPY"):
                 with self.subTest(fixture_set=fixture_set, symbol=symbol):
                     market = self.market(fixture_set, now)
-                    self.assertIsInstance(market.client, tradier_client.TradierClient)
+                    self.assertIsInstance(market.client, alpaca_client.AlpacaClient)
                     result = quote_cache.get_expirations(symbol, now=now, cfg=market.cache, client=market.client,
                                                          paths=market.paths, run=market.run)
-                    self.assertEqual(self.recorded(fixture_set, symbol), result.dates)
+                    self.assertEqual(self.recorded(fixture_set, symbol, now), result.dates)
+                    self.assertTrue(result.dates)
                     self.assertEqual(("fetch", 1, 1, 0), (result.served_from, result.requests_made, market.run.requests,
                                                          market.run.chains))
                     shutil.rmtree(os.path.join(market.paths.cache_dir, quote_cache.EXPIRATIONS_SUBDIR))
@@ -1203,25 +1317,66 @@ class ToolPlumbingTest(unittest.TestCase):
     def write_desk(self, host: str) -> str:
         with open(os.path.join(FIXTURE_DESK, "desk.toml"), encoding="utf-8") as handle:
             text = handle.read()
-        assert 'host = "sandbox"' in text
+        assert 'host = "paper"' in text
         with open(os.path.join(self.root, "desk.toml"), "w", encoding="utf-8") as handle:
-            handle.write(text.replace('host = "sandbox"', 'host = "%s"' % host, 1))
+            handle.write(text.replace('host = "paper"', 'host = "%s"' % host, 1))
         return self.root
 
-    def test_production_host_is_refused_with_the_exact_message(self) -> None:
-        self.write_desk("production")
-        with self.assertRaises(quote_cache.MarketDataRefused) as ctx:
+    def test_a_live_host_never_loads(self) -> None:
+        self.write_desk("live")
+        with self.assertRaises(desk_config.DeskConfigError) as ctx:
             quote_cache.open_market_data(self.root, now=NOW, offline=True, fixture_set="regular", timeout_s=10.0,
                                          user_agent="test")
-        self.assertEqual("production_host", ctx.exception.status)
-        self.assertEqual("production market data is not supported before the market-data proxy (Stage 3); "
-                         "use the sandbox host", str(ctx.exception))
-        self.assertEqual(str(ctx.exception), quote_cache.PRODUCTION_REFUSED_MESSAGE)
+        self.assertIn('host must be "paper"', str(ctx.exception))
         self.assertFalse(os.path.exists(os.path.join(self.root, "state")), "a refused desk is never written to")
 
-    def test_no_token_message_text(self) -> None:
-        self.assertEqual("no market-data token: add the Tradier sandbox token through the secret card "
-                         "(or the acknowledged token file)", quote_cache.NO_TOKEN_MESSAGE)
+    def test_build_client_refuses_any_host_but_paper_with_the_exact_message(self) -> None:
+        cfg = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
+        paths = desk_paths.for_root(self.root)
+        for host in ("live", "production", "loopback:1"):
+            with self.subTest(host=host):
+                bad = dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, host=host))
+                for offline in (True, False):
+                    with self.assertRaises(quote_cache.MarketDataRefused) as ctx:
+                        quote_cache.build_client(bad, paths, offline=offline, fixture_set="regular", timeout_s=10.0,
+                                                 now=NOW, user_agent="test")
+                    self.assertEqual("live_host", ctx.exception.status)
+                    self.assertEqual(quote_cache.LIVE_REFUSED_MESSAGE, str(ctx.exception))
+        self.assertEqual('only Alpaca paper market data is supported: the desk holds a paper key pair and never points '
+                         'at a live account; set host = "paper"', quote_cache.LIVE_REFUSED_MESSAGE)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "data")), "nothing is written for a refused host")
+
+    def test_no_credential_message_text(self) -> None:
+        self.assertEqual("no market-data key: add the Alpaca paper key ID and secret through the secret card "
+                         "(or the acknowledged credentials file)", quote_cache.NO_CREDENTIAL_MESSAGE)
+
+    def test_online_without_a_key_pair_is_no_credential(self) -> None:
+        cfg = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
+        missing = os.path.join(self.root, "absent.key")
+        cfg = dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, credentials_file=missing))
+        paths = desk_paths.for_root(self.root)
+        scrubbed = {name: value for name, value in os.environ.items()
+                    if name not in (cfg.market_data.key_env, cfg.market_data.secret_env)}
+        with mock.patch.dict(os.environ, scrubbed, clear=True):
+            with self.assertRaises(quote_cache.MarketDataRefused) as ctx:
+                quote_cache.build_client(cfg, paths, offline=False, fixture_set="regular", timeout_s=10.0, now=NOW,
+                                         user_agent="test")
+            self.assertEqual(("no_credential", quote_cache.NO_CREDENTIAL_MESSAGE),
+                             (ctx.exception.status, str(ctx.exception)))
+            with mock.patch.dict(os.environ, {cfg.market_data.key_env: "PKTESTKEYID0000000000"}):
+                with self.assertRaises(quote_cache.MarketDataRefused) as ctx:
+                    quote_cache.build_client(cfg, paths, offline=False, fixture_set="regular", timeout_s=10.0,
+                                             now=NOW, user_agent="test")
+                self.assertEqual("no_credential", ctx.exception.status)
+                self.assertNotIn("PKTESTKEYID", str(ctx.exception))
+            with mock.patch.dict(os.environ, {cfg.market_data.key_env: "PKTESTKEYID0000000000",
+                                              cfg.market_data.secret_env: "testsecret0000000000000000000000000000"}):
+                client = quote_cache.build_client(cfg, paths, offline=False, fixture_set="regular", timeout_s=10.0,
+                                                  now=NOW, user_agent="test")
+                self.assertIsInstance(client, alpaca_client.AlpacaClient)
+                self.assertEqual(("paper", "indicative", "iex"), (client.host_kind, client.options_feed,
+                                                                  client.stock_feed))
+                self.assertNotIn("testsecret", repr(client))
 
     def test_bad_desk_root_and_bad_config_raise_their_own_errors(self) -> None:
         with self.assertRaises(desk_paths.DeskPathsError):
@@ -1241,8 +1396,13 @@ class ToolPlumbingTest(unittest.TestCase):
     def test_footer_and_source_label(self) -> None:
         cfg = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
         stamp = datetime(2026, 11, 3, 19, 31, 12, tzinfo=UTC)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", quote_cache.footer_line(cfg, stamp))
-        self.assertEqual("tradier:sandbox", quote_cache.source_label(cfg))
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC",
+                         quote_cache.footer_line(cfg, stamp))
+        self.assertEqual("alpaca:paper", quote_cache.source_label(cfg))
+        opra = dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, options_feed="opra",
+                                                                        feed_delay_min=0))
+        self.assertEqual("Alpaca paper (IEX stocks, OPRA options), delayed 0 min, as of 19:31 UTC",
+                         quote_cache.footer_line(opra, stamp))
 
     def test_age_minutes(self) -> None:
         self.assertEqual(18, quote_cache.age_minutes(NOW, datetime(2026, 11, 3, 19, 31, 12, tzinfo=UTC)))

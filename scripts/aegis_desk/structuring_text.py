@@ -51,14 +51,15 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, alerts, approval, desk_paths, expiry, signals, state, structuring
+from . import alert_lint, alerts, approval, data_source, desk_paths, expiry, signals, state, structuring
 from .desk_paths import DeskPaths
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
 
 FOOTER_KIND: str = alert_lint.FOOTER_STRUCTURING
 FEED_DELAY_MIN: int = alert_lint.FOOTER_DELAY_MIN
-SOURCE_WORDS: str = "Tradier sandbox"
+SOURCE_WORDS: str = data_source.WORDS
+"""The quote source in every structuring text (``Alpaca paper (IEX stocks, indicative options: approximate)``)."""
 
 LIMIT_LINE: str = "you supply the limit; the desk prints none"
 ACT_LINE: str = "if you decide to act, you type it into your brokerage account yourself and you supply the limit"
@@ -303,7 +304,7 @@ def _source(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY_MIN
 
 def quote_segment(w: Writer, bid: Optional[Decimal], ask: Optional[Decimal], mid: Optional[Decimal], grade: str,
                   as_of: datetime.datetime, note: Optional[str] = None, delay_min: int = FEED_DELAY_MIN) -> str:
-    """``bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC`` (a ticket's
+    """``bid 3.35, ask 3.50, mid 3.425 | quote grade B, <SOURCE_WORDS>, 15-min delayed, as of 19:31 UTC`` (a ticket's
     and a proposal's leg segment); ``note`` (the grade E note) follows after `` | ``."""
     sides = []
     for name, value in (("bid", bid), ("ask", ask), ("mid", mid)):
@@ -374,7 +375,7 @@ def ticket_header(w: Writer, trade_id: str, underlying: str, structure: str, act
 def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, criteria_sha: str,
                 as_of: datetime.datetime) -> str:
     """``STRUCTURING | <trade_id> roll analysis | <UNDERLYING> <structure words> | criteria structuring.toml (sha <8>) |
-    Tradier sandbox, 15-min delayed, as of HH:MM UTC``."""
+    <SOURCE_WORDS>, 15-min delayed, as of HH:MM UTC``."""
     return "STRUCTURING | %s roll analysis | %s %s | criteria structuring.toml (%s) | %s" % (
         w.trade_id(trade_id), _root(underlying), structure_words(structure), w.sha(criteria_sha), _source(w, as_of))
 
@@ -382,7 +383,7 @@ def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, crite
 def proposal_header(w: Writer, symbol: str, structure: str, shares: Decimal, account: str, criteria_sha: str,
                     as_of: datetime.datetime) -> str:
     """``PROPOSAL <SYMBOL> <structure words> | on <n> <SYMBOL> shares you hold in <account words> | criteria
-    structuring.toml (sha <8>) | Tradier sandbox, 15-min delayed, as of HH:MM UTC``."""
+    structuring.toml (sha <8>) | <SOURCE_WORDS>, 15-min delayed, as of HH:MM UTC``."""
     if structure not in ARTICLE_WORDS:
         raise ValueError("unknown proposal structure %r" % (structure,))
     return "PROPOSAL %s %s | on %s %s shares you hold in %s | criteria structuring.toml (%s) | %s" % (
@@ -1025,8 +1026,8 @@ _TEMPLATE_WORDS: str = (
     "possible post prefix price priced prices print prints problems profit proposal proposals propose proposes "
     "protective puts quantity quarantined quote quotes rank ranks reads realized reason reasons receive records "
     "refusal refused release remaining replaced replacement replacements replaces report reports request "
-    "requested requests required research rest right risk roll rolls root rules same sandbox says score second "
-    "section secured self sequence served session share shares short shows side some soon split spot spread "
+    "requested requests required research rest right risk roll rolls root rules same says score second "
+    "section secured self sequence served session share shares short shows side some soon source split spot spread "
     "spreads stale stamp stamped standard stands state states status stays stem step steps stock strategies "
     "stress stressed strike structure structuring style subject supply symbol takes tapped tell text than that "
     "their these theta they this threshold tick ticket tickets time today together toml tool trade trading "

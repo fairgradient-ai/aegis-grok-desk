@@ -141,32 +141,32 @@ def nested(depth: int) -> Dict[str, Any]:
 
 DENIED: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("D01", (), claude_bash(SAMPLE)),
-    ("D02", (), claude_bash('curl -s -X POST "https://sandbox.tradier.com/v1/accounts/VA000000/orders" -H '
-                            '"Authorization: Bearer $TRADIER_API_TOKEN" -d "class=option&symbol=SPY"')),
-    ("D03", (), claude_bash("curl -XDELETE https://api.tradier.com/v1/accounts/6YA00000/orders/123456")),
-    ("D04", (), claude_bash('curl --request PUT https://api.tradier.com/v1/accounts/6YA00000/orders/123456 '
+    ("D02", (), claude_bash('curl -s -X POST "https://paper-api.alpaca.markets/v1/accounts/VA000000/orders" -H '
+                            '"APCA-API-SECRET-KEY: $APCA_API_SECRET_KEY" -d "class=option&symbol=SPY"')),
+    ("D03", (), claude_bash("curl -XDELETE https://api.alpaca.markets/v1/accounts/6YA00000/orders/123456")),
+    ("D04", (), claude_bash('curl --request PUT https://api.alpaca.markets/v1/accounts/6YA00000/orders/123456 '
                             '--data "price=1.05"')),
-    ("D05", (), claude_bash('curl https://sandbox.tradier.com/v1/accounts/VA000000/orders --data-urlencode '
+    ("D05", (), claude_bash('curl https://paper-api.alpaca.markets/v1/accounts/VA000000/orders --data-urlencode '
                             '"side=sell_to_close"')),
-    ("D06", (), claude_bash('wget --method=POST --body-data="side=buy" https://api.tradier.com/v1/accounts/6YA00000/orders')),
+    ("D06", (), claude_bash('wget --method=POST --body-data="side=buy" https://api.alpaca.markets/v1/accounts/6YA00000/orders')),
     ("D07", (), claude_bash("http POST https://paper-api.alpaca.markets/v2/orders symbol=NVDA qty=1 side=sell")),
     ("D08", (), claude_bash("curl -X POST https://api.snaptrade.com/api/v1/trade/place -d @order.json")),
-    ("D09", (), claude_bash("python3 -c 'import requests; requests.post(\"https://api.tradier.com/v1/accounts/X/orders\", "
+    ("D09", (), claude_bash("python3 -c 'import requests; requests.post(\"https://api.alpaca.markets/v1/accounts/X/orders\", "
                             "data=d)'")),
     ("D10", (), claude_bash('python3 -c "client.place_order(account_id, order)"')),
     ("D11", (), claude_bash("python3 - <<'PY'\nfrom snaptrade_client import SnapTrade\n"
                             "snaptrade.trading.place_order(user_id=u, user_secret=s, trade_id=t)\nPY")),
-    ("D12", (), claude_bash("node -e \"fetch('https://api.tradier.com/v1/accounts/X/orders', {method: 'POST', body})\"")),
+    ("D12", (), claude_bash("node -e \"fetch('https://api.alpaca.markets/v1/accounts/X/orders', {method: 'POST', body})\"")),
     ("D13", (), claude_bash("echo '" + SAMPLE + "' | bash")),
     ("D14", (), claude_bash('bash -c "' + SAMPLE + '"')),
     ("D15", (), claude_bash("cd /tmp && " + SAMPLE)),
     ("D16", (), claude_bash('python3 -c "api.cancel_order(order_id)"')),
     ("D17", (), claude_bash('python3 -c "api.replaceOrder(order_id, price=1.2)"')),
     ("D18", (), claude_bash("ruby -e 'client.submit_order(symbol: \"NVDA\", qty: 1, side: \"sell\")'")),
-    ("D19", (), claude_bash("Invoke-RestMethod -Method Post -Uri https://api.tradier.com/v1/accounts/X/orders",
+    ("D19", (), claude_bash("Invoke-RestMethod -Method Post -Uri https://api.alpaca.markets/v1/accounts/X/orders",
                             tool="PowerShell")),
     ("D20", ("--runtime", "grok"), grok_camel(SAMPLE)),
-    ("D21", (), grok_snake('curl -s -X POST "https://sandbox.tradier.com/v1/accounts/VA000000/orders" -d '
+    ("D21", (), grok_snake('curl -s -X POST "https://paper-api.alpaca.markets/v1/accounts/VA000000/orders" -d '
                            '"side=sell_to_close"')),
     ("D22", (), grok_full("ls", truncated=True)),
     ("D23", CURSOR, cursor_shell(SAMPLE)),
@@ -175,10 +175,10 @@ DENIED: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("D26", (), claude_mcp("mcp__plugin_broker_alpaca__submit_order", {"symbol": "NVDA"})),
     ("D27", (), grok_mcp("robinhood__sell_stock", {"symbol": "NVDA", "quantity": 1})),
     ("D28", (), grok_mcp("broker__buyOption", {"occ": "NVDA261120C00150000"})),
-    ("D29", (), grok_mcp("tradier__cancelOrder", {"id": 1})),
+    ("D29", (), grok_mcp("alpaca__cancelOrder", {"id": 1})),
     ("D30", (), claude_mcp("mcp__snaptrade__trade_preview", {})),
     ("D31", (), claude_mcp("mcp__schwab__replace_order", {"order_id": "1"})),
-    ("D32", (), grok_mcp("zapier__run_action", {"action": "tradier_place_order", "params": {"symbol": "SPY"}})),
+    ("D32", (), grok_mcp("zapier__run_action", {"action": "alpaca_place_order", "params": {"symbol": "SPY"}})),
     ("D33", (), claude_mcp("mcp__broker__execute", {"symbol": "NVDA", "side": "sell_to_close"})),
     ("D34", (), claude_mcp("mcp__broker__execute", {"order": {"symbol": "NVDA"}})),
     ("D35", (), claude_mcp("mcp__shell__run", {"command": SAMPLE})),
@@ -198,20 +198,20 @@ DENIED: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
                             tool="PowerShell")),
     ("D48", (), claude_bash("curl${IFS}-X${IFS}POST${IFS}127.0.0.1:9/v1/accounts/AEGIS-TEST/orders${IFS}-d${IFS}x=1")),
     ("D49", (), claude_bash("cat <<'EOF' | sh\n" + SAMPLE + "\nEOF")),
-    ("D50", (), claude_bash("perl -MLWP::UserAgent -e 'LWP::UserAgent->new->post(\"https://api.tradier.com/v1/accounts/X/"
+    ("D50", (), claude_bash("perl -MLWP::UserAgent -e 'LWP::UserAgent->new->post(\"https://api.alpaca.markets/v1/accounts/X/"
                             "orders\", {side => \"sell\"})'")),
-    ("D51", (), claude_bash("http https://api.tradier.com/v1/accounts/X/orders symbol=SPY side=sell_to_close")),
-    ("D52", (), claude_bash("Invoke-WebRequest -Uri https://api.tradier.com/v1/accounts/X/orders -Method POST -Body $b",
+    ("D51", (), claude_bash("http https://api.alpaca.markets/v1/accounts/X/orders symbol=SPY side=sell_to_close")),
+    ("D52", (), claude_bash("Invoke-WebRequest -Uri https://api.alpaca.markets/v1/accounts/X/orders -Method POST -Body $b",
                             tool="PowerShell")),
-    ("D53", (), claude_bash("curl https://api.tradier.com/v1/accounts/6YA00000/positions")),
-    ("D54", (), grok_mcp_camel("tradier__cancelOrder", {"id": 1})),
+    ("D53", (), claude_bash("curl https://api.alpaca.markets/v1/accounts/6YA00000/positions")),
+    ("D54", (), grok_mcp_camel("alpaca__cancelOrder", {"id": 1})),
     ("D55", CURSOR, {"hook_event_name": "preToolUse", "tool_name": "Shell",
                      "tool_input": {"command": SAMPLE, "working_directory": "/repo"}}),
     ("D56", CURSOR, cursor_mcp("shell", "run", "not json: " + SAMPLE)),
     ("D57", (), claude_mcp("mcp__broker__execute", nested(40))),
-    ("D58", (), claude_mcp("mcp__fetch__fetch", {"url": "https://api.tradier.com/v1/accounts/6YA00000/orders"})),
+    ("D58", (), claude_mcp("mcp__fetch__fetch", {"url": "https://api.alpaca.markets/v1/accounts/6YA00000/orders"})),
     ("D59", (), claude_bash("git grep -O'sh -c \"" + SAMPLE + "\"' x")),
-    ("D60", (), claude_bash("env TRADIER=1 " + SAMPLE)),
+    ("D60", (), claude_bash("env ALPACA=1 " + SAMPLE)),
     ("D61", (), claude_mcp("mcp__broker__execute", {"rows": list(range(20000))})),
     ("D62", (), claude_bash("rg --pre=sh -n x '" + SAMPLE + "'")),
     ("D63", (), {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"},
@@ -268,6 +268,12 @@ DENIED: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("D102", (), claude_mcp("mcp__x__run", {"payload": json.dumps([{"order": {"symbol": "SPY"}}])})),
     ("D103", (), claude_bash('python3 -c "client.create_order(symbol=s)"')),
     ("D104", (), claude_bash('python3 -c "api.send_order(o)"')),
+    # A market-data read typed in a shell on a broker host is denied too: the desk reads market data from Python.
+    ("D105", (), claude_bash('curl -s "https://data.alpaca.markets/v2/stocks/quotes/latest?symbols=SPY" -H '
+                             '"APCA-API-KEY-ID: $APCA_API_KEY_ID"')),
+    ("D106", (), claude_bash("curl -s https://paper-api.alpaca.markets/v2/clock")),
+    ("D107", (), claude_bash("Invoke-RestMethod -Uri https://data.alpaca.markets/v2/stocks/bars -Headers $h "
+                             "-TimeoutSec 10", tool="PowerShell")),
 )
 
 NO_OPINION: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
@@ -279,9 +285,8 @@ NO_OPINION: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("N06", (), claude_bash("python3 scripts/routine.py book-check --slot 10:05")),
     ("N07", (), claude_bash("python3 scripts/desk_doctor.py --quick --desk-root /workspace/aegis-desk")),
     ("N08", (), claude_bash("bash scripts/check.sh")),
-    ("N09", (), claude_bash('curl -s "https://sandbox.tradier.com/v1/markets/quotes?symbols=SPY" -H '
-                            '"Accept: application/json"')),
-    ("N10", (), claude_bash("curl -s https://sandbox.tradier.com/v1/markets/clock")),
+    ("N09", (), claude_bash("python3 scripts/quote_cache.py --symbols SPY --desk-root /workspace/aegis-desk")),
+    ("N10", (), claude_bash("curl -s https://www.example.com/status.json")),
     ("N11", (), claude_bash("python3 scripts/opening_bell.py --symbol SPY --offline --desk-root /tmp/bell")),
     ("N12", (), claude_mcp("mcp__github__list_pull_requests",
                            {"owner": "fairgradient-ai", "repo": "aegis-grok-desk", "state": "open"})),
@@ -307,8 +312,8 @@ NO_OPINION: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("N30", (), claude_bash("find docs -name '*.md' -newer CHANGELOG.md")),
     ("N31", (), claude_bash("git -c color.ui=never log -1 --format=%H")),
     ("N32", (), claude_mcp("mcp__snaptrade__list_accounts", {})),
-    ("N33", (), grok_mcp("tradier__get_quotes", {"symbols": "SPY,NVDA"})),
-    ("N34", (), claude_mcp("mcp__plugin_tradier_market__get_clock", {})),
+    ("N33", (), grok_mcp("alpaca__get_quotes", {"symbols": "SPY,NVDA"})),
+    ("N34", (), claude_mcp("mcp__plugin_alpaca_market__get_clock", {})),
     ("N35", (), claude_bash('git commit -m "docs: refresh the brief $(date +%F)"')),
     ("N36", (), claude_bash('grep -rn "sell_to_close" scripts/ | wc -l')),
     ("N37", (), claude_bash("cat hooks/hooks.json | jq .")),
@@ -335,12 +340,12 @@ NO_OPINION: Tuple[Tuple[str, Tuple[str, ...], Any], ...] = (
     ("N53", (), claude_bash("git --no-pager log -1 --grep '" + SAMPLE + "'")),
     ("N54", (), claude_bash("git show HEAD:docs/aegis-cursor.md | head -5")),
     ("N55", (), claude_bash("git blame -L 1,5 README.md && git diff --stat")),
-    # A Monitor that reads, a market-data read on a broker host, and Cursor's stdio and HTTP reads.
+    # A Monitor that reads, reads of a host that is not a broker's, and Cursor's stdio and HTTP reads.
     ("N56", (), tool_call("Monitor", {"command": "tail -f /workspace/aegis-desk/journal/alerts.jsonl | grep --line-buffered "
                                                  "EXIT", "description": "alerts", "timeout_ms": 60000})),
-    ("N57", (), claude_bash("Invoke-RestMethod -Uri https://sandbox.tradier.com/v1/markets/clock -Headers $h "
+    ("N57", (), claude_bash("Invoke-RestMethod -Uri https://www.example.com/status.json -Headers $h "
                             "-TimeoutSec 10", tool="PowerShell")),
-    ("N58", (), claude_bash('curl -s "https://api.tradier.com/v1/markets/quotes?symbols=SPY"')),
+    ("N58", (), claude_bash('curl -s "https://data.example.org/v2/stocks/quotes/latest?symbols=SPY"')),
     ("N59", CURSOR, cursor_mcp_stdio("github", "list_issues", '{"state": "open"}',
                                      "npx -y @modelcontextprotocol/server-github")),
     ("N60", CURSOR, cursor_mcp_http("linear", "list_issues", '{"orderBy": "updatedAt"}', "https://mcp.linear.app/sse")),
@@ -491,7 +496,7 @@ class DecideTest(unittest.TestCase):
                     self.assertIsNone(gate.decide(claude_bash(command)))
 
     def test_whole_tokens_only_in_mcp_names(self) -> None:
-        for name in ("mcp__snaptrade__list_accounts", "tradier__get_option_chains", "mcp__sellside__research",
+        for name in ("mcp__snaptrade__list_accounts", "alpaca__get_option_chains", "mcp__sellside__research",
                      "mcp__orderly__status", "mcp__tradingview__chart"):
             with self.subTest(name=name):
                 self.assertIsNone(gate.decide(claude_mcp(name, {})))
@@ -527,7 +532,7 @@ class DecideTest(unittest.TestCase):
         cases = (
             (claude_bash(SAMPLE), "an HTTP write to /v1/accounts"),
             (claude_bash('python3 -c "client.place_order(account_id, order)"'), "an order call (place_order)"),
-            (claude_bash("curl https://api.tradier.com/v1/accounts/6YA00000/positions"),
+            (claude_bash("curl https://api.alpaca.markets/v1/accounts/6YA00000/positions"),
              "a brokerage account path (/v1/accounts)"),
             (claude_mcp("mcp__blackhole__place_order", {}), "an MCP tool named blackhole__place_order (order)"),
             (claude_mcp("mcp__broker__execute", {"order": {}}), "an MCP input key 'order'"),
@@ -563,22 +568,26 @@ class DecideTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertTrue(gate.is_read(command))
 
-    def test_a_broker_host_is_read_only_on_its_market_data_paths(self) -> None:
-        for command in ("curl -s https://sandbox.tradier.com/v1/markets/clock",
-                        'curl -s "https://api.tradier.com/v1/markets/options/chains?symbol=SPY&expiration=2026-12-18"',
-                        "python3 -c \"import urllib.request as u; u.urlopen('https://sandbox.tradier.com/v1/markets/clock')\""):
-            with self.subTest(command=command):
-                self.assertIsNone(gate.decide(claude_bash(command)))
+    def test_a_broker_host_is_denied_even_for_a_market_data_read(self) -> None:
         for command, label in (
-                ("curl -s https://api.tradier.com/v1/watchlists", "a call to a broker host (tradier.com/v1/watchlists)"),
+                ("curl -s https://paper-api.alpaca.markets/v2/clock", "a call to a broker host (alpaca.markets/v2/clock)"),
+                ('curl -s "https://data.alpaca.markets/v2/stocks/quotes/latest?symbols=SPY"',
+                 "a call to a broker host (alpaca.markets/v2/stocks/quotes/latest?symbols=SPY)"),
+                ("python3 -c \"import urllib.request as u; u.urlopen('https://data.alpaca.markets/v2/stocks/bars')\"",
+                 "a call to a broker host (alpaca.markets/v2/stocks/bars)"),
+                ("curl -s https://api.alpaca.markets/v1/watchlists", "a call to a broker host (alpaca.markets/v1/watchlists)"),
                 ("curl -s " + SNAPTRADE, "a call to a broker host (snaptrade.com/api/v1/trade/place)"),
                 ("curl -sXPOST " + SNAPTRADE + " -sd@order.json", "an HTTP write to snaptrade.com"),
-                ("curl -s https://api.tradier.com/v1/accounts/6YA00000/positions",
+                ("curl -s https://api.alpaca.markets/v1/accounts/6YA00000/positions",
                  "a brokerage account path (/v1/accounts)"),
-                ("curl -s https://sandbox.tradier.com/v1/markets/clock https://api.tradier.com/v1/user/profile",
-                 "a call to a broker host (tradier.com/v1/user/profile)")):
+                ("curl -s https://www.example.com/status.json https://api.alpaca.markets/v2/account",
+                 "a call to a broker host (alpaca.markets/v2/account)")):
             with self.subTest(command=command):
                 self.assertEqual(label, gate.decide(claude_bash(command)))
+        for command in ("curl -s https://www.example.com/status.json",
+                        "python3 -c \"import urllib.request as u; u.urlopen('https://www.example.com/status.json')\""):
+            with self.subTest(command=command):
+                self.assertIsNone(gate.decide(claude_bash(command)))
 
     def test_write_markers_in_every_spelling(self) -> None:
         for marker in ("-sXPOST", "-sX POST", "-X PATCH", "-fsSLd x=1", "-sd@o", "-T o.json", "-sF a=b", "--json {}",
@@ -587,7 +596,7 @@ class DecideTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNotNone(gate.decide(claude_bash(command)))
         for marker in ("-fsSL", "-sS -H 'Accept: application/json'", "-o out.json", "-sSLo out.json", "-I"):
-            command = "curl %s https://sandbox.tradier.com/v1/markets/clock" % marker
+            command = "curl %s %s" % (marker, LOOPBACK)
             with self.subTest(command=command):
                 self.assertIsNone(gate.decide(claude_bash(command)))
         for marker in ("-Method:Post", "-Meth Post", "-method put", "-Bod $b", "-InF o.json", "-CustomMethod DELETE"):
@@ -595,7 +604,7 @@ class DecideTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNotNone(gate.decide(claude_bash(command, tool="PowerShell")))
         for marker in ("-Method Get", "-Headers $h", "-TimeoutSec 10", "-OutFile q.json"):
-            command = "Invoke-RestMethod -Uri https://sandbox.tradier.com/v1/markets/clock %s" % marker
+            command = "Invoke-RestMethod -Uri %s %s" % (LOOPBACK, marker)
             with self.subTest(command=command):
                 self.assertIsNone(gate.decide(claude_bash(command, tool="PowerShell")))
 

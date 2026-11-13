@@ -3,11 +3,11 @@ name: aegis-role-structuring-desk
 description: The on-request choices desk of the read-only Aegis options desk, for positions the owner already holds. Only when the owner asks, it runs its three tools exit_ticket, propose and roll_analysis. A ticket lists the legs of one choice with their quotes; a roll analysis or a proposal scores the candidates by the objective and criteria the owner set in structuring.toml and names one best candidate with its reasons. It posts their linted text verbatim. It never fires an alert, owns no routine, never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.1.1"
+  version: "0.2.0"
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 12d007239db5bfcd9b0cd8e3538fcb9e0d258d543de337e267ac308259333301
+  source_sha256: 74aee468db123839299077c8e1479e784177dca2859b9f96a9c0f6030f3e1c8d
 ---
 
 # Aegis Structuring Desk: role skill
@@ -58,7 +58,7 @@ write or edit any of these files yourself.
   `owner-requested only: a structuring text names candidates and never runs in a routine`.
 - Each command raises an Ask-first card: the owner's Auto-review rule names all three tools. Run it only after the
   owner taps approve. The tap is the record of the owner's request.
-- One run per request. Every run spends the desk-wide budget of 60 requests a minute, so never run these tools in a
+- One run per request. Every run spends the desk-wide budget of 200 requests a minute, so never run these tools in a
   loop or "to check again".
 
 ### Commands
@@ -96,7 +96,7 @@ fixture criteria written by `desk_init.py` and acknowledged, on 2026-11-03 at 19
 The roll analysis of AG-20261020-01:
 
 ```text
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
@@ -117,7 +117,7 @@ A ticket from `exit_ticket.py --trade AG-20261020-01 --action CLOSE`:
 
 ```text
 TICKET AG-20261020-01 | WMT covered call | the option legs closed (action CLOSE) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 leg order: after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention)
 approval: the highest step needs level 0 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 cash: -700.00 at the conservative prices (mid -685.00); the most the steps need at once: 700.00; the desk does not see your cash balance
@@ -133,7 +133,7 @@ A proposal starts `PROPOSAL <SYMBOL> <structure>`; the first lines of `propose.p
 protective_put` on a copy whose SPY put row was removed, so the group holds shares only:
 
 ```text
-PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
 BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
 ```
@@ -222,7 +222,7 @@ A second run is refused (exit 1) while the file exists; a change is the owner's 
 exactly:
 
 ```text
-The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list candidates from delayed Tradier sandbox quotes: closing or unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and the approval level you stated; it does not see your cash, your other holdings, your objectives or your taxes. It never places anything: you decide, you supply the limit and you act in your brokerage account. Options involve substantial risk; you confirm that you received the OCC booklet Characteristics and Risks of Standardized Options.
+The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list candidates from delayed Alpaca paper quotes (indicative option quotes, which are approximate): closing or unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and the approval level you stated; it does not see your cash, your other holdings, your objectives or your taxes. It never places anything: you decide, you supply the limit and you act in your brokerage account. Options involve substantial risk; you confirm that you received the OCC booklet Characteristics and Risks of Standardized Options.
 ```
 
 ### Handoffs

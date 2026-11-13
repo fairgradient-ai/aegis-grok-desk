@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-incident-playbooks
-description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Stage-1 Bot. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong token or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
+description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Stage-1 Bot. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong key or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -19,7 +19,7 @@ Three rules hold in every incident:
 
 1. Quote the line the tool printed. Never reword it, add a number, or guess a cause the tool did not name.
 2. UNAVAILABLE is a verdict. While an input is unavailable there is no HOLD, and nothing is "probably fine".
-3. The fix is the owner's: a file, a token, a git setting or a routine. A Bot never edits a desk file to make an
+3. The fix is the owner's: a file, a key, a git setting or a routine. A Bot never edits a desk file to make an
    incident go away.
 
 ## How an incident shows up
@@ -27,7 +27,7 @@ Three rules hold in every incident:
 | Line | Meaning |
 | --- | --- |
 | `INCIDENT \| <id> <slot> ET \| <tool> failed (<code>); the other steps ran; details in incidents/<file>` | one step of a routine failed; the rest of the message stands |
-| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.1.1: <reason>; no step ran \| ...` | the pin check refused the run |
+| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.2.0: <reason>; no step ran \| ...` | the pin check refused the run |
 | `INCIDENT \| <id> \| another run of this routine holds its lock; this run did nothing` | two runs overlapped |
 | `INCIDENT \| <id> \| the routine did not run (routine_crashed): ...` | an unexpected error; a traceback is in `incidents/<stamp>-<id>-crash.md` |
 | `WITHHELD \| <tool>: the text failed the alert lint (<codes>) and is withheld; <tool>.py shows it` | one part failed the lint and was not printed |
@@ -44,15 +44,15 @@ Incident files are `incidents/<stamp>-<id>-<slug>.md` in the desk root, with `-d
 `incidents today: <n> (...); details in incidents/`. A Bot reads an incident file only to tell the owner what it
 says, and quotes it only when the owner asks.
 
-## Blind desk: vendor down, quota, wrong token or host
+## Blind desk: vendor down, quota, wrong key or host
 
 When quotes cannot be had, every rule that needs one is unavailable, and the book check posts a standing banner. From
 a synthetic book check on the stale set (2026-11-03 19:50 UTC, the first lines of two groups):
 
 ```text
-UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
+UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
 unavailable: your rule TP80: row 4 WMT261120C00105000: quote grade F (stale): no fresh ask
-UNAVAILABLE AG-20261022-02 | NVDA covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
+UNAVAILABLE AG-20261022-02 | NVDA covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
 unavailable: your rule DELTA_WATCH: row 6 NVDA261120C00150000: no Greeks (iv_status unavailable)
 ```
 
@@ -60,21 +60,25 @@ What the cause looks like:
 
 - **Quota.** The quote cache marks the symbols `quota_guard` and the run stops fetching.
 - **Vendor or network failure.** The symbols carry `fetch_failed:<status>`, for example `fetch_failed:network`.
-- **No token.** `UNAVAILABLE: no market-data token: add the Tradier sandbox token through the secret card (or the
-  acknowledged token file)`.
-- **Not a sandbox token.** The full doctor's check 5 FAILs with `not a sandbox token: remove and rotate`.
-- **Production host in `desk.toml`.** The doctor FAILs with `production host is outside the guarantee before the
-  market-data proxy`, and every market tool refuses to run.
+- **No key.** `UNAVAILABLE: no market-data key: add the Alpaca paper key ID and secret through the secret card (or
+  the acknowledged credentials file)`.
+- **Not a paper key.** The full doctor's check 5 FAILs with `not a paper key: remove it and add a paper key`: a live
+  key, or a wrong or deleted one. A live key can trade, so the owner deletes both secrets at once.
+- **Plan limit.** The symbols carry `fetch_failed:subscription`: Alpaca refused a request the free plan does not
+  include, and the run stops fetching.
+- **A host other than `paper` in `desk.toml`.** `desk.toml` no longer loads: the doctor's check 8 FAILs with
+  `[market_data] host must be "paper" (got "live"): the desk holds a paper key only, and the live trading host is
+  refused`, and every market tool stops with exit 1.
 
 The response:
 
 1. The Bot posts nothing of its own about prices or verdicts. The routine's banner is the message.
 2. The Desk Lead runs the full doctor once, `python3 scripts/desk_doctor.py --desk-root /workspace/aegis-desk`, and
    tells the owner the failing check's line. It does not run the doctor or any market tool in a loop: each run spends
-   the shared 60-per-minute budget.
-3. A token problem is the owner's: the owner removes the token, rotates it in Tradier, and adds the new sandbox token
-   through the secret card. A production host is fixed only by the owner's `desk_init.py --replace --owner-tapped` run
-   with a sandbox host.
+   the shared 200-per-minute budget.
+3. A key problem is the owner's: the owner deletes both secrets, generates a new paper key pair in the Alpaca
+   dashboard (Paper Trading) and adds it through the secret card. A host other than `paper` is fixed only by the
+   owner's `desk_init.py --replace --owner-tapped` run with the paper host.
 4. The owner checks the broker directly (the list at the end) until the banners clear.
 
 ## Invalid positions.csv at the open
@@ -86,7 +90,7 @@ A typo in the header stops the whole file. A synthetic pre-open run on a fixture
 INCIDENT | preopen 07:30 ET | csv_recon failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-csv_recon.md
 INCIDENT | preopen 07:30 ET | expiry_checklist failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-expiry_checklist-week.md
 MORNING DESK SHEET 2026-11-03
-doctor (state/doctor.json, quick check at 12:35 UTC): FAIL, 1 warning: token_source; 1 failure: desk_files
+doctor (state/doctor.json, quick check at 12:35 UTC): FAIL, 1 warning: key_source; 1 failure: desk_files
 positions.csv reconciliation (data/positions/2026-11-03.recon.json): ERRORS, 0 proposed edits (csv_recon.py --diff lists them)
 ```
 
@@ -130,7 +134,7 @@ Every book check compares `desk.toml`, `positions.csv`, the adopted rulebook and
 (synthetic):
 
 ```text
-CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
+CONFIG CHANGED | desk.toml: not acknowledged -> sha f08a18dc | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
 ```
 
 The response: the Desk Lead asks the owner whether they changed the named file. If they did, the owner taps the
@@ -140,15 +144,15 @@ Lead never acknowledges a change on the owner's behalf.
 
 ## The checkout is not the pinned release, or git refuses it
 
-Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.1.1. If not, no step runs.
+Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.2.0. If not, no step runs.
 From a development checkout (synthetic):
 
 ```text
-INCIDENT | preopen | the desk checkout is not the pinned release v0.1.1: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
+INCIDENT | preopen | the desk checkout is not the pinned release v0.2.0: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
 ```
 
 The reasons the pin check can give include `the checkout has <n> uncommitted or untracked path(s)`, `HEAD <commit> is
-not the commit of v0.1.1 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
+not the commit of v0.2.0 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
 
 - **Uncommitted or untracked paths.** Something wrote into the checkout. The Lead lists the paths with the read-only
   `git -C /workspace/aegis-grok-desk --no-optional-locks status --short` and reports them; the owner decides. A desk
@@ -206,7 +210,7 @@ UNAVAILABLE | AG-20261020-01 roll analysis | an option chain in your window was 
   not block: its CONFIG CHANGED line prints first and the answer follows.
 - **Withheld.** The structuring text failed its lint and was not printed. Nobody retypes it; `--json` of the same
   tool shows it as a diagnostic when the owner asks.
-- **A chain not served.** The quota, the per-run cap of 20 requests or 4 chains, or a vendor failure left an
+- **A chain not served.** The quota, the per-run cap of 40 requests or 4 chains, or a vendor failure left an
   expiration of the window unpriced, so the answer is UNAVAILABLE: no best candidate on partial data. An empty
   expiration list from the vendor counts as missing too. The owner asks again later; no Bot repeats the run in a loop.
 - **No candidate priced.** `no candidate in your window could be priced`, with the reason the candidates share: the

@@ -17,8 +17,9 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
+from unittest import mock
 
-from aegis_desk import alert_lint, alerts, contract
+from aegis_desk import alert_lint, alerts, contract, quote_cache
 
 import assignment_watch as tool
 
@@ -29,7 +30,7 @@ T1_NOW = "2026-11-19T19:50:00Z"
 EXPIRY_NOW = "2026-11-20T19:50:00Z"
 POST_EXPIRY_NOW = "2026-11-21T14:30:00Z"
 HOLIDAY_NOW = "2026-11-26T15:00:00Z"
-FOOTER_T1 = "Tradier sandbox, delayed 15 min, as of 19:31 UTC"
+FOOTER_T1 = "Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC"
 # The fixture calendar's WMT ex-dividend (Tue 2026-11-24) has its last cum-dividend day on Mon 2026-11-23, after the
 # Nov-20 call's last trading day: the fixture sets list no dividend tier for the WMT call. The tests that need one
 # move the COPY's ex-dividend to Mon 2026-11-23 (cum day Fri 2026-11-20 = the last trading day), which grades the call
@@ -181,7 +182,7 @@ class JourneysTest(DeskCopy):
     def test_regular_day_is_quiet(self) -> None:
         code, body = run_json(self.argv("regular"))
         self.assertEqual(0, code, body)
-        self.assertEqual(("ok", "tradier:sandbox", 15), (body["status"], body["source"], body["delay_min"]))
+        self.assertEqual(("ok", "alpaca:paper", 15), (body["status"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(("quiet", 0, "2026-11-03", "2026-11-04"),
                          (payload["verdict"], payload["exit_code"], payload["today"], payload["next_trading_day"]))
@@ -190,8 +191,8 @@ class JourneysTest(DeskCopy):
         self.assertTrue(all(leg["pin"] is None and leg["dividend"] is None for leg in payload["legs"]))
         self.assertEqual(["NVDA", "NVDA261120C00150000", "SPY", "SPY261218P00620000", "WMT", "WMT261120C00105000"],
                          payload["quote_check"]["symbols"])
-        self.assertEqual((1, {}), (payload["quote_check"]["requests_made"], payload["quote_check"]["missing"]))
-        self.assertEqual(1, len(self.ledger()), "one batch for the whole book")
+        self.assertEqual((2, {}), (payload["quote_check"]["requests_made"], payload["quote_check"]["missing"]))
+        self.assertEqual(2, len(self.ledger()), "one batch for the whole book: equities, then options")
         self.assertEqual("open", payload["session"]["session"])
         self.assertEqual("regular", payload["fixture_set"])
         code, text = run_tool(self.argv("regular", json_mode=False))
@@ -199,7 +200,7 @@ class JourneysTest(DeskCopy):
         lines = text.splitlines()
         self.assertIn("nothing within the windows: no ex-dividend inside 5 trading days with a short call alive on the last "
                       "cum-dividend day, no contract on its last or next-to-last trading day", lines)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
 
     def test_t1_fires_on_the_nvda_pin_and_lists_no_dividend_tier_for_the_wmt_call(self) -> None:
         code, body = run_json(self.argv("t1", now=T1_NOW))
@@ -421,7 +422,7 @@ class MessageTest(DeskCopy):
                 lint = posted_lint(body["payload"])
                 self.assertTrue(lint.ok, lint.problems)
                 self.assertEqual([], [p.pattern for p in alert_lint.FORBIDDEN_PATTERNS if p.search(body["payload"]["message"])])
-                self.assertEqual("Tradier sandbox, delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
+                self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
 
     def test_the_watch_writes_no_record(self) -> None:
         code, _text = self.run_on(self.root, "t1", T1_NOW, False)
@@ -449,10 +450,15 @@ class ErrorMappingTest(DeskCopy):
         code, body = run_json(self.argv("regular"))
         self.assertEqual((1, "error", "calendar_invalid"), (code, body["status"], body["error"]["code"]))
 
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_exit_1_and_refused_market_data_exit_20(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(self.argv("regular"))
-        self.assertEqual((20, "unavailable", "production_host"), (code, body["status"], body["error"]["code"]))
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+        self.rewrite("desk.toml", 'host = "live"', 'host = "paper"')
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = run_json(self.argv("regular"))
+        self.assertEqual((20, "unavailable", "no_credential"), (code, body["status"], body["error"]["code"]))
 
     def test_invalid_config_is_exit_1(self) -> None:
         self.rewrite("desk.toml", "grace_min = 5", "grace_min = 31")

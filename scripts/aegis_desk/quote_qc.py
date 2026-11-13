@@ -36,7 +36,9 @@ Grades (both sides fresh and ``bid > 0`` for A-D; ``spread_pct = (ask - bid) / m
 that printed value, so the number a reader sees and the grade always agree:
 A ``<= 2``, B ``<= 5``, C ``<= 10``, D ``<= 25`` or exactly one side stale; E ``bid == 0`` or
 ``spread_pct > 25`` (the mid is displayed but never a mark for class-M rules); F any side
-missing, undated or stale beyond the bound, a crossed market (``ask < bid``), or a closed day.
+missing, undated or stale beyond the bound, an ask of 0 under a bid above 0 (Alpaca's ``ap`` 0: no
+active offer, status ``missing`` with :data:`REASON_NO_OFFER`, never "crossed"), a crossed market
+(``ask < bid``), or a closed day.
 ``usable_for_rules`` is exactly ``grade in A-D``.
 
 Marks: ``mark_mid`` is the quote's mid, ``mark_liq_long`` the bid (what a long liquidates at),
@@ -44,7 +46,8 @@ Marks: ``mark_mid`` is the quote's mid, ``mark_liq_long`` the bid (what a long l
 stale side the mid is NOT invented from the fresh side (``mark_mid`` and ``spread_pct`` are
 ``None``) and only the fresh side's own liquidation mark is kept. ``last`` is never a mark.
 
-Decision order (so every case is deterministic): closed day; a missing side; an undated side;
+Decision order (so every case is deterministic): closed day; a missing side; a zero ask under a
+positive bid; an undated side;
 both sides stale; one side stale; a crossed market; ``bid == 0``; the spread bands.
 """
 
@@ -77,6 +80,8 @@ STATUS_ONE_SIDE_STALE: str = "one_side_stale"
 STATUS_UNDATED: str = "undated"
 STATUS_CLOSED_DAY: str = "closed_day"
 STATUS_MISSING: str = "missing"
+REASON_NO_OFFER: str = "ask missing (no offer)"
+"""The reason for an ask of 0 under a positive bid (Alpaca's ``ap`` 0 means no active offer)."""
 STATUSES: Tuple[str, ...] = (STATUS_FRESH, STATUS_STALE, STATUS_ONE_SIDE_STALE, STATUS_UNDATED, STATUS_CLOSED_DAY,
                              STATUS_MISSING)
 """Every freshness status ``QuoteQC.status`` can take."""
@@ -310,6 +315,10 @@ def assess(quote: Quote, *, now: datetime.datetime, session: SessionInfo, bound_
 
     if _SIDE_MISSING in states:
         return result(GRADE_F, STATUS_MISSING, spread, None, None, None)
+    if ask == 0 and bid is not None and bid > 0:
+        # Alpaca's ``ap`` 0 is no active offer: an empty ask under a live bid, never a crossed market.
+        reasons.append(REASON_NO_OFFER)
+        return result(GRADE_F, STATUS_MISSING, None, None, None, None)
     if _SIDE_UNDATED in states:
         return result(GRADE_F, STATUS_UNDATED, spread, None, None, None)
     if states == (_SIDE_STALE, _SIDE_STALE):
@@ -363,6 +372,7 @@ __all__ = [
     "LABEL_UNDATED",
     "QuoteQC",
     "REASON_MARKET_CLOSED",
+    "REASON_NO_OFFER",
     "SKEW_TOLERANCE_S",
     "SPREAD_BANDS",
     "SPREAD_QUANTUM",

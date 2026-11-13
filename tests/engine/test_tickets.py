@@ -303,7 +303,7 @@ class WmtGoldenTest(unittest.TestCase):
         self.assertEqual((0, 2, True), (ticket.approval.required_level, ticket.owner_level, ticket.approval.ok))
         self.assertEqual((datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC), True), (ticket.valid_until,
                                                                                       ticket.valid_full))
-        self.assertEqual(1, ticket.requests["made"])
+        self.assertEqual(2, ticket.requests["made"])  # equities, then the option leg
         self.assertEqual(STAMP, tickets.ticket_as_of(ticket))
         self.assertEqual(STAMP, ticket.legs[0].quote.as_of)
 
@@ -323,7 +323,7 @@ class WmtGoldenTest(unittest.TestCase):
                                                                     candidate.after.breakeven))
         self.assertEqual(["crosses_ex_dividend"], [label.code for label in candidate.accepted])
         self.assertEqual((1, True), (ticket.approval.required_level, ticket.approval.ok))
-        self.assertEqual(2, ticket.requests["made"])
+        self.assertEqual(4, ticket.requests["made"])  # two quote requests, the listing and the snapshots
 
     def test_unwind_stock(self) -> None:
         ticket = run(self, WMT, "UNWIND_STOCK")
@@ -350,7 +350,7 @@ class WmtGoldenTest(unittest.TestCase):
         self.assertEqual(datetime.datetime(2026, 11, 20, 21, 0, tzinfo=UTC), leg.act_by.utc)
         self.assertEqual((True, False, datetime.date(2026, 11, 24)), (leg.dividend.known, leg.dividend.applicable,
                                                                       leg.dividend.ex_date))
-        self.assertEqual(1, ticket.requests["made"])
+        self.assertEqual(2, ticket.requests["made"])
 
     def test_monetize_put_is_not_applicable(self) -> None:
         ticket = run(self, WMT, "MONETIZE_PUT")
@@ -500,14 +500,14 @@ class QuietAnswerTest(unittest.TestCase):
 
     def test_stale_quotes(self) -> None:
         ticket = run(self, WMT, "CLOSE", "stale")
-        self.assertEqual(("UNAVAILABLE", "held_leg_unusable", 1), (ticket.verdict, ticket.cause,
+        self.assertEqual(("UNAVAILABLE", "held_leg_unusable", 2), (ticket.verdict, ticket.cause,
                                                                    ticket.requests["made"]))
         let = run(self, WMT, "LET_ASSIGN", "stale")
         self.assertEqual(("UNAVAILABLE", "spot_unusable"), (let.verdict, let.cause))
 
     def test_replacement_not_listed_and_the_expiration_rule(self) -> None:
         ticket = run(self, WMT, "ROLL", expiration=JAN15, strike="117")
-        self.assertEqual(("UNAVAILABLE", "replacement_not_listed", 2), (ticket.verdict, ticket.cause,
+        self.assertEqual(("UNAVAILABLE", "replacement_not_listed", 4), (ticket.verdict, ticket.cause,
                                                                         ticket.requests["made"]))
         for day in (NOV20, datetime.date(2026, 11, 13)):
             with self.subTest(day=day):
@@ -520,7 +520,7 @@ class QuietAnswerTest(unittest.TestCase):
         for day, words in cases:
             with self.subTest(day=day):
                 ticket = run(self, NVDA, "ROLL", expiration=day, strike="180")
-                self.assertEqual(("UNAVAILABLE", tickets.CAUSE_REPLACEMENT_UNPRICED, words, 2, []),
+                self.assertEqual(("UNAVAILABLE", tickets.CAUSE_REPLACEMENT_UNPRICED, words, 4, []),
                                  (ticket.verdict, ticket.cause, ticket.reason, ticket.requests["made"], ticket.legs))
 
     def test_refused_below_the_needed_level(self) -> None:
@@ -576,9 +576,9 @@ class TextTest(unittest.TestCase):
         self.assertEqual("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 "
                          "of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)", lines[0])
         self.assertEqual("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
-                         "quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC", lines[1])
+                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", lines[1])
         self.assertEqual("leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | "
-                         "quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC", lines[2])
+                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", lines[2])
         self.assertIn("cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; "
                       "the desk does not see your cash balance", lines)
         self.assertEqual(STAMP, rendered.as_of)
@@ -696,7 +696,7 @@ class FixerTicketTest(unittest.TestCase):
         rendered = tickets.render_ticket(ticket)
         assert_lints(self, rendered)
         self.assertIn("leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote "
-                      "grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC", rendered.text.split("\n"))
+                      "grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", rendered.text.split("\n"))
         roll = run(self, WMT, "ROLL", expiration=JAN15, strike="115", replace=("equity,WMT,,200,", "equity,WMT,,200.5,"))
         self.assertEqual("TICKET", roll.verdict)
 

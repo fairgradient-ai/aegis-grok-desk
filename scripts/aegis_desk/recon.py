@@ -61,7 +61,7 @@ Other checks
 * ``QUOTE_MISSING``: ONE quote batch for the unexpired open option legs and their underlyings
   (never the open stock legs; never chains). A symbol the vendor did not match is ``QUOTE_MISSING``
   (UNAVAILABLE: the leg cannot be marked and the symbol as written is unknown to the vendor); an
-  unmatched index underlying is the warning ``UNQUOTABLE_INDEX`` (the sandbox quotes no index).
+  unmatched index underlying is the warning ``UNQUOTABLE_INDEX`` (the data source cannot quote index options).
   Any other reason (``market_closed``, ``quota_guard``, ``per_run_cap``, ``fetch_failed:...``) is
   "quote check not run: <reason>", informational, and never changes the verdict.
 * ``UNCOVERED_SHORT_CALL`` (warning): a group with a closed stock row while a short call stays open
@@ -1005,7 +1005,7 @@ def quote_findings(symbols: Sequence[str], result: Any,
             continue
         if any(row.is_index_underlying for row in rows):
             findings.append(Finding(FINDING_UNQUOTABLE_INDEX, LEVEL_WARNING,
-                                    "%s: index underlying, unquotable on the sandbox (rows %s)"
+                                    "%s: index underlying, unquotable: the data source cannot quote index options (rows %s)"
                                     % (symbol, ", ".join(str(row.row_number) for row in rows)),
                                     rows[0].group_id if rows else None, None, symbol))
             continue
@@ -1223,11 +1223,12 @@ def _money(value: Decimal) -> str:
 
 
 def plausibility(rows: Iterable[PositionRow], quotes: Mapping[str, Quote], *, missing: Mapping[str, str],
-                 expired_rows: Iterable[int], sandbox: bool) -> List[PlausibilityCheck]:
+                 expired_rows: Iterable[int], index_unquotable: bool) -> List[PlausibilityCheck]:
     """The first-observation check of every OPEN row (module notes): an option whose entry
     premium per share lies outside ``[mid / 20, mid x 20]`` is the row ERROR ``unit mismatch?``;
     a stock-like row outside ``[mid / 10, mid x 10]`` is a WARNING. Expired legs are labelled
-    (``csv_recon`` settles them); an unquoted index underlying on the sandbox is ``unquotable``;
+    (``csv_recon`` settles them); an unquoted index underlying is ``unquotable`` when ``index_unquotable`` (the data
+    source cannot quote index options);
     any other unquoted row is ``not_checked`` with the cache's reason."""
     expired = set(expired_rows)
     checks: List[PlausibilityCheck] = []
@@ -1245,9 +1246,10 @@ def plausibility(rows: Iterable[PositionRow], quotes: Mapping[str, Quote], *, mi
         quote = quotes.get(symbol)
         if quote is None:
             reason = missing.get(symbol, "not served")
-            if sandbox and row.is_index_underlying:
+            if index_unquotable and row.is_index_underlying:
                 checks.append(PlausibilityCheck(mark=None, status=PLAUSIBILITY_UNQUOTABLE,
-                                                message="index underlying %s: unquotable on the sandbox (%s)" % (symbol, reason),
+                                                message="index underlying %s: unquotable: the data source cannot quote index "
+                                                        "options (%s)" % (symbol, reason),
                                                 **base))
             else:
                 checks.append(PlausibilityCheck(mark=None, status=PLAUSIBILITY_NOT_CHECKED,

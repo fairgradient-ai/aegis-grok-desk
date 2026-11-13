@@ -37,7 +37,7 @@ Envelopes
 
     {"schema_version": 1, "tool": "exit_check", "tool_version": "0.1.0", "mode": "read-only",
      "status": "fired", "generated_at": "2026-11-02T14:31:05+00:00",
-     "source": "tradier sandbox", "delay_min": 15, "payload": {...}}
+     "source": "alpaca:paper", "delay_min": 15, "payload": {...}}
 
 ``mode`` is always ``"read-only"``; ``status`` is one of :data:`STATUSES` and mirrors the exit
 code (:func:`exit_code_for`); ``source`` names the data source and ``delay_min`` its delay

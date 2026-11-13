@@ -17,6 +17,7 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
+from unittest import mock
 
 import csv_recon as recon_tool  # the sibling tool that reports the same unusable file
 import positions_check as tool  # the tool module scripts/positions_check.py
@@ -118,7 +119,7 @@ class RegularRootTest(DeskCopy):
     def test_clean_with_plausibility_passed_for_every_open_leg(self) -> None:
         code, body = run_json(self.argv())
         self.assertEqual(0, code, body)
-        self.assertEqual(("ok", "tradier:sandbox", 15), (body["status"], body["source"], body["delay_min"]))
+        self.assertEqual(("ok", "alpaca:paper", 15), (body["status"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(("CLEAN", 0, 7, {}, []), (payload["verdict"], payload["exit_code"], payload["row_count"],
                                                    payload["quarantined"], payload["file_errors"]))
@@ -135,7 +136,7 @@ class RegularRootTest(DeskCopy):
         self.assertEqual(("98.50", "104.23"), (checks[3]["entry"], checks[3]["mark"]), "entry_price_per_share as the parser keeps it")
         self.assertEqual(("141.20", "148.925"), (checks[5]["entry"], checks[5]["mark"]))
         self.assertEqual(("632.40", "648.12"), (checks[7]["entry"], checks[7]["mark"]))
-        self.assertEqual(1, len(self.ledger()), "six symbols are one request")
+        self.assertEqual(2, len(self.ledger()), "six symbols are one batch: equities, then options")
         self.assertEqual(payload["counts"]["plausibility_ok"], 6)
 
     def test_prose(self) -> None:
@@ -146,7 +147,7 @@ class RegularRootTest(DeskCopy):
         self.assertIn("3 open", lines[0])
         self.assertTrue(any(line.startswith("AG-20261020-01 covered_call WMT") and "19016.00" in line for line in lines), text)
         self.assertTrue(any("row 4 WMT261120C00105000 entry 3.42 vs mark 3.425: ok" in line for line in lines), text)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
 
     def test_entry_premium_off_by_a_hundred_is_a_unit_mismatch_error_that_quarantines_the_group(self) -> None:
         self.rewrite("positions.csv", "AG-20261020-01,2026-10-20,-684.00,,3.42,", "AG-20261020-01,2026-10-20,-68400.00,,342.00,")
@@ -192,7 +193,7 @@ class RegularRootTest(DeskCopy):
         lines = text.splitlines()
         self.assertEqual(message, lines[0], "the prose first line is the envelope's message")
         self.assertTrue(any(line.startswith("file error: ") and "did you mean" in line for line in lines), text)
-        self.assertTrue(lines[-1].startswith("Tradier sandbox, delayed 15 min, as of "), lines[-1])
+        self.assertTrue(lines[-1].startswith("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of "), lines[-1])
         self.assertEqual([], self.ledger())
         code, recon_body = run_csv_recon_json(self.argv())
         self.assertEqual(1, code, recon_body)
@@ -223,11 +224,12 @@ class RegularRootTest(DeskCopy):
         code, body = run_json(self.argv())
         self.assertEqual((1, "error", "positions_missing"), (code, body["status"], body["error"]["code"]))
 
-    def test_production_host_and_invalid_config(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_live_host_and_invalid_config(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
-        self.assertEqual((20, "unavailable", "production_host"), (code, body["status"], body["error"]["code"]))
-        self.rewrite("desk.toml", 'host = "production"', 'host = "sandbox"')
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+        self.assertIn('host must be "paper"', body["error"]["message"])
+        self.rewrite("desk.toml", 'host = "live"', 'host = "paper"')
         self.rewrite("desk.toml", "grace_min = 5", "grace_min = 31")
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
         self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))

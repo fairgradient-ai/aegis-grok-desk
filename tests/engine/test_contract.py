@@ -48,9 +48,9 @@ class EnvelopeTest(unittest.TestCase):
     def test_envelope_shape(self) -> None:
         moment = datetime.datetime(2026, 11, 2, 14, 31, 5, tzinfo=UTC)
         body = contract.envelope("exit_check", "0.1.0", {"verdict": "EXIT_SIGNAL", "credit": Decimal("3.42")},
-                                 source="tradier sandbox", delay_min=15, generated_at=moment, status="fired")
+                                 source="alpaca:paper", delay_min=15, generated_at=moment, status="fired")
         self.assertEqual({"schema_version": 1, "tool": "exit_check", "tool_version": "0.1.0", "mode": "read-only",
-                          "status": "fired", "generated_at": "2026-11-02T14:31:05+00:00", "source": "tradier sandbox",
+                          "status": "fired", "generated_at": "2026-11-02T14:31:05+00:00", "source": "alpaca:paper",
                           "delay_min": 15, "payload": {"verdict": "EXIT_SIGNAL", "credit": Decimal("3.42")}}, body)
         rendered = json.loads(contract.json_dumps(body))
         self.assertEqual("3.42", rendered["payload"]["credit"])
@@ -88,14 +88,14 @@ class EnvelopeTest(unittest.TestCase):
                 contract.error_envelope("t", "1", "c", "m", status)
 
     def test_schema_envelope(self) -> None:
-        body = contract.schema_envelope("book", "0.1.0", {"legs": "array"}, network_access="GET /v1/markets/quotes",
+        body = contract.schema_envelope("book", "0.1.0", {"legs": "array"}, network_access="GET /v2/stocks/quotes/latest",
                                         description="marks the book")
         self.assertEqual("read-only", body["mode"])
         self.assertEqual({"0", "1", "2", "10", "20"}, set(body["exit_codes"]))
         self.assertTrue(body["exit_codes"]["20"].startswith("unavailable:"))
         self.assertEqual({"legs": "array"}, body["envelope"]["payload"])
         self.assertEqual("book", body["error"]["tool"])
-        self.assertEqual("GET /v1/markets/quotes", body["network_access"])
+        self.assertEqual("GET /v2/stocks/quotes/latest", body["network_access"])
         self.assertEqual("marks the book", body["description"])
         json.loads(contract.json_dumps(body))
 
@@ -223,7 +223,7 @@ class ParserTest(unittest.TestCase):
 
     def test_schema_method_and_help_text(self) -> None:
         p = parser()
-        body = p.schema({"quote": "object"}, network_access="GET /v1/markets/quotes")
+        body = p.schema({"quote": "object"}, network_access="GET /v2/stocks/quotes/latest")
         self.assertEqual("demo_tool", body["tool"])
         self.assertEqual("demo", body["description"])
         self.assertEqual({"quote": "object"}, body["envelope"]["payload"])

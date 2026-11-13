@@ -1,8 +1,9 @@
 """``quote_cache.get_history`` (PR 2b, F2): the daily-bar cache under ``data/cache/history/``.
 
 The happy paths run the real GET-only client over an ``OfflineTransport`` whose fixture set is
-written under a temporary desk root (the client's ``history__<SYMBOL>__<START>__<END>.json``
-naming); the guard and error paths use a small fake client shaped like ``TradierError``, because
+written under a temporary desk root (the client's ``bars__<SYMBOL>__<START>__<END>.json``
+naming, Alpaca's ``/v2/stocks/bars`` shape); the guard and error paths use a small fake client shaped like
+``AlpacaError``, because
 the offline transport can only answer 200 or "no fixture". The existing cache tests
 (``tests/engine/test_quote_cache.py``) stay untouched: nothing here changes ``get_quotes`` or
 ``get_chain``.
@@ -23,12 +24,12 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 
-from aegis_desk import desk_paths, quote_cache, state, tradier_client
+from aegis_desk import alpaca_client, desk_paths, quote_cache, state
 from aegis_desk.market_types import Bar, RequestReceipt
 
 UTC = timezone.utc
 UA = "aegis-desk-tests/0"
-HISTORY_PATH = "/v1/markets/history"
+HISTORY_PATH = "/v2/stocks/bars"
 SET = "hist"
 START = date(2026, 11, 20)
 END = date(2026, 11, 23)
@@ -38,19 +39,27 @@ SATURDAY = datetime(2026, 11, 21, 14, 30, 0, tzinfo=UTC)  # the post-expiry rout
 
 BAR_FRI = {"date": "2026-11-20", "open": 104.6, "high": 105.2, "low": 104.3, "close": 104.86, "volume": 9100000}
 BAR_MON = {"date": "2026-11-23", "open": 105.3, "high": 105.9, "low": 104.95, "close": 105.62, "volume": 8400000}
-TWO_BARS = {"history": {"day": [BAR_FRI, BAR_MON]}}
-ONE_BAR = {"history": {"day": BAR_FRI}}
-EMPTY = {"history": None}
+TWO_BARS = [BAR_FRI, BAR_MON]
+
+
+def alpaca_bars(symbol: str, records: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """Alpaca's ``/v2/stocks/bars`` answer for ``records`` (each bar stamped at midnight ET of its date: 05:00 UTC in
+    November)."""
+    bars = [{"t": "%sT05:00:00Z" % record["date"], "o": record["open"], "h": record["high"], "l": record["low"],
+             "c": record["close"], "v": record["volume"], "n": 1000, "vw": record["close"]} for record in records]
+    return {"bars": {symbol: bars} if bars else {}, "next_page_token": None}
+
+
 FIXTURES = {
-    "history__WMT__2026-11-20__2026-11-23.json": TWO_BARS,
-    "history__WMT__2026-11-20__2026-11-20.json": ONE_BAR,
-    "history__AAPL__2026-11-20__2026-11-20.json": EMPTY,
+    "bars__WMT__2026-11-20__2026-11-23.json": alpaca_bars("WMT", TWO_BARS),
+    "bars__WMT__2026-11-20__2026-11-20.json": alpaca_bars("WMT", [BAR_FRI]),
+    "bars__AAPL__2026-11-20__2026-11-20.json": alpaca_bars("AAPL", []),
 }
-HTTP_STATUS = {"quota": 400, "auth": 401, "http": 500, "network": None, "timeout": None, "decode": 200}
+HTTP_STATUS = {"quota": 429, "auth": 401, "http": 500, "network": None, "timeout": None, "decode": 200}
 
 
 class ClientError(Exception):
-    """Shaped like ``tradier_client.TradierError``: ``status``, ``http_status``, ``path``, ``message``."""
+    """Shaped like ``alpaca_client.AlpacaError``: ``status``, ``http_status``, ``path``, ``message``."""
 
     def __init__(self, status: str, http_status: Optional[int], path: str) -> None:
         self.status = status
@@ -76,7 +85,7 @@ class FakeHistoryClient:
 
     def __init__(self, bars: Optional[Sequence[Dict[str, Any]]] = None, errors: Sequence[Optional[str]] = (),
                  on_request=None, now: datetime = NOW, raw_less: bool = False) -> None:
-        self.bars = list(TWO_BARS["history"]["day"] if bars is None else bars)
+        self.bars = list(TWO_BARS if bars is None else bars)
         self.errors = list(errors)
         self.on_request = on_request
         self.now = now
@@ -98,12 +107,12 @@ class FakeHistoryClient:
         if self.raw_less:
             bars = [Bar(date=date.fromisoformat(raw["date"]), close=Decimal(str(raw["close"]))) for raw in self.bars]
         else:
-            bars = [Bar.from_vendor(dict(raw)) for raw in self.bars]
-        return FakeHistoryResult(bars, receipt, {"history": {"day": list(self.bars)}})
+            bars = [Bar.from_record(dict(raw)) for raw in self.bars]
+        return FakeHistoryResult(bars, receipt, alpaca_bars(symbol, self.bars))
 
 
 def receipt_at(moment: datetime) -> RequestReceipt:
-    return RequestReceipt("/v1/markets/quotes", 1, moment, "ok", http_status=200, ratelimit_available=50)
+    return RequestReceipt("/v2/stocks/quotes/latest", 1, moment, "ok", http_status=200, ratelimit_available=50)
 
 
 class HistoryTestCase(unittest.TestCase):
@@ -113,7 +122,7 @@ class HistoryTestCase(unittest.TestCase):
         os.makedirs(self.root)
         self.paths = desk_paths.for_root(self.root)
         desk_paths.ensure_runtime_dirs(self.paths)
-        self.set_dir = os.path.join(self.paths.tradier_fixtures_dir, SET)
+        self.set_dir = os.path.join(self.paths.alpaca_fixtures_dir, SET)
         os.makedirs(self.set_dir)
         for name, document in FIXTURES.items():
             with open(os.path.join(self.set_dir, name), "w", encoding="utf-8") as handle:
@@ -124,9 +133,9 @@ class HistoryTestCase(unittest.TestCase):
         self._tmp.cleanup()
 
     def offline_client(self, now: datetime = NOW, run: Optional[quote_cache.RunCounters] = None) -> Any:
-        transport = tradier_client.OfflineTransport(self.paths.tradier_fixtures_dir, SET, now=now)
-        return tradier_client.TradierClient("sandbox", None, user_agent=UA, transport=transport,
-                                            on_request=quote_cache.ledger_hook(self.paths, run))
+        transport = alpaca_client.OfflineTransport(self.paths.alpaca_fixtures_dir, SET, now=now)
+        return alpaca_client.AlpacaClient("paper", None, user_agent=UA, transport=transport,
+                                          on_request=quote_cache.ledger_hook(self.paths, run))
 
     def fake_client(self, run: Optional[quote_cache.RunCounters] = None, **kwargs: Any) -> FakeHistoryClient:
         return FakeHistoryClient(on_request=quote_cache.ledger_hook(self.paths, run), **kwargs)
@@ -194,7 +203,7 @@ class FetchAndCacheTest(HistoryTestCase):
         self.assertEqual({"schema", "symbol", "start", "end", "fetched_utc", "bars"}, set(document))
         self.assertEqual((1, "WMT", "2026-11-20", "2026-11-23", "2026-11-24T12:00:00+00:00"),
                          (document["schema"], document["symbol"], document["start"], document["end"], document["fetched_utc"]))
-        self.assertEqual([BAR_FRI, BAR_MON], document["bars"], "the raw vendor dicts are what is stored")
+        self.assertEqual([BAR_FRI, BAR_MON], document["bars"], "the normalised records are what is stored")
         lines = self.ledger_lines()
         self.assertEqual(1, len(lines))
         self.assertEqual({"utc": "2026-11-24T12:00:00+00:00", "path": HISTORY_PATH, "symbols": 1, "status": "ok",
@@ -207,20 +216,20 @@ class FetchAndCacheTest(HistoryTestCase):
 
     def test_second_call_is_served_from_the_cache_without_the_transport(self) -> None:
         self.history(self.offline_client())
-        self.remove_fixture("history__WMT__2026-11-20__2026-11-23.json")
+        self.remove_fixture("bars__WMT__2026-11-20__2026-11-23.json")
         result = self.history(self.offline_client(), now=NOW + timedelta(minutes=3))
         self.assertEqual("cache", result.served_from)
         self.assertEqual(0, result.requests_made)
         self.assertIsNone(result.receipt_utc)
         self.assertEqual(NOW, result.fetched_utc)
         self.assertEqual([Decimal("104.86"), Decimal("105.62")], [bar.close for bar in result.bars])
-        self.assertEqual(BAR_MON, result.bars[1].raw, "a reload goes through Bar.from_vendor")
+        self.assertEqual(BAR_MON, result.bars[1].raw, "a reload goes through Bar.from_record")
         self.assertEqual([], result.warnings)
         self.assertEqual(1, len(self.ledger_lines()))
 
     def test_closed_range_fetched_after_its_last_day_is_served_without_any_ttl(self) -> None:
         self.history(self.offline_client())
-        self.remove_fixture("history__WMT__2026-11-20__2026-11-23.json")
+        self.remove_fixture("bars__WMT__2026-11-20__2026-11-23.json")
         much_later = NOW + timedelta(days=40)
         result = self.history(self.offline_client(now=much_later), now=much_later)
         self.assertEqual("cache", result.served_from)
@@ -233,7 +242,7 @@ class FetchAndCacheTest(HistoryTestCase):
         self.assertEqual("fetch", first.served_from)
         inside = MONDAY + timedelta(minutes=5)
         self.assertEqual("cache", self.history(self.offline_client(now=inside), now=inside).served_from)
-        self.remove_fixture("history__WMT__2026-11-20__2026-11-23.json")
+        self.remove_fixture("bars__WMT__2026-11-20__2026-11-23.json")
         expired = MONDAY + timedelta(minutes=5, seconds=1)
         result = self.history(self.offline_client(now=expired), now=expired)
         self.assertEqual("fetch_failed:network", result.missing_reason, "the copy expired and the refetch failed")
@@ -246,7 +255,7 @@ class FetchAndCacheTest(HistoryTestCase):
         """Fetched Monday 15:00 ET the Monday bar is still forming: the copy is final only once it
         was fetched on a later ET date than ``end`` (the safe reading of "closed days never change")."""
         self.history(self.offline_client(now=MONDAY), now=MONDAY)
-        self.remove_fixture("history__WMT__2026-11-20__2026-11-23.json")
+        self.remove_fixture("bars__WMT__2026-11-20__2026-11-23.json")
         result = self.history(self.offline_client(), now=NOW)
         self.assertEqual("fetch_failed:network", result.missing_reason)
         self.assertEqual(0, len(result.bars))
@@ -274,7 +283,7 @@ class FetchAndCacheTest(HistoryTestCase):
         self.assertEqual(NOW, result.fetched_utc)
         self.assertTrue(any("no bars" in warning for warning in result.warnings), result.warnings)
         self.assertEqual([], self.cache_file("AAPL", START, START)["bars"])
-        self.remove_fixture("history__AAPL__2026-11-20__2026-11-20.json")
+        self.remove_fixture("bars__AAPL__2026-11-20__2026-11-20.json")
         inside = NOW + timedelta(minutes=4)
         again = self.history(self.offline_client(now=inside), symbol="AAPL", start=START, end=START, now=inside)
         self.assertEqual(("cache", "no_bars", []), (again.served_from, again.missing_reason, again.bars))
@@ -348,14 +357,15 @@ class GuardTest(HistoryTestCase):
 
     def test_budget_guard(self) -> None:
         hook = quote_cache.ledger_hook(self.paths)
-        for _ in range(55):
+        full = quote_cache.MINUTE_BUDGET - quote_cache.MINUTE_HEADROOM  # 180 of Alpaca's 200 a minute
+        for _ in range(full):
             hook(receipt_at(NOW - timedelta(seconds=30)))
         client = self.fake_client()
         result = self.history(client)
         self.assertEqual("quota_guard", result.missing_reason)
         self.assertEqual([], client.calls)
         self.assertTrue(any("budget" in warning for warning in result.warnings), result.warnings)
-        self.assertEqual(55, len(self.ledger_lines()))
+        self.assertEqual(full, len(self.ledger_lines()))
         aged = NOW + timedelta(seconds=31)
         self.assertEqual("fetch", self.history(self.fake_client(now=aged), now=aged).served_from)
 
@@ -387,12 +397,12 @@ class GuardTest(HistoryTestCase):
         self.assertEqual(1, len(self.ledger_lines()), "nothing more is sent on this run")
 
     def test_credential_errors_stop_the_run_and_other_errors_do_not(self) -> None:
-        for status in ("auth", "no_token", "token_file_mode", "refused_redirect"):
+        for status in ("auth", "subscription", "no_credential", "credential_file_mode", "refused_redirect"):
             run = quote_cache.RunCounters()
             result = self.history(self.fake_client(run, errors=[status]), run=run)
             self.assertEqual("fetch_failed:" + status, result.missing_reason)
             self.assertEqual("fetch_failed:" + status, run.stop_reason)
-        for status in ("network", "timeout", "http", "decode", "bad_request"):
+        for status in ("network", "timeout", "http", "decode", "bad_request", "incomplete"):
             run = quote_cache.RunCounters()
             result = self.history(self.fake_client(run, errors=[status]), run=run)
             self.assertEqual("fetch_failed:" + status, result.missing_reason)

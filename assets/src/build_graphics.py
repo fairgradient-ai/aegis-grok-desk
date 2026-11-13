@@ -189,7 +189,7 @@ def hero_desktop() -> str:
     out += lines(238, 210, ["It never places, modifies or cancels an order.", "You decide and act in your own broker."],
                  "s mu", 14.5, 20)
     out += alert_bubble(236, 252, 524, [(ALERT_HEAD, "tx"), (ALERT_PLAN, "am"), (ALERT_TAIL, "mu")], 12, 19)
-    out += [text(64, 300, "read-only", "s sb fa", 12), text(64, 318, "sandbox market data", "s sb fa", 12),
+    out += [text(64, 300, "read-only", "s sb fa", 12), text(64, 318, "paper market data", "s sb fa", 12),
             text(64, 336, "numbers from tools", "s sb fa", 12)]
     out.append("</svg>")
     return "\n".join(out) + "\n"
@@ -356,7 +356,8 @@ def demo_output() -> str:
     """The exact stdout of ``python3 scripts/opening_bell.py --demo`` from this checkout (it writes nothing)."""
     env = dict(os.environ)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env.pop("TRADIER_API_TOKEN", None)
+    env.pop("APCA_API_KEY_ID", None)  # the demo loads no credential; none is handed to it either
+    env.pop("APCA_API_SECRET_KEY", None)
     proc = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "opening_bell.py"), "--demo"], cwd=ROOT, env=env,
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     if proc.returncode != 0:

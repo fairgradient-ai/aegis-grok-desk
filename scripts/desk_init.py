@@ -13,11 +13,14 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
 * ``desk.toml`` (when the answers hold ``desk``, with ``owner``, ``market_data`` and ``rates``), in the key order of
   ``tests/fixtures/desk/desk.toml``: decimals are JSON strings (``"250000.00"``) printed verbatim, strings are printed
   as JSON strings, the cutoff ``HH:MM`` as ``HH:MM:00`` and the as-of date bare; the constants ``timezone =
-  "America/New_York"``, ``vendor = "tradier"``, ``feed_delay_min = 15``, ``quote_ttl_min = 5``, ``grace_min = 5``,
-  ``pin_band = 0.25`` and ``[levels] order_shape_enabled = false`` are not asked; ``token_file`` follows
-  ``token_env`` when given, and the optional ``levels.penny_classes`` / ``penny_all_classes`` lists follow
-  ``order_shape_enabled`` when non-empty. The host must be ``sandbox``: ``production`` is exit 1 ``production_host``
-  (outside the guarantee before the market-data proxy). The text is validated in memory by
+  "America/New_York"``, ``vendor = "alpaca"``, ``options_feed = "indicative"``, ``stock_feed = "iex"``,
+  ``feed_delay_min = 15``, ``quote_ttl_min = 5``, ``grace_min = 5``, ``pin_band = 0.25`` and ``[levels]
+  order_shape_enabled = false`` are not asked. ``market_data`` carries the host and the NAMES of the two environment
+  variables that hold the Alpaca paper key ID and secret (``key_env``, ``secret_env``: upper-case names with an
+  underscore such as ``APCA_API_KEY_ID``, never the values; a value that is not that shape is refused without being
+  echoed), plus an optional ``credentials_file`` rendered after ``secret_env``; the optional ``levels.penny_classes``
+  / ``penny_all_classes`` lists follow ``order_shape_enabled`` when non-empty. The host must be ``paper``: ``live``
+  is exit 1 ``live_host`` (the desk holds a paper key pair only). The text is validated in memory by
   ``desk_config.parse_desk_toml_text`` before anything is written (a failure is exit 1 ``config_invalid``).
 * ``research/calendar.toml`` (when the answers hold ``ex_dividends``): one ``[symbols.<SYM>]`` table per symbol, in
   sorted order, with ``ex_dividend = { date = ..., amount = ..., status = "confirmed" | "estimated", source =
@@ -79,8 +82,12 @@ DECIMAL_RE = re.compile(r"^-?[0-9]+([.][0-9]+)?\Z")
 CUTOFF_RE = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]\Z")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+\Z")
-SANDBOX = "sandbox"
-PRODUCTION = "production"
+PAPER = "paper"
+LIVE = "live"
+ENV_VAR_NAME_RE = desk_config.ENV_NAME_RE
+"""What ``market_data.key_env`` / ``secret_env`` must look like: an upper-case variable name with at least one
+underscore (``APCA_API_KEY_ID``). An Alpaca key ID or secret has no underscore, so a pasted key never passes. The
+one rule lives in desk_config, so the rendered file and its loader agree."""
 OWNER_ENTERED = "owner-entered"
 DATED_STATUSES: Tuple[str, ...] = (calendar_events.STATUS_CONFIRMED, calendar_events.STATUS_ESTIMATED)
 ACKNOWLEDGE_HINT = ("acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in "
@@ -102,6 +109,8 @@ STRUCTURING_HEADER: Tuple[str, ...] = (
     "# hash, and the structuring tools show nothing until the owner acknowledges it (ack.py config --owner-tapped).",
 )
 CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vendor": json.dumps(desk_config.VENDOR),
+                             "options_feed": json.dumps(desk_config.DEFAULT_OPTIONS_FEED),
+                             "stock_feed": json.dumps(desk_config.DEFAULT_STOCK_FEED),
                              "feed_delay_min": "15", "quote_ttl_min": "5", "grace_min": "5", "pin_band": "0.25",
                              "order_shape_enabled": "false"}
 """The rendered values the interview does not ask."""
@@ -112,7 +121,7 @@ OWNER_KEYS: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "d
                                "disclosures_acknowledged", "accounts")
 ATTENTION_KEYS: Tuple[str, ...] = ("pl_day_pct", "pl_trade_abs")
 ACCOUNT_KEYS: Tuple[str, ...] = ("name", "type")
-MARKET_DATA_KEYS: Tuple[str, ...] = ("host", "token_env", "token_file")
+MARKET_DATA_KEYS: Tuple[str, ...] = ("host", "key_env", "secret_env", "credentials_file")
 RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
 DATED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status")
@@ -176,9 +185,13 @@ ANSWERS_SHAPE: Dict[str, Any] = {
               "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"},
               "disclosures_acknowledged": ["string"],
               "accounts": [{"name": "string", "type": " | ".join(desk_config.ACCOUNT_TYPES)}]},
-    "market_data": {"host": "sandbox (production is refused in this release)",
-                    "token_env": "string (the environment variable that holds the sandbox token)",
-                    "token_file": "string (optional; a file with no group or other permission bits)"},
+    "market_data": {"host": "paper (live is refused: the desk holds an Alpaca paper key pair only)",
+                    "key_env": "string (the NAME of the environment variable that holds the paper key ID, for "
+                               "example APCA_API_KEY_ID; never the key itself)",
+                    "secret_env": "string (the NAME of the environment variable that holds the paper secret, for "
+                                  "example APCA_API_SECRET_KEY; never the secret itself)",
+                    "credentials_file": "string (optional; a file with no group or other permission bits holding the "
+                                        "key ID on line 1 and the secret on line 2)"},
     "rates": {"risk_free_rate": "decimal string", "source": "string", "as_of": "YYYY-MM-DD"},
     "levels": {"penny_classes": ["OCC root (optional)"], "penny_all_classes": ["OCC root (optional)"]},
     "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or "
@@ -252,6 +265,15 @@ def text_value(value: Any, where: str) -> str:
     return json.dumps(value)
 
 
+def env_name_value(value: Any, where: str) -> str:
+    """A variable NAME (module notes); the error never repeats the value, which may be a pasted key."""
+    if not isinstance(value, str) or not ENV_VAR_NAME_RE.match(value):
+        raise answers_error("%s must be the NAME of an environment variable (upper case with an underscore, for "
+                            "example APCA_API_KEY_ID), never the key or secret itself; the value given is not shown"
+                            % where)
+    return json.dumps(value)
+
+
 def choice(value: Any, where: str, allowed: Sequence[str]) -> str:
     if value not in allowed:
         raise answers_error("%s must be one of %s" % (where, ", ".join(allowed)))
@@ -283,7 +305,7 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
             raise answers_error("answers with desk also need %s" % key)
     desk = table(answers["desk"], "desk", DESK_KEYS, DESK_KEYS)
     owner = table(answers["owner"], "owner", OWNER_KEYS, OWNER_KEYS)
-    market = table(answers["market_data"], "market_data", MARKET_DATA_KEYS, ("host", "token_env"))
+    market = table(answers["market_data"], "market_data", MARKET_DATA_KEYS, ("host", "key_env", "secret_env"))
     rates = table(answers["rates"], "rates", RATES_KEYS, RATES_KEYS)
     levels = table(answers.get("levels", {}), "levels", LEVELS_KEYS, ())
     cutoff = owner["broker_exercise_cutoff_et"]
@@ -300,9 +322,13 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     accounts = owner["accounts"]
     if not isinstance(accounts, list) or not accounts:
         raise answers_error("owner.accounts must list at least one account")
-    if market["host"] == PRODUCTION:
-        raise ToolError("production_host", "market_data.host production is refused: this release renders the sandbox "
-                                           "host only (production is outside the guarantee before the market-data proxy)")
+    if market["host"] == LIVE:
+        raise ToolError("live_host", "market_data.host live is refused: the desk renders the paper host only (its only "
+                                     "credential is an Alpaca paper key pair, which cannot reach a live account)")
+    key_env = env_name_value(market["key_env"], "market_data.key_env")
+    secret_env = env_name_value(market["secret_env"], "market_data.secret_env")
+    if key_env == secret_env:
+        raise answers_error("market_data.key_env and market_data.secret_env must name two different variables")
     lines: List[str] = list(DESK_HEADER)
     lines += ["[desk]", "timezone = %s" % CONSTANTS["timezone"],
               "engagement = %s" % text_value(desk["engagement"], "desk.engagement"),
@@ -327,11 +353,12 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
         lines += ["", "[[owner.accounts]]", "name = %s" % text_value(account["name"], "owner.accounts[%d].name" % index),
                   "type = %s" % choice(account["type"], "owner.accounts[%d].type" % index, desk_config.ACCOUNT_TYPES)]
     lines += ["", "[market_data]", "vendor = %s" % CONSTANTS["vendor"],
-              "host = %s" % choice(market["host"], "market_data.host", (SANDBOX,)),
-              "token_env = %s" % text_value(market["token_env"], "market_data.token_env")]
-    if "token_file" in market:
-        lines.append("token_file = %s" % text_value(market["token_file"], "market_data.token_file"))
-    lines += ["%s = %s" % (key, CONSTANTS[key]) for key in ("feed_delay_min", "quote_ttl_min", "grace_min", "pin_band")]
+              "host = %s" % choice(market["host"], "market_data.host", (PAPER,)),
+              "key_env = %s" % key_env, "secret_env = %s" % secret_env]
+    if "credentials_file" in market:
+        lines.append("credentials_file = %s" % text_value(market["credentials_file"], "market_data.credentials_file"))
+    lines += ["%s = %s" % (key, CONSTANTS[key]) for key in ("options_feed", "stock_feed", "feed_delay_min",
+                                                             "quote_ttl_min", "grace_min", "pin_band")]
     lines += ["", "[rates]", "risk_free_rate = %s" % decimal_value(rates["risk_free_rate"], "rates.risk_free_rate"),
               "source = %s" % text_value(rates["source"], "rates.source"),
               "as_of = %s" % date_value(rates["as_of"], "rates.as_of")]

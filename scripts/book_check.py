@@ -126,7 +126,8 @@ TOOL = "book_check"
 DESCRIPTION = ("the routine check: the book, the adopted exit rules, the rule state and the posting rules; prints the "
                "linted message to post (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, pre-close, watch alive) or "
                "quiet; --post records it")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 DEFAULT_ROUTINE = "book-check"
 RUN_LOCK_FILE = ".book_check.lock"
 RUN_LOCK_TIMEOUT_S = 5.0
@@ -226,7 +227,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--scheduled-et", default=None, metavar="HH:MM",
                         help="the routine's America/New_York slot, for its lateness")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

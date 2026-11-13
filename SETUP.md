@@ -2,8 +2,8 @@
 
 You are a Grok Bot building the owner's read-only options desk. Sections 1 to 8 are the first run (your checklist:
 `aegis-desk-bootstrap-and-onboarding`): four Bots, the desk skills, a demo on a sample book and live delayed market
-data. It asks the owner for one thing: a free Tradier sandbox market-data token, added through the secure secret
-card, never pasted in chat. Section 9 holds the later steps, each started by a phrase the owner says:
+data. It asks the owner for one thing: a free Alpaca paper key (a key ID and its secret), added through the secure
+secret card, never pasted in chat. Section 9 holds the later steps, each started by a phrase the owner says:
 "add my positions", "adopt my exit rules", "turn on monitoring", or optionally "set up the structuring desk". Steps
 marked **You** are the owner's alone.
 
@@ -18,13 +18,13 @@ marked synthetic comes from a copy of the fixture desk (`tests/fixtures/desk`, `
 ## 1. Get the pinned release onto the desk computer
 
 ```text
-git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 ```
 
 If the tag does not exist, stop and tell the owner. An existing checkout stays as it is (no overwrite, reset or
-switch). Check 1 passes on the clean release: `release v0.1.1 at <commit>, clean`. Until section 9.1 writes
+switch). Check 1 passes on the clean release: `release v0.2.0 at <commit>, clean`. Until section 9.1 writes
 `desk.toml`, checks 4, 5, 10 and 11 warn and check 8 fails, as expected. If check 1 says `git refuses this checkout:
 it is owned by another user (see SETUP)`, record it as pending: its fix is one owner-approved command (section 9.3
 step 4), and nothing in the first run needs it (no `routine.py` runs before section 9.3).
@@ -93,55 +93,67 @@ shared publicly. Routine output goes to each Bot's own chat ([docs/MONITORING.md
 
 ## 7. Connect market data
 
-**You: get the token.** Send the owner these steps (Tradier's support pages, read 2026-11-12):
+**You: get the paper key.** Send the owner these steps (Alpaca's documentation, read 2026-11-13):
 
-1. Sign up for a free Tradier account at https://tradier.com ("Sign up"); there is no separate developer account,
-   and API access and the sandbox cost nothing extra. Whether it must be funded is not confirmed.
-2. Log in at https://web.tradier.com/login, click your name in the top right corner and choose API Access
-   (https://web.tradier.com/user/api). These are web-dashboard steps; a mobile-app path is not confirmed.
-3. Under "Sandbox Account Access (Paper trading)", tap the eye icon to show the token and the copy icon to copy it.
-   The production token is on the same page and appears first: copy only the sandbox one. If none is listed,
-   Tradier's help describes enrolling in paper trading there first (not confirmed).
+1. Sign up at https://alpaca.markets with an email address. A paper-only account needs no funding and no brokerage
+   application; it starts with simulated money.
+2. Log in to the dashboard and make sure it is switched to **Paper Trading**, not Live.
+3. In the **API Keys** panel on the right of the dashboard, choose **Generate New Key**. Copy the key ID and the
+   secret. The secret is shown only once: if it is lost, generate a new pair, which stops the old one working.
+4. Never a live key. Paper key IDs usually start with `PK` and live ones with `AK`; Alpaca calls that a visual hint
+   only. The checks that refuse a live key are the Opening Bell below and the desk doctor's paper check (9.1): both
+   send the key to Alpaca's paper trading host, which refuses a key from another environment with a 401 or 403
+   (Alpaca documents that mismatch error; it publishes no separate paper/live test).
 
-**You: add it through the secure secret card** as `TRADIER_API_TOKEN`, never in chat ("Treat your API tokens like
-passwords", Tradier). Fallback: the file `/workspace/.aegis-secrets/tradier.token`, mode 0600, with `--token-file`.
+**You: add both through the secure secret card,** never in chat: the key ID as `APCA_API_KEY_ID` and the secret as
+`APCA_API_SECRET_KEY`. Fallback: the file `/workspace/.aegis-secrets/alpaca.key`, mode 0600, the key ID on line 1 and
+the secret on line 2, with `--credentials-file`.
 
 **Verify with the live Opening Bell,** posted verbatim (a public market snapshot, not a signal; with the file
-fallback, add `--token-file /workspace/.aegis-secrets/tradier.token`):
+fallback, add `--credentials-file /workspace/.aegis-secrets/alpaca.key`):
 `python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-root /workspace/aegis-desk`.
-Without a token it prints `UNAVAILABLE: no_token: ...` (exit 20). `UNAVAILABLE: the quotes request failed: auth: ...`
-is a 401 or 403, often the production token pasted by mistake: before anything else, ask the owner to delete that
-secret from the card (or the file), because a production token can trade and must never stay; then the owner adds
-the sandbox one and you verify again. Sandbox data is delayed 15 minutes. Record the token source (the card and
-`TRADIER_API_TOKEN`, or the file); the doctor checks it (checks 4 and 5) once `desk.toml` exists.
+Without a key it prints `UNAVAILABLE: no_credential: ...` (exit 20). `UNAVAILABLE: the quotes request failed: auth:
+...` is a 401 or 403 from the market-data host: a key ID and secret that do not belong together, a pair regenerated
+since, or a deleted one. The bell then lists option contracts on Alpaca's paper trading host with the same pair, and
+that host refuses a live key (the rule doctor check 5 rests on), so a live key prints `UNAVAILABLE: not a paper key:
+Alpaca's paper trading host refused the key pair (HTTP 401) after the market-data host answered it; delete both
+secrets and add a new pair from the Paper Trading dashboard` (exit 20; 403 in place of 401 is the same verdict). On
+either line the owner deletes both secrets from the card (or the file), generates a new paper pair and adds it; then
+you verify again. A live key can trade and must never stay, so even before the bell runs: if the key ID starts with
+`AK`, or the owner is not sure it came from the Paper Trading dashboard, ask the owner to delete both secrets first.
+Stocks come from the IEX feed;
+option quotes come from Alpaca's free indicative feed, delayed 15 minutes and approximate (not exchange quotes).
+Record the key source (the card with `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, or the file); the doctor checks it
+(checks 4 and 5) once `desk.toml` exists.
 
 ## 8. Return the receipt
 
 One message, opening with three plain lines, for example:
 
 ```text
-Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v0.1.1.
-Live market data works: SPY was quoted from the Tradier sandbox, delayed 15 minutes.
+Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v0.2.0.
+Live market data works: SPY was quoted from Alpaca's paper market data, labelled 15-minute delayed.
 Nothing else is needed now. When you want the desk to watch your positions, say "add my positions".
 ```
 
 Then the evidence: the pin check line, the `check.sh` result, the demo commands (synthetic), the Bots by Name and Job,
-each skill's status, the Floor's members, the live Opening Bell (or the pending step), the token source, the doctor's
+each skill's status, the Floor's members, the live Opening Bell (or the pending step), the key source, the doctor's
 verdict line, and anything pending with its manual step. Then three notes:
 
-- Until "add my positions", no Auto-review rule is in place. The sandbox token cannot reach a live account; it could
-  place sandbox paper orders, which the desk's GET-only code cannot and the write-side Ask-first rule covers from 9.1.
+- Until "add my positions", no Auto-review rule is in place. The paper key cannot reach a live account; it could
+  place paper orders on Alpaca's paper trading host, which the desk's GET-only code cannot and the write-side
+  Ask-first rule covers from 9.1. The doctor's paper check in 9.1 is what proves it is a paper key.
 - Never sign in to a brokerage in the Bot computer's browser.
 - Say "add my positions", "adopt my exit rules", "turn on monitoring", or optionally "set up the structuring desk".
 
-Its last line is exactly the line below, only when the live Opening Bell succeeded. With no token added it is
-`Setup stayed read-only: no credential was added; no order was created or sent.` If an added token failed the bell,
-name the failed line and its next step (after `auth:`, deleting the secret) and end with `Setup stayed read-only: a
-market-data token was added by you but did not pass its check; no order was created or sent.` Never call the desk
+Its last line is exactly the line below, only when the live Opening Bell succeeded. With no key added it is
+`Setup stayed read-only: no credential was added; no order was created or sent.` If an added key failed the bell,
+name the failed line and its next step (after `auth:`, deleting both secrets) and end with `Setup stayed read-only: a
+market-data key pair was added by you but did not pass its check; no order was created or sent.` Never call the desk
 ready while a required check failed.
 
 ```text
-Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
+Setup stayed read-only: one Alpaca paper key pair was added by you; no order was created or sent.
 ```
 
 ## 9. When the owner asks for more
@@ -160,7 +172,7 @@ an adopted rulebook; offer the missing step first.
 owner opens **Settings, General, Auto-review** and adds rules 2 and 3 as "Ask first" rules, exactly as printed:
 
 ```text
-Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
+Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, and any request to a brokerage's order, position or account endpoints, including any request to api.alpaca.markets, and any request to paper-api.alpaca.markets other than /v2/clock, /v2/calendar and /v2/options/contracts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
 ```
 
 ```text
@@ -177,10 +189,11 @@ the owner confirms none can, the **owner-authority** command records it (the doc
 options approval level across them, in the desk's convention shown word for word
 ([docs/STRUCTURING.md](docs/STRUCTURING.md#the-approval-level-check)); (2) the broker's exercise cutoff, ET `HH:MM`;
 (3) the declared equity; (4) the risk-free rate, its source and date (the owner's number, never yours). Propose the
-rest for one "yes": host `sandbox`, `TRADIER_API_TOKEN` (or `token_file`), cadence `lean`, and for the fields no tool
+rest for one "yes": host `paper`, `key_env` `APCA_API_KEY_ID` and `secret_env` `APCA_API_SECRET_KEY` (the names,
+never the values; or `credentials_file`), cadence `lean`, and for the fields no tool
 reads in this release (engagement, `chatty_or_quiet`, attention thresholds) the values in
 `tests/fixtures/init/answers.json`. `disclosures_acknowledged` stays empty unless the owner names one they
-acknowledged. After the tap, the **owner-authority** command writes `desk.toml` (a production host is refused):
+acknowledged. After the tap, the **owner-authority** command writes `desk.toml` (a live host is refused):
 `python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/desk-answers.json --desk-root /workspace/aegis-desk`.
 
 **positions.csv.** The owner describes the book in plain words ("I sold 2 NVDA 20-Nov 150 calls at 3.20 against my
@@ -193,8 +206,9 @@ asks for what is missing and shows the text; once the owner approves it, it save
 `/workspace/aegis-desk/setup/dividends.json` (only `ex_dividends`); after the tap, `desk_init.py --answers` with it
 (**owner-authority**) writes `research/calendar.toml`. Last, the full doctor:
 `python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk`. Check 4 names the
-token source, never its value; check 5 asks the sandbox clock (a 401 or 403 fails with `not a sandbox token: remove
-and rotate`); check 8 fails until "adopt my exit rules".
+key source, never a value; check 5 asks the clock of Alpaca's paper trading host, which refuses a key from another
+environment (`paper key verified`; a 401 or 403 fails with `not a paper key: remove it and add a paper key`: the owner deletes
+both secrets at once and adds a paper pair); check 8 fails until "adopt my exit rules".
 
 ### 9.2 "adopt my exit rules"
 
@@ -231,7 +245,7 @@ if missing.
    automatically" rule, exactly as printed:
 
 ```text
-Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
 ```
 
 4. **You, only if git refuses the checkout** (`git refuses this checkout: it is owned by another user (see SETUP)`):
@@ -242,7 +256,7 @@ Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/rout
    prompt the manifest's template with the slot filled in, and reads each back. Lean, Mon-Fri: Desk Lead `preopen`
    07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35; Position Control
    `final-call` 15:20, plus `post-expiry` 09:30 Saturday. `routine_audit.py --budget`: `lean: 41 runs per week ...`.
-6. **One Test run** of the Lead's `preopen` proves routines see the token and the desk files; report any Ask-first
+6. **One Test run** of the Lead's `preopen` proves routines see the key and the desk files; report any Ask-first
    card. Read back with `heartbeat.py --list` and `routine_audit.py` (with `--desk-root`).
 7. **Unpause.** Each Bot unpauses its lean routines and reads them back; then the full doctor.
 
@@ -265,6 +279,6 @@ raises the owner-authority card; the tap records that the owner asked.
 Use your runtime's page: [Claude Code](docs/aegis-claude-code.md), [Cursor](docs/aegis-cursor.md),
 [Grok Build](docs/aegis-grok-build.md), [Codex](docs/aegis-codex.md) or [Gemini CLI](docs/aegis-gemini-cli.md). Bots,
 the Floor, the secret card, routines and Auto-review are Grok Bot steps. Keep the guarantees: no order path, the
-sandbox token as the only credential, numbers only from the tools, UNAVAILABLE as a verdict.
+Alpaca paper key pair as the only credential, numbers only from the tools, UNAVAILABLE as a verdict.
 
 Runbook structure adapted from HyperGrok Trading Desk (Galleon Labs, MIT), release 1.7.0 plus unreleased changes, commit 75a4c79 (SETUP.md); see [ATTRIBUTION.md](ATTRIBUTION.md).

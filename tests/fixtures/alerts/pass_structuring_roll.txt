@@ -1,4 +1,4 @@
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 3c5e9a10) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 3c5e9a10) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast

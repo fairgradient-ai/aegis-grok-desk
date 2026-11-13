@@ -77,8 +77,9 @@ objective = "cap_within_budget"
 
 DISCLOSURE_TEXT = (
     "The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list "
-    "candidates from delayed Tradier sandbox quotes: closing or unwinding it, a replacement for a short option you "
-    "are closing or that is expiring, or a covered call, protective put or collar on shares you hold. They score the "
+    "candidates from delayed Alpaca paper quotes (indicative option quotes, which are approximate): closing or "
+    "unwinding it, a replacement for a short option you are closing or that is expiring, or a covered call, protective "
+    "put or collar on shares you hold. They score the "
     "candidates by the objective and criteria in this file and name the highest-scoring one with its reasons. That "
     "is a personalized suggestion computed by deterministic tools and posted by an AI assistant; it is not an order, "
     "not a forecast and not a judgment that a trade suits you. The desk knows only your positions, these criteria and "

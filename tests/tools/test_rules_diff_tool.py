@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from unittest import mock
 
 from aegis_desk import alert_lint, book, contract, desk_paths, quote_cache
 
@@ -188,7 +189,7 @@ class JourneysTest(DeskCopy):
         self.assertIn("rule result: AG-20261022-02 DTE21 fired -> clear", lines)
         self.assertIn("rules: changed DTE21; added none; removed none; 26 unchanged", lines)
         self.assertIn("verdicts changed: 2", lines)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
         self.assertEqual([], order_shaped(text), text)
 
     def test_rules_added_and_removed_are_reported_and_sections_never_set_the_exit_code(self) -> None:
@@ -257,14 +258,11 @@ class ErrorsAndStateTest(DeskCopy):
         self.assertEqual((1, "not_adopted"), (code, body["error"]["code"]))
 
     def test_market_data_refused_is_exit_20(self) -> None:
-        path = os.path.join(self.root, "desk.toml")
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text.replace('host = "sandbox"', 'host = "production"', 1))
-        code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW,
-                               "--candidate", CANDIDATE])
-        self.assertEqual((20, "production_host"), (code, body["error"]["code"]))
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW,
+                                   "--candidate", CANDIDATE])
+        self.assertEqual((20, "no_credential"), (code, body["error"]["code"]))
 
     def test_the_rule_state_is_neither_used_nor_written(self) -> None:
         os.makedirs(self.paths.state_dir, exist_ok=True)

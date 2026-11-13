@@ -19,7 +19,7 @@ import check_no_write_paths
 from tests.gates._trees import fixture_tree, read, write
 # isort: on
 
-CLIENT = "scripts/aegis_desk/tradier_client.py"
+CLIENT = "scripts/aegis_desk/alpaca_client.py"
 OTHER = "scripts/aegis_desk/quote_cache.py"
 TEST_MODULE = "tests/smoke/test_loopback.py"
 GATE_TEST = "tests/gates/test_probe.py"
@@ -219,7 +219,7 @@ class AstRuleTests(unittest.TestCase):
     def test_http_client_rules(self) -> None:
         source = FUTURE + ("import http.client\n"
                            "def a(host):\n    c = http.client.HTTPSConnection(host)\n"
-                           "    c.request(\"GET\", \"/v1/markets/clock\")\n"
+                           "    c.request(\"GET\", \"/v2/clock\")\n"
                            "    c.request(\"POST\", \"/v1/accounts/1/orders\")\n"
                            "    c.request(\"GET\", \"/x\", b\"body\")\n"
                            "    c.putrequest(\"DELETE\", \"/x\")\n"
@@ -813,7 +813,7 @@ class ProseRuleTests(unittest.TestCase):
     def test_boundary_prose_passes(self) -> None:
         text = ("# Doc\n\nThis desk never places, modifies or cancels orders. Options trading is risky; "
                 "orders are yours to enter in your brokerage account. The hook denies POST requests to a "
-                "brokerage. Quotes come from GET /v1/markets/quotes.\n")
+                "brokerage. Quotes come from GET /v2/stocks/quotes/latest.\n")
         self.assertEqual([], self.rules_for("docs/NEW.md", text))
 
     def test_every_instruction_text_a_bot_loads_is_scanned(self) -> None:
@@ -847,13 +847,13 @@ class ProseRuleTests(unittest.TestCase):
             result = check_no_write_paths.run(root)
         self.assertEqual(["urllib-write"], rules_by_file(result).get(skill))
         cases = {
-            'conn.request("POST", "/v1/markets/quotes")': ["urllib-write"],
+            'conn.request("POST", "/v2/stocks/quotes/latest")': ["urllib-write"],
             "conn.putrequest('PUT', '/x')": ["urllib-write"],
             "urlopen(url, data=body)": ["urllib-write"],
             "Request(url, method='DELETE')": ["urllib-write"],
             'req = urllib.request.Request(url, headers=h, method="GET")': [],
             "urlopen(req, data=None, timeout=5)": [],
-            'conn.request("GET", "/v1/markets/clock")': [],
+            'conn.request("GET", "/v2/clock")': [],
             "A request(s) in prose with no dot before it: request(x)": [],
         }
         for line, expected in cases.items():
@@ -861,7 +861,7 @@ class ProseRuleTests(unittest.TestCase):
 
     def test_backslash_continued_curl_is_read_as_one_logical_line(self) -> None:
         with fixture_tree() as root:
-            write(root, "docs/NEW2.md", "# Doc\n\ncurl https://api.tradier.com/v1/markets/quotes \\\n  -X POST \\\n  -d '{}'\n")
+            write(root, "docs/NEW2.md", "# Doc\n\ncurl https://data.alpaca.markets/v2/stocks/quotes/latest \\\n  -X POST \\\n  -d '{}'\n")
             result = check_no_write_paths.run(root)
         findings = [(f["line"], f["rule"]) for f in result["errors"] if f["file"] == "docs/NEW2.md"]
         self.assertEqual([(3, "curl-body"), (3, "curl-write")], sorted(findings))

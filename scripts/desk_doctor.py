@@ -9,9 +9,10 @@ Usage::
 The checks are ``aegis_desk.doctor``'s (plan sections 9 and 10; PR 2d decision D2-12), each PASS, WARN or FAIL with a
 one-line reason: 1 ``release_pin`` (this checkout is the clean commit of tag ``v<version>``:
 ``check_grok_template.checkout_state``, then the template hashes, ``check_grok_template.run``; a development checkout
-WARNs), 2 ``interpreter``, 3 ``holiday_table``, 4 ``token_source`` (names the source, never the value), 5 ``sandbox``
-(ONE ``GET /v1/markets/clock`` on the sandbox host; a 401 or 403 is ``not a sandbox token: remove and rotate``; a
-``production`` host FAILs with no request), 6 ``machine_role``, 7 ``broker_env`` (variable NAMES only),
+WARNs), 2 ``interpreter``, 3 ``holiday_table``, 4 ``key_source`` (names the source, never a value), 5 ``paper_key``
+(ONE ``GET /v2/clock`` on the paper trading host ``paper-api.alpaca.markets`` with the key pair: 200 is ``paper key
+verified``, a 401 or 403 is ``not a paper key: remove it and add a paper key``; any host but ``paper`` FAILs with no
+request), 6 ``machine_role``, 7 ``broker_env`` (variable NAMES only, plus whether ``APCA_API_BASE_URL`` names the live trading host),
 8 ``desk_files`` (``desk.toml``, ``positions.csv``, the adopted rulebook, ``research/calendar.toml``),
 9 ``market_status``, 10 ``connector_readback``, 11 ``heartbeats`` (the cadence profile's slots of today in
 ``routines/manifest.toml`` against ``state/heartbeat/history.jsonl``) and 12 ``selftest`` (the engine subset).
@@ -32,7 +33,7 @@ counts {pass, warn, fail}, warned, failed, machine_role, release, record, writte
 Test seams (module attributes, ``None`` meaning the real thing): ``CHECKOUT_RUN`` (the ``run`` of
 ``checkout_state``), ``TEMPLATE_RUN`` (in place of ``check_grok_template.run``), ``ENVIRON`` (the mapping checks 6 and 7 read, ``os.environ``), ``WORKSPACE_EXISTS`` (whether
 ``/workspace`` exists), ``LOCAL_OFFSET_S`` (the local UTC offset at the run instant, ``time.localtime``) and
-``SANDBOX_CLIENT`` (``(token, timeout_s, user_agent) -> client`` for check 5's one request).
+``PAPER_CLIENT`` (``(credential, timeout_s, user_agent) -> client`` for check 5's one request).
 """
 
 from __future__ import annotations
@@ -47,17 +48,17 @@ import sys  # noqa: E402
 import time  # noqa: E402
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence  # noqa: E402
 
-from aegis_desk import calendar_events, desk_config, desk_paths, doctor, market_clock, routines, state, tradier_client, version  # noqa: E402
+from aegis_desk import alpaca_client, calendar_events, desk_config, desk_paths, doctor, market_clock, routines, state, version  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
 import check_grok_template  # noqa: E402
 
 TOOL = "desk_doctor"
-DESCRIPTION = ("the desk doctor: release pin, interpreter, holiday table, token source, sandbox, machine role, "
+DESCRIPTION = ("the desk doctor: release pin, interpreter, holiday table, key source, paper key, machine role, "
                "broker-looking environment names, desk files, market status, connector readback, heartbeats and the "
                "engine selftest; PASS / WARN / FAIL per check, one verdict, state/doctor.json")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/clock once (full mode only); none with --offline, "
-                  "--quick or --selftest")
+NETWORK_ACCESS = ("GET https://paper-api.alpaca.markets/v2/clock once with the paper key pair (full mode only); none "
+                  "with --offline, --quick or --selftest")
 CHECK_OUTPUT: Dict[str, Any] = {"id": " | ".join(name for _number, name in doctor.CHECKS), "number": "integer 1-12",
                                 "status": " | ".join(doctor.STATUSES), "reason": "string (one line, never a secret)"}
 OUTPUT: Dict[str, Any] = {
@@ -78,7 +79,7 @@ TEMPLATE_RUN: Optional[Callable[[str], Mapping[str, Any]]] = None
 ENVIRON: Optional[Mapping[str, str]] = None
 WORKSPACE_EXISTS: Optional[bool] = None
 LOCAL_OFFSET_S: Optional[int] = None
-SANDBOX_CLIENT: Optional[Callable[[Any, float, str], Any]] = None
+PAPER_CLIENT: Optional[Callable[[Any, float, str], Any]] = None
 
 
 def user_agent(release: str) -> str:
@@ -122,12 +123,13 @@ def release_pin() -> doctor.Check:
     return doctor.release_pin_check(checkout, template)
 
 
-def sandbox_client(timeout_s: float, release: str) -> Callable[[Any], Any]:
-    factory = SANDBOX_CLIENT
+def paper_client(timeout_s: float, release: str) -> Callable[[Any], Any]:
+    """Check 5's client factory: the paper-host client with the key pair (``PAPER_CLIENT`` is the seam)."""
+    factory = PAPER_CLIENT
     if factory is None:
-        return lambda token: tradier_client.TradierClient("sandbox", token, timeout_s=timeout_s,
-                                                          user_agent=user_agent(release))
-    return lambda token: factory(token, timeout_s, user_agent(release))
+        return lambda credential: alpaca_client.AlpacaClient(alpaca_client.HOST_KIND_PAPER, credential,
+                                                             timeout_s=timeout_s, user_agent=user_agent(release))
+    return lambda credential: factory(credential, timeout_s, user_agent(release))
 
 
 def heartbeats(paths: desk_paths.DeskPaths, cfg: Optional[desk_config.DeskConfig], now: datetime.datetime,
@@ -153,7 +155,7 @@ def run_checks(args: Any, mode: str, now: datetime.datetime, release: str,
     if paths is not None:
         files, cfg, cal = doctor.desk_files_check(paths, et_date)
     extra = calendar_events.extra_closures(cal)
-    token: Any = None
+    credential: Any = None
     found: Dict[int, doctor.Check] = {}
     for number in numbers:
         if number == 1:
@@ -163,14 +165,16 @@ def run_checks(args: Any, mode: str, now: datetime.datetime, release: str,
         elif number == 3:
             found[3] = doctor.holiday_table_check(et_date)
         elif number == 4:
-            found[4], token = doctor.token_source_check(cfg, args.offline)
+            found[4], credential = doctor.key_source_check(cfg, args.offline)
         elif number == 5:
-            found[5] = doctor.sandbox_check(cfg, token, args.offline, sandbox_client(args.timeout, release))
+            found[5] = doctor.paper_key_check(cfg, credential, args.offline, paper_client(args.timeout, release))
         elif number == 6:
             found[6] = doctor.machine_role_check(machine_role(environ))
         elif number == 7:
-            token_env = cfg.market_data.token_env if cfg is not None else desk_config.DEFAULT_TOKEN_ENV
-            found[7] = doctor.broker_env_check(environ, token_env)
+            market = cfg.market_data if cfg is not None else None
+            key_names = ((market.key_env, market.secret_env) if market is not None
+                         else (desk_config.DEFAULT_KEY_ENV, desk_config.DEFAULT_SECRET_ENV))
+            found[7] = doctor.broker_env_check(environ, key_names)
         elif number == 8 and files is not None:
             found[8] = files
         elif number == 9:

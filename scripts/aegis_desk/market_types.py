@@ -1,9 +1,11 @@
-"""Plain market dataclasses shared by the Tradier client and every consumer of its data.
+"""Plain market dataclasses shared by the market-data client and every consumer of its data.
 
 New for Aegis Desk (plan sections 8 and 9); standard library only, no network, no I/O. The
-network client (``aegis_desk.tradier_client``) builds these records from the vendor's JSON and
-re-exports :class:`Quote` and :class:`Bar`; ``quote_cache`` and ``quote_qc`` import them from
-here, so the data plane could be built in parallel against one set of types.
+network client (``aegis_desk.alpaca_client``) turns each Alpaca answer into the desk's own
+normalised RECORD (a JSON-native dict whose keys are the field names below) and builds these
+records with the ``from_record`` constructors; ``quote_cache`` stores ``Quote.raw`` / ``Bar.raw``
+(the record) and rebuilds with the same constructors, so a reload and a fetch go through one
+code path and no consumer ever sees a vendor shape.
 
 Conventions (plan section 8, brief non-negotiable 4)
 ----------------------------------------------------
@@ -12,28 +14,31 @@ Conventions (plan section 8, brief non-negotiable 4)
   e.g. ``104.2`` -> ``Decimal("104.2")``, numerically equal to the vendor's ``104.20``) and a
   string into ``Decimal(value)``. A client that parses with ``json.loads(..., parse_float=Decimal)``
   keeps the vendor's digits; both paths compare equal and no float arithmetic ever happens.
-  Greeks stay ``float`` (the vendor's ``greeks`` object is kept as the dict it arrived as).
-* **Timestamps are aware UTC datetimes.** Tradier stamps quotes in epoch MILLISECONDS
+  ``Quote.greeks`` is kept only as an optional dict for records that carry one; the client never
+  fills it (vendor Greeks and implied volatility are ignored: the desk computes its own).
+* **Timestamps are aware UTC datetimes.** A record stamps quotes in epoch MILLISECONDS
   (``trade_date``, ``bid_date``, ``ask_date``): :func:`from_epoch_ms` converts with
-  ``datetime.fromtimestamp(ms / 1000, tz=timezone.utc)``. The ``/v1/markets/clock`` endpoint
-  stamps in epoch SECONDS: :func:`from_epoch_s`. A vendor ``0`` (or a negative) is not a date, it
-  is "undated": both return ``None`` so freshness grading reports the side as undated instead of
-  judging a 1970 instant stale.
-* **Missing or null fields are ``None``, never 0.** ``from_vendor`` constructors leave absent
+  ``datetime.fromtimestamp(ms / 1000, tz=timezone.utc)``; the clock record stamps in epoch SECONDS
+  (:func:`from_epoch_s`). Alpaca sends RFC 3339 text with up to nanoseconds
+  (``2026-11-03T19:31:12.123456789Z``): :func:`from_rfc3339` reads it (fraction truncated to the
+  microsecond) and :func:`to_epoch_ms` writes the record's integer milliseconds. A vendor ``0`` (or
+  a negative, or an instant at or before the epoch) is not a date, it is "undated": the
+  converters return ``None`` so freshness grading reports the side as undated instead of judging
+  a 1970 instant stale.
+* **Missing or null fields are ``None``, never 0.** ``from_record`` constructors leave absent
   and ``null`` fields ``None``; a field that IS present but cannot be read (a price of ``"abc"``,
   a boolean where a number belongs, ``NaN``) raises :class:`MarketTypesError` naming the field,
   because a quiet ``None`` for a present-but-garbled value would be a silent negative (brief
   non-negotiable 5). Callers decide how to report it (the client maps it to an explicit status).
-* **Object-or-list.** Tradier returns one match as an object and several as a list (``quote``,
-  ``option``, ``day``, ``date``, ``unmatched_symbols.symbol``); :func:`one_or_many` normalises
-  to a list and maps ``None``, the string ``"null"`` and ``""`` to ``[]``.
 
 Marks (plan section 8)
 ----------------------
 ``Quote.mid`` is ``(bid + ask) / 2`` when both sides are present and at least one is positive,
 else ``None`` (a 0/0 market has no mid). ``Quote.as_of`` is ``min(bid_date, ask_date)`` when
 both exist, else whichever exists, else ``None``: tau and freshness are measured from the quote's
-as-of, never from ``trade_date`` (the last trade is display only and never a mark).
+as-of, never from ``trade_date`` (the last trade is display only and never a mark). An Alpaca
+quote carries one stamp ``t`` for both sides, so its record sets ``bid_date`` and ``ask_date``
+to the same instant.
 """
 
 from __future__ import annotations
@@ -47,8 +52,9 @@ from typing import Any, Dict, Optional
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
 
-QUOTE_TYPES = ("stock", "etf", "option", "index", "mutual_fund")
-"""Values of ``Quote.type`` Tradier documents (kept as sent; unknown labels are not rejected)."""
+QUOTE_TYPES = ("stock", "option")
+"""Values of ``Quote.type`` the client writes: ``stock`` for an equity or ETF quoted on the stock feed,
+``option`` for a listed option (a record's other labels are kept as sent, never rejected)."""
 
 OPTION_TYPES = ("call", "put")
 """Values of ``Quote.option_type``; anything else present is a :class:`MarketTypesError`."""
@@ -58,6 +64,9 @@ CALENDAR_STATUSES = ("open", "closed")
 
 _HHMM_RE = re.compile(r"^(\d{2}):(\d{2})(?::(\d{2}))?$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_RFC3339_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:([Zz])|([+-])(\d{2}):(\d{2}))$")
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 
 
 class MarketTypesError(ValueError):
@@ -181,7 +190,7 @@ def _from_timestamp(seconds: float, field_name: str, value: Any) -> datetime.dat
 
 
 def from_epoch_ms(value: Any, field_name: str = "value") -> Optional[datetime.datetime]:
-    """Aware UTC datetime from Tradier epoch milliseconds (``fromtimestamp(ms / 1000, tz=UTC)``);
+    """Aware UTC datetime from epoch milliseconds (``fromtimestamp(ms / 1000, tz=UTC)``);
     ``None`` for ``None``, blank, zero and negative stamps."""
     number = _epoch_number(value, field_name)
     if number is None:
@@ -190,11 +199,55 @@ def from_epoch_ms(value: Any, field_name: str = "value") -> Optional[datetime.da
 
 
 def from_epoch_s(value: Any, field_name: str = "value") -> Optional[datetime.datetime]:
-    """Aware UTC datetime from epoch seconds (the ``/v1/markets/clock`` stamp); same ``None`` rule."""
+    """Aware UTC datetime from epoch seconds (the clock record's stamp, a rate-limit reset); same ``None`` rule."""
     number = _epoch_number(value, field_name)
     if number is None:
         return None
     return _from_timestamp(number, field_name, value)
+
+
+def from_rfc3339(value: Any, field_name: str = "value") -> Optional[datetime.datetime]:
+    """Aware UTC datetime from RFC 3339 text (``2026-11-03T19:31:12.123456789Z`` or an offset such
+    as ``-05:00``); the fraction is truncated to the microsecond. ``None`` for ``None``, blank
+    text and an instant at or before the Unix epoch (Alpaca's zero time ``0001-01-01T00:00:00Z``
+    means "no stamp": undated, never year 1). Anything else that is not RFC 3339 raises."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise MarketTypesError(field_name, "unsupported type %s for an RFC 3339 time" % type(value).__name__)
+    text = value.strip()
+    if not text:
+        return None
+    match = _RFC3339_RE.match(text)
+    if not match:
+        raise MarketTypesError(field_name, "%r is not an RFC 3339 time" % (value,))
+    year, month, day, hour, minute, second = (int(match.group(index)) for index in range(1, 7))
+    fraction = (match.group(7) or "")[:6].ljust(6, "0")
+    if match.group(8):
+        offset = datetime.timedelta(0)
+    else:
+        sign = -1 if match.group(9) == "-" else 1
+        hours, minutes = int(match.group(10)), int(match.group(11))
+        if hours > 23 or minutes > 59:
+            raise MarketTypesError(field_name, "%r carries an invalid UTC offset" % (value,))
+        offset = sign * datetime.timedelta(hours=hours, minutes=minutes)
+    try:
+        local = datetime.datetime(year, month, day, hour, minute, second, int(fraction),
+                                  tzinfo=datetime.timezone(offset))
+        instant = local.astimezone(UTC)
+    except (ValueError, OverflowError):
+        raise MarketTypesError(field_name, "%r is not a valid time" % (value,)) from None
+    if instant <= _EPOCH:
+        return None
+    return instant
+
+
+def to_epoch_ms(instant: datetime.datetime) -> int:
+    """Integer epoch milliseconds of an aware datetime (exact integer arithmetic, sub-millisecond
+    part truncated): what a record's ``bid_date``/``ask_date``/``trade_date`` holds."""
+    if not isinstance(instant, datetime.datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("to_epoch_ms needs an aware datetime, got %r" % (instant,))
+    return (instant - _EPOCH) // datetime.timedelta(milliseconds=1)
 
 
 def parse_iso_date(value: Any, field_name: str = "value") -> Optional[datetime.date]:
@@ -238,21 +291,6 @@ def parse_hhmm(value: Any, field_name: str = "value") -> Optional[datetime.time]
         raise MarketTypesError(field_name, "%r is not a valid clock time" % (value,)) from None
 
 
-def one_or_many(value: Any) -> list:
-    """Tradier's object-or-list shape as a list; ``None``, ``"null"`` and ``""`` give ``[]``.
-
-    A list or tuple is copied; any other single value (an object, a string, a number) is
-    wrapped. The caller's list is never returned by identity.
-    """
-    if value is None:
-        return []
-    if isinstance(value, str) and value in ("null", ""):
-        return []
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    return [value]
-
-
 def _object(raw: Any, what: str) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise MarketTypesError(what, "expected a JSON object, got %s" % type(raw).__name__)
@@ -266,15 +304,16 @@ def _object(raw: Any, what: str) -> Dict[str, Any]:
 
 @dataclass(frozen=True)
 class Quote:
-    """One ``/v1/markets/quotes`` or chain entry; field names follow Tradier's JSON exactly.
+    """One quote or chain entry, built from the desk's normalised record (module notes).
 
     Prices are ``Optional[Decimal]``, sizes and volumes ``Optional[int]``, the three stamps
-    aware UTC datetimes, ``expiration_date`` a ``date``. Equity/ETF quotes carry
-    ``root_symbols``; options carry ``underlying``, ``strike``, ``open_interest``,
-    ``contract_size``, ``expiration_date``, ``expiration_type``, ``option_type``, ``root_symbol``
-    and ``greeks`` (a dict, or ``None``: the sandbox publishes none). ``raw`` is the vendor dict
-    as received (what ``quote_cache`` stores). Only ``symbol`` is required, so tests and the cache
-    can build a quote from a few keyword arguments.
+    aware UTC datetimes, ``expiration_date`` a ``date``. Options carry ``underlying``,
+    ``strike``, ``open_interest``, ``contract_size``, ``expiration_date``, ``option_type`` and
+    ``root_symbol`` (from the OCC symbol and the vendor's contract listing); fields the vendor does
+    not publish stay ``None`` (``description``, ``exch``, ``change``, ``prevclose``, the 52-week
+    range, ``root_symbols``, ``expiration_type``, ``greeks`` ...). ``raw`` is the record as built
+    (what ``quote_cache`` stores). Only ``symbol`` is required, so tests and the cache can build a
+    quote from a few keyword arguments.
     """
 
     symbol: str
@@ -316,8 +355,8 @@ class Quote:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_vendor(cls, raw: Dict[str, Any]) -> "Quote":
-        """Build from the vendor dict (module notes: Decimal from text, epoch ms, None for missing)."""
+    def from_record(cls, raw: Dict[str, Any]) -> "Quote":
+        """Build from a normalised record (module notes: Decimal from text, epoch ms, None for missing)."""
         raw = _object(raw, "quote")
         symbol = to_str(raw.get("symbol"), "symbol")
         if symbol is None or not symbol.strip():
@@ -392,7 +431,7 @@ class Quote:
 
 @dataclass(frozen=True)
 class Bar:
-    """One ``/v1/markets/history`` day: ``date`` plus Decimal OHLC and an integer volume."""
+    """One daily bar: ``date`` (the bar's America/New_York trading date) plus Decimal OHLC and an integer volume."""
 
     date: datetime.date
     open: Optional[Decimal] = None
@@ -403,7 +442,7 @@ class Bar:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_vendor(cls, raw: Dict[str, Any]) -> "Bar":
+    def from_record(cls, raw: Dict[str, Any]) -> "Bar":
         raw = _object(raw, "day")
         day = parse_iso_date(raw.get("date"), "date")
         if day is None:
@@ -432,7 +471,7 @@ class SessionWindow:
     end: datetime.time
 
     @classmethod
-    def from_vendor(cls, raw: Any, field_name: str = "session") -> Optional["SessionWindow"]:
+    def from_record(cls, raw: Any, field_name: str = "session") -> Optional["SessionWindow"]:
         """``None`` for a missing or empty window; both bounds are required once one is given."""
         if raw is None:
             return None
@@ -448,8 +487,8 @@ class SessionWindow:
 
 @dataclass(frozen=True)
 class CalendarDay:
-    """One ``/v1/markets/calendar`` day: ``status`` is ``open`` or ``closed``; the three session
-    windows are ``None`` on a closed day."""
+    """One calendar day: ``status`` is ``open`` or ``closed``; the three session windows (naive ET
+    ``HH:MM``) are ``None`` on a closed day."""
 
     date: datetime.date
     status: str
@@ -460,7 +499,7 @@ class CalendarDay:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_vendor(cls, raw: Dict[str, Any]) -> "CalendarDay":
+    def from_record(cls, raw: Dict[str, Any]) -> "CalendarDay":
         raw = _object(raw, "day")
         day = parse_iso_date(raw.get("date"), "date")
         if day is None:
@@ -472,16 +511,17 @@ class CalendarDay:
             date=day,
             status=status,
             description=to_str(raw.get("description"), "description"),
-            premarket=SessionWindow.from_vendor(raw.get("premarket"), "premarket"),
-            open=SessionWindow.from_vendor(raw.get("open"), "open"),
-            postmarket=SessionWindow.from_vendor(raw.get("postmarket"), "postmarket"),
+            premarket=SessionWindow.from_record(raw.get("premarket"), "premarket"),
+            open=SessionWindow.from_record(raw.get("open"), "open"),
+            postmarket=SessionWindow.from_record(raw.get("postmarket"), "postmarket"),
             raw=raw,
         )
 
 
 @dataclass(frozen=True)
 class ClockInfo:
-    """The ``/v1/markets/clock`` answer: ``timestamp`` is epoch SECONDS on this endpoint."""
+    """The market clock: ``date`` (ET), ``state`` (``open`` | ``closed``), ``timestamp`` epoch SECONDS
+    in the record, and the next state change as ET ``HH:MM`` with the state it leads to."""
 
     date: datetime.date
     state: str
@@ -492,11 +532,10 @@ class ClockInfo:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_vendor(cls, raw: Dict[str, Any]) -> "ClockInfo":
-        """Accepts the full ``{"clock": {...}}`` payload or its inner object."""
-        raw = _object(raw, "clock")
-        inner = raw.get("clock", raw) if "clock" in raw else raw
-        inner = _object(inner, "clock")
+    def from_record(cls, raw: Dict[str, Any]) -> "ClockInfo":
+        """Build from the clock record (``date``, ``state``, optional ``description``, ``timestamp``
+        in epoch seconds, ``next_change``, ``next_state``)."""
+        inner = _object(raw, "clock")
         day = parse_iso_date(inner.get("date"), "date")
         if day is None:
             raise MarketTypesError("date", "missing")
@@ -524,7 +563,9 @@ class RequestReceipt:
     """What the client records for every attempt, success or failure (the cache's ledger hook).
 
     ``status`` is ``"ok"`` or the client's error status; the ``ratelimit_*`` fields come from
-    Tradier's ``X-Ratelimit-*`` headers when present (``ratelimit_expiry_utc`` from epoch ms).
+    vendor's ``X-RateLimit-Limit`` / ``-Remaining`` / ``-Reset`` headers when present
+    (``ratelimit_allowed`` the limit, ``ratelimit_available`` the remaining count,
+    ``ratelimit_used`` their difference, ``ratelimit_expiry_utc`` the reset instant).
     """
 
     path: str
@@ -553,10 +594,11 @@ __all__ = [
     "UTC",
     "from_epoch_ms",
     "from_epoch_s",
-    "one_or_many",
+    "from_rfc3339",
     "parse_hhmm",
     "parse_iso_date",
     "to_decimal",
     "to_int",
     "to_str",
+    "to_epoch_ms",
 ]

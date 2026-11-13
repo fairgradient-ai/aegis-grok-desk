@@ -1,6 +1,6 @@
 TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 2: short 2 x WMT 2026-11-20 105 call to close | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: short 2 x WMT 2026-11-20 105 call to close | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 a covered call (level 1)
 in the other order, after leg 1 you would hold 2 uncovered calls (level 4)
 entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level

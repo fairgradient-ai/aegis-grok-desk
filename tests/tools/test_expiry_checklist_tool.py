@@ -17,8 +17,9 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
+from unittest import mock
 
-from aegis_desk import alert_lint, alerts, contract
+from aegis_desk import alert_lint, alerts, contract, quote_cache
 
 import expiry_checklist as tool
 
@@ -173,7 +174,7 @@ class JourneysTest(DeskCopy):
     def test_week_docket_at_t1(self) -> None:
         code, body = run_json(self.argv("--week", "t1", now=T1_NOW))
         self.assertEqual(10, code, body)
-        self.assertEqual(("fired", "tradier:sandbox", 15), (body["status"], body["source"], body["delay_min"]))
+        self.assertEqual(("fired", "alpaca:paper", 15), (body["status"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(("week", "fired", 10, "2026-11-19", "2026-11-16", "2026-11-22"),
                          (payload["mode"], payload["verdict"], payload["exit_code"], payload["today"], payload["week_start"],
@@ -191,8 +192,8 @@ class JourneysTest(DeskCopy):
         self.assertEqual(("PIN WATCH", "1.34", "PIN HIGH"), (wmt["pin"]["tier"], wmt["pin"]["distance_pct"], nvda["pin"]["tier"]))
         self.assertEqual((False, True, [], []), (wmt["fired"], nvda["fired"], wmt["unavailable_reasons"], nvda["unavailable_reasons"]))
         self.assertEqual(3, payload["counts"]["open_option_legs"])
-        self.assertEqual(1, payload["quote_check"]["requests_made"])
-        self.assertEqual(1, len(self.ledger()))
+        self.assertEqual(2, payload["quote_check"]["requests_made"], "equities, then options")
+        self.assertEqual(2, len(self.ledger()))
         code, text = run_tool(self.argv("--week", "t1", now=T1_NOW, json_mode=False))
         self.assertEqual(10, code, text)
         lines = text.splitlines()
@@ -204,7 +205,7 @@ class JourneysTest(DeskCopy):
         self.assertTrue(any(line.startswith("  PIN HIGH AG-20261022-02 NVDA261120C00150000") for line in lines))
         self.assertNotIn("ex-dividend", text, "no dividend line on the fixture geometry")
         self.assertNotIn("NOTED", text)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
 
     def test_week_docket_at_t1_with_the_ex_dividend_on_the_first_trading_day_after_expiry(self) -> None:
         # Ex-dividend Mon 2026-11-23: the cum day Fri 2026-11-20 is the WMT call's last trading day, so it is graded
@@ -270,7 +271,7 @@ class JourneysTest(DeskCopy):
         self.assertTrue(any(line.endswith("act by Fri 2026-11-20 16:00 ET (21:00 UTC) [today]" + SHORT_BASIS)
                             for line in lines))
         self.assertNotIn("16:30 ET", text, "a short option is closed only while the market trades")
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
 
     def test_final_call_on_expiry_day_with_the_ex_dividend_on_the_next_trading_day(self) -> None:
         # Ex-dividend Mon 2026-11-23 seen on Fri 2026-11-20: the cum day is today, the last trading day; the grade-E
@@ -462,7 +463,7 @@ class MessageAndRecordTest(DeskCopy):
                 lint = posted_lint(body["payload"])
                 self.assertTrue(lint.ok, lint.problems)
                 self.assertEqual([], [p.pattern for p in alert_lint.FORBIDDEN_PATTERNS if p.search(body["payload"]["message"])])
-                self.assertEqual("Tradier sandbox, delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
+                self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
 
     def test_every_run_writes_its_docket_record(self) -> None:
         for mode, name in (("--week", "2026-11-19.week.json"), ("--tomorrow", "2026-11-19.tomorrow.json"),
@@ -504,9 +505,9 @@ class MessageAndRecordTest(DeskCopy):
         self.assertEqual((1, "positions_missing"), (code, body["error"]["code"]))
         self.assertFalse(os.path.exists(os.path.join(self.root, "reports", "expiry")))
         shutil.copy(os.path.join(FIXTURE_DESK, "positions.csv"), self.positions_path)
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(self.argv("--final-call", "regular"))
-        self.assertEqual((20, "production_host"), (code, body["error"]["code"]))
+        self.assertEqual((1, "config_invalid"), (code, body["error"]["code"]))
         self.assertFalse(os.path.exists(os.path.join(self.root, "reports", "expiry")))
 
     def test_a_record_that_cannot_be_written_is_an_io_error(self) -> None:
@@ -527,10 +528,16 @@ class ErrorMappingTest(DeskCopy):
         code, body = run_json(self.argv("--week", "regular"))
         self.assertEqual((1, "error", "calendar_invalid"), (code, body["status"], body["error"]["code"]))
 
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_refused_at_load(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(self.argv("--final-call", "regular"))
-        self.assertEqual((20, "unavailable", "production_host"), (code, body["status"], body["error"]["code"]))
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+
+    def test_refused_market_data_is_exit_20(self) -> None:
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = run_json(self.argv("--final-call", "regular"))
+        self.assertEqual((20, "unavailable", "no_credential"), (code, body["status"], body["error"]["code"]))
 
 
 if __name__ == "__main__":

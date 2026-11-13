@@ -21,7 +21,7 @@ Example: ``"AAPL  240119C00150000"`` is root ``AAPL``, expiring 2024-01-19, a CA
 Accepted inputs (every one normalises to the canonical form before parsing)
 --------------------------------------------------------------------------
 * the canonical 21-character form;
-* the compact vendor form with no padding (Tradier), e.g. ``"AAPL240119C00150000"``: the OSI
+* the compact vendor form with no padding (the form Alpaca and most vendors use), e.g. ``"AAPL240119C00150000"``: the OSI
   tail is always exactly 15 characters (6 date + 1 right + 8 strike), so the root is everything
   before the tail (1 to 6 characters) and is padded to 6 -- this is what keeps a digit-bearing
   adjusted root such as ``"AAPL1240119C00150000"`` parseable;
@@ -335,7 +335,7 @@ def canonical(symbol: str) -> str:
 
 
 def compact(symbol: str) -> str:
-    """The compact (Tradier) form of any accepted input."""
+    """The compact (vendor) form of any accepted input."""
     return parse(symbol).compact
 
 

@@ -34,7 +34,7 @@ Verdict and exit: ``CLEAN`` 0, ``EDITS_PENDING`` 10 (edits proposed), ``UNAVAILA
 unknown settlement, an unrecorded expiry, an unmatched symbol or a quarantined group), ``ERRORS`` 1
 (file-level CSV errors); precedence ``ERRORS > UNAVAILABLE > EDITS_PENDING > CLEAN``. Exit 1 also
 for a missing ``positions.csv``, an unusable ``desk.toml`` or calendar and I/O errors; 20 for the
-production-host and missing-token refusals; 2 on usage. This tool NEVER writes ``positions.csv``,
+non-paper-host and missing-key refusals; 2 on usage. This tool NEVER writes ``positions.csv``,
 and reads it ONCE: the snapshot, the proposed edits' raw cells and the parsed rows all describe the
 same bytes. ``--json`` payload: the reconciliation dict (``verdict``, ``exit_code``, ``settlements``,
 ``edits`` with ``csv_line``, ``findings``, ``quote_check``, ``quarantined``, ``file_errors``,
@@ -74,8 +74,8 @@ TOOL = "csv_recon"
 DESCRIPTION = ("reconcile positions.csv: settle expired legs from official closes and settlement values, list proposed "
                "edits (never applied), check quotes, coverage, roll links and acknowledged-but-unchanged groups, "
                "snapshot the file; CLEAN / EDITS_PENDING / UNAVAILABLE / ERRORS")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/{quotes,history} only (through the quote cache); "
-                  "none with --offline")
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and "
+                  "/v2/stocks/bars only (through the quote cache); none with --offline")
 LEVEL_LABELS = {recon.LEVEL_UNAVAILABLE: "UNAVAILABLE", recon.LEVEL_WARNING: "warning", recon.LEVEL_INFO: "info"}
 OUTPUT: Dict[str, Any] = {
     "verdict": " | ".join(recon.VERDICTS) + " (ERRORS is reported through the error envelope: error.code positions_invalid, "
@@ -108,7 +108,7 @@ OUTPUT: Dict[str, Any] = {
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
     "message": "string: the prose exactly as printed without --diff, without the final newline",
-    "as_of": "ISO-8601 UTC: the instant of the prose's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)",
+    "as_of": "ISO-8601 UTC: the instant of the prose's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)",
 }
 
 
@@ -121,7 +121,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--diff", action="store_true",
                         help="print the proposed edits as CSV lines (the JSON payload always lists them)")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

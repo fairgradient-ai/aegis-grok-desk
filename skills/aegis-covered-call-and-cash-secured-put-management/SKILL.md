@@ -71,7 +71,7 @@ LOSSX's own source line in the example rulebook says what it is: "a stop alert a
 From the expiry-day quotes (the 15:35 slot of 2026-11-20, run at 19:50 UTC):
 
 ```text
-EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
+EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
 ```
 
 ## Time, delta, pin and cap
@@ -81,7 +81,7 @@ EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha
 - DTE21 is a date rule (class E): it fires at once, with no confirmation. From the 14:05 slot on 2026-11-03:
 
 ```text
-WATCH AG-20261020-01 | WMT covered call | your rule DTE21 (rules 1.0.0, sha cc09859c) fired: time to expiry 13 trading days (your threshold: at or below 21 trading days) | already past this threshold at the desk's first observation | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC, run 45 min late | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
+WATCH AG-20261020-01 | WMT covered call | your rule DTE21 (rules 1.0.0, sha cc09859c) fired: time to expiry 13 trading days (your threshold: at or below 21 trading days) | already past this threshold at the desk's first observation | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC, run 45 min late | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
 ```
 
 - DELTA_WATCH and DELTA_SIGNAL read the absolute delta of the short option, from the desk's own Greeks. They are

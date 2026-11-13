@@ -20,12 +20,19 @@ Rules
   ``pl_day_pct``, ``pl_trade_abs``, both numbers stored as ``Decimal``), ``disclosures_acknowledged``
   (list of strings), and at least one ``[[owner.accounts]]`` entry with ``name`` (non-empty
   string) and ``type`` (``cash`` | ``margin`` | ``ira``).
-* ``[market_data]``: ``vendor`` ``"tradier"``, ``host`` (``sandbox`` | ``production``; the
-  reader ACCEPTS production, the tools refuse it until the market-data proxy exists),
-  ``token_env`` (string, default ``TRADIER_API_TOKEN``), ``token_file`` (string, optional,
-  default ``/workspace/.aegis-secrets/tradier.token``), ``feed_delay_min`` (integer >= 0; the
-  sandbox feed is 15 minutes delayed, so the sandbox host requires >= 15), ``quote_ttl_min``
-  (integer 1-60), ``grace_min`` (integer 0-30), ``pin_band`` (number >= 0, ``Decimal``).
+* ``[market_data]``: ``vendor`` exactly ``"alpaca"``; ``host`` exactly ``"paper"`` (the desk's
+  only credential is an Alpaca PAPER key pair; ``live`` and every other value are refused here,
+  before any tool can build a client); ``key_env`` and ``secret_env`` (the NAMES of the two
+  environment variables that hold the key ID and the secret, never the values; each a valid
+  variable name, the two different; defaults ``APCA_API_KEY_ID`` and ``APCA_API_SECRET_KEY``);
+  ``credentials_file`` (string, optional, default ``/workspace/.aegis-secrets/alpaca.key``: a file
+  with no group or other permission bits holding the key ID on line 1 and the secret on line 2);
+  ``options_feed`` (``indicative`` | ``opra``, default ``indicative``: the free feed, 15 minutes
+  delayed and not exchange quotes; ``opra`` only for a subscriber); ``stock_feed`` (``iex``, the
+  only stock feed a paper-only account is entitled to; default ``iex``); ``feed_delay_min``
+  (integer >= 0, and >= 15 with the indicative feed: a smaller declared delay would be a lie);
+  ``quote_ttl_min`` (integer 1-60), ``grace_min`` (integer 0-30), ``pin_band`` (number >= 0,
+  ``Decimal``).
 * ``[rates]``: ``risk_free_rate`` (number, kept as ``Decimal`` and also as the float
   ``risk_free_rate_f`` the pricing engine takes), ``source`` (string), ``as_of`` (TOML local date).
 * ``[levels]``: ``order_shape_enabled`` (boolean; default policy false, flipped only after
@@ -60,12 +67,28 @@ TIMEZONE: str = "America/New_York"
 CADENCE_PROFILES: Tuple[str, ...] = ("lean", "active")
 CHATTY_OR_QUIET: Tuple[str, ...] = ("chatty", "quiet")
 ACCOUNT_TYPES: Tuple[str, ...] = ("cash", "margin", "ira")
-VENDOR: str = "tradier"
-HOSTS: Tuple[str, ...] = ("sandbox", "production")
-DEFAULT_TOKEN_ENV: str = "TRADIER_API_TOKEN"
-DEFAULT_TOKEN_FILE: str = "/workspace/.aegis-secrets/tradier.token"
-SANDBOX_MIN_FEED_DELAY_MIN: int = 15
-"""The sandbox feed is delayed 15 minutes (plan section 3); a smaller declared delay is a lie."""
+VENDOR: str = "alpaca"
+HOSTS: Tuple[str, ...] = ("paper",)
+"""The only host kind: Alpaca's paper environment (market data on data.alpaca.markets, the clock,
+calendar and option-contract listing on paper-api.alpaca.markets)."""
+LIVE_HOST_KIND: str = "live"
+"""Named only to be refused with its own message."""
+DEFAULT_KEY_ENV: str = "APCA_API_KEY_ID"
+DEFAULT_SECRET_ENV: str = "APCA_API_SECRET_KEY"
+DEFAULT_CREDENTIALS_FILE: str = "/workspace/.aegis-secrets/alpaca.key"
+OPTIONS_FEED_INDICATIVE: str = "indicative"
+OPTIONS_FEED_OPRA: str = "opra"
+OPTIONS_FEEDS: Tuple[str, ...] = (OPTIONS_FEED_INDICATIVE, OPTIONS_FEED_OPRA)
+DEFAULT_OPTIONS_FEED: str = OPTIONS_FEED_INDICATIVE
+STOCK_FEEDS: Tuple[str, ...] = ("iex",)
+DEFAULT_STOCK_FEED: str = "iex"
+INDICATIVE_MIN_FEED_DELAY_MIN: int = 15
+"""The indicative options feed is delayed 15 minutes; a smaller declared delay with it is a lie."""
+ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\Z")
+"""What ``key_env`` / ``secret_env`` must look like: an upper-case variable name with at least one underscore between
+non-empty parts (``APCA_API_KEY_ID``). An Alpaca key ID (``PK...``, 20 characters) or secret (40 mixed-case
+characters) has no underscore, so a key pasted where its variable's NAME belongs never passes; desk_init shares this
+rule for its answers."""
 QUOTE_TTL_RANGE: Tuple[int, int] = (1, 60)
 GRACE_RANGE: Tuple[int, int] = (0, 30)
 APPROVAL_LEVEL_RANGE: Tuple[int, int] = (0, 5)
@@ -78,8 +101,9 @@ _OWNER_KEYS = ("broker_exercise_cutoff_et", "approval_level", "declared_equity",
                "disclosures_acknowledged", "accounts")
 _ATTENTION_KEYS = ("pl_day_pct", "pl_trade_abs")
 _ACCOUNT_KEYS = ("name", "type")
-_MARKET_DATA_KEYS = ("vendor", "host", "token_env", "token_file", "feed_delay_min", "quote_ttl_min",
-                     "grace_min", "pin_band")
+MARKET_DATA_KEYS: Tuple[str, ...] = ("vendor", "host", "key_env", "secret_env", "credentials_file", "options_feed",
+                                     "stock_feed", "feed_delay_min", "quote_ttl_min", "grace_min", "pin_band")
+"""The ``[market_data]`` keys, in the order ``desk_init`` renders them."""
 _RATES_KEYS = ("risk_free_rate", "source", "as_of")
 _LEVELS_KEYS = ("order_shape_enabled", "penny_classes", "penny_all_classes")
 OCC_ROOT_RE = re.compile(r"^[A-Z][A-Z0-9]{0,5}\Z")
@@ -134,8 +158,11 @@ class OwnerSection:
 class MarketDataSection:
     vendor: str
     host: str
-    token_env: str
-    token_file: str
+    key_env: str
+    secret_env: str
+    credentials_file: str
+    options_feed: str
+    stock_feed: str
     feed_delay_min: int
     quote_ttl_min: int
     grace_min: int
@@ -236,6 +263,17 @@ class _Reader:
         value = self.require(table, key, where)
         if not isinstance(value, str) or (non_empty and not value.strip()):
             raise self.fail("%s %s must be a %sstring (got %r)" % (where, key, "non-empty " if non_empty else "", value))
+        return value
+
+    def env_name(self, table: Dict[str, Any], key: str, where: str, default: str) -> str:
+        if key not in table:
+            return default
+        value = self.string(table, key, where)
+        if not ENV_NAME_RE.match(value):
+            # The value is never echoed: a key pasted where its variable's NAME belongs must not reach a message.
+            raise self.fail("%s %s must be an environment variable name (upper case letters and digits in parts "
+                            "joined by underscores, for example APCA_API_KEY_ID), never the key or secret itself; "
+                            "the value given is not shown" % (where, key))
         return value
 
     def choice(self, table: Dict[str, Any], key: str, where: str, choices: Tuple[str, ...]) -> str:
@@ -346,22 +384,38 @@ class _Reader:
     def market_data(self, document: Dict[str, Any]) -> MarketDataSection:
         where = "[market_data]"
         table = self.section(document, "market_data")
-        self.check_keys(table, _MARKET_DATA_KEYS, where)
+        self.check_keys(table, MARKET_DATA_KEYS, where)
         vendor = self.string(table, "vendor", where)
         if vendor != VENDOR:
             raise self.fail('%s vendor must be "%s" (got %r)' % (where, VENDOR, vendor))
+        if table.get("host") == LIVE_HOST_KIND:
+            raise self.fail('%s host must be "paper" (got "live"): the desk holds a paper key only, and the live '
+                            'trading host is refused' % where)
         host = self.choice(table, "host", where, HOSTS)
-        token_env = self.string(table, "token_env", where) if "token_env" in table else DEFAULT_TOKEN_ENV
-        token_file = self.string(table, "token_file", where) if "token_file" in table else DEFAULT_TOKEN_FILE
+        key_env = self.env_name(table, "key_env", where, DEFAULT_KEY_ENV)
+        secret_env = self.env_name(table, "secret_env", where, DEFAULT_SECRET_ENV)
+        if key_env == secret_env:
+            raise self.fail("%s key_env and secret_env must differ (both %s): the key ID and the secret are two "
+                            "variables" % (where, key_env))
+        credentials_file = (self.string(table, "credentials_file", where) if "credentials_file" in table
+                            else DEFAULT_CREDENTIALS_FILE)
+        options_feed = (self.choice(table, "options_feed", where, OPTIONS_FEEDS) if "options_feed" in table
+                        else DEFAULT_OPTIONS_FEED)
+        stock_feed = (self.choice(table, "stock_feed", where, STOCK_FEEDS) if "stock_feed" in table
+                      else DEFAULT_STOCK_FEED)
         feed_delay = self.integer(table, "feed_delay_min", where, 0, None)
-        if host == "sandbox" and feed_delay < SANDBOX_MIN_FEED_DELAY_MIN:
-            raise self.fail("%s feed_delay_min must be >= %d on the sandbox host (its feed is delayed %d minutes); got %d"
-                            % (where, SANDBOX_MIN_FEED_DELAY_MIN, SANDBOX_MIN_FEED_DELAY_MIN, feed_delay))
+        if options_feed == OPTIONS_FEED_INDICATIVE and feed_delay < INDICATIVE_MIN_FEED_DELAY_MIN:
+            raise self.fail("%s feed_delay_min must be >= %d with the indicative options feed (it is delayed %d "
+                            "minutes); got %d" % (where, INDICATIVE_MIN_FEED_DELAY_MIN, INDICATIVE_MIN_FEED_DELAY_MIN,
+                                                  feed_delay))
         return MarketDataSection(
             vendor=vendor,
             host=host,
-            token_env=token_env,
-            token_file=token_file,
+            key_env=key_env,
+            secret_env=secret_env,
+            credentials_file=credentials_file,
+            options_feed=options_feed,
+            stock_feed=stock_feed,
             feed_delay_min=feed_delay,
             quote_ttl_min=self.integer(table, "quote_ttl_min", where, QUOTE_TTL_RANGE[0], QUOTE_TTL_RANGE[1]),
             grace_min=self.integer(table, "grace_min", where, GRACE_RANGE[0], GRACE_RANGE[1]),
@@ -473,23 +527,33 @@ __all__ = [
     "AttentionThresholds",
     "CADENCE_PROFILES",
     "CHATTY_OR_QUIET",
-    "DEFAULT_TOKEN_ENV",
-    "DEFAULT_TOKEN_FILE",
+    "DEFAULT_CREDENTIALS_FILE",
+    "DEFAULT_KEY_ENV",
+    "DEFAULT_OPTIONS_FEED",
+    "DEFAULT_SECRET_ENV",
+    "DEFAULT_STOCK_FEED",
+    "ENV_NAME_RE",
     "DeskConfig",
     "DeskConfigError",
     "DeskSection",
     "GRACE_RANGE",
     "HOSTS",
+    "INDICATIVE_MIN_FEED_DELAY_MIN",
+    "LIVE_HOST_KIND",
     "LevelsSection",
     "MACHINE_ROLE_KEY",
     "MACHINE_ROLE_MESSAGE",
+    "MARKET_DATA_KEYS",
     "MarketDataSection",
     "OCC_ROOT_RE",
+    "OPTIONS_FEEDS",
+    "OPTIONS_FEED_INDICATIVE",
+    "OPTIONS_FEED_OPRA",
     "OwnerSection",
     "QUOTE_TTL_RANGE",
     "RatesSection",
-    "SANDBOX_MIN_FEED_DELAY_MIN",
     "SECTIONS",
+    "STOCK_FEEDS",
     "TIMEZONE",
     "VENDOR",
     "freshness_bound_min",

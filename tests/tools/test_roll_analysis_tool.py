@@ -31,11 +31,13 @@ import tempfile
 import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from unittest import mock
+from urllib.parse import urlsplit
 
 import ack as ack_tool
 import desk_init as desk_init_tool
 import roll_analysis as tool  # the tool scripts/roll_analysis.py
-from aegis_desk import alert_lint, contract, desk_paths, quote_cache, state, structuring, structuring_text, tradier_client
+from aegis_desk import (alert_lint, alpaca_client, contract, desk_paths, market_types, quote_cache, state, structuring,
+                        structuring_text)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -61,7 +63,7 @@ FOOTER_1931 = ("computed by the desk's tools from your criteria · posted by an 
                "min, as of 19:31 UTC")
 WMT_TEXT = [
     "STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | "
-    "Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+    "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed",
     "BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of "
     "the share price): 0.0467 | the highest among the 1 candidate that passed every criterion",
@@ -88,7 +90,7 @@ WMT_TEXT = [
 NVDA_EX = "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life"
 NVDA_TEXT = [
     "STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | "
-    "Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+    "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced",
     "no candidate passed every criterion: the desk names no best candidate",
     "the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
@@ -244,8 +246,8 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(set(tool.PAYLOAD_KEYS), set(payload))
         self.assertEqual(tuple(structuring.ANSWER_KEYS) + ("approval", "config_changed", "message", "emitted", "lint",
                                                           "withheld", "files", "journal"), tool.PAYLOAD_KEYS)
-        self.assertIn("/v1/markets/options/expirations", body["network_access"])
-        self.assertIn("/v1/markets/options/chains", body["network_access"])
+        self.assertIn("https://paper-api.alpaca.markets/v2/options/contracts", body["network_access"])
+        self.assertIn("/v1beta1/options/snapshots/<UNDERLYING>", body["network_access"])
         self.assertEqual({"0", "1", "2", "10", "20"}, set(body["exit_codes"]))
 
     def test_the_flags(self) -> None:
@@ -297,7 +299,7 @@ class GoldenTest(DeskCopy):
 
     def test_wmt_roll_payload(self) -> None:
         body = self.run_json()
-        self.assertEqual(("ok", "roll_analysis", "tradier:sandbox", 15),
+        self.assertEqual(("ok", "roll_analysis", "alpaca:paper", 15),
                          (body["status"], body["tool"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(set(tool.PAYLOAD_KEYS), set(payload))
@@ -322,8 +324,8 @@ class GoldenTest(DeskCopy):
                                      "status": "confirmed"}}], best["accepted"])
         self.assertEqual(("3.50", "ask", "B", 18), (payload["held"]["close_price"], payload["held"]["close_side"],
                                                     payload["held"]["grade"], payload["held"]["quote_age_min"]))
-        self.assertEqual({"made": 4, "chains": 2, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 51}, payload["requests"])
+        self.assertEqual({"made": 7, "chains": 2, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 173}, payload["requests"])
         self.assertEqual("extrinsic_per_day", payload["objective"]["id"])
         self.assertEqual(CRITERIA_SHA, payload["criteria"]["sha256"])
         self.assertEqual({"listed_in_window": ["2026-12-18", "2027-01-15"], "evaluated": ["2026-12-18", "2027-01-15"],
@@ -533,17 +535,18 @@ class MarketDataTest(DeskCopy):
         payload = self.run_json(fixture_set="stale", expected=20)["payload"]
         self.assertEqual(("UNAVAILABLE", "spot_unusable", []), (payload["verdict"], payload["cause"],
                                                                 payload["candidates"]))
-        self.assertEqual(1, len(self.ledger()), "one quotes request, then it stops (the second run is served cached)")
+        self.assertEqual(2, len(self.ledger()), "one quotes batch (equities, then the option), then it stops (the second "
+                                                "run is served cached)")
         self.assertEqual([], self.reports())
         self.assertEqual("spot_unusable", self.journal()[-1]["refused_code"])
 
     def test_the_stale_set_counts_one_request(self) -> None:
         payload = self.run_json(fixture_set="stale", expected=20)["payload"]
-        self.assertEqual((1, 0), (payload["requests"]["made"], payload["requests"]["chains"]))
+        self.assertEqual((2, 0), (payload["requests"]["made"], payload["requests"]["chains"]))
 
     def test_after_the_close_the_chain_is_not_in_the_set(self) -> None:
         self.assertEqual(AFTER_CLOSE_TEXT, self.run_text(now=AFTER_CLOSE_NOW, fixture_set="after_close", expected=20))
-        self.assertEqual(3, len(self.ledger()), "quotes, expirations and the failed chain")
+        self.assertEqual(4, len(self.ledger()), "two quote requests, the expirations and the failed chain listing")
         payload = self.run_json(now=AFTER_CLOSE_NOW, fixture_set="after_close", expected=20)["payload"]
         self.assertEqual(("UNAVAILABLE", "chain_not_served"), (payload["verdict"], payload["cause"]))
         self.assertEqual([{"expiration": "2026-12-18", "reason": "fetch_failed:network"},
@@ -559,30 +562,31 @@ class MarketDataTest(DeskCopy):
 
     def test_request_counts_and_budget_left(self) -> None:
         first = self.run_json()["payload"]["requests"]
-        self.assertEqual({"made": 4, "chains": 2, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 51}, first)
+        self.assertEqual({"made": 7, "chains": 2, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 173}, first)
         second = self.run_json(NVDA)["payload"]["requests"]
-        self.assertEqual((4, 2, 47), (second["made"], second["chains"], second["budget_left"]))
+        self.assertEqual((7, 2, 166), (second["made"], second["chains"], second["budget_left"]))
         third = self.run_json()["payload"]["requests"]
-        self.assertEqual((0, 0, 47), (third["made"], third["chains"], third["budget_left"]),
+        self.assertEqual((0, 0, 166), (third["made"], third["chains"], third["budget_left"]),
                          "a rerun inside the TTL is served from the cache")
-        self.assertEqual(8, len(self.ledger()))
+        self.assertEqual(14, len(self.ledger()))
 
     def test_every_request_is_a_get_through_the_read_only_transport(self) -> None:
         seen: List[str] = []
-        original = tradier_client.OfflineTransport.fetch
+        original = alpaca_client.OfflineTransport.fetch
 
         def recording(transport: Any, url: str, headers: Dict[str, str], timeout_s: float) -> Any:
             seen.append(url)
             return original(transport, url, headers, timeout_s)
 
-        with mock.patch.object(tradier_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
+        with mock.patch.object(alpaca_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
                 mock.patch("http.client.HTTPConnection.request", side_effect=AssertionError("no socket offline")):
             payload = self.run_json()["payload"]
-        paths = [url.split("?")[0].split("sandbox.tradier.com", 1)[-1] for url in seen]
-        self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/expirations", "/v1/markets/options/chains",
-                          "/v1/markets/options/chains"], paths)
-        self.assertTrue(set(paths) <= set(tradier_client.ALLOWED_PATHS))
+        paths = [urlsplit(url).path for url in seen]
+        self.assertEqual(["/v2/stocks/quotes/latest", "/v1beta1/options/quotes/latest", "/v2/options/contracts",
+                          "/v2/options/contracts", "/v1beta1/options/snapshots/WMT", "/v2/options/contracts",
+                          "/v1beta1/options/snapshots/WMT"], paths)
+        self.assertEqual([alpaca_client.host_for_path(path) for path in paths], [urlsplit(url).hostname for url in seen])
         self.assertEqual(payload["requests"]["made"], len(seen))
         self.assertEqual(paths, [record["path"] for record in self.ledger()])
 
@@ -712,13 +716,13 @@ class FixerTest(DeskCopy):
         self.assertEqual(["positions_quarantined", "positions_quarantined"], [r["refused_code"] for r in self.journal()])
 
     def test_every_candidate_unpriced_is_unavailable_without_a_report(self) -> None:
-        for name in ("chains__WMT__2026-12-18.json", "chains__WMT__2027-01-15.json"):
-            path = os.path.join(self.root, "fixtures", "tradier", "regular", name)
+        for name in ("snapshots__WMT__2026-12-18.json", "snapshots__WMT__2027-01-15.json"):
+            path = os.path.join(self.root, "fixtures", "alpaca", "regular", name)
             with open(path, encoding="utf-8") as handle:
                 document = json.load(handle)
-            for entry in document["options"]["option"]:
-                entry["bid_date"] -= 120000
-                entry["ask_date"] -= 120000
+            for snapshot in document["snapshots"].values():  # the one stamp of both sides, two minutes earlier
+                stamp = market_types.from_rfc3339(snapshot["latestQuote"]["t"], "t") - datetime.timedelta(seconds=120)
+                snapshot["latestQuote"]["t"] = stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(document, handle)
         self.ack()
@@ -762,12 +766,12 @@ class FixerTest(DeskCopy):
 
     def test_refused_market_data_is_journaled(self) -> None:
         self.ack()
-        error = quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        error = quote_cache.MarketDataRefused("no_credential", quote_cache.NO_CREDENTIAL_MESSAGE)
         with mock.patch.object(tool.quote_cache, "open_market_data", side_effect=error):
             code, out = call(tool.main, self.argv(json_mode=False))
-        self.assertEqual((20, "UNAVAILABLE: no market-data token: add the Tradier sandbox token\n"), (code, out))
+        self.assertEqual((20, "UNAVAILABLE: %s\n" % quote_cache.NO_CREDENTIAL_MESSAGE), (code, out))
         (record,) = self.journal()
-        self.assertEqual(("UNAVAILABLE", "no_token", CRITERIA_SHA, hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+        self.assertEqual(("UNAVAILABLE", "no_credential", CRITERIA_SHA, hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
                          (record["verdict"], record["refused_code"], record["criteria_sha256"], record["text_sha256"]))
 
     def test_a_replacement_below_the_stock_cost_reads_below(self) -> None:

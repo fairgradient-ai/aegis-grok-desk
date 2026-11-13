@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from aegis_desk import calendar_events, desk_paths, market_clock, recon, state
+from aegis_desk import alpaca_client, calendar_events, desk_paths, market_clock, recon, state
 from aegis_desk.grouping import PositionGroup, group_positions
 from aegis_desk.market_types import Bar, Quote
 from aegis_desk.positions_csv import PositionRow, PositionsFile, RowError, parse_positions_text
@@ -35,7 +35,7 @@ from aegis_desk.positions_csv import PositionRow, PositionsFile, RowError, parse
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RECON_ROOT = os.path.join(ROOT, "tests", "fixtures", "desk_recon")
 MAIN_ROOT = os.path.join(ROOT, "tests", "fixtures", "desk")
-RECON_SET = os.path.join(RECON_ROOT, "fixtures", "tradier", "recon")
+RECON_SET = os.path.join(RECON_ROOT, "fixtures", "alpaca", "recon")
 MODULE_PATH = os.path.join(ROOT, "scripts", "aegis_desk", "recon.py")
 UTC = datetime.timezone.utc
 D = Decimal
@@ -114,10 +114,21 @@ def bar(day: datetime.date, open_: str, close: str, high: Optional[str] = None, 
     return Bar(day, D(open_), D(high or max(open_, close, key=D)), D(low or min(open_, close, key=D)), D(close), volume)
 
 
-def fixture_bars(path: str) -> List[Bar]:
-    document = read_json(path)["history"]["day"]
-    entries = document if isinstance(document, list) else [document]
-    return [Bar.from_vendor(entry) for entry in entries]
+def recon_client() -> alpaca_client.AlpacaClient:
+    """The real client over the recon root's recorded set (``OfflineTransport``): the bars and quotes the recon
+    golden reads are normalised exactly as a tool run normalises them."""
+    transport = alpaca_client.OfflineTransport(os.path.dirname(RECON_SET), os.path.basename(RECON_SET), now=RECON_NOW)
+    return alpaca_client.AlpacaClient("paper", None, user_agent="aegis-desk-tests/0", transport=transport)
+
+
+def fixture_bars(client: alpaca_client.AlpacaClient, symbol: str, start: Any, end: Any) -> Optional[List[Bar]]:
+    """The recorded daily bars of ``symbol`` from ``start`` to ``end``, or ``None`` when the set holds no file."""
+    try:
+        return list(client.history(symbol, start, end).bars)
+    except alpaca_client.AlpacaError as exc:
+        if exc.status != "network":
+            raise
+        return None
 
 
 def session_at(now: datetime.datetime, extra: Any = ()) -> market_clock.SessionInfo:
@@ -128,7 +139,7 @@ def quote(symbol: str, bid: str, ask: str, stamp: datetime.datetime, option: boo
     ms = int(stamp.timestamp()) * 1000
     raw: Dict[str, Any] = {"symbol": symbol, "type": "option" if option else "stock", "bid": float(bid),
                            "ask": float(ask), "last": float(ask), "bid_date": ms, "ask_date": ms, "trade_date": ms}
-    return Quote.from_vendor(raw)
+    return Quote.from_record(raw)
 
 
 @dataclass
@@ -765,7 +776,7 @@ class QuoteFindingsTest(unittest.TestCase):
         findings, _ = recon.quote_findings(self.symbols, result, self.groups)
         self.assertEqual([(recon.FINDING_UNQUOTABLE_INDEX, recon.LEVEL_WARNING, "SPX")],
                          [(f.kind, f.level, f.symbol) for f in findings])
-        self.assertIn("sandbox", findings[0].message)
+        self.assertIn("the data source cannot quote index options", findings[0].message)
 
     def test_market_closed_means_the_check_did_not_run_and_changes_nothing(self) -> None:
         result = FakeQuotes({}, {symbol: "market_closed" for symbol in self.symbols}, requests_made=0)
@@ -904,14 +915,11 @@ class ReconRootGoldenTest(unittest.TestCase):
         cls.session = session_at(RECON_NOW, cls.cal.extra_closures())
         cls.plan = recon.plan_settlement(cls.positions, cls.groups, now=RECON_NOW, session=cls.session, cal=cls.cal)
         histories: Dict[Any, FakeHistory] = {}
+        client = recon_client()
         for request in cls.plan.history_requests:
-            path = os.path.join(RECON_SET, "history__%s__%s__%s.json" % (request.symbol, request.start, request.end))
-            if os.path.exists(path):
-                histories[request.key] = FakeHistory(fixture_bars(path))
-            else:
-                histories[request.key] = FakeHistory([], "fetch_failed:network")
-        payload = read_json(os.path.join(RECON_SET, "quotes__SPY,SPY261218P00620000.json"))["quotes"]["quote"]
-        quotes = {entry["symbol"]: Quote.from_vendor(entry) for entry in payload}
+            bars = fixture_bars(client, request.symbol, request.start, request.end)
+            histories[request.key] = FakeHistory([], "fetch_failed:network") if bars is None else FakeHistory(bars)
+        quotes = dict(client.quotes(["SPY", "SPY261218P00620000"]).quotes)
         cls.result = recon.reconcile(plan=cls.plan, positions=cls.positions, groups=cls.groups, table=recon.csv_table(cls.text),
                                      pin_band=PIN_BAND, histories=histories, quotes=FakeQuotes(quotes), acks=([], state.STATUS_MISSING))
 
@@ -1070,8 +1078,9 @@ class PlausibilityTest(unittest.TestCase):
                        "NVDA": quote("NVDA", "148.9", "148.95", self.STAMP)}
         self.missing = {"SPX": "unmatched", "SPX261218C06500000": "unmatched", SPY_PUT_620: "quota_guard", "SPY": "quota_guard"}
 
-    def checks(self, expired: Sequence[int] = (), sandbox: bool = True) -> Dict[int, recon.PlausibilityCheck]:
-        checks = recon.plausibility(self.parsed.rows, self.quotes, missing=self.missing, expired_rows=frozenset(expired), sandbox=sandbox)
+    def checks(self, expired: Sequence[int] = (), index_unquotable: bool = True) -> Dict[int, recon.PlausibilityCheck]:
+        checks = recon.plausibility(self.parsed.rows, self.quotes, missing=self.missing, expired_rows=frozenset(expired),
+                                    index_unquotable=index_unquotable)
         return {check.row_number: check for check in checks}
 
     def test_option_within_twenty_times_is_ok_and_a_hundred_times_off_is_unit_mismatch(self) -> None:
@@ -1089,14 +1098,14 @@ class PlausibilityTest(unittest.TestCase):
         self.assertIn("14120.00", checks[5].message)
         self.assertIn("148.925", checks[5].message)
 
-    def test_index_underlying_is_unquotable_on_the_sandbox_and_quota_is_not_checked(self) -> None:
+    def test_index_underlying_is_unquotable_and_quota_is_not_checked(self) -> None:
         checks = self.checks(expired=[9])
         self.assertEqual(recon.PLAUSIBILITY_UNQUOTABLE, checks[6].status)
-        self.assertIn("sandbox", checks[6].message)
+        self.assertIn("the data source cannot quote index options", checks[6].message)
         self.assertEqual(recon.PLAUSIBILITY_NOT_CHECKED, checks[7].status)
         self.assertIn("quota_guard", checks[7].message)
-        off_sandbox = self.checks(expired=[9], sandbox=False)
-        self.assertEqual(recon.PLAUSIBILITY_NOT_CHECKED, off_sandbox[6].status)
+        quotable = self.checks(expired=[9], index_unquotable=False)
+        self.assertEqual(recon.PLAUSIBILITY_NOT_CHECKED, quotable[6].status)
 
     def test_closed_rows_are_skipped_and_expired_rows_are_labelled(self) -> None:
         checks = self.checks(expired=[9])
@@ -1118,7 +1127,7 @@ class PlausibilityTest(unittest.TestCase):
                        option_row(WMT_CALL_105, "-1", "-6900.00", trade_id="AG-20261020-04"),
                        today=datetime.date(2026, 11, 3))
         quotes = {WMT_CALL_105: quote(WMT_CALL_105, "3.35", "3.50", self.STAMP, True)}  # mid 3.425: band [0.17125, 68.5]
-        checks = {c.row_number: c.status for c in recon.plausibility(parsed.rows, quotes, missing={}, expired_rows=frozenset(), sandbox=True)}
+        checks = {c.row_number: c.status for c in recon.plausibility(parsed.rows, quotes, missing={}, expired_rows=frozenset(), index_unquotable=True)}
         self.assertEqual({2: recon.PLAUSIBILITY_OK, 3: recon.PLAUSIBILITY_ERROR, 4: recon.PLAUSIBILITY_ERROR}, checks)
 
     def test_check_is_json_ready(self) -> None:

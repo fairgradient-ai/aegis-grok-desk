@@ -36,7 +36,7 @@ FOOTER_1931 = ("deterministic rules you adopted \u00b7 posted by an AI assistant
                "\u00b7 data delayed 15 min, as of 19:31 UTC")
 PLAN_SHAPE = re.compile(
     r"^(?:EXIT SIGNAL|WATCH) \S+ \| \S+ [a-z -]+ \| your rule [A-Z][A-Z0-9_]{1,15} \(rules \d+\.\d+\.\d+, sha [0-9a-f]{8}\) "
-    r"fired: .+ \| quote grade [A-F], Tradier sandbox, \d+-min delayed, as of \d\d:\d\d UTC(?:, run \d+ min late)? \| "
+    r"fired: .+ \| quote grade [A-F], Alpaca paper \(IEX stocks, indicative options: approximate\), \d+-min delayed, as of \d\d:\d\d UTC(?:, run \d+ min late)? \| "
     r"your plan: (?:close|review a roll|review and decide) \| not an instruction to trade; you act in your brokerage "
     r"account\.$")
 
@@ -327,7 +327,7 @@ class ExitSignalTest(DocumentCase):
         self.assertEqual("\n".join([
             "EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha 3f9a01bc) fired: credit "
             "captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | quote "
-            "grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | " + NOT_AN_INSTRUCTION,
+            "grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: close | " + NOT_AN_INSTRUCTION,
             "also fired: your rule DTE21: time to expiry 0 trading days (your threshold: at or below 21 trading days) | "
             "your plan: review a roll",
             "also fired: your rule PIN3: distance from the strike 0.07 % (your threshold: at or below 3 %) and time to "
@@ -369,7 +369,7 @@ class ExitSignalTest(DocumentCase):
         alert = alerts.exit_signal_text(group, group.fired[2], self.doc("expiry_day"), run_info)
         self.assertEqual("\n".join([
             "EXIT SIGNAL AG-20261022-02 | NVDA covered call | your rule DELTA_SIGNAL (rules 1.0.0, sha 3f9a01bc) fired: "
-            "absolute delta 0.96 (your threshold: at or above 0.50) | quote grade B, Tradier sandbox, 15-min delayed, as "
+            "absolute delta 0.96 (your threshold: at or above 0.50) | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as "
             "of 19:31 UTC, run 3 min late | your plan: review a roll | " + NOT_AN_INSTRUCTION,
             "also fired: your rule DTE21: time to expiry 0 trading days (your threshold: at or below 21 trading days) | "
             "your plan: review a roll",
@@ -463,7 +463,7 @@ class RenderTest(DocumentCase):
                          [(alert.kind, alert.group_id) for alert in rendered])
         self.assertEqual("\n".join([
             "WATCH AG-20261022-02 | NVDA covered call | your rule DTE21 (rules 1.0.0, sha 3f9a01bc) fired: time to expiry "
-            "13 trading days (your threshold: at or below 21 trading days) | quote grade C, Tradier sandbox, 15-min "
+            "13 trading days (your threshold: at or below 21 trading days) | quote grade C, Alpaca paper (IEX stocks, indicative options: approximate), 15-min "
             "delayed, as of 19:31 UTC | your plan: review a roll | " + NOT_AN_INSTRUCTION,
             "pending confirmation: your rule DELTA_WATCH: absolute delta 0.48 (your threshold: at or above 0.30); "
             "observation 1 of 2",
@@ -480,7 +480,7 @@ class RenderTest(DocumentCase):
         portfolio = rendered[-1]
         self.assertEqual("\n".join([
             "WATCH portfolio | all open groups | your rule CONC (rules 1.0.0, sha 3f9a01bc) fired: largest concentration "
-            "by underlying 26.32 % (your threshold: at or above 25 %) | quote grade C, Tradier sandbox, 15-min delayed, "
+            "by underlying 26.32 % (your threshold: at or above 25 %) | quote grade C, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, "
             "as of 19:31 UTC | your plan: review and decide | " + NOT_AN_INSTRUCTION,
             "no history: your rules MOVE5_DOWN, MOVE5_UP, DAILY need the previous end-of-day snapshot",
             FOOTER_1931]), portfolio.text)
@@ -517,7 +517,7 @@ class RenderTest(DocumentCase):
         portfolio = alerts.render(evaluation, self.doc("regular"), RUN_INFO)[-1]
         self.assertEqual("WATCH portfolio | all open groups | your rule MOVE5_DOWN (rules 1.0.0, sha 3f9a01bc) fired: WMT "
                          "move since the previous end-of-day snapshot -5.20 % (your threshold: at or below -5 %) | quote "
-                         "grade C, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: review and decide | "
+                         "grade C, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: review and decide | "
                          + NOT_AN_INSTRUCTION, portfolio.text.split("\n")[0])
         self.assertIn("no history: your rules MOVE5_DOWN, MOVE5_UP, DAILY need the previous end-of-day snapshot",
                       portfolio.text)
@@ -540,7 +540,7 @@ class RenderTest(DocumentCase):
         alert = rendered[0]
         self.assertEqual("\n".join([
             "UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha 3f9a01bc: no verdict while an input is "
-            "unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 18:50 UTC | "
+            "unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 18:50 UTC | "
             + NOT_AN_INSTRUCTION,
             "unavailable: your rule TP80: quote grade F: stale quote (60 min old)",
             "unavailable: your rule USTOP: no usable underlying mark (WMT grade F)",
@@ -563,7 +563,7 @@ class RenderTest(DocumentCase):
         alert = alerts.unavailable_banner(verdict, document, RUN_INFO)
         self.assertEqual("\n".join([
             "UNAVAILABLE AG-20261105-07 | quarantined in positions.csv | rules 1.0.0, sha 3f9a01bc: no verdict while an "
-            "input is unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 19:31 UTC | "
+            "input is unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | "
             + NOT_AN_INSTRUCTION,
             "unavailable: row 12: the quantity cell cannot be used (positions_check.py shows it)",
             FOOTER_1931]), alert.text)

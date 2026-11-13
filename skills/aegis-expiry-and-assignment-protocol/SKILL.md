@@ -72,8 +72,8 @@ expiry 2026-11-20 (AM-settled): last trading day 2026-11-19, settlement day 2026
 
 Without a calendar file every root is treated as PM-settled. The dividend intake of `desk_init.py` writes no
 `[settlement]` table, so an owner who holds index options adds `am_settled_roots`, and each settlement value as a
-`[[settlement.values]]` entry, to `research/calendar.toml` by hand. The sandbox quotes no index, so such legs are
-never marked. Sourcing settlement values is planned for Stage 2 (not in this release).
+`[[settlement.values]]` entry, to `research/calendar.toml` by hand. The data source cannot quote index options, so such
+legs are never marked. Sourcing settlement values is planned for Stage 2 (not in this release).
 
 A full closure in the calendar (`[[closures]]` with `kind = "full"`) moves the last trading day itself. The scheduled
 NYSE early closes are in the desk's own holiday table.

@@ -47,7 +47,7 @@ FOOTER_2059 = alert_lint.footer_line(contract.parse_utc_instant("2026-11-02T20:5
 FOOTER_1931 = alert_lint.footer_line(contract.parse_utc_instant("2026-11-03T19:31:12Z"))
 MORNING_SHEET = [
     "MORNING DESK SHEET 2026-11-03",
-    "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: token_source",
+    "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: key_source",
     "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits (csv_recon.py --diff "
     "lists them)",
     "open signals: 0",
@@ -254,7 +254,7 @@ class MorningSheetTest(DeskCopy):
         self.assertEqual(("morning", "2026-11-03", [], 0), (payload["mode"], payload["et_date"],
                                                             payload["unavailable"], payload["exit_code"]))
         self.assertEqual("2026-11-02T20:59:55+00:00", payload["emitted"]["as_of"], "the records' data instant")
-        self.assertEqual(("tradier:sandbox", 15), (body["source"], body["delay_min"]))
+        self.assertEqual(("alpaca:paper", 15), (body["source"], body["delay_min"]))
         self.assertEqual([("doctor result", "state/doctor.json", "ok"),
                           ("reconciliation", "data/positions/2026-11-03.recon.json", "ok"),
                           ("expiry docket", "reports/expiry/2026-11-03.week.json", "ok"),

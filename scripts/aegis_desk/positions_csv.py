@@ -116,7 +116,8 @@ MAX_STRIKE: Decimal = Decimal(100000)
 """Strikes are below this (the eight-digit OSI field holds at most 99999.999)."""
 
 INDEX_ROOTS: Tuple[str, ...] = ("SPX", "SPXW", "NDX", "RUT", "VIX", "DJX", "XSP")
-"""OCC roots (and stock-like symbols) the sandbox cannot quote: index underlyings."""
+"""OCC roots (and stock-like symbols) the data source cannot quote: index underlyings (the free indicative feed serves
+no index options to a retail paper account, and no index level)."""
 
 TRADE_ID_RE = re.compile(r"^AG-\d{8}-\d{2,3}$")
 DECIMAL_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
@@ -210,7 +211,7 @@ class PositionRow:
 
     @property
     def compact_symbol(self) -> str:
-        """The Tradier quote symbol: ``occ.compact`` for options, the ticker otherwise."""
+        """The quote symbol the market-data client takes: ``occ.compact`` for options, the ticker otherwise."""
         return self.occ.compact if self.occ is not None else self.symbol
 
     @property
@@ -241,7 +242,7 @@ class PositionRow:
     @property
     def is_index_underlying(self) -> bool:
         """An ``index`` row, an option on an :data:`INDEX_ROOTS` root, or a stock-like row whose
-        symbol is such a root: the sandbox cannot quote it (the "unquotable" warning)."""
+        symbol is such a root: the data source cannot quote it (the "unquotable" warning)."""
         if self.instrument_type == INSTRUMENT_INDEX:
             return True
         if self.occ is not None:

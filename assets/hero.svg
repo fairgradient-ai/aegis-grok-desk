@@ -25,6 +25,6 @@
 <text x="264" y="321" class="m am" font-size="12" xml:space="preserve">your plan: review a roll</text>
 <text x="264" y="340" class="m mu" font-size="12" xml:space="preserve">not an instruction to trade; you act in your brokerage account.</text>
 <text x="64" y="300" class="s sb fa" font-size="12" xml:space="preserve">read-only</text>
-<text x="64" y="318" class="s sb fa" font-size="12" xml:space="preserve">sandbox market data</text>
+<text x="64" y="318" class="s sb fa" font-size="12" xml:space="preserve">paper market data</text>
 <text x="64" y="336" class="s sb fa" font-size="12" xml:space="preserve">numbers from tools</text>
 </svg>

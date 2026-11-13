@@ -106,7 +106,7 @@ python3 /workspace/aegis-grok-desk/scripts/positions_check.py --desk-root /works
 - **Plausibility.** The first time an open option leg is checked, an entry premium per share outside
   [mid / 20, mid x 20] of its quote is the row error `unit mismatch?` (usually a total typed as a per-share price).
   A stock row outside [mid / 10, mid x 10] is a warning.
-- Index underlyings cannot be quoted on the sandbox: they get the warning `UNQUOTABLE_INDEX`, not an error.
+- Index underlyings cannot be quoted by the data source: they get the warning `UNQUOTABLE_INDEX`, not an error.
 
 The exit codes: 0 CLEAN, 20 when a group is quarantined or a check could not run, 1 on a file error.
 
@@ -175,7 +175,7 @@ option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20
 option,NVDA,,-2,2026-11-20,CALL,150,Brokerage (margin),AG-20261022-02,2026-10-22,-610.00,,,closed,2026-11-20,2,0,,covered call from component columns #earnings-ok
 # row 5 (AG-20261022-02) PROBABLE_ASSIGNED: status=closed, closed=2026-11-20, closed_quantity=200, close_price_per_unit=150.00
 equity,NVDA,,200,,,,Brokerage (margin),AG-20261022-02,2026-10-22,28240.00,,,closed,2026-11-20,200,150.00,,
-Tradier sandbox, delayed 15 min, as of 14:31 UTC
+Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 14:31 UTC
 ```
 
 The outcomes are inferred from the official close. Check them against your broker before you apply any line. Other

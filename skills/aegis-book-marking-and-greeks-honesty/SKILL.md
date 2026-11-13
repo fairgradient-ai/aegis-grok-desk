@@ -42,7 +42,7 @@ E. The book keeps the display mid 0.14, gives no liquidation mark and no P/L, an
 take-profit rule reads the ask 0.16 against the 3.42 credit, and the book check's alert reads:
 
 ```text
-EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
+EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
 ```
 
 In the same run the portfolio's day-P/L rule is unavailable for that leg:
@@ -64,7 +64,7 @@ unavailable: your rule DAILY: day P/L unavailable: row 4 WMT261120C00105000: no 
 
 ## Implied volatility and when it is refused
 
-The desk solves IV itself from the leg's mid: the sandbox serves no IV and no Greeks. The rate `r` is
+The desk solves IV itself from the leg's mid and never reads the vendor's IV or Greeks. The rate `r` is
 `desk.toml` `[rates] risk_free_rate`. The dividend yield `q` is the symbol's `dividend_yield` in
 `research/calendar.toml`, else 0, with the leg warning `q = 0: no dividend yield in calendar.toml`. The dividend
 intake of `desk_init.py` writes no `dividend_yield`, so on a new desk that warning is expected until the owner adds

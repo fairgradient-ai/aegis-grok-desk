@@ -734,7 +734,8 @@ def expected_quote_age_min(session_info: SessionInfo, feed_delay_min: int) -> Op
     return None
 
 
-# Tradier ``/v1/markets/clock`` states (and the plain calendar statuses) -> this module's sessions.
+# Vendor clock states (the market-data client's clock record says ``open`` or ``closed``; the pre- and post-market
+# labels some feeds use, and the plain calendar statuses) -> this module's sessions.
 VENDOR_STATE_MAP: Dict[str, str] = {
     "open": SESSION_OPEN,
     "premarket": SESSION_PRE,
@@ -747,9 +748,9 @@ VENDOR_STATE_MAP: Dict[str, str] = {
 def reconcile_vendor_state(local: SessionInfo, vendor: Union[str, Mapping[str, object], None]) -> Reconciliation:
     """Combine the local classification with a vendor clock; the more-closed view wins.
 
-    ``vendor`` is a state string (Tradier: ``premarket`` / ``open`` / ``postmarket`` /
-    ``closed``) or the ``/v1/markets/clock`` payload (``{"clock": {"date", "state", ...}}`` or
-    its inner object). A vendor ``closed`` while the desk believes the market is trading makes
+    ``vendor`` is a state string (``open`` / ``closed``, or a ``premarket`` / ``postmarket``
+    label) or a clock record (``alpaca_client.ClockResult``'s ``{"date", "state", ...}``, also
+    accepted inside a ``{"clock": {...}}`` wrapper). A vendor ``closed`` while the desk believes the market is trading makes
     the effective session ``closed`` (an unscheduled closure or halt the tables cannot know); a
     vendor ``open`` never opens a locally closed day. A vendor object dated another ET day, or
     an unrecognised state, is ignored (local wins) and reported. Every difference is returned in

@@ -22,12 +22,12 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 ## Try it now
 
 ```bash
-git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
 cd aegis-grok-desk
 python3 scripts/opening_bell.py --demo
 ```
 
-It needs no account, no token and no install, only Python 3.9 or later. The data is a recorded, made-up sample, so
+It needs no account, no key and no install, only Python 3.9 or later. The data is a recorded, made-up sample, so
 none of it is market data, and the command writes nothing.
 
 ![The output of python3 scripts/opening_bell.py --demo in a terminal: a market snapshot of SPY from the made-up sample, labelled synthetic.](assets/demo-card.svg)
@@ -36,12 +36,12 @@ none of it is market data, and the command writes nothing.
 
 Open Grok Bot, create a new Bot (it becomes your Aegis Desk Lead), and paste:
 
-> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.1/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.1.1/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
+> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.0/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.0/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
 
-It builds the desk, shows you a demo on a sample portfolio, and asks you for one thing: a free Tradier sandbox
-market-data token, added through the secure secret card, never pasted in chat. The sandbox is Tradier's practice
-environment; its token brings in delayed market data
-([how to get one](docs/FAQ.md#how-do-i-get-a-tradier-sandbox-token)).
+It builds the desk, shows you a demo on a sample portfolio, and asks you for one thing: a free Alpaca paper key (a
+key ID and its secret), added through the secure secret card, never pasted in chat. Alpaca's paper account is a
+practice account that needs only an email address; its key brings in delayed market data
+([how to get one](docs/FAQ.md#how-do-i-get-an-alpaca-paper-key)).
 
 Then, when you want more, say these, starting with the first:
 
@@ -98,7 +98,8 @@ EXIT SIGNAL AG-20261020-01 | WMT covered call
   the conservative side stands
 | already past this threshold at the desk's
   first observation
-| quote grade E, Tradier sandbox, 15-min
+| quote grade E, Alpaca paper (IEX stocks,
+  indicative options: approximate), 15-min
   delayed, as of 19:31 UTC
 | your plan: close
 | not an instruction to trade; you act in your
@@ -121,7 +122,7 @@ Silence between checks means nothing changed. [docs/MONITORING.md](docs/MONITORI
 
 - **It never trades.** No tool here can send anything but a read-only market-data request, and no Bot holds a
   brokerage login. You act in your own brokerage account.
-- **One credential, a practice one.** The only one is a Tradier sandbox token, which cannot reach a live account. You
+- **One credential, a practice one.** The only one is an Alpaca paper key, which cannot reach a live account. You
   add it through the secure secret card; it is never pasted in chat.
 - **Every number comes from a tool,** with its source, its data delay and a UTC time. The Bots never do arithmetic.
 - **"Cannot tell" is an answer.** Missing or stale data makes a rule UNAVAILABLE, never a quiet "all clear".
@@ -129,8 +130,9 @@ Silence between checks means nothing changed. [docs/MONITORING.md](docs/MONITORI
   settings or positions that you have not confirmed is flagged first.
 - **Your tap is the signature.** Adopting rules, confirming a change and each answer of the Structuring Desk run only
   after you tap approve in Grok Bot.
-- **It checks at intervals; it is not a live watcher.** The data is 15 minutes delayed, so set your broker's own alerts
-  at the prices the desk gives you. No morning sheet by 08:00 ET on a trading day means the desk is not running.
+- **It checks at intervals; it is not a live watcher.** The data is 15 minutes delayed, and the free option quotes are
+  approximate (indicative, not exchange quotes), so set your broker's own alerts at the prices the desk gives you. No
+  morning sheet by 08:00 ET on a trading day means the desk is not running.
 
 How each control is enforced, and what it does not cover, is in [SECURITY.md](SECURITY.md).
 
@@ -140,7 +142,7 @@ How each control is enforced, and what it does not cover, is in [SECURITY.md](SE
 | --- | --- |
 | Grok Bot | the [Start](#start) prompt above; [docs/aegis-grok-bot.md](docs/aegis-grok-bot.md) |
 | Claude Code | `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`; [docs/aegis-claude-code.md](docs/aegis-claude-code.md) |
-| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.1.1 --trust`; [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
+| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.2.0 --trust`; [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
 | Cursor | open the pinned clone and enable the plugin; [docs/aegis-cursor.md](docs/aegis-cursor.md) |
 | Codex | the marketplace entry; [docs/aegis-codex.md](docs/aegis-codex.md) |
 | Gemini CLI | the extension; [docs/aegis-gemini-cli.md](docs/aegis-gemini-cli.md) |
@@ -165,7 +167,7 @@ docs/       the pages below
 
 | Doc | |
 | --- | --- |
-| [FAQ](docs/FAQ.md) | the token, the data delay, rules, positions, advice |
+| [FAQ](docs/FAQ.md) | the paper key, the data delay, rules, positions, advice |
 | [Monitoring](docs/MONITORING.md) | the schedule, what posts when, how to tell the desk is running |
 | [Exit rules](docs/EXIT_RULES.md) | the rule language and how a rule changes |
 | [Positions file](docs/POSITIONS_CSV.md) | the format of your positions |
@@ -179,7 +181,7 @@ docs/       the pages below
 
 - **Questions:** start with the [FAQ](docs/FAQ.md).
 - **Bugs:** [open an issue](https://github.com/fairgradient-ai/aegis-grok-desk/issues) with the command and its
-  output. Never include a token, an account number or your positions.
+  output. Never include a key, an account number or your positions.
 - **Security:** report privately, as [SECURITY.md](SECURITY.md) describes.
 - **Updates:** watch the repository's [releases](https://github.com/fairgradient-ai/aegis-grok-desk/releases).
 

@@ -184,6 +184,22 @@ class MissingAndUndatedTest(unittest.TestCase):
         self.assertIsNone(qc.age_min_ask)
         self.assertEqual(18, qc.age_min_bid)
 
+    def test_zero_ask_under_a_positive_bid_is_a_missing_ask_not_a_crossed_market(self) -> None:
+        # Alpaca's ap 0 means no active offer; with a positive bid it is an empty ask, never "crossed".
+        qc = assess(quote(bid="1.0", ask="0"))
+        self.assertEqual(("missing", "F", False), (qc.status, qc.grade, qc.usable_for_rules))
+        self.assertEqual(["ask missing (no offer)"], qc.reasons)
+        self.assertFalse(any(reason.startswith("crossed") for reason in qc.reasons))
+        self.assertEqual((None, None, None, None), (qc.mark_mid, qc.mark_liq_long, qc.mark_liq_short, qc.spread_pct))
+        # the same with a stale ask: still missing, its stale reason kept
+        qc = assess(quote(bid="1.0", ask="0", ask_date=NOW - timedelta(minutes=40)))
+        self.assertEqual(("missing", "F"), (qc.status, qc.grade))
+        self.assertEqual("ask missing (no offer)", qc.reasons[-1])
+        self.assertFalse(any(reason.startswith("crossed") for reason in qc.reasons))
+        # a 0/0 market keeps its E grade (no bid), and a zero bid under a positive ask is unchanged
+        self.assertEqual("E", assess(quote(bid="0", ask="0")).grade)
+        self.assertEqual("E", assess(quote(bid="0", ask="0.05")).grade)
+
     def test_missing_bid_is_f(self) -> None:
         qc = assess(quote(bid=None))
         self.assertEqual(("missing", "F"), (qc.status, qc.grade))

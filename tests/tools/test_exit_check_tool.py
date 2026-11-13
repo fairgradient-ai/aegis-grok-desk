@@ -22,6 +22,7 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from unittest import mock
 
 from aegis_desk import alert_lint, book, contract, desk_paths, exit_rules, quote_cache, rule_state
 
@@ -182,7 +183,7 @@ class JourneysTest(DeskCopy):
     def test_regular_is_exit_0_with_two_watch_groups_and_a_hold(self) -> None:
         code, body = run_json(self.argv())
         self.assertEqual(0, code, body)
-        self.assertEqual(("ok", "exit_check", "tradier:sandbox", 15), (body["status"], body["tool"], body["source"],
+        self.assertEqual(("ok", "exit_check", "alpaca:paper", 15), (body["status"], body["tool"], body["source"],
                                                                         body["delay_min"]))
         payload = body["payload"]
         self.assertEqual({"version": "1.0.0", "sha": ADOPTED_SHA, "path": "rules/exit_rules-1.0.0.toml",
@@ -230,7 +231,7 @@ class JourneysTest(DeskCopy):
         self.assertEqual({"origin": "quotes", "path": None, "generated_at": "2026-11-03T19:50:00+00:00",
                           "as_of_label": "as of 14:31:12 ET", "data_exit_code": 0}, payload["book"])
         self.assertEqual([], payload["warnings"])
-        self.assertEqual(1, len(self.ledger()), "one quotes request for the whole book")
+        self.assertEqual(2, len(self.ledger()), "one quotes batch for the whole book: equities, then options")
 
     def test_expiry_day_with_the_after_close_next_run_is_exit_10(self) -> None:
         code, body = run_json(self.argv("expiry_day", EXPIRY_DAY_NOW, extra=["--next-run-utc", AFTER_CLOSE_NEXT_RUN]))
@@ -367,7 +368,7 @@ class SavedBookTest(DeskCopy):
         self.assertEqual(built["payload"]["portfolio"], saved["payload"]["portfolio"])
         self.assertEqual({"origin": "file", "path": path, "generated_at": "2026-11-03T19:50:00+00:00",
                           "as_of_label": "as of 14:31:12 ET", "data_exit_code": 0}, saved["payload"]["book"])
-        self.assertEqual(("tradier:sandbox", 15), (saved["source"], saved["delay_min"]))
+        self.assertEqual(("alpaca:paper", 15), (saved["source"], saved["delay_min"]))
 
     def test_a_saved_book_is_evaluated_at_its_own_instant(self) -> None:
         # The 2026-11-02 close snapshot: a closed session, so one observation suffices; the rules see that day.
@@ -489,10 +490,15 @@ class PlumbingTest(DeskCopy):
         self.assertEqual(20, code)
         self.assertIn("AG-20261022-02 quarantined: UNAVAILABLE", text.splitlines())
 
-    def test_production_host_is_exit_20(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_exit_1_and_refused_market_data_exit_20(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
-        self.assertEqual((20, "unavailable", "production_host"), (code, body["status"], body["error"]["code"]))
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+        self.rewrite("desk.toml", 'host = "live"', 'host = "paper"')
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
+        self.assertEqual((20, "unavailable", "no_credential"), (code, body["status"], body["error"]["code"]))
 
     def test_invalid_config_and_positions_are_exit_1(self) -> None:
         self.rewrite("desk.toml", "grace_min = 5", "grace_min = 31")
@@ -546,7 +552,7 @@ class ProseTest(DeskCopy):
                        "rule state: read state/rule_state.json (missing); exit_check writes nothing (book_check.py --post "
                        "records the transitions)"):
             self.assertIn(needle, lines)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
         self.assertEqual([], order_shaped(text), text)
 
     def test_the_exit_signal_table_and_the_json_never_carry_order_shaped_text(self) -> None:

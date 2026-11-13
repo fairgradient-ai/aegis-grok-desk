@@ -145,9 +145,9 @@ class CheckShTests(unittest.TestCase):
         for case, needle in (("hooks_key", ".grok-plugin/plugin.json: must not declare 'hooks'"),
                              ("grok_skills_key", ".grok-plugin/plugin.json: must not declare 'skills'"),
                              ("paragraph_drift", "AGENTS.md: must repeat the desk-rule paragraph"),
-                             ("request_post", "tradier_client.py:8: [request-method]"),
-                             ("request_data_attribute", "tradier_client.py:9: [request-mutation]"),
-                             ("request_subclass", "tradier_client.py:7: [request-subclass]"),
+                             ("request_post", "alpaca_client.py:8: [request-method]"),
+                             ("request_data_attribute", "alpaca_client.py:9: [request-mutation]"),
+                             ("request_subclass", "alpaca_client.py:7: [request-subclass]"),
                              ("xmlrpc_import", "quote_cache.py:4: [network-import] 'xmlrpc'"),
                              ("prose_curl", "docs/FAQ.md:3: [curl-write]"),
                              ("prose_agents_md", "AGENTS.md:5: [curl-write]")):

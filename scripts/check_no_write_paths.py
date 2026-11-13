@@ -28,7 +28,7 @@ any object (either swaps the method that decides a request's verb).
 Closed lists
 ------------
 * Network modules (``urllib.request``, ``http.client``, ``socket``, ``ssl``) may be imported
-  only by ``scripts/aegis_desk/tradier_client.py``. A test module may import ``http.server``,
+  only by ``scripts/aegis_desk/alpaca_client.py``. A test module may import ``http.server``,
   ``socketserver``, ``socket`` and ``threading`` to run a loopback fake server. A bare
   ``import urllib`` or ``import http`` is rejected as ambiguous: import ``urllib.parse`` or
   ``urllib.error`` explicitly. A network module reached by reflection (``sys.modules[...]``)
@@ -188,7 +188,7 @@ import re
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-NETWORK_CLIENT = "scripts/aegis_desk/tradier_client.py"
+NETWORK_CLIENT = "scripts/aegis_desk/alpaca_client.py"
 NETWORK_MODULES = ("urllib.request", "http.client", "socket", "ssl")
 AMBIGUOUS_PARENTS = ("urllib", "http")
 TEST_LOOPBACK_MODULES = ("http.server", "socketserver", "socket", "threading")
@@ -619,7 +619,7 @@ class ModuleGate:
         if top in THIRD_PARTY_HTTP:
             self.fail(node, "third-party-http",
                       f"'{module}' is a third-party HTTP client; the repository is stdlib-only and "
-                      "GET-only through scripts/aegis_desk/tradier_client.py")
+                      "GET-only through scripts/aegis_desk/alpaca_client.py")
             return
         for forbidden in FORBIDDEN_NETWORK_MODULES:
             if module_matches(module, forbidden):

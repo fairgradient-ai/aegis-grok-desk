@@ -11,6 +11,7 @@ from __future__ import annotations
 import tests._path  # noqa: F401
 # isort: on
 
+import dataclasses
 import datetime
 import hashlib
 import os
@@ -42,9 +43,12 @@ name = "Brokerage (margin)"
 type = "margin"
 
 [market_data]
-vendor = "tradier"
-host = "sandbox"
-token_env = "TRADIER_API_TOKEN"
+vendor = "alpaca"
+host = "paper"
+key_env = "APCA_API_KEY_ID"
+secret_env = "APCA_API_SECRET_KEY"
+options_feed = "indicative"
+stock_feed = "iex"
 feed_delay_min = 15
 quote_ttl_min = 5
 grace_min = 5
@@ -116,10 +120,13 @@ class LoadsValidDocumentsTest(DeskConfigTestCase):
         self.assertEqual(2, len(cfg.owner.accounts))
         self.assertEqual(desk_config.AccountEntry("Brokerage (margin)", "margin"), cfg.owner.accounts[0])
         self.assertEqual(desk_config.AccountEntry("Roth IRA", "ira"), cfg.owner.accounts[1])
-        self.assertEqual("tradier", cfg.market_data.vendor)
-        self.assertEqual("sandbox", cfg.market_data.host)
-        self.assertEqual("TRADIER_API_TOKEN", cfg.market_data.token_env)
-        self.assertEqual("/workspace/.aegis-secrets/tradier.token", cfg.market_data.token_file)
+        self.assertEqual("alpaca", cfg.market_data.vendor)
+        self.assertEqual("paper", cfg.market_data.host)
+        self.assertEqual("APCA_API_KEY_ID", cfg.market_data.key_env)
+        self.assertEqual("APCA_API_SECRET_KEY", cfg.market_data.secret_env)
+        self.assertEqual("/workspace/.aegis-secrets/alpaca.key", cfg.market_data.credentials_file)
+        self.assertEqual("indicative", cfg.market_data.options_feed)
+        self.assertEqual("iex", cfg.market_data.stock_feed)
         self.assertEqual(15, cfg.market_data.feed_delay_min)
         self.assertEqual(5, cfg.market_data.quote_ttl_min)
         self.assertEqual(5, cfg.market_data.grace_min)
@@ -135,7 +142,8 @@ class LoadsValidDocumentsTest(DeskConfigTestCase):
 
     def test_fixture_desk_root_loads(self) -> None:
         cfg = desk_config.load_desk_config(FIXTURE_DESK)
-        self.assertEqual("sandbox", cfg.market_data.host)
+        self.assertEqual(("alpaca", "paper"), (cfg.market_data.vendor, cfg.market_data.host))
+        self.assertEqual("indicative", cfg.market_data.options_feed)
         self.assertEqual(15, cfg.market_data.feed_delay_min)
         self.assertEqual(5, cfg.market_data.quote_ttl_min)
         self.assertEqual(5, cfg.market_data.grace_min)
@@ -150,22 +158,37 @@ class LoadsValidDocumentsTest(DeskConfigTestCase):
 
     def test_base_document_loads_and_defaults_apply(self) -> None:
         cfg = self.load_text(BASE)
-        self.assertEqual("/workspace/.aegis-secrets/tradier.token", cfg.market_data.token_file)
-        self.assertEqual(desk_config.DEFAULT_TOKEN_FILE, cfg.market_data.token_file)
-        cfg = self.load_text(self.mutate('token_env = "TRADIER_API_TOKEN"\n', ''))
-        self.assertEqual("TRADIER_API_TOKEN", cfg.market_data.token_env)
-        self.assertEqual(desk_config.DEFAULT_TOKEN_ENV, cfg.market_data.token_env)
-        cfg = self.load_text(self.mutate('token_env = "TRADIER_API_TOKEN"\n',
-                                         'token_env = "MY_TOKEN"\ntoken_file = "/tmp/x.token"\n'))
-        self.assertEqual("MY_TOKEN", cfg.market_data.token_env)
-        self.assertEqual("/tmp/x.token", cfg.market_data.token_file)
+        self.assertEqual("/workspace/.aegis-secrets/alpaca.key", cfg.market_data.credentials_file)
+        self.assertEqual(desk_config.DEFAULT_CREDENTIALS_FILE, cfg.market_data.credentials_file)
+        bare = self.mutate('key_env = "APCA_API_KEY_ID"\nsecret_env = "APCA_API_SECRET_KEY"\n'
+                           'options_feed = "indicative"\nstock_feed = "iex"\n', '')
+        cfg = self.load_text(bare)
+        self.assertEqual((desk_config.DEFAULT_KEY_ENV, desk_config.DEFAULT_SECRET_ENV),
+                         (cfg.market_data.key_env, cfg.market_data.secret_env))
+        self.assertEqual(("APCA_API_KEY_ID", "APCA_API_SECRET_KEY"), (cfg.market_data.key_env, cfg.market_data.secret_env))
+        self.assertEqual(("indicative", "iex"), (cfg.market_data.options_feed, cfg.market_data.stock_feed))
+        cfg = self.load_text(self.mutate('key_env = "APCA_API_KEY_ID"\nsecret_env = "APCA_API_SECRET_KEY"\n',
+                                         'key_env = "MY_KEY_ID"\nsecret_env = "MY_SECRET"\n'
+                                         'credentials_file = "/tmp/x.key"\n'))
+        self.assertEqual(("MY_KEY_ID", "MY_SECRET", "/tmp/x.key"),
+                         (cfg.market_data.key_env, cfg.market_data.secret_env, cfg.market_data.credentials_file))
+
+    def test_opra_feed_may_declare_a_shorter_delay(self) -> None:
+        # Only the indicative options feed carries the 15-minute floor (it is delayed 15 minutes);
+        # a subscriber's OPRA feed may declare less. The host stays the paper host either way.
+        text = self.mutate('options_feed = "indicative"', 'options_feed = "opra"').replace(
+            "feed_delay_min = 15", "feed_delay_min = 0")
+        cfg = self.load_text(text)
+        self.assertEqual(("opra", 0, "paper"), (cfg.market_data.options_feed, cfg.market_data.feed_delay_min,
+                                                cfg.market_data.host))
+        self.assertEqual(10, desk_config.freshness_bound_min(cfg))
 
     def test_config_is_frozen(self) -> None:
         cfg = self.load_text(BASE)
         with self.assertRaises(Exception):
             cfg.desk = None  # type: ignore[misc]
         with self.assertRaises(Exception):
-            cfg.market_data.host = "production"  # type: ignore[misc]
+            cfg.market_data.host = "live"  # type: ignore[misc]
 
     def test_integers_accepted_where_decimals_are_expected(self) -> None:
         cfg = self.load_text(self.mutate("declared_equity = 250000.00", "declared_equity = 250000"))
@@ -176,15 +199,6 @@ class LoadsValidDocumentsTest(DeskConfigTestCase):
         cfg = self.load_text(self.mutate("risk_free_rate = 0.0412", "risk_free_rate = 0"))
         self.assertEqual(Decimal("0"), cfg.rates.risk_free_rate)
         self.assertEqual(0.0, cfg.rates.risk_free_rate_f)
-
-    def test_production_host_is_accepted_by_the_reader(self) -> None:
-        cfg = self.load_text(self.mutate('host = "sandbox"', 'host = "production"'))
-        self.assertEqual("production", cfg.market_data.host)
-        # Only the sandbox carries the 15-minute floor; the production feed may declare less.
-        cfg = self.load_text(self.mutate('host = "sandbox"\n', 'host = "production"\n')
-                             .replace("feed_delay_min = 15", "feed_delay_min = 0"))
-        self.assertEqual(0, cfg.market_data.feed_delay_min)
-        self.assertEqual(10, desk_config.freshness_bound_min(cfg))
 
     def test_active_and_chatty_and_cash_and_empty_disclosures(self) -> None:
         text = (BASE.replace('cadence_profile = "lean"', 'cadence_profile = "active"')
@@ -266,13 +280,26 @@ class RejectionsTest(DeskConfigTestCase):
         self.assert_rejected(self.mutate('cadence_profile = "lean"', 'cadence_profile = "weekly"'),
                              "cadence_profile", "lean", "active")
         self.assert_rejected(self.mutate('chatty_or_quiet = "quiet"', 'chatty_or_quiet = "loud"'), "chatty_or_quiet")
-        self.assert_rejected(self.mutate('vendor = "tradier"', 'vendor = "polygon"'), "vendor", "tradier")
-        self.assert_rejected(self.mutate('host = "sandbox"', 'host = "staging"'), "host", "sandbox", "production")
+        self.assert_rejected(self.mutate('vendor = "alpaca"', 'vendor = "polygon"'), "vendor", "alpaca")
+        self.assert_rejected(self.mutate('vendor = "alpaca"', 'vendor = "Alpaca"'), "vendor", "alpaca")
+        self.assert_rejected(self.mutate('host = "paper"', 'host = "staging"'), "host", "paper")
         self.assert_rejected(self.mutate('type = "margin"', 'type = "crypto"'), "type", "cash", "margin", "ira")
-        self.assert_rejected(self.mutate('host = "sandbox"', 'host = "Sandbox"'), "host")
+        self.assert_rejected(self.mutate('host = "paper"', 'host = "Paper"'), "host")
+        self.assert_rejected(self.mutate('options_feed = "indicative"', 'options_feed = "sip"'),
+                             "options_feed", "indicative", "opra", "[market_data]")
+        self.assert_rejected(self.mutate('stock_feed = "iex"', 'stock_feed = "sip"'), "stock_feed", "iex")
+        self.assert_rejected(self.mutate('stock_feed = "iex"', 'stock_feed = 1'), "stock_feed")
 
-    def test_feed_delay_floor_on_the_sandbox(self) -> None:
-        self.assert_rejected(self.mutate("feed_delay_min = 15", "feed_delay_min = 14"), "feed_delay_min", "15", "sandbox")
+    def test_live_host_is_refused(self) -> None:
+        # The desk's only credential is a PAPER key pair; the reader refuses every other host,
+        # the live trading host first of all, before any tool can build a client for it.
+        for host in ("live", "production", "sandbox", "api.alpaca.markets", "paper-api.alpaca.markets"):
+            self.assert_rejected(self.mutate('host = "paper"', 'host = "%s"' % host), "host", "paper", "[market_data]")
+        self.assert_rejected(self.mutate('host = "paper"', 'host = "live"'), "live", "paper key")
+
+    def test_feed_delay_floor_on_the_indicative_feed(self) -> None:
+        self.assert_rejected(self.mutate("feed_delay_min = 15", "feed_delay_min = 14"), "feed_delay_min", "15",
+                             "indicative")
         self.assert_rejected(self.mutate("feed_delay_min = 15", "feed_delay_min = 0"), "feed_delay_min")
         self.assert_rejected(self.mutate("feed_delay_min = 15", "feed_delay_min = -1"), "feed_delay_min")
         self.assert_rejected(self.mutate("feed_delay_min = 15", "feed_delay_min = 15.0"), "feed_delay_min", "integer")
@@ -286,9 +313,34 @@ class RejectionsTest(DeskConfigTestCase):
         self.assert_rejected(self.mutate("grace_min = 5", "grace_min = -1"), "grace_min")
         self.assert_rejected(self.mutate("pin_band = 0.25", "pin_band = -0.25"), "pin_band")
         self.assert_rejected(self.mutate("pin_band = 0.25", 'pin_band = "0.25"'), "pin_band")
-        self.assert_rejected(self.mutate('token_env = "TRADIER_API_TOKEN"', 'token_env = ""'), "token_env")
-        self.assert_rejected(self.mutate('token_env = "TRADIER_API_TOKEN"', 'token_env = 7'), "token_env")
-        self.assert_rejected(self.mutate('token_env = "TRADIER_API_TOKEN"\n', 'token_env = "T"\ntoken_file = 1\n'), "token_file")
+        self.assert_rejected(self.mutate('key_env = "APCA_API_KEY_ID"', 'key_env = ""'), "key_env")
+        self.assert_rejected(self.mutate('key_env = "APCA_API_KEY_ID"', 'key_env = 7'), "key_env")
+        self.assert_rejected(self.mutate('secret_env = "APCA_API_SECRET_KEY"', 'secret_env = ""'), "secret_env")
+        self.assert_rejected(self.mutate('key_env = "APCA_API_KEY_ID"\n', 'key_env = "K_ID"\ncredentials_file = 1\n'),
+                             "credentials_file")
+        self.assert_rejected(self.mutate('key_env = "APCA_API_KEY_ID"\n', 'key_env = "K_ID"\ncredentials_file = ""\n'),
+                             "credentials_file")
+        for bad in ("APCA API KEY", "1APCA", "APCA-KEY", "APCA=1", "$APCA", "secret/with+symbols", "KEYID", "apca_api_key_id",
+                    "_APCA_KEY", "SECRET_", "APCA__KEY"):
+            error = self.assert_rejected(self.mutate('key_env = "APCA_API_KEY_ID"', 'key_env = "%s"' % bad),
+                                         "key_env", "environment variable name")
+            self.assertNotIn(bad, str(error), "a value given where a NAME belongs is never echoed")
+        self.assert_rejected(self.mutate('secret_env = "APCA_API_SECRET_KEY"', 'secret_env = "APCA_API_KEY_ID"'),
+                             "key_env", "secret_env", "differ")
+        self.assert_rejected(self.mutate("pin_band = 0.25\n", 'pin_band = 0.25\ntoken_env = "MARKET_TOKEN"\n'),
+                             "unknown key", "token_env", "[market_data]")
+
+    def test_pasted_key_or_secret_is_refused_and_never_shown(self) -> None:
+        # A 20-character paper key ID and a 40-character mixed-case secret contain no underscore, so neither
+        # passes the variable-name rule desk_init applies to its answers; the message never repeats the value.
+        key_id = "PKEXAMPLE7Q2R4T6Y8U0"
+        secret = "wJalrXUtnFEMIK7MDENGbPxRfiCYzEXAMPLEKEY1"
+        self.assertEqual((20, 40), (len(key_id), len(secret)))
+        for key, value in (("key_env", key_id), ("key_env", secret), ("secret_env", key_id), ("secret_env", secret)):
+            default = "APCA_API_KEY_ID" if key == "key_env" else "APCA_API_SECRET_KEY"
+            error = self.assert_rejected(self.mutate('%s = "%s"' % (key, default), '%s = "%s"' % (key, value)),
+                                         key, "environment variable name", "not shown")
+            self.assertNotIn(value, str(error))
 
     def test_owner_values(self) -> None:
         self.assert_rejected(self.mutate("declared_equity = 250000.00", "declared_equity = 0"), "declared_equity", "> 0")
@@ -394,10 +446,20 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(("lean", "active"), desk_config.CADENCE_PROFILES)
         self.assertEqual(("chatty", "quiet"), desk_config.CHATTY_OR_QUIET)
         self.assertEqual(("cash", "margin", "ira"), desk_config.ACCOUNT_TYPES)
-        self.assertEqual(("sandbox", "production"), desk_config.HOSTS)
-        self.assertEqual("tradier", desk_config.VENDOR)
-        self.assertEqual(15, desk_config.SANDBOX_MIN_FEED_DELAY_MIN)
-        self.assertEqual("TRADIER_API_TOKEN", desk_config.DEFAULT_TOKEN_ENV)
+        self.assertEqual(("paper",), desk_config.HOSTS)
+        self.assertEqual("alpaca", desk_config.VENDOR)
+        self.assertEqual(15, desk_config.INDICATIVE_MIN_FEED_DELAY_MIN)
+        self.assertEqual("APCA_API_KEY_ID", desk_config.DEFAULT_KEY_ENV)
+        self.assertEqual("APCA_API_SECRET_KEY", desk_config.DEFAULT_SECRET_ENV)
+        self.assertEqual("/workspace/.aegis-secrets/alpaca.key", desk_config.DEFAULT_CREDENTIALS_FILE)
+        self.assertEqual(("indicative", "opra"), desk_config.OPTIONS_FEEDS)
+        self.assertEqual(("iex",), desk_config.STOCK_FEEDS)
+        self.assertEqual(("indicative", "iex"), (desk_config.DEFAULT_OPTIONS_FEED, desk_config.DEFAULT_STOCK_FEED))
+        self.assertEqual(("vendor", "host", "key_env", "secret_env", "credentials_file", "options_feed", "stock_feed",
+                          "feed_delay_min", "quote_ttl_min", "grace_min", "pin_band"), desk_config.MARKET_DATA_KEYS)
+        self.assertEqual(["vendor", "host", "key_env", "secret_env", "credentials_file", "options_feed", "stock_feed",
+                          "feed_delay_min", "quote_ttl_min", "grace_min", "pin_band"],
+                         [field.name for field in dataclasses.fields(desk_config.MarketDataSection)])
 
     def test_parse_text_helper_matches_load(self) -> None:
         cfg = desk_config.parse_desk_toml_text(BASE, path="<memory>")
@@ -405,7 +467,7 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(BASE.encode("utf-8")).hexdigest(), cfg.sha256)
         self.assertEqual(25, desk_config.freshness_bound_min(cfg))
         with self.assertRaises(desk_config.DeskConfigError) as ctx:
-            desk_config.parse_desk_toml_text(BASE.replace('host = "sandbox"', 'host = "x"'), path="<memory>")
+            desk_config.parse_desk_toml_text(BASE.replace('host = "paper"', 'host = "x"'), path="<memory>")
         self.assertTrue(str(ctx.exception).startswith("<memory>: "))
 
 

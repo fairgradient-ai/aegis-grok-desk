@@ -1,28 +1,29 @@
-"""Quote cache and market-data budget: TTL serving, batching, the desk-wide 60/min ledger.
+"""Quote cache and market-data budget: TTL serving, batching, the desk-wide 200/min ledger.
 
 New for Aegis Desk (plan sections 4 and 9, skill 4); standard library only. The cache sits between
 the tools and the GET-only client: it serves a quote from ``data/cache/quotes.json`` while the
 copy is younger than the desk's TTL, fetches the rest in batches of at most :data:`MAX_BATCH`
 symbols, keeps every request receipt in ``data/cache/ledger.jsonl`` and refuses to fetch when the
-rolling 60-second window would breach the vendor's limit minus a headroom. No wall clock is read
+rolling 60-second window would breach the vendor's limit (Alpaca's market-data plan:
+:data:`MINUTE_BUDGET` requests a minute) minus a headroom. No wall clock is read
 here: ``now`` is always a parameter, so a replayed instant reproduces a run exactly.
 
 Files (under ``paths.cache_dir``, written through :mod:`aegis_desk.state`)
 -----------------------------------------------------------------------
-* ``quotes.json``: ``{"schema": 1, "quotes": {SYMBOL: {"fetched_utc": ISO-8601 UTC, "quote": <raw
-  vendor dict>}}}``, written atomically under ``state.locked(paths.lock_path)`` after a re-read, so
-  two overlapping runs merge instead of clobbering each other. The raw vendor dict is stored (never
-  a re-serialised ``Quote``) so a reload goes through ``Quote.from_vendor`` exactly like a fetch.
+* ``quotes.json``: ``{"schema": 1, "quotes": {SYMBOL: {"fetched_utc": ISO-8601 UTC, "quote": <the
+  client's normalised record>}}}``, written atomically under ``state.locked(paths.lock_path)`` after a re-read, so
+  two overlapping runs merge instead of clobbering each other. The record (``Quote.raw``, never a
+  re-serialised ``Quote``) is stored so a reload goes through ``Quote.from_record`` exactly like a fetch.
 * ``ledger.jsonl``: one line per request attempt, success or failure: ``{"utc", "path",
   "symbols" (count), "status", "http_status", "ratelimit_available"}``. It is appended by the
   :func:`ledger_hook` the tool passes to the client as ``on_request``, so the client's own view of
   every attempt (batches it split itself included) is what the budget counts. The ledger is
   desk-wide: every tool of the desk root shares the window.
 * ``chains/<SYMBOL>__<YYYY-MM-DD>.json``: ``{"schema": 1, "symbol", "expiration", "fetched_utc",
-  "options": [<raw vendor dict>, ...]}``; chains are fetched on demand only (``--chain``) and
+  "options": [<record>, ...]}``; chains are fetched on demand only (``--chain``) and
   capped per run.
 * ``history/<SYMBOL>__<START>__<END>.json``: ``{"schema": 1, "symbol", "start", "end", "fetched_utc",
-  "bars": [<raw vendor dict>, ...]}`` (PR 2b): the daily bars ``csv_recon`` settles expired legs
+  "bars": [<record>, ...]}`` (PR 2b): the daily bars ``csv_recon`` settles expired legs
   against. A cached answer with bars that was fetched on a later ET date than ``end`` is final
   (closed days never change) and served without any TTL; otherwise the quote TTL applies, an
   empty answer included. History is fetched on non-trading days too (the post-expiry Saturday
@@ -45,7 +46,8 @@ Rules
   (budget, cap, a client error, a vendor that omits the symbol) a copy still inside the TTL is
   served from the cache with a warning, and on a non-trading day ``force`` is ignored.
 * The rest are fetched in request order, ``MAX_BATCH`` symbols per request, while the per-run cap
-  (``per_run_max_requests``, counted in the caller's :class:`RunCounters`) allows and
+  (``per_run_max_requests``, counted in the caller's :class:`RunCounters`; checked before each call, so one
+  call may finish past it) allows and
   :func:`budget_left` is positive (re-read before every batch). Refused batches are reported per
   symbol: ``per_run_cap`` or ``quota_guard``. The budget counts the ledger records inside the
   60-second window (every tool of the desk) plus this run's own receipts, which a live run's window
@@ -55,35 +57,46 @@ Rules
   misses, each counted once.
 * A request counts only when the client handed it to the transport: a refusal before anything is
   sent (``bad_symbol``, ``refused_path``, ``refused_host``) produces no receipt and is not a
-  request made.
+  request made. One client call can send several requests (a quotes batch with both equities and
+  options is two; a chain is the contract listing and then the snapshots, each paginated; history
+  and expirations listings paginate too), and every one counts: :func:`_spent` takes the number
+  of receipts the run's :func:`ledger_hook` saw during the call, else the result's ``receipts``,
+  else one. The headroom (:data:`MINUTE_HEADROOM`) covers the most one call can send past the
+  guard (two listings of at most ``alpaca_client.MAX_PAGES`` pages each).
 * A ``quota`` error marks the batch and every remaining symbol ``quota_guard`` and stops fetching
   for the whole run: every later batch, call and chain fetch of the same :class:`RunCounters`
   reports ``quota_guard`` without calling the client (``RunCounters.stop_reason``). A credential
-  or configuration error (``auth``, ``no_token``, ``token_file_mode``, ``refused_*``) marks its
+  or configuration error (``auth``, ``subscription``, ``no_credential``, ``credential_file_mode``,
+  ``refused_*``) marks its
   batch ``fetch_failed:<status>`` and stops the run the same way (it would fail the same way and
   spend budget). Any other client error (``network``, ``timeout``, ``http``, ``decode``,
-  ``bad_request``) marks its batch ``fetch_failed:<status>`` and the next batch is still tried.
+  ``bad_request``, ``incomplete``) marks its batch ``fetch_failed:<status>`` and the next batch is
+  still tried.
   An expired cache copy of a symbol that could not be refreshed is left OUT of ``quotes`` (stale is
   UNAVAILABLE for rules) and offered in ``stale`` so a tool can display it under a "stale" label.
-  A symbol the vendor neither matched nor listed as unmatched is ``fetch_failed:not_returned``.
+  A symbol the vendor did not quote is ``fetch_failed:not_returned`` (Alpaca lists no unmatched
+  symbols, so an expired or unknown contract reads the same way; an ``unmatched`` list from a
+  client that has one is still honoured).
 * ``allow_fetch=False`` (the tools pass this on weekends and holidays, plan section 8: one "NYSE
   closed" line, no fetch) serves any cached copy whatever its age, with a warning when the TTL has
   passed, and reports the rest ``market_closed``.
 * The client is duck-typed to the brief's interface (``quotes(symbols) -> QuotesResult(quotes,
-  unmatched, receipt)``, ``option_chain(symbol, expiration) -> ChainResult(options, receipt)``,
-  ``option_expirations(symbol) -> ExpirationsResult(dates, receipt)``, errors carrying ``.status``),
-  so the unit tests run with a fake and this module never imports the
-  network client at import time. :func:`open_market_data` (the plumbing both tools share) imports
-  ``aegis_desk.tradier_client`` lazily when it builds the real client.
+  unmatched, receipt[, receipts])``, ``option_chain(symbol, expiration) -> ChainResult(options,
+  receipt[, receipts])``, ``option_expirations(symbol, start) -> ExpirationsResult(dates, receipt[,
+  receipts])`` with ``start`` the ET date of ``now``, errors carrying ``.status``), so the unit tests
+  run with a fake and this module never imports the network client at import time.
+  :func:`open_market_data` (the plumbing both tools share) imports ``aegis_desk.alpaca_client``
+  lazily when it builds the real client.
 
 Tool plumbing (shared by ``scripts/quote_cache.py`` and ``scripts/quote_qc.py``)
 ------------------------------------------------------------------------------
 :func:`open_market_data` resolves the desk root, loads ``desk.toml``, classifies ``now``
-(``market_clock.session_at``), refuses ``host = "production"`` with :data:`PRODUCTION_REFUSED_MESSAGE`
-(plan section 10: production is outside the no-trade guarantee until the market-data proxy), builds
-the client with a :func:`ledger_hook` wired to the run's :class:`RunCounters` (offline: the recorded
-fixture set, ``regular`` by default; online: the token from the configured environment variable or
-file, a missing token being :data:`NO_TOKEN_MESSAGE`) and creates the runtime directories. :class:`MarketDataRefused` is the exit-20 family; ``DeskPathsError`` and
+(``market_clock.session_at``), refuses any host but ``paper`` with :data:`LIVE_REFUSED_MESSAGE`
+(``desk_config`` already refuses ``live`` at load; this is the second wall: the desk's only credential
+is a paper key pair), builds the client with a :func:`ledger_hook` wired to the run's
+:class:`RunCounters` (offline: the recorded fixture set, ``regular`` by default; online: the paper key
+pair from the two configured environment variables or the credentials file, a missing pair being
+:data:`NO_CREDENTIAL_MESSAGE`) and creates the runtime directories. :class:`MarketDataRefused` is the exit-20 family; ``DeskPathsError`` and
 ``DeskConfigError`` are exit 1; ``TableExpiredError`` is exit 20.
 """
 
@@ -97,7 +110,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from . import desk_config, desk_paths, market_clock, state
+from . import data_source, desk_config, desk_paths, market_clock, state
 from .desk_config import DeskConfig
 from .desk_paths import DeskPaths
 from .market_clock import SessionInfo
@@ -113,10 +126,23 @@ HISTORY_SUBDIR: str = "history"
 EXPIRATIONS_SUBDIR: str = "expirations"
 _ISO_DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 MAX_BATCH: int = 50
-"""Symbols per quotes request (equals ``tradier_client.MAX_BATCH``; asserted by the tool tests)."""
+"""Symbols per quotes request (equals ``alpaca_client.MAX_BATCH``; asserted by the tool tests)."""
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9.$^:_-]{1,32}$")
-"""Accepted symbol shape (equals ``tradier_client.SYMBOL_RE``; asserted by the tool tests): a symbol
+"""Accepted symbol shape (equals ``alpaca_client.SYMBOL_RE``; asserted by the tool tests): a symbol
 failing it is ``fetch_failed:bad_symbol`` on its own and nothing is sent for it."""
+MINUTE_BUDGET: int = 200
+"""Requests a minute the vendor allows (equals ``alpaca_client.RATE_LIMIT_PER_MIN``, Alpaca's market-data limit on
+the free plan; asserted by the tool tests)."""
+MINUTE_HEADROOM: int = 20
+"""Requests of the minute the guard never spends: room for the other tools of the desk and for the requests one call
+can send past the guard (a chain's two paginated listings, at most ``2 * alpaca_client.MAX_PAGES`` requests)."""
+PER_RUN_MAX_REQUESTS: int = 40
+"""The per-run request cap: no new fetch starts once a run has handed this many requests to the transport (each call
+is checked before it starts, and a paginated call may finish past it)."""
+CHAIN_MIN_REQUESTS: int = 2
+"""What a chain costs at least (the contract listing, then the snapshots): a chain starts only when the run's requests
+plus this still fit under :data:`PER_RUN_MAX_REQUESTS`."""
+PER_RUN_MAX_CHAINS: int = 4
 LEDGER_TAIL_BYTES: int = 65536
 """How much of the ledger's tail :func:`requests_in_window` reads: hundreds of records, far more
 than one minute of requests can hold."""
@@ -134,28 +160,29 @@ REASON_EMPTY_LIST: str = "empty_list"
 """An expirations answer that lists nothing: no data, so it is reported missing and never cached (PR 3b review L3-5:
 a cached empty list would make every later run that ET date evaluate nothing as if it were complete)."""
 REASON_NO_BARS: str = "no_bars"
-"""A history answer without bars (the vendor's ``{"history": null}``): served, cached under the TTL."""
+"""A history answer without bars (the vendor's empty ``bars``): served, cached under the TTL."""
 FETCH_FAILED_PREFIX: str = "fetch_failed:"
 REASON_NOT_RETURNED: str = FETCH_FAILED_PREFIX + "not_returned"
 REASON_BAD_SYMBOL: str = FETCH_FAILED_PREFIX + "bad_symbol"
 STATUS_QUOTA: str = "quota"
 NO_SEND_STATUSES: Tuple[str, ...] = ("bad_symbol", "refused_path", "refused_host")
 """Client errors raised before anything is sent (no receipt): never counted as a request made."""
-STOP_STATUSES: Tuple[str, ...] = ("auth", "no_token", "token_file_mode", "refused_redirect", "refused_host",
-                                  "refused_path")
+STOP_STATUSES: Tuple[str, ...] = ("auth", "subscription", "no_credential", "credential_file_mode", "refused_redirect",
+                                  "refused_host", "refused_path")
 """Client errors that would recur on the next batch: the run stops fetching after one of them."""
 
-PRODUCTION_REFUSED_MESSAGE: str = ("production market data is not supported before the market-data proxy (Stage 3); "
-                                   "use the sandbox host")
-NO_TOKEN_MESSAGE: str = ("no market-data token: add the Tradier sandbox token through the secret card "
-                         "(or the acknowledged token file)")
-REFUSED_PRODUCTION: str = "production_host"
-REFUSED_NO_TOKEN: str = "no_token"
+LIVE_REFUSED_MESSAGE: str = ("only Alpaca paper market data is supported: the desk holds a paper key pair and never "
+                             "points at a live account; set host = \"paper\"")
+NO_CREDENTIAL_MESSAGE: str = ("no market-data key: add the Alpaca paper key ID and secret through the secret card "
+                              "(or the acknowledged credentials file)")
+REFUSED_LIVE: str = "live_host"
+REFUSED_NO_CREDENTIAL: str = "no_credential"
 
 
 class MarketDataRefused(Exception):
-    """The desk cannot use market data as configured; ``status`` names why (``production_host``,
-    ``no_token``, ``token_file_mode``). Tools map it to exit 20. The message never carries a token."""
+    """The desk cannot use market data as configured; ``status`` names why (``live_host``,
+    ``no_credential``, ``credential_file_mode``). Tools map it to exit 20. The message never carries the key ID or
+    the secret."""
 
     def __init__(self, status: str, message: str) -> None:
         self.status = status
@@ -173,10 +200,10 @@ class CacheConfig:
     """TTL and budget policy; :meth:`from_desk` takes the TTL from ``desk.toml``."""
 
     ttl_min: int
-    per_run_max_requests: int = 20
-    per_run_max_chains: int = 4
-    minute_budget: int = 60
-    minute_headroom: int = 5
+    per_run_max_requests: int = PER_RUN_MAX_REQUESTS
+    per_run_max_chains: int = PER_RUN_MAX_CHAINS
+    minute_budget: int = MINUTE_BUDGET
+    minute_headroom: int = MINUTE_HEADROOM
 
     @classmethod
     def from_desk(cls, cfg: DeskConfig) -> "CacheConfig":
@@ -383,9 +410,24 @@ def _normalise(symbols: Any) -> List[str]:
 
 
 def _client_error_status(exc: BaseException) -> Optional[str]:
-    """The client's error status (``TradierError.status``) or ``None`` for anything else (a bug)."""
+    """The client's error status (``AlpacaError.status``) or ``None`` for anything else (a bug)."""
     status = getattr(exc, "status", None)
     return status if isinstance(status, str) and status else None
+
+
+def _spent(run: RunCounters, receipts_before: int, result: Any = None, sent: bool = True) -> int:
+    """Requests one client call handed to the transport (module notes): the receipts the run's :func:`ledger_hook`
+    recorded during the call; without a wired hook, the result's ``receipts`` (one per request, pages included), else
+    one for a call that sent anything (``sent``) and zero for a refusal before sending."""
+    seen = len(run.receipt_stamps) - receipts_before
+    if seen > 0:
+        return seen
+    if not sent:
+        return 0
+    receipts = getattr(result, "receipts", None) if result is not None else None
+    if isinstance(receipts, (list, tuple)) and receipts:
+        return len(receipts)
+    return 1
 
 
 def _one_line(exc: BaseException) -> str:
@@ -422,7 +464,7 @@ def _decode_entry(symbol: str, entry: Any, warnings: List[str]) -> Optional[Tupl
         warnings.append("%s cache entry ignored: unreadable fetched_utc; refetching" % symbol)
         return None
     try:
-        quote = Quote.from_vendor(entry["quote"])
+        quote = Quote.from_record(entry["quote"])
     except MarketTypesError as exc:
         warnings.append("%s cache entry ignored (%s); refetching" % (symbol, _one_line(exc)))
         return None
@@ -562,15 +604,16 @@ def get_quotes(symbols: Sequence[str], *, now: datetime.datetime, cfg: CacheConf
             for symbol in chunk:
                 missing[symbol] = REASON_QUOTA_GUARD
             continue
+        before = len(run.receipt_stamps)
         try:
             result = client.quotes(chunk)
         except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
             status = _client_error_status(exc)
             if status is None:
                 raise
-            if status not in NO_SEND_STATUSES:  # a refusal before sending is not a request made
-                run.requests += 1
-                requests_made += 1
+            spent = _spent(run, before, sent=status not in NO_SEND_STATUSES)  # a refusal before sending is not sent
+            run.requests += spent
+            requests_made += spent
             reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
             warnings.append("fetch failed for %d symbol(s): %s" % (len(chunk), _one_line(exc)))
             for symbol in chunk:
@@ -578,8 +621,9 @@ def get_quotes(symbols: Sequence[str], *, now: datetime.datetime, cfg: CacheConf
             if status == STATUS_QUOTA or status in STOP_STATUSES:
                 run.stop_reason = reason
             continue
-        run.requests += 1
-        requests_made += 1
+        spent = _spent(run, before, result)
+        run.requests += spent
+        requests_made += spent
         receipt = getattr(result, "receipt", None)
         if isinstance(receipt, RequestReceipt):
             receipt_utc = receipt.receipt_utc
@@ -601,7 +645,7 @@ def get_quotes(symbols: Sequence[str], *, now: datetime.datetime, cfg: CacheConf
                 stale.pop(symbol, None)  # the symbol no longer exists (an expired contract)
             else:
                 missing[symbol] = REASON_NOT_RETURNED
-                warnings.append("%s absent from the vendor response (neither matched nor unmatched)" % symbol)
+                warnings.append("%s absent from the vendor response (not quoted)" % symbol)
     for symbol, (quote, stamp) in fallback.items():
         reason = missing.get(symbol)
         if reason is None or reason == REASON_UNMATCHED:
@@ -638,7 +682,7 @@ def _load_chain(paths: DeskPaths, symbol: str, expiration: datetime.date,
     options: List[Quote] = []
     for raw in raws:
         try:
-            options.append(Quote.from_vendor(raw))
+            options.append(Quote.from_record(raw))
         except MarketTypesError as exc:
             warnings.append("%s ignored (%s); refetching" % (label, _one_line(exc)))
             return None
@@ -650,9 +694,10 @@ def get_chain(symbol: str, expiration: datetime.date, *, now: datetime.datetime,
               run: Optional[RunCounters] = None) -> ChainCacheResult:
     """Serve one option chain from ``chains/`` or the client, with the same TTL, budget guard,
     ``force`` and stop semantics and error vocabulary as :func:`get_quotes` plus the per-run chain
-    cap (``per_run_max_chains``). A chain fetch also counts against ``per_run_max_requests``. An
-    empty chain (the vendor's ``{"options": null}``: expired or unlisted) is served and cached with
-    a warning."""
+    cap (``per_run_max_chains``). A chain fetch also counts against ``per_run_max_requests``, every request of it (the
+    contract listing and the snapshots, each paginated), and starts only when its minimum cost
+    (:data:`CHAIN_MIN_REQUESTS`) still fits under that cap; pagination can carry it past. An empty chain (no listed contract: expired or unlisted) is
+    served and cached with a warning."""
     now = _require_utc(now)
     if not isinstance(expiration, datetime.date) or isinstance(expiration, datetime.datetime):
         raise ValueError("expiration must be a datetime.date, got %r" % (expiration,))
@@ -692,7 +737,7 @@ def get_chain(symbol: str, expiration: datetime.date, *, now: datetime.datetime,
     if run.stop_reason is not None:
         warnings.append("%s not fetched: fetching stopped for this run (%s)" % (label, run.stop_reason))
         return not_fetched(run.stop_reason)
-    if run.chains >= cfg.per_run_max_chains or run.requests >= cfg.per_run_max_requests:
+    if run.chains >= cfg.per_run_max_chains or run.requests + CHAIN_MIN_REQUESTS > cfg.per_run_max_requests:
         warnings.append("per-run cap reached (%d chains, %d requests): %s not fetched"
                         % (cfg.per_run_max_chains, cfg.per_run_max_requests, label))
         return not_fetched(REASON_PER_RUN_CAP)
@@ -700,22 +745,24 @@ def get_chain(symbol: str, expiration: datetime.date, *, now: datetime.datetime,
         warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): chain not fetched"
                         % (cfg.minute_budget, cfg.minute_headroom))
         return not_fetched(REASON_QUOTA_GUARD)
+    before = len(run.receipt_stamps)
     try:
         result = client.option_chain(symbol, expiration)
     except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
         status = _client_error_status(exc)
         if status is None:
             raise
-        sent = status not in NO_SEND_STATUSES  # a refusal before sending is not a request made
-        if sent:
-            run.requests += 1
+        spent = _spent(run, before, sent=status not in NO_SEND_STATUSES)  # a refusal before sending is not sent
+        if spent:
+            run.requests += spent
             run.chains += 1
         reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
         if status == STATUS_QUOTA or status in STOP_STATUSES:
             run.stop_reason = reason
         warnings.append("chain fetch failed for %s %s: %s" % (symbol, expiration.isoformat(), _one_line(exc)))
-        return not_fetched(reason, 1 if sent else 0)
-    run.requests += 1
+        return not_fetched(reason, spent)
+    spent = _spent(run, before, result)
+    run.requests += spent
     run.chains += 1
     receipt = getattr(result, "receipt", None)
     receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
@@ -723,7 +770,7 @@ def get_chain(symbol: str, expiration: datetime.date, *, now: datetime.datetime,
     if not options:
         warnings.append("%s is empty: no listed contracts (expired or not listed)" % label)
     _store_chain(paths, symbol, expiration, now, options, warnings)
-    return ChainCacheResult(symbol, expiration, options, SERVED_FETCH, None, 1, receipt_utc, warnings, now)
+    return ChainCacheResult(symbol, expiration, options, SERVED_FETCH, None, spent, receipt_utc, warnings, now)
 
 
 # --------------------------------------------------------------------------------------------
@@ -749,34 +796,35 @@ class MarketData:
 
 def build_client(cfg: DeskConfig, paths: DeskPaths, *, offline: bool, fixture_set: str, timeout_s: float,
                  now: datetime.datetime, user_agent: str, run: Optional[RunCounters] = None) -> Any:
-    """The ``TradierClient`` for ``cfg`` (module notes); raises :class:`MarketDataRefused`.
+    """The ``AlpacaClient`` for ``cfg`` (module notes); raises :class:`MarketDataRefused`.
 
-    The production host is refused before the network module is even imported. Offline, the
-    client serves ``paths.tradier_fixtures_dir/<fixture_set>`` with ``now`` as every receipt's
-    instant and needs no token. Online, the token comes from ``load_token`` (environment variable
-    first, then the file); a missing token is ``no_token``, a loosely-permissioned file
-    ``token_file_mode`` (the client's message, which never contains the token). The client's
-    ``on_request`` is :func:`ledger_hook` wired to ``run`` when one is given, so the budget guard
-    counts this run's own requests.
+    Any host but ``paper`` is refused before the network module is even imported (``live_host``). Offline, the client
+    serves ``paths.alpaca_fixtures_dir/<fixture_set>`` with ``now`` as every receipt's instant and needs no key.
+    Online, the paper key pair comes from ``load_credential`` (both configured environment variables, else the
+    credentials file); a missing pair is ``no_credential``, a loosely-permissioned file ``credential_file_mode`` (the
+    client's message, which never contains the key ID or the secret). The client reads the configured
+    ``options_feed`` and ``stock_feed``. Its ``on_request`` is :func:`ledger_hook` wired to ``run`` when one is
+    given, so the budget guard counts this run's own requests.
     """
     market = cfg.market_data
-    if market.host == "production":
-        raise MarketDataRefused(REFUSED_PRODUCTION, PRODUCTION_REFUSED_MESSAGE)
-    from . import tradier_client  # the only network module; imported here so the cache's own tests need no client
+    if market.host not in desk_config.HOSTS:
+        raise MarketDataRefused(REFUSED_LIVE, LIVE_REFUSED_MESSAGE)
+    from . import alpaca_client  # the only network module; imported here so the cache's own tests need no client
 
     hook = ledger_hook(paths, run)
+    feeds = {"options_feed": market.options_feed, "stock_feed": market.stock_feed}
     if offline:
-        transport = tradier_client.OfflineTransport(paths.tradier_fixtures_dir, fixture_set=fixture_set, now=now)
-        return tradier_client.TradierClient(market.host, None, timeout_s=timeout_s, user_agent=user_agent,
-                                            transport=transport, on_request=hook)
+        transport = alpaca_client.OfflineTransport(paths.alpaca_fixtures_dir, fixture_set=fixture_set, now=now)
+        return alpaca_client.AlpacaClient(market.host, None, timeout_s=timeout_s, user_agent=user_agent,
+                                          transport=transport, on_request=hook, **feeds)
     try:
-        token = tradier_client.load_token(market.token_env, market.token_file)
-    except tradier_client.TradierError as exc:
-        if exc.status == REFUSED_NO_TOKEN:
-            raise MarketDataRefused(REFUSED_NO_TOKEN, NO_TOKEN_MESSAGE) from None
+        credential = alpaca_client.load_credential(market.key_env, market.secret_env, market.credentials_file)
+    except alpaca_client.AlpacaError as exc:
+        if exc.status == REFUSED_NO_CREDENTIAL:
+            raise MarketDataRefused(REFUSED_NO_CREDENTIAL, NO_CREDENTIAL_MESSAGE) from None
         raise MarketDataRefused(exc.status, str(exc)) from None
-    return tradier_client.TradierClient(market.host, token, timeout_s=timeout_s, user_agent=user_agent,
-                                        on_request=hook)
+    return alpaca_client.AlpacaClient(market.host, credential, timeout_s=timeout_s, user_agent=user_agent,
+                                      on_request=hook, **feeds)
 
 
 def open_market_data(desk_root: str, *, now: datetime.datetime, offline: bool, fixture_set: Optional[str],
@@ -802,15 +850,17 @@ def open_market_data(desk_root: str, *, now: datetime.datetime, offline: bool, f
 
 
 def source_label(cfg: DeskConfig) -> str:
-    """The envelope's ``source``: ``tradier:sandbox``."""
-    return "%s:%s" % (cfg.market_data.vendor, cfg.market_data.host)
+    """The envelope's ``source``: ``alpaca:paper`` (:func:`aegis_desk.data_source.label`)."""
+    return data_source.label(cfg.market_data.vendor, cfg.market_data.host)
 
 
 def footer_line(cfg: DeskConfig, as_of: datetime.datetime) -> str:
-    """``Tradier sandbox, delayed 15 min, as of HH:MM UTC`` (the fixed data footer)."""
+    """``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC`` (the fixed data
+    footer: :func:`aegis_desk.data_source.words_for_feed` of the configured options feed, then the configured
+    delay)."""
     market = cfg.market_data
-    return "%s %s, delayed %d min, as of %s UTC" % (market.vendor.capitalize(), market.host, market.feed_delay_min,
-                                                  as_of.astimezone(UTC).strftime("%H:%M"))
+    return "%s, delayed %d min, as of %s UTC" % (data_source.words_for_feed(market.options_feed), market.feed_delay_min,
+                                                 as_of.astimezone(UTC).strftime("%H:%M"))
 
 
 def format_money(value: Optional[Decimal]) -> str:
@@ -877,7 +927,7 @@ def _load_history(paths: DeskPaths, symbol: str, start: datetime.date, end: date
     bars: List[Bar] = []
     for raw in raws:
         try:
-            bars.append(Bar.from_vendor(raw))
+            bars.append(Bar.from_record(raw))
         except MarketTypesError as exc:
             warnings.append("%s ignored (%s); refetching" % (label, _one_line(exc)))
             return None
@@ -954,29 +1004,30 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
         warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): history not fetched"
                         % (cfg.minute_budget, cfg.minute_headroom))
         return not_fetched(REASON_QUOTA_GUARD)
+    before = len(run.receipt_stamps)
     try:
         result = client.history(symbol, start, end)
     except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
         status = _client_error_status(exc)
         if status is None:
             raise
-        sent = status not in NO_SEND_STATUSES  # a refusal before sending is not a request made
-        if sent:
-            run.requests += 1
+        spent = _spent(run, before, sent=status not in NO_SEND_STATUSES)  # a refusal before sending is not sent
+        run.requests += spent
         reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
         if status == STATUS_QUOTA or status in STOP_STATUSES:
             run.stop_reason = reason
         warnings.append("history fetch failed for %s: %s" % (label, _one_line(exc)))
-        return not_fetched(reason, 1 if sent else 0)
-    run.requests += 1
+        return not_fetched(reason, spent)
+    spent = _spent(run, before, result)
+    run.requests += spent
     receipt = getattr(result, "receipt", None)
     receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
     bars = list(result.bars)
     if not bars:
         warnings.append("%s is empty: the vendor returned no bars" % label)
     _store_history(paths, symbol, start, end, now, bars, warnings)
-    return HistoryCacheResult(symbol, start, end, bars, SERVED_FETCH, None if bars else REASON_NO_BARS, 1, receipt_utc,
-                              warnings, now)
+    return HistoryCacheResult(symbol, start, end, bars, SERVED_FETCH, None if bars else REASON_NO_BARS, spent,
+                              receipt_utc, warnings, now)
 
 # --------------------------------------------------------------------------------------------
 # Expirations (PR 3b): the listed expirations of one underlying, for the Structuring Desk
@@ -1043,6 +1094,9 @@ def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, cl
                     run: Optional[RunCounters] = None) -> ExpirationsCacheResult:
     """Serve the listed expirations of ``symbol`` from ``expirations/`` or the client (module notes).
 
+    The client lists the expirations from the ET date of ``now`` (``option_expirations(symbol, start)``) through its
+    bounded window.
+
     A cached copy fetched on the ET date of ``now`` (and not after ``now``) is served without a refetch: an
     expiration list does not change within a session, so the quote TTL does not apply. ``force`` asks for a fresh
     list and keeps that copy when the refetch cannot happen or fails; ``allow_fetch=False`` (a non-trading day) serves
@@ -1099,32 +1153,34 @@ def get_expirations(symbol: str, *, now: datetime.datetime, cfg: CacheConfig, cl
         warnings.append("60-second request budget exhausted (%d allowed minus %d headroom): expirations not fetched"
                         % (cfg.minute_budget, cfg.minute_headroom))
         return not_fetched(REASON_QUOTA_GUARD)
+    before = len(run.receipt_stamps)
     try:
-        result = client.option_expirations(symbol)
+        result = client.option_expirations(symbol, market_clock.to_et(now).date())
     except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
         status = _client_error_status(exc)
         if status is None:
             raise
-        sent = status not in NO_SEND_STATUSES  # a refusal before sending is not a request made
-        if sent:
-            run.requests += 1
+        spent = _spent(run, before, sent=status not in NO_SEND_STATUSES)  # a refusal before sending is not sent
+        run.requests += spent
         reason = REASON_QUOTA_GUARD if status == STATUS_QUOTA else FETCH_FAILED_PREFIX + status
         if status == STATUS_QUOTA or status in STOP_STATUSES:
             run.stop_reason = reason
         warnings.append("expirations fetch failed for %s: %s" % (symbol, _one_line(exc)))
-        return not_fetched(reason, 1 if sent else 0)
-    run.requests += 1
+        return not_fetched(reason, spent)
+    spent = _spent(run, before, result)
+    run.requests += spent
     receipt = getattr(result, "receipt", None)
     receipt_utc = receipt.receipt_utc if isinstance(receipt, RequestReceipt) else None
     dates = list(result.dates)
     if not dates:
         warnings.append("%s is empty: no listed expirations (not cached)" % label)
-        return not_fetched(REASON_EMPTY_LIST, 1)
+        return not_fetched(REASON_EMPTY_LIST, spent)
     _store_expirations(paths, symbol, now, dates, warnings)
-    return ExpirationsCacheResult(symbol, dates, SERVED_FETCH, None, 1, receipt_utc, warnings, now)
+    return ExpirationsCacheResult(symbol, dates, SERVED_FETCH, None, spent, receipt_utc, warnings, now)
 
 __all__ = [
     "CHAINS_SUBDIR",
+    "CHAIN_MIN_REQUESTS",
     "CacheConfig",
     "CacheResult",
     "ChainCacheResult",
@@ -1142,8 +1198,12 @@ __all__ = [
     "MarketData",
     "MarketDataRefused",
     "NO_SEND_STATUSES",
-    "NO_TOKEN_MESSAGE",
-    "PRODUCTION_REFUSED_MESSAGE",
+    "LIVE_REFUSED_MESSAGE",
+    "MINUTE_BUDGET",
+    "MINUTE_HEADROOM",
+    "NO_CREDENTIAL_MESSAGE",
+    "PER_RUN_MAX_CHAINS",
+    "PER_RUN_MAX_REQUESTS",
     "QUOTES_FILE",
     "REASON_BAD_SYMBOL",
     "REASON_MARKET_CLOSED",
@@ -1152,8 +1212,8 @@ __all__ = [
     "REASON_PER_RUN_CAP",
     "REASON_QUOTA_GUARD",
     "REASON_UNMATCHED",
-    "REFUSED_NO_TOKEN",
-    "REFUSED_PRODUCTION",
+    "REFUSED_LIVE",
+    "REFUSED_NO_CREDENTIAL",
     "RunCounters",
     "SCHEMA",
     "SERVED_CACHE",

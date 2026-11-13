@@ -1,8 +1,8 @@
 """``scripts/desk_doctor.py`` run in-process against a copied fixture desk root (PR 2d decision D2-12): the three
 modes and the checks each runs, the verdict and exit codes (0 PASS, 20 FAIL with the checks in a success envelope,
 1 when the doctor itself fails, 2 usage), ``state/doctor.json`` (full and quick modes, only with a ``desk.toml``), the
-test seams (``CHECKOUT_RUN``, ``ENVIRON``, ``WORKSPACE_EXISTS``, ``LOCAL_OFFSET_S``, ``SANDBOX_CLIENT``) and the one
-sandbox request, against the loopback fake Tradier server. Nothing under ``tests/fixtures/`` is ever written."""
+test seams (``CHECKOUT_RUN``, ``ENVIRON``, ``WORKSPACE_EXISTS``, ``LOCAL_OFFSET_S``, ``PAPER_CLIENT``) and the one
+paper-key request, against the loopback fake Alpaca server. Nothing under ``tests/fixtures/`` is ever written."""
 
 from __future__ import annotations
 
@@ -22,23 +22,24 @@ import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import alert_lint, desk_paths, doctor, heartbeat, state, tradier_client, version
+from aegis_desk import alert_lint, alpaca_client, desk_paths, doctor, heartbeat, state, version
 
 import check_grok_template
 import desk_doctor as tool
-from tests.engine.test_tradier_client import FakeTradier, static
+from tests.engine.test_alpaca_client import FakeAlpaca, static
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
-REGULAR = os.path.join(FIXTURE_DESK, "fixtures", "tradier", "regular")
+REGULAR = os.path.join(FIXTURE_DESK, "fixtures", "alpaca", "regular")
 REGULAR_NOW = "2026-11-03T19:50:00Z"
-SECRET = "fake-sandbox-secret-0000-1111-2222-3333"
+KEY_ID = "PKFAKE-doctor-key-0000"
+SECRET = "fake-paper-secret-0000-1111-2222-3333"
 HEAD = "971186c676d34b0a5d4e35c691d7888632132b8a"
 TEMPLATE_OK = {"ok": True, "errors": [], "skips": [], "status": "unpublished", "release": "0.1.0"}
-QUICK_IDS = ["interpreter", "holiday_table", "token_source", "desk_files", "market_status"]
-FULL_IDS = ["release_pin", "interpreter", "holiday_table", "token_source", "sandbox", "machine_role", "broker_env",
+QUICK_IDS = ["interpreter", "holiday_table", "key_source", "desk_files", "market_status"]
+FULL_IDS = ["release_pin", "interpreter", "holiday_table", "key_source", "paper_key", "machine_role", "broker_env",
             "desk_files", "market_status", "connector_readback", "heartbeats"]
-DESK_FILES_PASS = ("desk.toml loads (sha 0af433cf); positions.csv parses: 7 rows in 4 groups, none quarantined; "
+DESK_FILES_PASS = ("desk.toml loads (sha f08a18dc); positions.csv parses: 7 rows in 4 groups, none quarantined; "
                    "rules 1.0.0, sha cc09859c; research/calendar.toml loads")
 MISSED_AT_REGULAR = ("preopen 07:30 ET: no heartbeat 45 min after the slot; book-check 10:05 ET: no heartbeat 45 min "
                      "after the slot; book-check 12:05 ET: no heartbeat 45 min after the slot; book-check 14:05 ET: no "
@@ -86,7 +87,7 @@ class DeskCopy(unittest.TestCase):
         shutil.copytree(FIXTURE_DESK, self.root)
         self.paths = desk_paths.for_root(self.root)
         for name, value in (("CHECKOUT_RUN", git_answers(None)), ("ENVIRON", {"HOME": "/home/owner", "LANG": "C.UTF-8"}),
-                            ("WORKSPACE_EXISTS", True), ("LOCAL_OFFSET_S", 0), ("SANDBOX_CLIENT", self.no_client)):
+                            ("WORKSPACE_EXISTS", True), ("LOCAL_OFFSET_S", 0), ("PAPER_CLIENT", self.no_client)):
             patcher = mock.patch.object(tool, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -100,7 +101,7 @@ class DeskCopy(unittest.TestCase):
         self._tmp.cleanup()
 
     @staticmethod
-    def no_client(token: Any, timeout_s: float, user_agent: str) -> Any:
+    def no_client(credential: Any, timeout_s: float, user_agent: str) -> Any:
         raise AssertionError("this run must send no request")
 
     def argv(self, *flags: str, now: str = REGULAR_NOW, offline: bool = True, json_mode: bool = True,
@@ -151,7 +152,7 @@ class SchemaAndUsageTest(DeskCopy):
         for key in ("mode", "verdict", "checks", "counts", "warned", "failed", "machine_role", "release", "record",
                     "written"):
             self.assertIn(key, payload)
-        self.assertIn("/v1/markets/clock", body["network_access"])
+        self.assertIn("https://paper-api.alpaca.markets/v2/clock", body["network_access"])
 
     def test_usage_errors(self) -> None:
         for argv in (["--quick", "--selftest", "--json"], ["--deep", "--json"], ["--quick", "--offline", "--json"]):
@@ -172,13 +173,13 @@ class QuickModeTest(DeskCopy):
         self.assertEqual([2, 3, 4, 8, 9], [item["number"] for item in payload["checks"]])
         checks = self.checks(body)
         self.assertEqual(("WARN", "not checked offline (offline runs load no credential)"),
-                         (checks["token_source"]["status"], checks["token_source"]["reason"]))
+                         (checks["key_source"]["status"], checks["key_source"]["reason"]))
         self.assertEqual(("PASS", DESK_FILES_PASS), (checks["desk_files"]["status"], checks["desk_files"]["reason"]))
         self.assertEqual(("PASS", "holiday table covers 2026-2027 (expires 2027-12-31)"),
                          (checks["holiday_table"]["status"], checks["holiday_table"]["reason"]))
         self.assertEqual("session open at 14:50 ET; America/New_York offset -05:00; local offset +00:00",
                          checks["market_status"]["reason"])
-        self.assertEqual(({"pass": 4, "warn": 1, "fail": 0}, ["token_source"], [], "shared", ["state/doctor.json"],
+        self.assertEqual(({"pass": 4, "warn": 1, "fail": 0}, ["key_source"], [], "shared", ["state/doctor.json"],
                           "state/doctor.json"),
                          (payload["counts"], payload["warned"], payload["failed"], payload["machine_role"],
                           payload["written"], payload["record"]))
@@ -193,9 +194,9 @@ class QuickModeTest(DeskCopy):
         self.assertEqual([], order_shaped(text))
         lines = text.splitlines()
         self.assertEqual("desk doctor, quick check at 2026-11-03 19:50 UTC (release %s)" % version.release_version(), lines[0])
-        self.assertEqual("[WARN] 4 token_source: not checked offline (offline runs load no credential)", lines[3])
+        self.assertEqual("[WARN] 4 key_source: not checked offline (offline runs load no credential)", lines[3])
         self.assertEqual("[PASS] 8 desk_files: " + DESK_FILES_PASS, lines[4])
-        self.assertEqual("verdict: PASS (5 checks; warnings: token_source; failures: none); state/doctor.json written",
+        self.assertEqual("verdict: PASS (5 checks; warnings: key_source; failures: none); state/doctor.json written",
                          lines[-1])
         self.assertEqual(7, len(lines))
 
@@ -270,8 +271,8 @@ class FullModeTest(DeskCopy):
         checks = self.checks(body)
         expected = {
             "release_pin": ("WARN", "development checkout (no tag)"),
-            "token_source": ("WARN", "not checked offline (offline runs load no credential)"),
-            "sandbox": ("WARN", "not verified offline"),
+            "key_source": ("WARN", "not checked offline (offline runs load no credential)"),
+            "paper_key": ("WARN", "not verified offline"),
             "machine_role": ("PASS", "machine role: shared"),
             "broker_env": ("PASS", "no broker-looking environment variable name (2 names checked)"),
             "desk_files": ("PASS", DESK_FILES_PASS),
@@ -281,7 +282,7 @@ class FullModeTest(DeskCopy):
         }
         for check_id, pair in expected.items():
             self.assertEqual(pair, (checks[check_id]["status"], checks[check_id]["reason"]), check_id)
-        self.assertEqual(["release_pin", "token_source", "sandbox", "connector_readback", "heartbeats"],
+        self.assertEqual(["release_pin", "key_source", "paper_key", "connector_readback", "heartbeats"],
                          body["payload"]["warned"])
         self.assertEqual("full", self.record()["mode"])
         self.template.assert_called_once_with(version.repository_root())
@@ -304,7 +305,7 @@ class FullModeTest(DeskCopy):
         self.assertEqual(("PASS", "4 of 4 due slots ran today (profile lean); latest heartbeats: book-check 44 min ago, "
                                   "preopen 439 min ago"),
                          (checks["heartbeats"]["status"], checks["heartbeats"]["reason"]))
-        self.assertEqual(["token_source", "sandbox"], body["payload"]["warned"])
+        self.assertEqual(["key_source", "paper_key"], body["payload"]["warned"])
 
     def test_a_dirty_checkout_fails_with_exit_20(self) -> None:
         with mock.patch.object(tool, "CHECKOUT_RUN", git_answers(HEAD, b" M scripts/routine.py\n")):
@@ -341,13 +342,13 @@ class FullModeTest(DeskCopy):
         self.assertIn(code, (0, 20))
 
 
-class SandboxModeTest(DeskCopy):
-    server: FakeTradier
+class PaperKeyModeTest(DeskCopy):
+    server: FakeAlpaca
     thread: threading.Thread
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.server = FakeTradier()
+        cls.server = FakeAlpaca()
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 
@@ -362,12 +363,13 @@ class SandboxModeTest(DeskCopy):
             del self.server.requests[:]
             del self.server.violations[:]
         self.server.script.clear()
-        environ = {key: value for key, value in os.environ.items() if key != "TRADIER_API_TOKEN"}
-        environ["TRADIER_API_TOKEN"] = SECRET
+        environ = {key: value for key, value in os.environ.items()
+                   if key not in ("APCA_API_KEY_ID", "APCA_API_SECRET_KEY")}
+        environ.update({"APCA_API_KEY_ID": KEY_ID, "APCA_API_SECRET_KEY": SECRET})
         patcher = mock.patch.dict(os.environ, environ, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)
-        client = mock.patch.object(tool, "SANDBOX_CLIENT", self.loopback)
+        client = mock.patch.object(tool, "PAPER_CLIENT", self.loopback)
         client.start()
         self.addCleanup(client.stop)
 
@@ -376,57 +378,76 @@ class SandboxModeTest(DeskCopy):
         self.assertEqual([], self.server.violations, "a non-GET request reached the fake server")
         super().tearDown()
 
-    def loopback(self, token: Any, timeout_s: float, user_agent: str) -> Any:
-        return tradier_client.TradierClient("loopback:%d" % self.server.port, token, timeout_s=timeout_s,
-                                            user_agent=user_agent)
+    def loopback(self, credential: Any, timeout_s: float, user_agent: str) -> Any:
+        return alpaca_client.AlpacaClient("loopback:%d" % self.server.port, credential, timeout_s=timeout_s,
+                                          user_agent=user_agent)
 
     def requests(self) -> List[Dict[str, Any]]:
         with self.server.lock:
             return list(self.server.requests)
 
-    def test_one_clock_request_verifies_the_sandbox_token(self) -> None:
+    def test_one_clock_request_on_the_paper_host_verifies_the_paper_key(self) -> None:
         with open(os.path.join(REGULAR, "clock.json"), "rb") as handle:
-            self.server.script[tradier_client.PATH_CLOCK] = static(200, handle.read())
+            self.server.script[alpaca_client.PATH_CLOCK] = static(200, handle.read())
         code, body = self.run_json(offline=False)
         checks = self.checks(body)
-        self.assertEqual(("PASS", "token from environment variable TRADIER_API_TOKEN"),
-                         (checks["token_source"]["status"], checks["token_source"]["reason"]))
-        self.assertEqual(("PASS", "sandbox clock answered (open)"), (checks["sandbox"]["status"], checks["sandbox"]["reason"]))
+        self.assertEqual(("PASS", "key pair from environment variables APCA_API_KEY_ID and APCA_API_SECRET_KEY"),
+                         (checks["key_source"]["status"], checks["key_source"]["reason"]))
+        self.assertEqual(("PASS", "paper key verified (paper clock answered: open)"),
+                         (checks["paper_key"]["status"], checks["paper_key"]["reason"]))
         seen = self.requests()
-        self.assertEqual([("GET", "/v1/markets/clock")], [(item["method"], item["path"]) for item in seen])
+        self.assertEqual([("GET", "/v2/clock")], [(item["method"], item["path"]) for item in seen])
         self.assertEqual("aegis-desk/%s desk_doctor (read-only market data)" % version.release_version(),
                          seen[0]["headers"]["user-agent"])
+        self.assertEqual((KEY_ID, SECRET), (seen[0]["headers"]["apca-api-key-id"],
+                                            seen[0]["headers"]["apca-api-secret-key"]))
         self.assertEqual(0, code)
         self.assertNotIn(SECRET, json.dumps(body))
+        self.assertNotIn(KEY_ID, json.dumps(body))
 
-    def test_a_rejected_token_fails(self) -> None:
-        with open(os.path.join(REGULAR, "errors", "invalid_token.txt"), "rb") as handle:
-            self.server.script[tradier_client.PATH_CLOCK] = static(401, handle.read())
+    def test_a_rejected_key_fails_as_not_a_paper_key(self) -> None:
+        with open(os.path.join(REGULAR, "errors", "unauthorized.txt"), "rb") as handle:
+            self.server.script[alpaca_client.PATH_CLOCK] = static(401, handle.read())
         code, body = self.run_json(offline=False)
-        self.assertEqual((20, ["sandbox"]), (code, body["payload"]["failed"]))
-        self.assertEqual("not a sandbox token: remove and rotate", self.checks(body)["sandbox"]["reason"])
+        self.assertEqual((20, ["paper_key"]), (code, body["payload"]["failed"]))
+        self.assertEqual("not a paper key: remove it and add a paper key", self.checks(body)["paper_key"]["reason"])
         self.assertEqual(1, len(self.requests()))
 
-    def test_the_production_host_fails_without_a_request(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_alpaca_base_url_fails_check_7(self) -> None:
+        with open(os.path.join(REGULAR, "clock.json"), "rb") as handle:
+            self.server.script[alpaca_client.PATH_CLOCK] = static(200, handle.read())
+        environ = {"HOME": "/home/owner", "APCA_API_BASE_URL": "https://api.alpaca.markets",
+                   "APCA_API_KEY_ID": "x", "APCA_API_SECRET_KEY": "y"}
+        with mock.patch.object(tool, "ENVIRON", environ):
+            code, body = self.run_json(offline=False)
+        self.assertEqual((20, ["broker_env"]), (code, body["payload"]["failed"]))
+        self.assertEqual("APCA_API_BASE_URL points at the live trading host api.alpaca.markets",
+                         self.checks(body)["broker_env"]["reason"])
+
+    def test_a_live_host_fails_without_a_request(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = self.run_json("--quick", offline=False)
         self.assertEqual((20, ["desk_files"]), (code, body["payload"]["failed"]),
-                         "the quick doctor (the preopen step) fails a production host too")
+                         "the quick doctor (the preopen step) fails a live host too")
+        self.assertIn('host must be "paper" (got "live")', self.checks(body)["desk_files"]["reason"])
         self.assertEqual([], self.requests())
         code, body = self.run_json(offline=False)
-        self.assertEqual(20, code)
-        self.assertEqual(("FAIL", "production host is outside the guarantee before the market-data proxy"),
-                         (self.checks(body)["sandbox"]["status"], self.checks(body)["sandbox"]["reason"]))
+        self.assertEqual((20, ["desk_files"]), (code, body["payload"]["failed"]))
+        self.assertEqual(("WARN", "not verified: desk.toml cannot be used (see desk_files)"),
+                         (self.checks(body)["paper_key"]["status"], self.checks(body)["paper_key"]["reason"]))
         self.assertEqual([], self.requests())
 
-    def test_no_token_fails_the_token_check_and_sends_nothing(self) -> None:
-        missing = os.path.join(self.base, "missing.token")
-        self.rewrite("desk.toml", 'token_env = "TRADIER_API_TOKEN"', 'token_env = "AEGIS_DOCTOR_UNSET_TOKEN"\n'
-                                                                    'token_file = "%s"' % missing)
+    def test_no_key_pair_fails_the_key_check_and_sends_nothing(self) -> None:
+        missing = os.path.join(self.base, "missing.key")
+        self.rewrite("desk.toml", 'key_env = "APCA_API_KEY_ID"', 'key_env = "AEGIS_DOCTOR_UNSET_KEY_ID"\n'
+                                                                'credentials_file = "%s"' % missing)
+        self.rewrite("desk.toml", 'secret_env = "APCA_API_SECRET_KEY"', 'secret_env = "AEGIS_DOCTOR_UNSET_SECRET"')
         code, body = self.run_json("--quick", offline=False)
-        self.assertEqual((20, ["token_source"]), (code, body["payload"]["failed"]))
-        self.assertEqual("no market-data token: environment variable AEGIS_DOCTOR_UNSET_TOKEN is unset or empty; token "
-                         "file %s is missing or empty" % missing, self.checks(body)["token_source"]["reason"])
+        self.assertEqual((20, ["key_source"]), (code, body["payload"]["failed"]))
+        reason = self.checks(body)["key_source"]["reason"]
+        for name in ("AEGIS_DOCTOR_UNSET_KEY_ID", "AEGIS_DOCTOR_UNSET_SECRET", missing):
+            self.assertIn(name, reason)
+        self.assertNotIn(SECRET, reason)
         self.assertEqual([], self.requests())
 
 

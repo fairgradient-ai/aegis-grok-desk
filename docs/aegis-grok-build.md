@@ -12,7 +12,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 Pinned to the release tag, trusted so that its hook runs:
 
 ```text
-grok plugin install fairgradient-ai/aegis-grok-desk@v0.1.1 --trust
+grok plugin install fairgradient-ai/aegis-grok-desk@v0.2.0 --trust
 ```
 
 Or through the marketplace in `.grok-plugin/marketplace.json`, whose source is pinned to the same tag:
@@ -37,8 +37,8 @@ declares them. What Grok Build actually lists is checked at release (below).
 
 1. **No write code.** The repository holds no broker write path; `bash scripts/check.sh` proves it
    ([SECURITY.md](../SECURITY.md), layers 1 to 3).
-2. **One sandbox token.** The only credential the desk uses is a Tradier sandbox market-data token, which cannot reach a
-   live account. Keep anything that can reach real money out of the environment Grok Build runs in.
+2. **One paper key.** The only credential the desk uses is an Alpaca paper key pair, used only to read market data,
+   which cannot reach a live account. Keep anything that can reach real money out of the environment Grok Build runs in.
 3. **No MCP server that can trade.** Configure no MCP server with tools that can place or change orders.
 4. **The hook, a backstop.** `hooks/hooks.json` runs `hooks/broker_write_gate.py` before every shell call
    (`Bash|PowerShell|Monitor|run_terminal_command`) and every MCP call (`.+__.+`). It is described below. Grok Build hooks fail
@@ -52,7 +52,8 @@ declares them. What Grok Build actually lists is checked at release (below).
 It reads only the call: the command text, the MCP tool name and the MCP input. It never opens a file the command names.
 
 - **It denies** an order call in code, an HTTP write (a write method or a request body) to a broker host or to an
-  account or order path, any HTTP call to a broker host outside Tradier's market-data paths (`/v1/markets/`), an MCP
+  account or order path, any other HTTP call to a broker host (reads included: the desk's tools never put a host on
+  the command line), an MCP
   tool whose name holds an order verb as a whole word or closes a position, an MCP input with an order key or an
   order-shaped value, and any shell or MCP call Grok Build marks as truncated (`toolInputTruncated`).
 - **It has no opinion** on reads: `grep`, `cat`, `ls`, `find` and the other read commands, `git status`, `git log`,
@@ -69,8 +70,8 @@ It reads only the call: the command text, the MCP tool name and the MCP input. I
 
 - **Known false positives,** by design: an MCP tool whose name or identifier input carries an order verb as a whole word
   (a pull-request review tool, a `replace_text` tool, a one-word search for "order"), free text that quotes a write
-  sample, a shell command that writes a file holding a write sample, and any HTTP call to a broker host outside
-  Tradier's market-data paths, a broker's own web page included. The desk ships no MCP server; if one ever wrapped the
+  sample, a shell command that writes a file holding a write sample, and any HTTP call to a broker host, a read of
+  Alpaca's market data or a broker's own web page included. The desk ships no MCP server; if one ever wrapped the
   structuring tools, an input key named `trade` would be denied as an order key, so such a wrapper names it `trade_id`.
   On the command line, `--trade AG-...` gives the gate no opinion. A sort direction such as `"order": "desc"` is not one
   of them: the gate reads it as a read.
@@ -90,12 +91,12 @@ Paste this block into `~/.grok/config.toml`. If the file already has a `[permiss
 # If the file already has a [permission] table, add these entries to its rules array instead.
 [permission]
 rules = [
-  { action = "deny", tool = "bash", pattern = "*tradier.com/v1/accounts*" },
+  { action = "deny", tool = "bash", pattern = "*api.alpaca.markets*" },
   { action = "deny", tool = "bash", pattern = "*/v1/accounts/*/orders*" },
-  { action = "deny", tool = "bash", pattern = "*curl*-X*POST*tradier.com*" },
-  { action = "deny", tool = "bash", pattern = "*curl*tradier.com*-X*POST*" },
-  { action = "deny", tool = "bash", pattern = "*curl*--data*tradier.com*" },
-  { action = "deny", tool = "bash", pattern = "*curl*tradier.com*--data*" },
+  { action = "deny", tool = "bash", pattern = "*curl*-X*POST*alpaca.markets*" },
+  { action = "deny", tool = "bash", pattern = "*curl*alpaca.markets*-X*POST*" },
+  { action = "deny", tool = "bash", pattern = "*curl*--data*alpaca.markets*" },
+  { action = "deny", tool = "bash", pattern = "*curl*alpaca.markets*--data*" },
   { action = "deny", tool = "MCPTool", pattern = "*order*" },
   { action = "deny", tool = "MCPTool", pattern = "*trade*" },
   { action = "deny", tool = "MCPTool", pattern = "*cancel*" },
@@ -103,12 +104,15 @@ rules = [
   { action = "deny", tool = "MCPTool", pattern = "*submit*" },
   { action = "deny", tool = "MCPTool", pattern = "*buy*" },
   { action = "deny", tool = "MCPTool", pattern = "*sell*" },
-  { action = "deny", tool = "WebFetch", pattern = "*tradier.com/v1/accounts*" },
+  { action = "deny", tool = "WebFetch", pattern = "*api.alpaca.markets*" },
 ]
 ```
 
-- Every Tradier account and order request goes under `/v1/accounts`, so the first rule covers them all. The `curl`
-  rules add a POST or a request body that `curl` sends to any other Tradier path.
+- Every Alpaca account, position and order request goes to a trading host, `paper-api.alpaca.markets` or
+  `api.alpaca.markets`, and the first rule names both (`*api.alpaca.markets*` matches the paper host too). No desk step
+  needs a shell command that names either host: the desk's tools read the paper host's clock, calendar and contract
+  list from inside Python. The `curl` rules add a POST or a request body that `curl` sends to any other Alpaca host,
+  such as the market-data host `data.alpaca.markets`.
 - The block parses as TOML (14 rules), with Python's `tomllib` and with the desk's own TOML reader on Python 3.9.
 - How Grok Build matches a pattern (the whole string or a part, whether `*` crosses `/` and spaces, case) and what the
   `MCPTool` and `WebFetch` patterns are matched against are checked at release.
@@ -139,15 +143,15 @@ clone on your own machine.
 - Use a pinned shallow clone, not the plugin install directory, which may not be a git checkout:
 
   ```text
-  git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
+  git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
   ```
 
   `routine.py` runs no step unless the checkout is the clean tag; on this clone the pin check reads
-  `release v0.1.1 at <commit>, clean`.
+  `release v0.2.0 at <commit>, clean`.
 - Keep the desk root outside the clone. A desk root inside it is refused (exit 2), because the run's files would make
   the checkout dirty. Pass it every time: `python3 scripts/routine.py <routine id> --desk-root <your desk directory>`.
   The desk root holds `desk.toml`, `positions.csv` and your adopted rules (SETUP step 9).
-- First try it offline on a copy of the fixture desk, made outside the clone. It needs no token and no network:
+- First try it offline on a copy of the fixture desk, made outside the clone. It needs no key and no network:
 
   ```text
   cp -r tests/fixtures/desk ../aegis-fixture-desk
@@ -157,7 +161,7 @@ clone on your own machine.
   Synthetic, the first and last lines on that copy:
 
   ```text
-  CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
+  CONFIG CHANGED | desk.toml: not acknowledged -> sha f08a18dc | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
   deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 19:31 UTC
   ```
 

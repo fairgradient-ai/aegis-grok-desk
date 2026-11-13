@@ -37,7 +37,7 @@ EXPECTED_STRUCTURING = os.path.join(ROOT, "tests", "fixtures", "init", "expected
 STRUCTURING_SHA = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
 REGULAR_NOW = "2026-11-03T19:50:00Z"
 ACK_NOW = "2026-11-03T19:49:00Z"
-DOCTOR_PASS = ("desk.toml loads (sha 0af433cf); positions.csv parses: 7 rows in 4 groups, none quarantined; "
+DOCTOR_PASS = ("desk.toml loads (sha f08a18dc); positions.csv parses: 7 rows in 4 groups, none quarantined; "
                "rules 1.0.0, sha cc09859c; research/calendar.toml loads")
 
 

@@ -11,13 +11,15 @@ An alert never carries order fields, a roll destination or ranked alternatives: 
 The exit-signal shape (one line, then the footer)
 -------------------------------------------------
 ``EXIT SIGNAL <trade_id> | <UNDERLYING> <structure words> | your rule <ID> (rules <version>, sha <8 hex>) fired:
-<metric sentence with the value and threshold> | quote grade <A-F>, Tradier sandbox, 15-min delayed, as of HH:MM
+<metric sentence with the value and threshold> | quote grade <A-F>, <source words>, 15-min delayed, as of HH:MM
 UTC[, run N min late] | your plan: <plan words> | not an instruction to trade; you act in your brokerage account.``
 followed by the footer line ``deterministic rules you adopted · posted by an AI assistant · not personalized
 investment advice · data delayed 15 min, as of HH:MM UTC``. ``<trade_id>`` is the group's trade id (its group id
 ``ROW-<n>`` when it has none); the sha is the adopted rulebook's (``run_info["rulebook_sha"]``, first eight hex
 digits); the quote grade is the worst grade of the group's open legs and, for a group with an option leg, its
-underlying; the quote segment's time is the oldest as-of among those legs, the footer's the book's newest. A
+underlying; ``<source words>`` are :func:`aegis_desk.data_source.words_for_label` of the book's ``sources[0].name``
+(``Alpaca paper (IEX stocks, indicative options: approximate)`` for ``alpaca:paper``); the quote segment's time is the
+oldest as-of among those legs, the footer's the book's newest. A
 metric sentence is ``<label> <value> (your threshold: <op words> <threshold>)`` per condition, joined with ``and``,
 followed by ``; <reason>`` when the rule result carries one and ``; <note>`` for each of its notes (``quote grade E:
 the conservative side stands``, ``earnings date estimated (research/calendar.toml)``); a yes/no metric reads
@@ -83,7 +85,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, expiry, signals
+from . import alert_lint, data_source, expiry, signals
 
 KIND_EXIT_SIGNAL: str = "exit_signal"
 KIND_WATCH: str = "watch"
@@ -634,8 +636,7 @@ def book_as_of(document: Mapping[str, Any]) -> datetime.datetime:
 def _source(document: Mapping[str, Any]) -> Tuple[str, int]:
     sources = document.get("sources") or []
     source = sources[0] if sources else {}
-    vendor, _, host = str(source.get("name") or "unknown").partition(":")
-    words = ("%s %s" % (vendor.capitalize(), host)).strip()
+    words = data_source.words_for_label(source.get("name"))
     delay = source.get("delay_min")
     return words, delay if isinstance(delay, int) and not isinstance(delay, bool) else 0
 

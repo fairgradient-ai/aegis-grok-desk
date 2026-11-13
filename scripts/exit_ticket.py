@@ -42,7 +42,7 @@ Exit codes: 0 TICKET or NOT_APPLICABLE (a ROLL replacement that fails a criterio
 print); 20 UNAVAILABLE (``market_closed``, ``group_quarantined``, ``positions_quarantined``, ``spot_unusable``,
 ``held_leg_unusable``,
 ``chain_not_served``, ``replacement_not_listed``, ``replacement_unpriced``, ``config_unacknowledged``,
-``criteria_missing``; and, with an error envelope, ``no_token``, ``production_host``, ``token_file_mode`` and
+``criteria_missing``; and, with an error envelope, ``no_credential``, ``live_host``, ``credential_file_mode`` and
 ``holiday_table_expired``) and REFUSED; 1 ``desk_root``, ``config_invalid``, ``unknown_trade``, ``positions_invalid``,
 ``calendar_invalid``, ``structuring_invalid``, ``io_error``, ``ticket_exists``, ``lint_failed``; 2 usage (a malformed
 trade id, ``--new-expiration``/``--new-strike`` missing with ROLL or given with another action, a replacement that does
@@ -81,9 +81,11 @@ TOOL = structuring.TOOL_EXIT_TICKET
 DESCRIPTION = ("a ticket for a group you hold in positions.csv, only when you ask: the legs of CLOSE, UNWIND_STOCK, "
                "LET_ASSIGN, MONETIZE_PUT or ROLL in the safe order with their quotes, the approval-level check, the "
                "cash and the realized estimate; you supply the limit and act in your brokerage account")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/quotes (one batch of the group's symbols) and, for ROLL, "
-                  "/v1/markets/options/chains of the replacement's expiration, through the quote cache; none with "
-                  "--offline")
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest (one "
+                  "batch of the group's symbols) and, for ROLL, the replacement expiration's chain "
+                  "(https://paper-api.alpaca.markets/v2/options/contracts, then "
+                  "https://data.alpaca.markets/v1beta1/options/snapshots/<UNDERLYING>), through the quote cache; "
+                  "none with --offline")
 BLOCKING_CHANGES: Tuple[str, ...] = ("desk_toml", "positions_csv", "structuring_toml")
 """The files whose unacknowledged change stops every structuring text (designer C's D3.6); the rulebook does not."""
 CAUSE_CONFIG_UNACKNOWLEDGED = "config_unacknowledged"
@@ -189,7 +191,7 @@ OUTPUT: Dict[str, Any] = {
 
 class ToolError(Exception):
     """A failure the tool reports with an error envelope: exit 1, or 20 for market data the desk cannot use as
-    configured (``no_token``, ``production_host``, ``token_file_mode``) and an expired holiday table."""
+    configured (``no_credential``, ``live_host``, ``credential_file_mode``) and an expired holiday table."""
 
     def __init__(self, error: str, message: str, exit_code: int = contract.EXIT_ERROR) -> None:
         super().__init__(message)
@@ -216,7 +218,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
                         help="ROLL only, with --new-expiration: the replacement's strike (its root and right are the "
                              "held leg's)")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

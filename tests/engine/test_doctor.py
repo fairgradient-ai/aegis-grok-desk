@@ -1,8 +1,9 @@
 """``aegis_desk.doctor``: the desk doctor's twelve checks (PR 2d decision D2-12), each a PASS, WARN or FAIL with a
 one-line reason, pinned through the seams the decision names (the environment, ``/workspace``, the local offset, the
-checkout answer, the find-spec and token loaders) and, for the sandbox verification, against the loopback fake
-Tradier server of ``tests/engine/test_tradier_client.py``: 200 passes, 401 and 403 fail as a non-sandbox token,
-anything else is a warning, and every request is one GET of ``/v1/markets/clock``.
+checkout answer, the find-spec and credential loaders) and, for the paper-key verification, against the loopback fake
+Alpaca server of ``tests/engine/test_alpaca_client.py``: 200 passes (``paper key verified``), 401 and 403 fail as a key
+that is not a paper key, anything else is a warning, and every request is one GET of the paper host's ``/v2/clock``
+carrying both key headers.
 """
 from __future__ import annotations
 
@@ -22,19 +23,20 @@ import unittest
 from typing import Any, List, Optional, Set
 from unittest import mock
 
-from aegis_desk import bsm, desk_config, desk_paths, doctor, heartbeat, routines, state, tradier_client
+from aegis_desk import alpaca_client, bsm, desk_config, desk_paths, doctor, heartbeat, routines, state
 
-from tests.engine.test_tradier_client import FakeTradier, static
+from tests.engine.test_alpaca_client import FakeAlpaca, static
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPTS = os.path.join(ROOT, "scripts")
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
-REGULAR = os.path.join(FIXTURE_DESK, "fixtures", "tradier", "regular")
+REGULAR = os.path.join(FIXTURE_DESK, "fixtures", "alpaca", "regular")
 UTC = datetime.timezone.utc
 NOW = datetime.datetime(2026, 11, 3, 19, 50, tzinfo=UTC)  # 14:50 ET, Tue 2026-11-03 (EST, -05:00)
 TODAY = datetime.date(2026, 11, 3)
 UA = "aegis-desk-tests/0.0 desk_doctor (read-only market data)"
-SECRET = "fake-sandbox-secret-0000-1111-2222-3333"
+KEY_ID = "PKFAKEPAPERKEY0000111"
+SECRET = "fake-paper-secret-0000-1111-2222-3333"
 CLEAN_PIN = {"git": True, "work_tree": True, "head": "971186c6" + "0" * 32, "tag": "v0.1.0",
              "tag_commit": "971186c6" + "0" * 32, "dirty": 0, "pinned": True, "reason": "release v0.1.0 at 971186c6, clean"}
 DEVELOPMENT = dict(CLEAN_PIN, tag_commit=None, pinned=False, reason="development checkout (no tag)")
@@ -72,8 +74,8 @@ class DeskCopy(unittest.TestCase):
 
 class CheckTableTest(unittest.TestCase):
     def test_twelve_checks_and_three_modes(self) -> None:
-        self.assertEqual(((1, "release_pin"), (2, "interpreter"), (3, "holiday_table"), (4, "token_source"),
-                          (5, "sandbox"), (6, "machine_role"), (7, "broker_env"), (8, "desk_files"),
+        self.assertEqual(((1, "release_pin"), (2, "interpreter"), (3, "holiday_table"), (4, "key_source"),
+                          (5, "paper_key"), (6, "machine_role"), (7, "broker_env"), (8, "desk_files"),
                           (9, "market_status"), (10, "connector_readback"), (11, "heartbeats"), (12, "selftest")),
                          doctor.CHECKS)
         self.assertEqual({"full": tuple(range(1, 12)), "quick": (2, 3, 4, 8, 9), "selftest": (2, 12)}, doctor.MODE_CHECKS)
@@ -205,73 +207,85 @@ class HolidayTableTest(unittest.TestCase):
             self.assertEqual((3, status, reason), (item.number, item.status, item.reason), day)
 
 
-class TokenSourceTest(unittest.TestCase):
+class KeySourceTest(unittest.TestCase):
+    KEY_ENV = "AEGIS_DOCTOR_TEST_KEY_ID"
+    SECRET_ENV = "AEGIS_DOCTOR_TEST_SECRET"
+
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory(prefix="aegis-doctor-token-")
+        self._tmp = tempfile.TemporaryDirectory(prefix="aegis-doctor-key-")
         self.base = os.path.realpath(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
         self.cfg = fixture_config()
 
-    def config(self, token_env: str, token_file: str) -> desk_config.DeskConfig:
-        market = dataclasses.replace(self.cfg.market_data, token_env=token_env, token_file=token_file)
+    def config(self, credentials_file: str) -> desk_config.DeskConfig:
+        market = dataclasses.replace(self.cfg.market_data, key_env=self.KEY_ENV, secret_env=self.SECRET_ENV,
+                                     credentials_file=credentials_file)
         return dataclasses.replace(self.cfg, market_data=market)
 
+    def scrubbed(self) -> dict:
+        env = dict(os.environ)
+        env.pop(self.KEY_ENV, None)
+        env.pop(self.SECRET_ENV, None)
+        return env
+
+    def write_file(self, mode: int) -> str:
+        path = os.path.join(self.base, "alpaca.key")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(KEY_ID + "\n" + SECRET + "\n")
+        os.chmod(path, mode)
+        return path
+
     def test_offline_reads_no_credential(self) -> None:
-        def refuse(env: str, path: Optional[str]) -> Any:
+        def refuse(key_env: str, secret_env: str, path: Optional[str]) -> Any:
             raise AssertionError("an offline doctor loads no credential")
 
-        item, token = doctor.token_source_check(self.cfg, True, load=refuse)
-        self.assertEqual((4, "WARN", "not checked offline (offline runs load no credential)", None),
-                         (item.number, item.status, item.reason, token))
+        item, credential = doctor.key_source_check(self.cfg, True, load=refuse)
+        self.assertEqual((4, "key_source", "WARN", "not checked offline (offline runs load no credential)", None),
+                         (item.number, item.id, item.status, item.reason, credential))
 
-    def test_environment_variable_and_file(self) -> None:
-        with mock.patch.dict(os.environ, {"AEGIS_DOCTOR_TEST_TOKEN": SECRET}):
-            item, token = doctor.token_source_check(self.config("AEGIS_DOCTOR_TEST_TOKEN", os.path.join(self.base, "none")), False)
-        self.assertEqual(("PASS", "token from environment variable AEGIS_DOCTOR_TEST_TOKEN", "env"),
-                         (item.status, item.reason, token.source))
-        path = os.path.join(self.base, "tradier.token")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(SECRET + "\n")
-        os.chmod(path, 0o600)
-        env = dict(os.environ)
-        env.pop("AEGIS_DOCTOR_UNSET_TOKEN", None)
-        with mock.patch.dict(os.environ, env, clear=True):
-            item, token = doctor.token_source_check(self.config("AEGIS_DOCTOR_UNSET_TOKEN", path), False)
-        self.assertEqual(("PASS", "token from file %s (no group or other permission bits)" % path, "file"),
-                         (item.status, item.reason, token.source))
-        self.assertNotIn(SECRET, item.reason)
+    def test_environment_variables_and_file(self) -> None:
+        with mock.patch.dict(os.environ, {self.KEY_ENV: KEY_ID, self.SECRET_ENV: SECRET}):
+            item, credential = doctor.key_source_check(self.config(os.path.join(self.base, "none")), False)
+        self.assertEqual(("PASS", "key pair from environment variables %s and %s" % (self.KEY_ENV, self.SECRET_ENV),
+                          "env"), (item.status, item.reason, credential.source))
+        path = self.write_file(0o600)
+        with mock.patch.dict(os.environ, self.scrubbed(), clear=True):
+            item, credential = doctor.key_source_check(self.config(path), False)
+        self.assertEqual(("PASS", "key pair from file %s (no group or other permission bits)" % path, "file"),
+                         (item.status, item.reason, credential.source))
+        for value in (KEY_ID, SECRET):
+            self.assertNotIn(value, item.reason)
 
-    def test_a_loose_file_mode_and_no_token_fail_without_the_value(self) -> None:
-        path = os.path.join(self.base, "tradier.token")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(SECRET + "\n")
-        os.chmod(path, 0o644)
-        env = dict(os.environ)
-        env.pop("AEGIS_DOCTOR_UNSET_TOKEN", None)
-        with mock.patch.dict(os.environ, env, clear=True):
-            item, token = doctor.token_source_check(self.config("AEGIS_DOCTOR_UNSET_TOKEN", path), False)
-            self.assertEqual(("FAIL", None), (item.status, token))
-            self.assertIn("mode 0644", item.reason)
-            self.assertNotIn(SECRET, item.reason)
-            missing = os.path.join(self.base, "missing.token")
-            item, token = doctor.token_source_check(self.config("AEGIS_DOCTOR_UNSET_TOKEN", missing), False)
-        self.assertEqual(("FAIL", None), (item.status, token))
-        self.assertEqual("no market-data token: environment variable AEGIS_DOCTOR_UNSET_TOKEN is unset or empty; token "
-                         "file %s is missing or empty" % missing, item.reason)
+    def test_a_loose_file_mode_half_a_pair_and_no_key_fail_without_a_value(self) -> None:
+        path = self.write_file(0o644)
+        with mock.patch.dict(os.environ, self.scrubbed(), clear=True):
+            item, credential = doctor.key_source_check(self.config(path), False)
+            self.assertEqual(("FAIL", None), (item.status, credential))
+            self.assertIn("0644", item.reason)
+            missing = os.path.join(self.base, "missing.key")
+            item, credential = doctor.key_source_check(self.config(missing), False)
+            self.assertEqual(("FAIL", None), (item.status, credential))
+            self.assertIn(self.KEY_ENV, item.reason)
+            with mock.patch.dict(os.environ, {self.KEY_ENV: KEY_ID}):
+                item, credential = doctor.key_source_check(self.config(missing), False)
+            self.assertEqual(("FAIL", None), (item.status, credential), "never half a pair from each source")
+            self.assertIn(self.SECRET_ENV, item.reason)
+            for value in (KEY_ID, SECRET):
+                self.assertNotIn(value, item.reason)
 
     def test_without_a_configuration_nothing_is_read(self) -> None:
-        item, token = doctor.token_source_check(None, False)
+        item, credential = doctor.key_source_check(None, False)
         self.assertEqual(("WARN", "not checked: desk.toml cannot be used (see desk_files)", None),
-                         (item.status, item.reason, token))
+                         (item.status, item.reason, credential))
 
 
-class SandboxTest(unittest.TestCase):
-    server: FakeTradier
+class PaperKeyTest(unittest.TestCase):
+    server: FakeAlpaca
     thread: threading.Thread
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.server = FakeTradier()
+        cls.server = FakeAlpaca()
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 
@@ -290,67 +304,85 @@ class SandboxTest(unittest.TestCase):
         self.server.script.clear()
         self.assertEqual([], self.server.violations, "a non-GET request reached the fake server")
 
-    def client(self) -> tradier_client.TradierClient:
-        return tradier_client.TradierClient("loopback:%d" % self.server.port, tradier_client.Token(SECRET, "env"),
-                                            user_agent=UA, timeout_s=5.0)
+    def credential(self) -> alpaca_client.Credential:
+        return alpaca_client.Credential(KEY_ID, SECRET, "env")
+
+    def client(self) -> alpaca_client.AlpacaClient:
+        return alpaca_client.AlpacaClient("loopback:%d" % self.server.port, self.credential(), user_agent=UA,
+                                          timeout_s=5.0)
 
     def verify(self, status: int, body: bytes) -> doctor.Check:
-        self.server.script[tradier_client.PATH_CLOCK] = static(status, body)
-        item = doctor.verify_sandbox(self.client())
+        self.server.script[alpaca_client.PATH_CLOCK] = static(status, body)
+        item = doctor.verify_paper_key(self.client())
         with self.server.lock:
             seen = list(self.server.requests)
-        self.assertEqual([("GET", "/v1/markets/clock")], [(r["method"], r["path"]) for r in seen])
-        self.assertEqual((5, "sandbox"), (item.number, item.id))
+        self.assertEqual([("GET", "/v2/clock")], [(r["method"], r["path"]) for r in seen])
+        self.assertEqual((KEY_ID, SECRET), (seen[0]["headers"]["apca-api-key-id"],
+                                            seen[0]["headers"]["apca-api-secret-key"]))
+        self.assertEqual((5, "paper_key"), (item.number, item.id))
         return item
 
-    def test_200_passes_with_the_vendor_state(self) -> None:
+    def test_200_passes_as_a_verified_paper_key(self) -> None:
         item = self.verify(200, read_bytes(os.path.join(REGULAR, "clock.json")))
-        self.assertEqual(("PASS", "sandbox clock answered (open)"), (item.status, item.reason))
+        self.assertEqual(("PASS", "paper key verified (paper clock answered: open)"), (item.status, item.reason))
+        self.assertEqual("paper key verified", doctor.PAPER_VERIFIED_REASON)
 
-    def test_401_and_403_fail_as_a_non_sandbox_token(self) -> None:
+    def test_401_and_403_fail_as_not_a_paper_key(self) -> None:
         for status in (401, 403):
             with self.subTest(status=status):
                 self.setUp()
-                item = self.verify(status, read_bytes(os.path.join(REGULAR, "errors", "invalid_token.txt")))
-                self.assertEqual(("FAIL", "not a sandbox token: remove and rotate"), (item.status, item.reason))
-                self.assertNotIn(SECRET, item.reason)
+                item = self.verify(status, read_bytes(os.path.join(REGULAR, "errors", "unauthorized.txt")))
+                self.assertEqual(("FAIL", "not a paper key: remove it and add a paper key"),
+                                 (item.status, item.reason))
+                for value in (KEY_ID, SECRET):
+                    self.assertNotIn(value, item.reason)
 
     def test_other_answers_warn_with_the_status(self) -> None:
-        item = self.verify(500, b'{"error": "boom"}')
-        self.assertEqual(("WARN", "sandbox not verified: http"), (item.status, item.reason))
+        item = self.verify(500, b'{"message": "boom"}')
+        self.assertEqual(("WARN", "paper key not verified: http"), (item.status, item.reason))
+        self.setUp()
+        item = self.verify(429, b'{"message": "too many requests."}')
+        self.assertEqual(("WARN", "paper key not verified: quota"), (item.status, item.reason))
 
-    def test_production_offline_and_missing_inputs_send_nothing(self) -> None:
+    def test_a_non_paper_host_offline_and_missing_inputs_send_nothing(self) -> None:
         cfg = fixture_config()
 
-        def refuse(token: Any) -> Any:
+        def refuse(credential: Any) -> Any:
             raise AssertionError("no client is built")
 
-        production = dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, host="production"))
-        token = tradier_client.Token(SECRET, "env")
-        cases = ((production, token, False, "FAIL", "production host is outside the guarantee before the market-data proxy"),
-                 (production, token, True, "FAIL", "production host is outside the guarantee before the market-data proxy"),
-                 (cfg, token, True, "WARN", "not verified offline"),
-                 (cfg, None, False, "WARN", "sandbox not verified: no token (see token_source)"),
-                 (None, token, False, "WARN", "not verified: desk.toml cannot be used (see desk_files)"))
-        for config, given, offline, status, reason in cases:
-            item = doctor.sandbox_check(config, given, offline, refuse)
-            self.assertEqual((5, status, reason), (item.number, item.status, item.reason))
+        live = dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, host="live"))
+        credential = self.credential()
+        reason = "only the paper host is supported: the desk holds a paper key pair and never points at a live account"
+        self.assertEqual(reason, doctor.PAPER_HOST_REASON)
+        cases = ((live, credential, False, "FAIL", reason),
+                 (live, credential, True, "FAIL", reason),
+                 (cfg, credential, True, "WARN", "not verified offline"),
+                 (cfg, None, False, "WARN", "paper key not verified: no key pair (see key_source)"),
+                 (None, credential, False, "WARN", "not verified: desk.toml cannot be used (see desk_files)"))
+        for config, given, offline, status, expected in cases:
+            item = doctor.paper_key_check(config, given, offline, refuse)
+            self.assertEqual((5, status, expected), (item.number, item.status, item.reason))
         with self.server.lock:
             self.assertEqual([], self.server.requests)
 
-    def test_the_sandbox_check_builds_one_client_and_asks_once(self) -> None:
-        self.server.script[tradier_client.PATH_CLOCK] = static(200, read_bytes(os.path.join(REGULAR, "clock.json")))
+    def test_the_paper_key_check_builds_one_client_and_asks_once(self) -> None:
+        self.server.script[alpaca_client.PATH_CLOCK] = static(200, read_bytes(os.path.join(REGULAR, "clock.json")))
         built: List[Any] = []
 
-        def factory(token: Any) -> Any:
-            built.append(token)
+        def factory(credential: Any) -> Any:
+            built.append(credential)
             return self.client()
 
-        token = tradier_client.Token(SECRET, "env")
-        item = doctor.sandbox_check(fixture_config(), token, False, factory)
-        self.assertEqual(("PASS", [token]), (item.status, built))
+        credential = self.credential()
+        item = doctor.paper_key_check(fixture_config(), credential, False, factory)
+        self.assertEqual(("PASS", [credential]), (item.status, built))
         with self.server.lock:
             self.assertEqual(1, len(self.server.requests))
+
+    def test_the_real_client_asks_the_paper_host_never_the_data_host(self) -> None:
+        client = alpaca_client.AlpacaClient("paper", self.credential(), user_agent=UA)
+        self.assertEqual("paper-api.alpaca.markets", alpaca_client.host_for_path(alpaca_client.PATH_CLOCK))
+        self.assertTrue(client.url_for(alpaca_client.PATH_CLOCK, {}).startswith("https://paper-api.alpaca.markets/"))
 
 
 class MachineRoleAndBrokerEnvTest(unittest.TestCase):
@@ -363,32 +395,77 @@ class MachineRoleAndBrokerEnvTest(unittest.TestCase):
         self.assertEqual((6, "PASS", "machine role: shared"), (item.number, item.status, item.reason))
 
     def test_broker_looking_names(self) -> None:
-        flagged = ["SCHWAB_APP_KEY", "IBKR_TOKEN", "MY_BROKER_URL", "TRADIER_ACCOUNT_ID", "ORDER_API", "alpaca_key",
-                   "INTERACTIVE_BROKERS_PORT", "robinhood-session", "SNAPTRADE_CLIENT_ID", "MY_ACCOUNT_ID"]
-        clean = ["GCM_INTERACTIVE", "BORDER_COLOR", "RECORDER_PATH", "TRADIER_API_TOKEN", "PYTHONINTERACTIVE", "HOME",
-                 "PATH", "ACCOUNT", "ID_FILE"]
-        self.assertEqual(sorted(flagged), doctor.broker_env_names(flagged + clean, "TRADIER_API_TOKEN"))
-        self.assertEqual([], doctor.broker_env_names(clean, "TRADIER_API_TOKEN"))
-        self.assertEqual([], doctor.broker_env_names(["IBKR_TOKEN"], "IBKR_TOKEN"), "the configured token_env is excluded")
-        # joined, camel-case and two-part broker names, and a live Tradier token (one that can trade)
+        keys = ("APCA_API_KEY_ID", "APCA_API_SECRET_KEY")
+        flagged = ["SCHWAB_APP_KEY", "IBKR_TOKEN", "MY_BROKER_URL", "ORDER_API", "alpaca_key", "ALPACA_API_KEY",
+                   "ALPACA_SECRET", "INTERACTIVE_BROKERS_PORT", "robinhood-session", "SNAPTRADE_CLIENT_ID",
+                   "MY_ACCOUNT_ID"]
+        clean = ["GCM_INTERACTIVE", "BORDER_COLOR", "RECORDER_PATH", "APCA_API_KEY_ID", "APCA_API_SECRET_KEY",
+                 "PYTHONINTERACTIVE", "HOME", "PATH", "ACCOUNT", "ID_FILE"]
+        self.assertEqual(sorted(flagged), doctor.broker_env_names(flagged + clean, keys))
+        self.assertEqual([], doctor.broker_env_names(clean, keys))
+        self.assertEqual([], doctor.broker_env_names(["IBKR_TOKEN"], ["IBKR_TOKEN"]), "a configured key name is excluded")
+        # exactly the configured names are excluded: a set, never a prefix or a vendor
+        self.assertEqual(["ALPACA_KEY_ID", "ALPACA_SECRET_KEY"],
+                         doctor.broker_env_names(["ALPACA_KEY_ID", "ALPACA_SECRET_KEY", "MY_KEY"], ["MY_KEY"]))
+        self.assertEqual(["ALPACA_SECRET_KEY"],
+                         doctor.broker_env_names(["ALPACA_KEY_ID", "ALPACA_SECRET_KEY"], {"ALPACA_KEY_ID"}))
+        self.assertEqual([], doctor.broker_env_names(["ALPACA_KEY_ID", "ALPACA_SECRET_KEY"],
+                                                     ("ALPACA_KEY_ID", "ALPACA_SECRET_KEY")))
+        # joined, camel-case and two-part broker names, and an Alpaca key name that says live (one that can trade)
         joined = ["SCHWABAPIKEY", "schwabToken", "E_TRADE_KEY", "TD_AMERITRADE_KEY", "tdAmeritradeKey", "IB_GATEWAY_PORT",
-                  "COINBASE_API_KEY", "TRADIER_LIVE_TOKEN", "TRADIER_PROD_KEY", "TRADIER_PRODUCTION_TOKEN",
-                  "TRADIER_BROKERAGE_ID", "TRADIER_TRADING_TOKEN", "IBKRTOKEN", "ROBINHOOD_PASSWORD"]
-        still_clean = ["TRADIER_SANDBOX_TOKEN", "TRADIER_TOKEN", "pythonInteractive", "borderColor", "recorderPath",
+                  "COINBASE_API_KEY", "APCA_LIVE_API_KEY_ID", "APCA_PROD_SECRET", "APCA_PRODUCTION_KEY",
+                  "APCA_ACCOUNT_ID", "APCA_TRADING_KEY", "IBKRTOKEN", "ROBINHOOD_PASSWORD"]
+        still_clean = ["APCA_PAPER_KEY_ID", "APCA_API_BASE_URL", "pythonInteractive", "borderColor", "recorderPath",
                        "SORTORDER", "MY_IB", "E_FILE", "IBM_HOME", "TASTYFOOD"]
-        self.assertEqual(sorted(joined), doctor.broker_env_names(joined + clean + still_clean, "TRADIER_API_TOKEN"))
+        self.assertEqual(sorted(joined), doctor.broker_env_names(joined + clean + still_clean, keys))
         environ = {name: "x" for name in ["SCHWAB_APP_KEY", "HOME", "GCM_INTERACTIVE", "ORDER_API"]}
-        item = doctor.broker_env_check(environ, "TRADIER_API_TOKEN")
+        item = doctor.broker_env_check(environ, keys)
         self.assertEqual((7, "FAIL", "broker-looking environment variable(s): ORDER_API, SCHWAB_APP_KEY"),
                          (item.number, item.status, item.reason))
-        item = doctor.broker_env_check({"HOME": "/root", "GCM_INTERACTIVE": "never"}, "TRADIER_API_TOKEN")
+        item = doctor.broker_env_check({"HOME": "/root", "GCM_INTERACTIVE": "never"}, keys)
         self.assertEqual(("PASS", "no broker-looking environment variable name (2 names checked)"),
                          (item.status, item.reason))
         self.assertNotIn("/root", item.reason, "values are never read into a reason")
 
+    def test_configured_names_that_say_live_still_fail(self) -> None:
+        # The exclusion exempts the configured names from the broker-name PART and PREFIX rules only; the pair rule
+        # (an APCA name that says live, production, trading or account) still applies to them.
+        live = ("APCA_LIVE_API_KEY_ID", "APCA_LIVE_API_SECRET_KEY")
+        self.assertEqual(sorted(live), doctor.broker_env_names(list(live), live))
+        for configured in (("APCA_PROD_KEY_ID", "APCA_PROD_SECRET"), ("APCA_TRADING_KEY", "APCA_TRADING_SECRET"),
+                           ("APCA_ACCOUNT_KEY", "APCA_PRODUCTION_SECRET")):
+            with self.subTest(configured=configured):
+                self.assertEqual(sorted(configured), doctor.broker_env_names(list(configured), configured))
+        item = doctor.broker_env_check({name: "x" for name in live + ("HOME",)}, live)
+        self.assertEqual((7, "FAIL", "broker-looking environment variable(s): APCA_LIVE_API_KEY_ID, "
+                                     "APCA_LIVE_API_SECRET_KEY"), (item.number, item.status, item.reason))
+        # the part/prefix exemption is unchanged: configured ALPACA_* names pass, unconfigured ones fail
+        self.assertEqual([], doctor.broker_env_names(["ALPACA_PAPER_KEY_ID", "APCA_API_KEY_ID"],
+                                                     ("ALPACA_PAPER_KEY_ID", "APCA_API_KEY_ID")))
+
+    def test_a_live_alpaca_base_url_fails(self) -> None:
+        keys = ("APCA_API_KEY_ID", "APCA_API_SECRET_KEY")
+        self.assertEqual("APCA_API_BASE_URL", doctor.ALPACA_BASE_URL_ENV)
+        for value in ("https://api.alpaca.markets", "https://API.alpaca.markets/v2", "api.alpaca.markets",
+                      "https://api.alpaca.markets:443/", "http://api.alpaca.markets."):
+            with self.subTest(value=value):
+                self.assertTrue(doctor.live_base_url(value))
+                item = doctor.broker_env_check({"APCA_API_BASE_URL": value, "HOME": "/root"}, keys)
+                self.assertEqual((7, "FAIL", "APCA_API_BASE_URL points at the live trading host api.alpaca.markets"),
+                                 (item.number, item.status, item.reason))
+        for value in ("https://paper-api.alpaca.markets", "paper-api.alpaca.markets/v2", "", "   ", "not a url",
+                      "https://api.alpaca.markets.example.com", "https://data.alpaca.markets", "http://[::1"):
+            with self.subTest(value=value):
+                self.assertFalse(doctor.live_base_url(value))
+                item = doctor.broker_env_check({"APCA_API_BASE_URL": value}, keys)
+                self.assertEqual("PASS", item.status)
+        item = doctor.broker_env_check({"APCA_API_BASE_URL": "https://api.alpaca.markets", "ALPACA_KEY": "x"}, keys)
+        self.assertEqual(("FAIL", "APCA_API_BASE_URL points at the live trading host api.alpaca.markets; "
+                                  "broker-looking environment variable(s): ALPACA_KEY"), (item.status, item.reason))
+
 
 class DeskFilesTest(DeskCopy):
-    PASS_REASON = ("desk.toml loads (sha 0af433cf); positions.csv parses: 7 rows in 4 groups, none quarantined; "
+    PASS_REASON = ("desk.toml loads (sha f08a18dc); positions.csv parses: 7 rows in 4 groups, none quarantined; "
                    "rules 1.0.0, sha cc09859c; research/calendar.toml loads")
 
     def run_check(self) -> Any:
@@ -402,13 +479,23 @@ class DeskFilesTest(DeskCopy):
         self.assertEqual("lean", cfg.desk.cadence_profile)
         self.assertIsNotNone(cal)
 
-    def test_a_production_host_fails_with_no_request(self) -> None:
-        """Check 8 refuses the production host itself, so the quick doctor (no check 5) agrees with the full one."""
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_host_fails_with_no_request(self) -> None:
+        """Check 8 refuses a live host itself (desk_config refuses it at load), so the quick doctor (no check 5) agrees
+        with the full one."""
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         item, cfg, _cal = self.run_check()
         self.assertEqual("FAIL", item.status)
-        self.assertIn("desk.toml host production: " + doctor.SANDBOX_PRODUCTION_REASON, item.reason)
-        self.assertEqual("production", cfg.market_data.host)
+        self.assertIn('host must be "paper" (got "live")', item.reason)
+        self.assertIsNone(cfg)
+
+    def test_any_host_but_paper_fails_even_when_a_config_carries_one(self) -> None:
+        loaded = desk_config.load_desk_config(self.paths.desk_toml)
+        odd = dataclasses.replace(loaded, market_data=dataclasses.replace(loaded.market_data, host="live"))
+        with mock.patch.object(doctor.desk_config, "load_desk_config", return_value=odd):
+            item, cfg, _cal = self.run_check()
+        self.assertEqual("FAIL", item.status)
+        self.assertIn("desk.toml host live: " + doctor.PAPER_HOST_REASON, item.reason)
+        self.assertEqual("live", cfg.market_data.host)
 
     def test_worst_status_wins(self) -> None:
         os.remove(self.paths.calendar_toml)
@@ -570,7 +657,7 @@ class RecordTest(DeskCopy):
         record = doctor.doctor_record("quick", NOW, checks, "shared", "0.1.0")
         self.assertEqual({"schema": 1, "run_utc": "2026-11-03T19:50:00+00:00", "mode": "quick", "verdict": "PASS",
                           "checks": [{"id": "interpreter", "number": 2, "status": "PASS", "reason": "a"},
-                                     {"id": "token_source", "number": 4, "status": "WARN", "reason": "b"}],
+                                     {"id": "key_source", "number": 4, "status": "WARN", "reason": "b"}],
                           "machine_role": "shared", "tool_version": "0.1.0"}, record)
         self.assertEqual(os.path.join(self.root, "state", "doctor.json"), doctor.doctor_path(self.paths))
         self.assertEqual("doctor.json", doctor.DOCTOR_FILE)

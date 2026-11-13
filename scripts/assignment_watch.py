@@ -51,7 +51,8 @@ TOOL = "assignment_watch"
 DESCRIPTION = ("dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times "
                "(a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a "
                "dividend or quote is unknown")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 LABEL_NO_QUOTE = "no quote"
 NOTHING_LINE = ("nothing within the windows: no ex-dividend inside 5 trading days with a short call alive on the last "
                 "cum-dividend day, no contract on its last or next-to-last trading day")
@@ -74,7 +75,7 @@ OUTPUT: Dict[str, Any] = {
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
     "message": "string: the human text exactly, without the final newline",
-    "as_of": "ISO-8601 UTC: the instant of the text's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)",
+    "as_of": "ISO-8601 UTC: the instant of the text's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)",
 }
 
 
@@ -85,7 +86,7 @@ def user_agent(version: str) -> str:
 def build_parser(version: str) -> contract.ReadOnlyParser:
     parser = contract.ReadOnlyParser(tool=TOOL, tool_version=version, description=DESCRIPTION)
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

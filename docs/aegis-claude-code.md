@@ -21,7 +21,7 @@ Then load the charter first:
 /aegis-desk:aegis-desk-charter
 ```
 
-The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.1.1`. Whether Claude
+The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.2.0`. Whether Claude
 Code honours that pin is checked at release. If it does not, the marketplace follows the default branch, and the
 pinned clone below is the reviewed way in.
 
@@ -47,7 +47,7 @@ not loaded as project context; that warning is expected.
 tools run a shell command is checked at release: a new one that the matcher does not name is not sent to the gate.
 
 - **It denies** an order call in code, an HTTP write (a write method or a request body) to a broker host or to an
-  account or order path, an HTTP call to a broker host outside Tradier's market-data paths, an MCP tool whose name
+  account or order path, any other HTTP call to a broker host (reads included), an MCP tool whose name
   holds an order verb as a whole word or closes a position, and an MCP input with an order key or an order-shaped
   value.
 - **It has no opinion** on reads (`grep`, `git`, `cat`, `ls`, `find` and the other read commands), on the desk's own
@@ -90,13 +90,13 @@ recorded in [docs/RELEASE.md](RELEASE.md), step 2. The marketplace install is ch
 The reviewed release, without the marketplace:
 
 ```text
-git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
 cd aegis-grok-desk
 bash scripts/check.sh
 ```
 
 The gate takes a few minutes and ends with `ok: all repository gates passed for <the clone's path>`. A first run
-needs no token: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now). To run the
+needs no key: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now). To run the
 routine entry point from this clone, follow [Monitoring from your own machine](aegis-grok-build.md#monitoring-from-your-own-machine):
 the desk root stays outside the clone.
 

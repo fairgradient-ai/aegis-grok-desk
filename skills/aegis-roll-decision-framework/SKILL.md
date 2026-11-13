@@ -43,8 +43,8 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
 - Any other structure is NOT_APPLICABLE with its reason. A protective put's long put is replaced by a ROLL ticket
   the owner names. The roll analysis of long puts, short puts and collars, weekly expirations and an American
   early-exercise model are planned for Stage 2 (not in this release).
-- An index underlying (the sandbox cannot quote one) and the setting `[roll] enabled = false` are NOT_APPLICABLE
-  too.
+- An index underlying (the data source cannot quote index options) and the setting `[roll] enabled = false` are
+  NOT_APPLICABLE too.
 
 ```text
 NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
@@ -55,8 +55,9 @@ NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective p
 - Every call of every standard monthly expiration that the underlying lists, later than the held call's
   expiration, with its calendar days to expiry inside `[roll] dte`. With the fixture's window `[40, 75]` from
   2026-11-03 that is 2026-12-18 and 2027-01-15.
-- The window spans at most 90 days, so at most four monthly chains are needed. One run makes at most 20 requests
-  and fetches at most 4 chains. The WMT run above made 4 requests: the quotes, the expirations and two chains.
+- The window spans at most 90 days, so at most four monthly chains are needed. No new fetch starts once a run has
+  made 40 requests, and a run fetches at most 4 chains. The WMT run above made 7 requests: the quotes (2: stocks and options), the
+  expirations (1) and two chains (2 each: the contract listing, then the snapshots).
 - If an expiration in the window cannot be served, the analysis is UNAVAILABLE: no best candidate is named on
   partial data. If not one candidate can be priced, it is UNAVAILABLE too: `no candidate in your window could be
   priced`, with the reason.
@@ -116,7 +117,7 @@ unpriced apart (`<n> not priced`): a candidate the desk could not price was neve
 ## Reading a roll analysis
 
 ```text
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast

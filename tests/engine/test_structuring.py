@@ -30,10 +30,12 @@ import shutil
 import tempfile
 import unittest
 from decimal import Decimal
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+from unittest import mock
 
-from aegis_desk import (calendar_events, greeks, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache,
-                        quote_qc, structuring, structuring_config, units)
+from aegis_desk import (alpaca_client, calendar_events, greeks, grouping, iv, market_clock, payoff, pnl, positions_csv,
+                        quote_cache, quote_qc, structuring, structuring_config, units)
+from aegis_desk import market_types
 from aegis_desk.market_types import Quote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -728,8 +730,8 @@ class RollGoldenTest(unittest.TestCase):
         answer = self.wmt
         self.assertEqual((S.VERDICT_BEST, None, None), (answer.verdict, answer.cause, answer.reason))
         self.assertEqual("WMT270115C00115000", answer.ranking.best.id)
-        self.assertEqual({"made": 4, "chains": 2, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 51}, answer.requests)
+        self.assertEqual({"made": 7, "chains": 2, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 173}, answer.requests)
         self.assertEqual(([DEC18, JAN15], [DEC18, JAN15], []), (answer.expirations.listed_in_window,
                                                                 answer.expirations.evaluated,
                                                                 answer.expirations.not_evaluated))
@@ -898,7 +900,7 @@ class ProposalGoldenTest(unittest.TestCase):
         answer = self.wmt
         self.assertEqual((S.VERDICT_BEST, "WMT261218C00112500", 2, D("200")),
                          (answer.verdict, answer.ranking.best.id, answer.contracts, answer.group_context.shares))
-        self.assertEqual(4, answer.requests["made"])
+        self.assertEqual(6, answer.requests["made"])
         best = answer.ranking.best
         leg = best.legs[0]
         self.assertEqual((D("2.80"), D("2.90"), D("2.85"), "B", D("3.51"), 45, 32, D("0.32")),
@@ -926,8 +928,8 @@ class ProposalGoldenTest(unittest.TestCase):
         self.assertEqual((S.VERDICT_BEST, "SPY270319P00610000", 1), (answer.verdict, answer.ranking.best.id,
                                                                     answer.contracts))
         self.assertEqual({"drop_pct": D("20"), "spot": D("518.496")}, answer.stress)
-        self.assertEqual({"made": 3, "chains": 1, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 52}, answer.requests)
+        self.assertEqual({"made": 4, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 176}, answer.requests)
         best = answer.ranking.best
         leg = best.legs[0]
         self.assertEqual((D("22.90"), D("23.10"), D("23.00"), "A", D("0.87"), 136, 93),
@@ -1013,8 +1015,8 @@ class ReplacementGoldenTest(unittest.TestCase):
                                                                candidate.net_credit_total))
         self.assertEqual((D("19006.00"), D("3994.00"), D("95.03")), (candidate.after.max_loss, candidate.after.max_profit,
                                                                     candidate.after.breakeven))
-        self.assertEqual({"made": 2, "chains": 1, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 53}, answer.requests)
+        self.assertEqual({"made": 4, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 176}, answer.requests)
         self.assertEqual(D("3.50"), answer.held.close_price)
 
     def test_nvda_replacement_fails_credit_only_and_ex_dividend(self) -> None:
@@ -1040,7 +1042,7 @@ class ReplacementGoldenTest(unittest.TestCase):
 
     def test_a_contract_the_chain_does_not_list(self) -> None:
         answer = S.run_replacement(Desk(self).market(), "AG-20261020-01", JAN15, D("117"), CRITERIA)
-        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_REPLACEMENT_NOT_LISTED, 2),
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_REPLACEMENT_NOT_LISTED, 4),
                          (answer.verdict, answer.cause, answer.requests["made"]))
         with self.assertRaises(ValueError):
             S.run_replacement(Desk(self).market(), "AG-20261020-01", datetime.date(2026, 11, 20), D("110"), CRITERIA)
@@ -1064,7 +1066,7 @@ class ReplacementGoldenTest(unittest.TestCase):
 class UnavailableTest(unittest.TestCase):
     def test_stale_quotes_stop_after_the_quotes_batch(self) -> None:
         answer = S.run_roll_analysis(Desk(self).market("stale"), "AG-20261020-01", CRITERIA)
-        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_SPOT_UNUSABLE, 1),
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_SPOT_UNUSABLE, 2),
                          (answer.verdict, answer.cause, answer.requests["made"]))
 
     def test_a_holiday_makes_no_request(self) -> None:
@@ -1076,7 +1078,7 @@ class UnavailableTest(unittest.TestCase):
     def test_a_chain_not_served_names_no_best(self) -> None:
         after = datetime.datetime(2026, 11, 3, 21, 25, tzinfo=UTC)
         answer = S.run_roll_analysis(Desk(self).market("after_close", after), "AG-20261020-01", CRITERIA)
-        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_CHAIN_NOT_SERVED, 3),
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_CHAIN_NOT_SERVED, 4),
                          (answer.verdict, answer.cause, answer.requests["made"]))
         self.assertEqual([DEC18, JAN15], answer.expirations.listed_in_window)
         self.assertEqual([], answer.expirations.evaluated)
@@ -1087,18 +1089,16 @@ class UnavailableTest(unittest.TestCase):
 
     def test_a_held_call_without_a_fresh_ask(self) -> None:
         desk = Desk(self)
-        path = os.path.join(desk.root, "fixtures", "tradier", "regular", "quotes__WMT,WMT261120C00105000.json")
+        path = os.path.join(desk.root, "fixtures", "alpaca", "regular", "option_quotes__WMT261120C00105000.json")
         with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-        stale = '"ask_date": %d' % ms(STAMP - datetime.timedelta(minutes=40))
-        marker = '"ask": 3.5,'
-        self.assertEqual(1, text.count(marker))
-        head, tail = text.split(marker)
-        tail = tail.replace('"ask_date": %d' % ms(STAMP), stale, 1)
+            document = json.load(handle)
+        quote = document["quotes"]["WMT261120C00105000"]
+        self.assertEqual("2026-11-03T19:31:12Z", quote["t"])
+        quote["t"] = "2026-11-03T18:51:12Z"   # Alpaca's one stamp of both sides, 40 minutes older
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write(head + marker + tail)
+            json.dump(document, handle)
         answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
-        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_HELD_LEG_UNUSABLE, 1),
+        self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_HELD_LEG_UNUSABLE, 2),
                          (answer.verdict, answer.cause, answer.requests["made"]))
 
     def test_a_quarantined_group_and_an_unknown_trade(self) -> None:
@@ -1161,8 +1161,8 @@ class ExpiryDayTest(unittest.TestCase):
                          (held.grade, held.bid, held.ask, held.close_price, held.note, held.realized))
         self.assertIsNone(self.plain.before.group_delta)
         self.assertEqual([JAN15], self.plain.expirations.evaluated)
-        self.assertEqual({"made": 3, "chains": 1, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 52}, self.plain.requests)
+        self.assertEqual({"made": 5, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 175}, self.plain.requests)
 
     def test_a_passed_earnings_date_is_unknown(self) -> None:
         answer = self.plain
@@ -1479,16 +1479,17 @@ class PropertyTest(unittest.TestCase):
 # ------------------------------------------------------------------------------------------------
 
 
-def edit_chains(root: str, symbol: str, edit) -> None:
-    """Rewrite every regular-set chain of ``symbol`` in a desk copy: ``edit(options)`` changes the entries in place."""
-    folder = os.path.join(root, "fixtures", "tradier", "regular")
+def edit_snapshots(root: str, symbol: str, edit) -> None:
+    """Rewrite every regular-set chain snapshot file of ``symbol`` in a desk copy: ``edit(snapshots)`` changes the
+    ``{OCC symbol: snapshot}`` map in place."""
+    folder = os.path.join(root, "fixtures", "alpaca", "regular")
     for name in sorted(os.listdir(folder)):
-        if not name.startswith("chains__%s__" % symbol):
+        if not name.startswith("snapshots__%s__" % symbol):
             continue
         path = os.path.join(folder, name)
         with open(path, encoding="utf-8") as handle:
             document = json.load(handle)
-        edit(document["options"]["option"])
+        edit(document["snapshots"])
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle)
 
@@ -1540,15 +1541,19 @@ class DuplicateQuoteTest(unittest.TestCase):
         self.assertEqual(1, rankings[0].unpriced)
 
     def test_the_named_replacement_with_conflicting_copies_is_unpriced(self) -> None:
+        # Alpaca's snapshots are a map keyed by symbol, so a recorded answer cannot hold two copies; the client's chain
+        # result carries the twin instead (the engine's rule is about the chain it is handed)
         desk = Desk(self)
+        original = alpaca_client.AlpacaClient.option_chain
 
-        def duplicate(options: List[Dict]) -> None:
-            for entry in list(options):
-                if entry["symbol"] == "WMT270115C00115000":
-                    twin = dict(entry, bid=3.4, ask=3.7)
-                    options.insert(0, twin)
-        edit_chains(desk.root, "WMT", duplicate)
-        answer = S.run_replacement(desk.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
+        def duplicated(client: Any, symbol: str, expiration: datetime.date) -> Any:
+            result = original(client, symbol, expiration)
+            twins = [dataclasses.replace(option, bid=D("3.4"), ask=D("3.7")) for option in result.options
+                     if option.symbol == "WMT270115C00115000"]
+            return dataclasses.replace(result, options=twins + list(result.options))
+
+        with mock.patch.object(alpaca_client.AlpacaClient, "option_chain", autospec=True, side_effect=duplicated):
+            answer = S.run_replacement(desk.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
         self.assertEqual(S.VERDICT_PRICED, answer.verdict)
         self.assertEqual(["quote_conflict"], codes(answer.candidate.reasons))
 
@@ -1592,11 +1597,11 @@ class CountsAndWindowTest(unittest.TestCase):
     def test_every_candidate_unpriced_is_unavailable(self) -> None:
         desk = Desk(self)
 
-        def shift(options: List[Dict]) -> None:   # every option stamped 120 s before the underlying
-            for entry in options:
-                entry["bid_date"] -= 120000
-                entry["ask_date"] -= 120000
-        edit_chains(desk.root, "WMT", shift)
+        def shift(snapshots: Dict[str, Dict]) -> None:   # every option stamped 120 s before the underlying
+            for snapshot in snapshots.values():
+                stamp = market_types.from_rfc3339(snapshot["latestQuote"]["t"], "t") - datetime.timedelta(seconds=120)
+                snapshot["latestQuote"]["t"] = stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+        edit_snapshots(desk.root, "WMT", shift)
         answer = S.run_roll_analysis(desk.market(), "AG-20261020-01", CRITERIA)
         self.assertEqual((S.VERDICT_UNAVAILABLE, S.CAUSE_NO_CANDIDATE_PRICED), (answer.verdict, answer.cause))
         self.assertEqual("no candidate in your window could be priced: the underlying's quote is stamped too far from "

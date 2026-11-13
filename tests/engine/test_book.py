@@ -68,7 +68,7 @@ T1_PRICES = {"WMT": ("106.40", "106.46"), "NVDA": ("149.20", "149.25"), "SPY": (
              WMT_CALL: ("1.52", "1.60"), NVDA_CALL: ("1.00", "1.10"), SPY_PUT: ("3.80", "4.00")}
 EXPIRY_DAY_PRICES = {"WMT": ("104.90", "104.96"), "NVDA": ("153.30", "153.36"), "SPY": ("650.00", "650.04"),
                      WMT_CALL: ("0.12", "0.16"), NVDA_CALL: ("3.30", "3.42"), SPY_PUT: ("4.10", "4.30")}
-"""The t1 and expiry_day fixture sets' quotes (tests/fixtures/desk/fixtures/tradier), stamped 19:31:12Z."""
+"""The t1 and expiry_day fixture sets' quotes (tests/fixtures/desk/fixtures/alpaca), stamped 19:31:12Z."""
 EX_TUESDAY = "date = 2026-11-24, amount = 0.2350"
 EX_MONDAY = "date = 2026-11-23, amount = 0.2350"
 
@@ -283,7 +283,7 @@ class GoldensTest(unittest.TestCase):
                                                                  document["as_of_label"]))
         self.assertEqual({"grades": {"A": 3, "B": 2, "C": 1, "D": 0, "E": 0, "F": 0}, "usable_legs": 6,
                           "unavailable_legs": 0, "bound_min": 25}, document["data_quality"])
-        self.assertEqual([{"name": "tradier:sandbox", "delay_min": 15, "receipt_utc": NOW}], document["sources"])
+        self.assertEqual([{"name": "alpaca:paper", "delay_min": 15, "receipt_utc": NOW}], document["sources"])
         self.assertEqual({"risk_free_rate": D("0.0412"), "source": "3-month Treasury bill, owner-entered",
                           "as_of": datetime.date(2026, 10, 30)}, document["rates"])
         positions = positions_of(FIXTURE_LINES)
@@ -1105,8 +1105,9 @@ class LoadBookTest(unittest.TestCase):
         run = book.load_book(self.market("regular", NOW))
         self.assertEqual((0, SIX, "missing", datetime.date(2026, 11, 2)),
                          (run.exit_code, run.symbols, run.prev_snapshot_status, run.prev_snapshot_date))
-        self.assertEqual(1, len(self.ledger()), "one quotes request for the whole book")
-        self.assertEqual(6, self.ledger()[0]["symbols"])
+        self.assertEqual(2, len(self.ledger()), "one quotes batch for the whole book: equities, then options")
+        self.assertEqual([("/v2/stocks/quotes/latest", 3), ("/v1beta1/options/quotes/latest", 3)],
+                         [(record["path"], record["symbols"]) for record in self.ledger()])
         document = run.document
         self.assertEqual(D("4097.00"), document["portfolio"]["unrealized_pl_mid"])
         self.assertEqual(D("4034.00"), document["portfolio"]["unrealized_pl_liq"])
@@ -1145,7 +1146,7 @@ class LoadBookTest(unittest.TestCase):
                          [leg["day_pl"] for leg in document["legs"]])
         self.assertEqual(D("103.81"), document["underlyings"]["WMT"]["prev_eod_mid"])
         self.assertEqual("400.00", round_trip(document)["portfolio"]["day_pl"])
-        self.assertEqual(2, len(self.ledger()), "the second day refetched: the 11-02 copies are past the TTL")
+        self.assertEqual(4, len(self.ledger()), "the second day refetched: the 11-02 copies are past the TTL")
 
     def test_holiday_fetches_nothing_and_is_unavailable(self) -> None:
         run = book.load_book(self.market("holiday", datetime.datetime(2026, 11, 26, 15, 0, tzinfo=UTC)))
@@ -1242,7 +1243,7 @@ class LoadBookTest(unittest.TestCase):
         run = book.load_book(self.market("regular", NOW))
         self.assertEqual((0, "open", True, "as of 14:31:12 ET"),
                          (run.exit_code, run.session.session, run.session.trading_day, run.document["as_of_label"]))
-        self.assertEqual(1, len(self.ledger()), "one quotes request, as on any open day")
+        self.assertEqual(2, len(self.ledger()), "one quotes batch (two requests), as on any open day")
         self.assertEqual((D("4097.00"), D("4034.00"), 6),
                          (run.document["portfolio"]["unrealized_pl_mid"], run.document["portfolio"]["unrealized_pl_liq"],
                           run.document["data_quality"]["usable_legs"]))

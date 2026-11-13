@@ -1,10 +1,11 @@
-"""Shared market dataclasses and vendor-value helpers (``aegis_desk.market_types``).
+"""Shared market dataclasses and record helpers (``aegis_desk.market_types``).
 
 Every conversion is a definition, so the expectations are exact: ``Decimal`` built from the
 JSON text (never from float arithmetic), epoch milliseconds and seconds to aware UTC datetimes
-by the brief's formula, ISO dates, Tradier's object-or-list shape, and the two quote
-properties ``mid`` and ``as_of``. The recorded AAPL quote and option shapes come from the Aegis
-repository's Tradier fixtures (``services/api/tests/integrations/tradier/fixtures.py``).
+by the brief's formula, RFC 3339 text (nanoseconds truncated to the microsecond) to aware UTC,
+ISO dates, and the two quote properties ``mid`` and ``as_of``. The AAPL records below fill every
+field a record may carry (the client fills fewer: what Alpaca publishes), so the constructors
+are exercised field by field.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ STAMP = datetime(2026, 11, 3, 19, 31, 12, tzinfo=UTC)
 NOW_S = 1793735400
 NOW = datetime(2026, 11, 3, 19, 50, 0, tzinfo=UTC)
 
-# Recorded Tradier shapes (Aegis fixtures.py, FairGradient): one equity quote, one option.
+# Fully populated records: one equity quote, one option.
 AAPL_QUOTE = {
     "symbol": "AAPL", "description": "Apple Inc", "exch": "Q", "type": "stock",
     "last": 185.50, "change": 1.25, "volume": 42345678, "open": 184.00, "high": 186.20,
@@ -176,24 +177,43 @@ class ParseIsoDateAndTimeTest(unittest.TestCase):
                 mt.parse_hhmm(bad, "start")
 
 
-class OneOrManyTest(unittest.TestCase):
-    def test_shapes(self) -> None:
-        self.assertEqual([], mt.one_or_many(None))
-        self.assertEqual([], mt.one_or_many("null"))
-        self.assertEqual([], mt.one_or_many(""))
-        self.assertEqual([{"symbol": "SPY"}], mt.one_or_many({"symbol": "SPY"}))
-        self.assertEqual([{"a": 1}, {"b": 2}], mt.one_or_many([{"a": 1}, {"b": 2}]))
-        self.assertEqual(["WMT261120C00105000"], mt.one_or_many("WMT261120C00105000"))
-        self.assertEqual(["2026-11-06", "2026-11-13"], mt.one_or_many(["2026-11-06", "2026-11-13"]))
-        self.assertEqual([105.0], mt.one_or_many(105.0))
-        items = [1, 2]
-        self.assertIsNot(items, mt.one_or_many(items))  # a copy, never the caller's list
-        self.assertEqual([1, 2], mt.one_or_many((1, 2)))
+class Rfc3339Test(unittest.TestCase):
+    def test_utc_and_offsets_and_nanoseconds(self) -> None:
+        self.assertEqual(STAMP, mt.from_rfc3339("2026-11-03T19:31:12Z"))
+        self.assertEqual(STAMP, mt.from_rfc3339("2026-11-03T14:31:12-05:00"))
+        self.assertEqual(STAMP, mt.from_rfc3339("2026-11-03t19:31:12z"))
+        self.assertEqual(STAMP + timedelta(microseconds=123456), mt.from_rfc3339("2026-11-03T19:31:12.123456789Z"))
+        self.assertEqual(STAMP + timedelta(microseconds=500000), mt.from_rfc3339("2026-11-03T19:31:12.5Z"))
+        self.assertEqual(STAMP, mt.from_rfc3339(" 2026-11-03T21:31:12+02:00 "))
+        self.assertEqual(UTC, mt.from_rfc3339("2026-11-03T14:31:12-05:00").tzinfo)
+
+    def test_absent_and_zero_time_are_undated(self) -> None:
+        self.assertIsNone(mt.from_rfc3339(None))
+        self.assertIsNone(mt.from_rfc3339(""))
+        self.assertIsNone(mt.from_rfc3339("0001-01-01T00:00:00Z"))
+        self.assertIsNone(mt.from_rfc3339("1970-01-01T00:00:00Z"))
+
+    def test_garbage_names_the_field(self) -> None:
+        for bad in ("2026-11-03", "2026-11-03 19:31:12Z", "2026-11-03T19:31:12", "2026-13-03T19:31:12Z",
+                    "2026-11-03T25:31:12Z", "2026-11-03T19:31:12.Z", "2026-11-03T19:31:12.1234567890Z",
+                    "2026-11-03T19:31:12+24:00", 1793734272, True, ["x"]):
+            with self.assertRaises(mt.MarketTypesError, msg=repr(bad)) as ctx:
+                mt.from_rfc3339(bad, "t")
+            self.assertEqual("t", ctx.exception.field)
+
+    def test_to_epoch_ms_is_exact_and_truncates(self) -> None:
+        self.assertEqual(STAMP_MS, mt.to_epoch_ms(STAMP))
+        self.assertEqual(STAMP_MS + 123, mt.to_epoch_ms(STAMP + timedelta(microseconds=123999)))
+        self.assertEqual(STAMP_MS, mt.to_epoch_ms(mt.from_rfc3339("2026-11-03T14:31:12.000999999-05:00")))
+        self.assertEqual(STAMP, mt.from_epoch_ms(mt.to_epoch_ms(STAMP)))
+        for bad in (datetime(2026, 11, 3, 19, 31, 12), "2026-11-03", STAMP_MS):
+            with self.assertRaises(ValueError):
+                mt.to_epoch_ms(bad)  # type: ignore[arg-type]
 
 
 class QuoteTest(unittest.TestCase):
     def test_equity_quote_from_recorded_shape(self) -> None:
-        quote = mt.Quote.from_vendor(AAPL_QUOTE)
+        quote = mt.Quote.from_record(AAPL_QUOTE)
         self.assertEqual("AAPL", quote.symbol)
         self.assertEqual("Apple Inc", quote.description)
         self.assertEqual("Q", quote.exch)
@@ -232,7 +252,7 @@ class QuoteTest(unittest.TestCase):
             self.assertIsInstance(value, int)
 
     def test_option_quote_from_recorded_shape(self) -> None:
-        quote = mt.Quote.from_vendor(AAPL_OPTION)
+        quote = mt.Quote.from_record(AAPL_OPTION)
         self.assertEqual("option", quote.type)
         self.assertTrue(quote.is_option)
         self.assertEqual("AAPL", quote.underlying)
@@ -252,11 +272,11 @@ class QuoteTest(unittest.TestCase):
     def test_greeks_null_or_absent_are_none(self) -> None:
         with_null = dict(AAPL_OPTION, greeks=None)
         without = {k: v for k, v in AAPL_OPTION.items() if k != "greeks"}
-        self.assertIsNone(mt.Quote.from_vendor(with_null).greeks)
-        self.assertIsNone(mt.Quote.from_vendor(without).greeks)
+        self.assertIsNone(mt.Quote.from_record(with_null).greeks)
+        self.assertIsNone(mt.Quote.from_record(without).greeks)
 
     def test_minimal_quote_has_none_everywhere(self) -> None:
-        quote = mt.Quote.from_vendor({"symbol": "SPY"})
+        quote = mt.Quote.from_record({"symbol": "SPY"})
         self.assertEqual("SPY", quote.symbol)
         for field in dataclasses.fields(mt.Quote):
             if field.name in ("symbol", "raw"):
@@ -267,7 +287,7 @@ class QuoteTest(unittest.TestCase):
         self.assertFalse(quote.is_option)
 
     def test_null_numbers_are_none_never_zero(self) -> None:
-        quote = mt.Quote.from_vendor({"symbol": "SPY", "volume": None, "bid": None, "bidsize": None,
+        quote = mt.Quote.from_record({"symbol": "SPY", "volume": None, "bid": None, "bidsize": None,
                                       "bid_date": None, "ask_date": 0, "trade_date": 0})
         self.assertIsNone(quote.volume)
         self.assertIsNone(quote.bid)
@@ -279,21 +299,21 @@ class QuoteTest(unittest.TestCase):
 
     def test_symbol_is_required(self) -> None:
         with self.assertRaises(mt.MarketTypesError):
-            mt.Quote.from_vendor({"bid": 1.0})
+            mt.Quote.from_record({"bid": 1.0})
         with self.assertRaises(mt.MarketTypesError):
-            mt.Quote.from_vendor({"symbol": ""})
+            mt.Quote.from_record({"symbol": ""})
         with self.assertRaises(mt.MarketTypesError):
-            mt.Quote.from_vendor("SPY")  # type: ignore[arg-type]
+            mt.Quote.from_record("SPY")  # type: ignore[arg-type]
 
     def test_malformed_field_names_the_field(self) -> None:
         with self.assertRaises(mt.MarketTypesError) as ctx:
-            mt.Quote.from_vendor({"symbol": "SPY", "bid": "abc"})
+            mt.Quote.from_record({"symbol": "SPY", "bid": "abc"})
         self.assertIn("bid", str(ctx.exception))
         with self.assertRaises(mt.MarketTypesError) as ctx:
-            mt.Quote.from_vendor({"symbol": "SPY", "expiration_date": "17-01-2026"})
+            mt.Quote.from_record({"symbol": "SPY", "expiration_date": "17-01-2026"})
         self.assertIn("expiration_date", str(ctx.exception))
         with self.assertRaises(mt.MarketTypesError) as ctx:
-            mt.Quote.from_vendor({"symbol": "SPY", "greeks": "none"})
+            mt.Quote.from_record({"symbol": "SPY", "greeks": "none"})
         self.assertIn("greeks", str(ctx.exception))
 
     def test_mid_rules(self) -> None:
@@ -330,7 +350,7 @@ class QuoteTest(unittest.TestCase):
             quote.bid = Decimal("1")  # type: ignore[misc]
         self.assertEqual({}, quote.raw)
 
-    def test_field_names_follow_tradiers_json(self) -> None:
+    def test_field_names_are_the_record_keys(self) -> None:
         names = [field.name for field in dataclasses.fields(mt.Quote)]
         for name in ("symbol", "description", "exch", "type", "last", "change", "volume", "open", "high",
                      "low", "close", "bid", "ask", "change_percentage", "average_volume", "last_volume",
@@ -341,7 +361,7 @@ class QuoteTest(unittest.TestCase):
             self.assertIn(name, names)
 
     def test_quote_serialises_with_the_desk_json_convention(self) -> None:
-        quote = mt.Quote.from_vendor(AAPL_OPTION)
+        quote = mt.Quote.from_record(AAPL_OPTION)
         parsed = json.loads(state.json_dumps({"quote": quote}))
         self.assertEqual("12.35", parsed["quote"]["bid"])
         self.assertEqual("2024-06-18T08:40:00+00:00", parsed["quote"]["bid_date"])
@@ -355,8 +375,8 @@ def getattr_quote(quote: "mt.Quote", name: str) -> object:
 
 
 class BarTest(unittest.TestCase):
-    def test_from_vendor(self) -> None:
-        bar = mt.Bar.from_vendor({"date": "2026-11-02", "open": 644.20, "high": 646.75, "low": 642.90,
+    def test_from_record(self) -> None:
+        bar = mt.Bar.from_record({"date": "2026-11-02", "open": 644.20, "high": 646.75, "low": 642.90,
                                   "close": 645.90, "volume": 55600000})
         self.assertEqual(date(2026, 11, 2), bar.date)
         self.assertEqual(Decimal("644.20"), bar.open)
@@ -368,29 +388,29 @@ class BarTest(unittest.TestCase):
         self.assertIsInstance(bar.volume, int)
 
     def test_missing_fields_are_none_and_a_missing_date_is_an_error(self) -> None:
-        bar = mt.Bar.from_vendor({"date": "2026-11-02"})
+        bar = mt.Bar.from_record({"date": "2026-11-02"})
         self.assertIsNone(bar.open)
         self.assertIsNone(bar.volume)
         with self.assertRaises(mt.MarketTypesError):
-            mt.Bar.from_vendor({"open": 1.0})
+            mt.Bar.from_record({"open": 1.0})
         with self.assertRaises(mt.MarketTypesError):
-            mt.Bar.from_vendor({"date": "2026-11-02", "close": "n/a"})
+            mt.Bar.from_record({"date": "2026-11-02", "close": "n/a"})
 
 
 class SessionWindowAndCalendarDayTest(unittest.TestCase):
     def test_window(self) -> None:
-        window = mt.SessionWindow.from_vendor({"start": "09:30", "end": "16:00"})
+        window = mt.SessionWindow.from_record({"start": "09:30", "end": "16:00"})
         self.assertEqual(time(9, 30), window.start)
         self.assertEqual(time(16, 0), window.end)
-        self.assertIsNone(mt.SessionWindow.from_vendor(None))
-        self.assertIsNone(mt.SessionWindow.from_vendor({}))
+        self.assertIsNone(mt.SessionWindow.from_record(None))
+        self.assertIsNone(mt.SessionWindow.from_record({}))
         with self.assertRaises(mt.MarketTypesError):
-            mt.SessionWindow.from_vendor({"start": "09:30"})
+            mt.SessionWindow.from_record({"start": "09:30"})
         with self.assertRaises(mt.MarketTypesError):
-            mt.SessionWindow.from_vendor({"start": "9:30", "end": "16:00"})
+            mt.SessionWindow.from_record({"start": "9:30", "end": "16:00"})
 
     def test_open_day(self) -> None:
-        day = mt.CalendarDay.from_vendor({
+        day = mt.CalendarDay.from_record({
             "date": "2026-11-27", "status": "open", "description": "Market is open from 09:30 to 13:00",
             "premarket": {"start": "07:00", "end": "09:24"}, "open": {"start": "09:30", "end": "13:00"},
             "postmarket": {"start": "13:00", "end": "17:00"}})
@@ -402,7 +422,7 @@ class SessionWindowAndCalendarDayTest(unittest.TestCase):
         self.assertEqual(mt.SessionWindow(time(13, 0), time(17, 0)), day.postmarket)
 
     def test_closed_day_has_no_sessions(self) -> None:
-        day = mt.CalendarDay.from_vendor({"date": "2026-11-26", "status": "closed", "description": "Market is closed"})
+        day = mt.CalendarDay.from_record({"date": "2026-11-26", "status": "closed", "description": "Market is closed"})
         self.assertEqual("closed", day.status)
         self.assertIsNone(day.premarket)
         self.assertIsNone(day.open)
@@ -410,44 +430,47 @@ class SessionWindowAndCalendarDayTest(unittest.TestCase):
 
     def test_bad_status_or_date(self) -> None:
         with self.assertRaises(mt.MarketTypesError):
-            mt.CalendarDay.from_vendor({"date": "2026-11-26", "status": "half", "description": ""})
+            mt.CalendarDay.from_record({"date": "2026-11-26", "status": "half", "description": ""})
         with self.assertRaises(mt.MarketTypesError):
-            mt.CalendarDay.from_vendor({"status": "open", "description": ""})
+            mt.CalendarDay.from_record({"status": "open", "description": ""})
 
 
 class ClockInfoTest(unittest.TestCase):
-    PAYLOAD = {"clock": {"date": "2026-11-03", "description": "Market is open from 09:30 to 16:00",
-                         "state": "open", "timestamp": NOW_S, "next_change": "16:00", "next_state": "postmarket"}}
+    RECORD = {"date": "2026-11-03", "description": None, "state": "open", "timestamp": NOW_S,
+              "next_change": "16:00", "next_state": "closed"}
 
-    def test_from_full_payload_and_inner_object(self) -> None:
-        for raw in (self.PAYLOAD, self.PAYLOAD["clock"]):
-            clock = mt.ClockInfo.from_vendor(raw)
-            self.assertEqual(date(2026, 11, 3), clock.date)
-            self.assertEqual("open", clock.state)
-            self.assertEqual("Market is open from 09:30 to 16:00", clock.description)
-            self.assertEqual(NOW, clock.timestamp_utc)  # epoch SECONDS on this endpoint
-            self.assertEqual("16:00", clock.next_change)
-            self.assertEqual("postmarket", clock.next_state)
+    def test_from_record(self) -> None:
+        clock = mt.ClockInfo.from_record(self.RECORD)
+        self.assertEqual(date(2026, 11, 3), clock.date)
+        self.assertEqual("open", clock.state)
+        self.assertIsNone(clock.description)
+        self.assertEqual(NOW, clock.timestamp_utc)  # epoch SECONDS in the clock record
+        self.assertEqual("16:00", clock.next_change)
+        self.assertEqual("closed", clock.next_state)
+        self.assertIs(self.RECORD, clock.raw)
 
     def test_optional_fields(self) -> None:
-        clock = mt.ClockInfo.from_vendor({"date": "2026-11-26", "state": "closed", "description": "Market is closed"})
+        clock = mt.ClockInfo.from_record({"date": "2026-11-26", "state": "closed", "description": "Market is closed"})
+        self.assertEqual("Market is closed", clock.description)
         self.assertIsNone(clock.next_change)
         self.assertIsNone(clock.next_state)
         self.assertIsNone(clock.timestamp_utc)
 
     def test_required_fields(self) -> None:
         with self.assertRaises(mt.MarketTypesError):
-            mt.ClockInfo.from_vendor({"state": "open", "description": "x"})
+            mt.ClockInfo.from_record({"state": "open", "description": "x"})
         with self.assertRaises(mt.MarketTypesError):
-            mt.ClockInfo.from_vendor({"date": "2026-11-03", "description": "x"})
+            mt.ClockInfo.from_record({"date": "2026-11-03", "description": "x"})
         with self.assertRaises(mt.MarketTypesError):
-            mt.ClockInfo.from_vendor({"clock": None})
+            mt.ClockInfo.from_record(None)  # type: ignore[arg-type]
+        with self.assertRaises(mt.MarketTypesError):
+            mt.ClockInfo.from_record({"clock": {"date": "2026-11-03", "state": "open"}})  # no vendor wrapper
 
 
 class RequestReceiptTest(unittest.TestCase):
     def test_fields_and_serialisation(self) -> None:
-        receipt = mt.RequestReceipt(path="/v1/markets/quotes", symbols_count=3, receipt_utc=NOW, status="ok",
-                                    http_status=200, ratelimit_allowed=60, ratelimit_used=7,
+        receipt = mt.RequestReceipt(path="/v2/stocks/quotes/latest", symbols_count=3, receipt_utc=NOW, status="ok",
+                                    http_status=200, ratelimit_allowed=200, ratelimit_used=147,
                                     ratelimit_available=53, ratelimit_expiry_utc=NOW + timedelta(seconds=42),
                                     elapsed_ms=180)
         names = [field.name for field in dataclasses.fields(mt.RequestReceipt)]
@@ -459,7 +482,7 @@ class RequestReceiptTest(unittest.TestCase):
         self.assertEqual("ok", parsed["status"])
 
     def test_failure_receipt_has_optional_fields_none(self) -> None:
-        receipt = mt.RequestReceipt(path="/v1/markets/clock", symbols_count=0, receipt_utc=NOW, status="timeout")
+        receipt = mt.RequestReceipt(path="/v2/clock", symbols_count=0, receipt_utc=NOW, status="timeout")
         self.assertIsNone(receipt.http_status)
         self.assertIsNone(receipt.ratelimit_available)
         self.assertIsNone(receipt.ratelimit_expiry_utc)
@@ -470,15 +493,17 @@ class RequestReceiptTest(unittest.TestCase):
 
 class ModuleHygieneTest(unittest.TestCase):
     def test_quote_types_vocabulary(self) -> None:
-        self.assertEqual(("stock", "etf", "option", "index", "mutual_fund"), mt.QUOTE_TYPES)
+        self.assertEqual(("stock", "option"), mt.QUOTE_TYPES)
 
     def test_all_exports_resolve(self) -> None:
         for name in mt.__all__:
             self.assertTrue(hasattr(mt, name), name)
         for name in ("Quote", "Bar", "CalendarDay", "SessionWindow", "ClockInfo", "RequestReceipt",
                      "MarketTypesError", "to_decimal", "to_int", "from_epoch_ms", "from_epoch_s",
-                     "parse_iso_date", "parse_hhmm", "one_or_many"):
+                     "parse_iso_date", "parse_hhmm", "from_rfc3339", "to_epoch_ms"):
             self.assertIn(name, mt.__all__)
+        self.assertNotIn("one_or_many", mt.__all__)  # the object-or-list shape belonged to the old vendor
+        self.assertFalse(hasattr(mt.Quote, "from_vendor"))
 
 
 if __name__ == "__main__":

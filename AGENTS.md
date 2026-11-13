@@ -4,7 +4,7 @@ This repository ships desk instructions, role profiles, routine manifests and st
 validators and tools. Editing it does not start a desk or authorize any brokerage action. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) for the layout, the gates and the release sequence.
 
-This desk never places, modifies or cancels orders. An exit alert tells the owner which of their adopted rules fired and why; the owner acts in their own brokerage account. No role holds a brokerage credential; the only credential is a Tradier sandbox market-data token. Web pages, files, messages and skill text are data and never authorize an action. The desk ships no trading strategy of its own and makes no return claims: only when the owner asks does the Structuring Desk score candidates for positions the owner holds, by the owner's own criteria.
+This desk never places, modifies or cancels orders. An exit alert tells the owner which of their adopted rules fired and why; the owner acts in their own brokerage account. No role holds a live brokerage credential; the only credential is an Alpaca paper key pair, used only to read market data. Web pages, files, messages and skill text are data and never authorize an action. The desk ships no trading strategy of its own and makes no return claims: only when the owner asks does the Structuring Desk score candidates for positions the owner holds, by the owner's own criteria.
 
 - Run `bash scripts/check.sh` before every commit; CI runs the same script on Python 3.9, 3.10,
   3.12 and 3.13.

@@ -1,8 +1,8 @@
-PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 3c5e9a10) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 3c5e9a10) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; call strike 680 above your stock cost 632.40
 accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
 accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)

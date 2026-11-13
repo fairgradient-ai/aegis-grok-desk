@@ -1,9 +1,9 @@
 """``scripts/quote_cache.py`` run in-process (``main(argv)``) against a copied fixture desk root.
 
-The offline journeys need Builder A's ``aegis_desk.tradier_client`` (the ``OfflineTransport``) and
+The offline journeys need ``aegis_desk.alpaca_client`` (the ``OfflineTransport``) and
 Builder C's shared ``--now`` flag; those test classes skip, with a message, while either is still
 missing from the tree and run unchanged once both have landed. The usage, schema and
-production-refusal checks need neither and always run.
+host-refusal checks need neither and always run.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import tests._path  # noqa: F401
 # isort: on
 
 import contextlib
+import dataclasses
 import io
 import json
 import os
@@ -29,12 +30,12 @@ import quote_cache as tool  # the tool module scripts/quote_cache.py, not the li
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
-CLIENT_MODULE = os.path.join(ROOT, "scripts", "aegis_desk", "tradier_client.py")
+CLIENT_MODULE = os.path.join(ROOT, "scripts", "aegis_desk", "alpaca_client.py")
 REGULAR_NOW = "2026-11-03T19:50:00Z"
 AFTER_CLOSE_NOW = "2026-11-03T21:25:00Z"
 PRE_OPEN_NOW = "2026-11-03T13:00:00Z"
 HOLIDAY_NOW = "2026-11-26T15:00:00Z"
-TOKEN_RE = re.compile(r"(?i)bearer|authorization")
+TOKEN_RE = re.compile(r"(?i)bearer|authorization|apca-api")
 CLOSURE_ENTRY = '\n[[closures]]\ndate = %s\nkind = "%s"\nsource = "owner-entered (test)"\n'
 CLOSED_TODAY_SESSION = {"session": "holiday", "trading_day": False, "close_utc": None, "minutes_to_close": None,
                         "holiday_name": "calendar closure", "as_of_utc": "2026-11-03T19:50:00+00:00",
@@ -50,7 +51,7 @@ def now_flag_present() -> bool:
 NOW_READY = now_flag_present()
 NOW_SKIP = "waits for the shared --now flag of ReadOnlyParser (Builder C)"
 READY = os.path.isfile(CLIENT_MODULE) and NOW_READY
-SKIP = "waits for scripts/aegis_desk/tradier_client.py (Builder A) and the shared --now flag (Builder C)"
+SKIP = "waits for scripts/aegis_desk/alpaca_client.py and the shared --now flag (Builder C)"
 
 
 def run_tool(argv: Sequence[str]) -> Tuple[int, str]:
@@ -100,7 +101,7 @@ class DeskCopy(unittest.TestCase):
 
 
 class AlwaysOnTest(DeskCopy):
-    """Usage, schema and the production refusal: no client, no fixture set, no ``--now`` needed."""
+    """Usage, schema and the host refusal: no client, no fixture set, no ``--now`` needed."""
 
     def test_schema_exits_0_without_touching_the_desk(self) -> None:
         code, body = run_json(["--schema"])
@@ -158,18 +159,31 @@ class AlwaysOnTest(DeskCopy):
 class PlumbingTest(DeskCopy):
     """Config and host checks: no client is built, but ``main`` resolves ``args.now``."""
 
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite_desk_toml('host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_refused_at_load_with_exit_1(self) -> None:
+        self.rewrite_desk_toml('host = "paper"', 'host = "live"')
         code, body = run_json(["SPY", "--json", "--offline", "--desk-root", self.root])
-        self.assertEqual(20, code)
-        self.assertEqual("unavailable", body["status"])
-        self.assertEqual("production_host", body["error"]["code"])
-        self.assertEqual("production market data is not supported before the market-data proxy (Stage 3); "
-                         "use the sandbox host", body["error"]["message"])
+        self.assertEqual(1, code)
+        self.assertEqual(("error", "config_invalid"), (body["status"], body["error"]["code"]))
+        self.assertIn('host must be "paper" (got "live")', body["error"]["message"])
         self.assertFalse(os.path.exists(os.path.join(self.root, "data")), "nothing is written for a refused host")
         code, text = run_tool(["SPY", "--offline", "--desk-root", self.root])
+        self.assertEqual(1, code)
+        self.assertIn('host must be "paper"', text)
+
+    def test_a_non_paper_host_reaching_the_client_builder_is_exit_20(self) -> None:
+        real = tool.quote_cache.desk_config.load_desk_config
+
+        def live(path: str) -> Any:
+            cfg = real(path)
+            return dataclasses.replace(cfg, market_data=dataclasses.replace(cfg.market_data, host="live"))
+
+        with mock.patch.object(tool.quote_cache.desk_config, "load_desk_config", side_effect=live):
+            code, body = run_json(["SPY", "--json", "--offline", "--desk-root", self.root])
         self.assertEqual(20, code)
-        self.assertIn("use the sandbox host", text)
+        self.assertEqual(("unavailable", "live_host"), (body["status"], body["error"]["code"]))
+        self.assertEqual('only Alpaca paper market data is supported: the desk holds a paper key pair and never points '
+                         'at a live account; set host = "paper"', body["error"]["message"])
+        self.assertFalse(os.path.exists(os.path.join(self.root, "data")), "nothing is written for a refused host")
 
     def test_invalid_desk_toml_is_exit_1(self) -> None:
         self.rewrite_desk_toml('quote_ttl_min = 5', 'quote_ttl_min = 99')
@@ -191,13 +205,13 @@ class RegularSetTest(DeskCopy):
         code, body = run_json(self.argv("SPY", "WMT", "WMT261120C00105000"))
         self.assertEqual(0, code, body)
         self.assertEqual({"schema_version": 1, "tool": "quote_cache", "mode": "read-only", "status": "ok",
-                          "generated_at": "2026-11-03T19:50:00+00:00", "source": "tradier:sandbox", "delay_min": 15},
+                          "generated_at": "2026-11-03T19:50:00+00:00", "source": "alpaca:paper", "delay_min": 15},
                          {k: body[k] for k in ("schema_version", "tool", "mode", "status", "generated_at", "source",
                                                "delay_min")})
         payload = body["payload"]
-        self.assertEqual(1, payload["requests_made"])
+        self.assertEqual(2, payload["requests_made"], "equities, then the option: two requests")
         self.assertEqual({}, payload["missing"])
-        self.assertEqual({"window_60s_used": 1, "left": 54}, payload["budget"])
+        self.assertEqual({"window_60s_used": 2, "left": 178}, payload["budget"])
         self.assertEqual("open", payload["session"]["session"])
         self.assertEqual("2026-11-03", payload["session"]["et_date"])
         self.assertEqual(["SPY", "WMT", "WMT261120C00105000"], [q["symbol"] for q in payload["quotes"]])
@@ -208,7 +222,7 @@ class RegularSetTest(DeskCopy):
         self.assertEqual("fetch", spy["source"])
         self.assertEqual("2026-11-03T19:50:00+00:00", spy["fetched_utc"])
         leg = payload["quotes"][2]
-        self.assertEqual(("3.35", "3.5", "3.425", "call", "105.0", "2026-11-20"),
+        self.assertEqual(("3.35", "3.5", "3.425", "call", "105", "2026-11-20"),
                          (leg["bid"], leg["ask"], leg["mid"], leg["option_type"], leg["strike"], leg["expiration_date"]))
         self.assertEqual([], payload["stale"])
         self.assertNotIn("chain", payload)
@@ -218,10 +232,11 @@ class RegularSetTest(DeskCopy):
         self.assertEqual({"SPY", "WMT", "WMT261120C00105000"}, set(document["quotes"]))
         self.assertEqual(648.1, document["quotes"]["SPY"]["quote"]["bid"])
         lines = self.ledger()
-        self.assertEqual(1, len(lines))
-        self.assertEqual(("/v1/markets/quotes", 3, "ok", "2026-11-03T19:50:00+00:00", 200),
-                         (lines[0]["path"], lines[0]["symbols"], lines[0]["status"], lines[0]["utc"],
-                          lines[0]["http_status"]))
+        self.assertEqual(2, len(lines))
+        self.assertEqual([("/v2/stocks/quotes/latest", 2, "ok", "2026-11-03T19:50:00+00:00", 200),
+                          ("/v1beta1/options/quotes/latest", 1, "ok", "2026-11-03T19:50:00+00:00", 200)],
+                         [(line["path"], line["symbols"], line["status"], line["utc"], line["http_status"])
+                          for line in lines])
         self.assertFalse(os.path.exists(os.path.join(FIXTURE_DESK, "data")), "the fixture tree is never written")
 
     def test_second_run_is_served_from_cache(self) -> None:
@@ -231,10 +246,10 @@ class RegularSetTest(DeskCopy):
         payload = body["payload"]
         self.assertEqual(0, payload["requests_made"])
         self.assertEqual(["cache", "cache"], [q["source"] for q in payload["quotes"]])
-        self.assertEqual({"window_60s_used": 1, "left": 54}, payload["budget"])
+        self.assertEqual({"window_60s_used": 1, "left": 179}, payload["budget"])
         code, body = run_json(self.argv("SPY", "WMT", extra=["--force"]))
         self.assertEqual(1, body["payload"]["requests_made"])
-        self.assertEqual({"window_60s_used": 2, "left": 53}, body["payload"]["budget"])
+        self.assertEqual({"window_60s_used": 2, "left": 178}, body["payload"]["budget"])
 
     def test_prose_table_and_footer(self) -> None:
         code, text = run_tool(self.argv("SPY", "WMT", "WMT261120C00105000", json_mode=False))
@@ -243,8 +258,8 @@ class RegularSetTest(DeskCopy):
         self.assertIn("SPY 648.10/648.14 648.12 as-of 14:31:12 ET (age 18 min) fetch", lines)
         self.assertIn("WMT 104.20/104.26 104.23 as-of 14:31:12 ET (age 18 min) fetch", lines)
         self.assertIn("WMT261120C00105000 3.35/3.50 3.425 as-of 14:31:12 ET (age 18 min) fetch", lines)
-        self.assertIn("session open (2026-11-03 14:50:00 ET); requests 1; 60-s window used 1, left 54", lines)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertIn("session open (2026-11-03 14:50:00 ET); requests 2; 60-s window used 2, left 178", lines)
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
         self.assertIsNone(TOKEN_RE.search(text))
 
     def test_stale_set_is_served_and_graded_elsewhere(self) -> None:
@@ -253,17 +268,18 @@ class RegularSetTest(DeskCopy):
         spy = body["payload"]["quotes"][0]
         self.assertEqual((60, "2026-11-03T18:50:00+00:00"), (spy["age_min"], spy["as_of"]))
 
-    def test_unmatched_index_symbol_is_exit_20(self) -> None:
+    def test_an_index_symbol_the_vendor_does_not_quote_is_exit_20(self) -> None:
         code, body = run_json(self.argv("SPX"))
         self.assertEqual(20, code)
         self.assertEqual("unavailable", body["status"])
-        self.assertEqual({"SPX": "unmatched"}, body["payload"]["missing"])
+        self.assertEqual({"SPX": "fetch_failed:not_returned"}, body["payload"]["missing"])
+        self.assertIn("SPX absent from the vendor response (not quoted)", body["payload"]["warnings"])
         self.assertEqual([], body["payload"]["quotes"])
         self.assertEqual(1, body["payload"]["requests_made"])
         code, body = run_json(self.argv("SPX", "SPY"))
         self.assertEqual(20, code)
         self.assertEqual(["SPY"], [q["symbol"] for q in body["payload"]["quotes"]])
-        self.assertEqual({"SPX": "unmatched"}, body["payload"]["missing"])
+        self.assertEqual({"SPX": "fetch_failed:not_returned"}, body["payload"]["missing"])
 
     def test_unknown_fixture_key_fails_the_whole_batch(self) -> None:
         code, body = run_json(self.argv("SPY", "QQQ"))
@@ -288,16 +304,17 @@ class RegularSetTest(DeskCopy):
         code, body = run_json(self.argv("WMT", extra=["--chain", "WMT", "--expiration", "2026-11-20"]))
         self.assertEqual(0, code, body)
         payload = body["payload"]
-        self.assertEqual(2, payload["requests_made"])
+        self.assertEqual(3, payload["requests_made"], "the quote, then the chain's contract listing and snapshots")
         chain = payload["chain"]
         self.assertEqual(("WMT", "2026-11-20", "fetch", 10, None),
                          (chain["symbol"], chain["expiration"], chain["served_from"], chain["count"],
                           chain["missing_reason"]))
         anchor = [o for o in chain["options"] if o["symbol"] == "WMT261120C00105000"][0]
-        self.assertEqual(("3.35", "3.5", "3.425", "105.0", "call"),
+        self.assertEqual(("3.35", "3.5", "3.425", "105", "call"),
                          (anchor["bid"], anchor["ask"], anchor["mid"], anchor["strike"], anchor["option_type"]))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "data", "cache", "chains", "WMT__2026-11-20.json")))
-        self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/chains"], [l["path"] for l in self.ledger()])
+        self.assertEqual(["/v2/stocks/quotes/latest", "/v2/options/contracts", "/v1beta1/options/snapshots/WMT"],
+                         [l["path"] for l in self.ledger()])
         code, body = run_json(self.argv("WMT", extra=["--chain", "WMT", "--expiration", "2026-11-20"]))
         self.assertEqual(0, body["payload"]["requests_made"])
         self.assertEqual("cache", body["payload"]["chain"]["served_from"])
@@ -307,9 +324,10 @@ class RegularSetTest(DeskCopy):
 
     def test_max_batch_and_symbol_pattern_match_the_client(self) -> None:
         from aegis_desk import quote_cache as library
-        from aegis_desk import tradier_client
-        self.assertEqual(tradier_client.MAX_BATCH, library.MAX_BATCH)
-        self.assertEqual(tradier_client.SYMBOL_RE.pattern, library.SYMBOL_RE.pattern)
+        from aegis_desk import alpaca_client
+        self.assertEqual(alpaca_client.MAX_BATCH, library.MAX_BATCH)
+        self.assertEqual(alpaca_client.SYMBOL_RE.pattern, library.SYMBOL_RE.pattern)
+        self.assertEqual(alpaca_client.RATE_LIMIT_PER_MIN, library.MINUTE_BUDGET)
 
     def test_fixture_set_defaults_to_regular_in_the_payload(self) -> None:
         code, body = run_json(self.argv("SPY"))
@@ -385,17 +403,19 @@ class OtherSetsTest(DeskCopy):
         self.assertEqual("pre", body["payload"]["session"]["session"])
         self.assertEqual(("645.88", "645.92"), (body["payload"]["quotes"][0]["bid"], body["payload"]["quotes"][0]["ask"]))
 
-    def test_missing_token_online_is_exit_20_never_1(self) -> None:
-        self.rewrite_desk_toml('token_env = "TRADIER_API_TOKEN"',
-                               'token_env = "AEGIS_TEST_NO_SUCH_TOKEN"\ntoken_file = "%s"'
-                               % os.path.join(self.root, "no-such-token-file"))
+    def test_missing_key_pair_online_is_exit_20_never_1(self) -> None:
+        self.rewrite_desk_toml('key_env = "APCA_API_KEY_ID"',
+                               'key_env = "AEGIS_TEST_NO_SUCH_KEY_ID"\ncredentials_file = "%s"'
+                               % os.path.join(self.root, "no-such-credentials-file"))
+        self.rewrite_desk_toml('secret_env = "APCA_API_SECRET_KEY"', 'secret_env = "AEGIS_TEST_NO_SUCH_SECRET"')
         with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("AEGIS_TEST_NO_SUCH_TOKEN", None)
+            os.environ.pop("AEGIS_TEST_NO_SUCH_KEY_ID", None)
+            os.environ.pop("AEGIS_TEST_NO_SUCH_SECRET", None)
             code, body = run_json(["SPY", "--json", "--desk-root", self.root, "--now", REGULAR_NOW])
         self.assertEqual(20, code)
-        self.assertEqual(("unavailable", "no_token"), (body["status"], body["error"]["code"]))
-        self.assertEqual("no market-data token: add the Tradier sandbox token through the secret card "
-                         "(or the acknowledged token file)", body["error"]["message"])
+        self.assertEqual(("unavailable", "no_credential"), (body["status"], body["error"]["code"]))
+        self.assertEqual("no market-data key: add the Alpaca paper key ID and secret through the secret card "
+                         "(or the acknowledged credentials file)", body["error"]["message"])
         self.assertEqual([], self.ledger(), "no request is attempted without a credential")
 
 
@@ -422,12 +442,12 @@ class CalendarClosureTest(DeskCopy):
     def test_a_full_closure_today_is_a_closed_day_without_a_fetch(self) -> None:
         self.add_to_calendar(CLOSURE_ENTRY % ("2026-11-03", "full"))
         code, body = self.run_regular(self.root)
-        self.assertEqual((20, "unavailable", "tradier:sandbox", 15, "2026-11-03T19:50:00+00:00"),
+        self.assertEqual((20, "unavailable", "alpaca:paper", 15, "2026-11-03T19:50:00+00:00"),
                          (code, body["status"], body["source"], body["delay_min"], body["generated_at"]))
         self.assertEqual({
             "quotes": [], "stale": [],
             "missing": {"SPY": "market_closed", "WMT": "market_closed", "WMT261120C00105000": "market_closed"},
-            "requests_made": 0, "budget": {"window_60s_used": 0, "left": 55}, "session": CLOSED_TODAY_SESSION,
+            "requests_made": 0, "budget": {"window_60s_used": 0, "left": 180}, "session": CLOSED_TODAY_SESSION,
             "warnings": [], "fixture_set": "regular",
             "chain": {"symbol": "WMT", "expiration": "2026-11-20", "served_from": None, "missing_reason": "market_closed",
                       "count": 0, "fetched_utc": None, "options": []},
@@ -437,8 +457,8 @@ class CalendarClosureTest(DeskCopy):
         self.assertEqual(20, code, text)
         self.assertEqual(["SPY UNAVAILABLE: market_closed", "WMT UNAVAILABLE: market_closed",
                           "NYSE closed (calendar closure, 2026-11-03 14:50:00 ET): no quote fetch; cached copies only; "
-                          "requests 0; 60-s window used 0, left 55",
-                          "Tradier sandbox, delayed 15 min, as of 19:50 UTC"], text.splitlines())
+                          "requests 0; 60-s window used 0, left 180",
+                          "Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:50 UTC"], text.splitlines())
         self.assertEqual([], self.ledger())
 
     def test_a_cached_copy_is_served_on_a_closure_day_whatever_its_age(self) -> None:
@@ -456,7 +476,7 @@ class CalendarClosureTest(DeskCopy):
 
     def test_a_closure_elsewhere_an_early_close_or_no_calendar_leave_the_regular_run_unchanged(self) -> None:
         code, baseline = self.run_regular(self.root)
-        self.assertEqual((0, "open", 2), (code, baseline["payload"]["session"]["session"],
+        self.assertEqual((0, "open", 4), (code, baseline["payload"]["session"]["session"],
                                           baseline["payload"]["requests_made"]))
         for label, entry in (("closure-on-2026-11-10", CLOSURE_ENTRY % ("2026-11-10", "full")),
                              ("early-close-today", CLOSURE_ENTRY % ("2026-11-03", "early_close")),
