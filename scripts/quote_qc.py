@@ -22,13 +22,13 @@ grade F ``NYSE closed``, exit 20), and a closure on the previous trading day mov
 
     SYMBOL grade status bid/ask spread% mid liq(long) liq(short) label
 
-and the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. Exit 0 when every symbol graded
+and the footer ``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC``. Exit 0 when every symbol graded
 A-D (usable for rules), 20 otherwise (E, F, missing: UNAVAILABLE, never HOLD), 1 on a configuration
 or file error (``desk_root``, ``config_invalid``, ``calendar_invalid``: a calendar file that cannot be used,
 ``io_error``: a file where a runtime directory belongs), 2 on usage (a symbol that fails the
 client's pattern included). ``--json`` payload: ``{"symbols": [QuoteQC as dict + served_from ...],
-"bound_min", "session", "missing", "warnings", "fixture_set"}``. The same production-host and
-missing-token refusals as ``quote_cache.py`` (exit 20).
+"bound_min", "session", "missing", "warnings", "fixture_set"}``. The same non-paper-host and
+missing-key refusals as ``quote_cache.py`` (exit 20).
 """
 
 from __future__ import annotations
@@ -48,7 +48,8 @@ from aegis_desk.version import release_version  # noqa: E402
 TOOL = "quote_qc"
 DESCRIPTION = ("grade quotes A-F: session-aware per-side freshness against the desk's bound, spread bands, "
                "fair and liquidation marks; stale or missing is UNAVAILABLE (exit 20), never HOLD")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 LABEL_NO_QUOTE = "no quote"
 OUTPUT: Dict[str, Any] = {
     "symbols": [{"symbol": "string", "grade": "A | B | C | D | E | F",
@@ -77,7 +78,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("symbols", nargs="*", metavar="SYMBOL", help="equity, ETF or OCC option symbols to grade")
     parser.add_argument("--force", action="store_true", help="refetch even when the cached copy is inside the TTL")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

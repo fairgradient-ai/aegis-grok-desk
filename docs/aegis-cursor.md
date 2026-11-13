@@ -59,7 +59,7 @@ example, would limit which calls run the gate, so the check refuses it.
   `<server>__<tool>` and the decoded input, whatever the server type; the start command is not the call, so the gate
   does not read it.
 - The gate denies what it denies everywhere: an order call in code, an HTTP write to a broker host or to an account or
-  order path, an HTTP call to a broker host outside Tradier's market-data paths, an MCP tool whose name holds an order
+  order path, any other HTTP call to a broker host (reads included), an MCP tool whose name holds an order
   verb as a whole word or closes a position, and an MCP input with an order key or an order-shaped value.
 - **A deny** exits 2. Its JSON carries the reason in the two fields Cursor documents, `user_message` and
   `agent_message`. Probed on this release, the release-check shell sample (on the

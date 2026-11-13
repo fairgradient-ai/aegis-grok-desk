@@ -37,7 +37,7 @@ def order_shaped(text: str) -> List[str]:
 
 
 def doctor_record(mode: str = "quick", verdict: str = "PASS", run_utc: str = "2026-11-03T12:31:00+00:00",
-                  statuses: Sequence[Any] = (("interpreter", "PASS"), ("token_source", "WARN"))) -> Dict[str, Any]:
+                  statuses: Sequence[Any] = (("interpreter", "PASS"), ("key_source", "WARN"))) -> Dict[str, Any]:
     checks = [{"id": name, "number": index, "status": status, "reason": "a reason the sheet never prints"}
               for index, (name, status) in enumerate(statuses, 1)]
     return {"schema": 1, "run_utc": run_utc, "mode": mode, "verdict": verdict, "checks": checks,
@@ -133,7 +133,7 @@ def book_document(**portfolio: Any) -> Dict[str, Any]:
             book_leg(7, SPY, day_pl=Decimal("222.00")), book_leg(8, SPY, day_pl=Decimal("-50.00")),
             book_leg(9, "AG-20261001-04", status="closed", day_pl=None)]
     return {"generated_at": contract.parse_utc_instant("2026-11-03T21:35:00Z"), "legs": legs, "groups": groups,
-            "portfolio": values, "warnings": [], "sources": [{"name": "tradier:sandbox", "delay_min": 15}]}
+            "portfolio": values, "warnings": [], "sources": [{"name": "alpaca:paper", "delay_min": 15}]}
 
 
 def book_artifact(document: Optional[Dict[str, Any]] = None) -> summaries.Artifact:
@@ -189,7 +189,7 @@ class MorningSheetTest(LintedTest):
         summary = summaries.morning_sheet(morning())
         self.assertEqual([
             "MORNING DESK SHEET 2026-11-03",
-            "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: token_source",
+            "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: key_source",
             "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits "
             "(csv_recon.py --diff lists them)",
             "open signals: 0",
@@ -265,8 +265,8 @@ class MorningSheetTest(LintedTest):
             (doctor_record(statuses=(("interpreter", "PASS"),)), "PASS, 0 warnings"),
             (doctor_record(mode="full", statuses=(("release_pin", "WARN"), ("connector_readback", "WARN"))),
              "PASS, 2 warnings: release_pin, connector_readback"),
-            (doctor_record(verdict="FAIL", statuses=(("token_source", "FAIL"), ("heartbeats", "WARN"))),
-             "FAIL, 1 warning: heartbeats; 1 failure: token_source"),
+            (doctor_record(verdict="FAIL", statuses=(("key_source", "FAIL"), ("heartbeats", "WARN"))),
+             "FAIL, 1 warning: heartbeats; 1 failure: key_source"),
         )
         for raw, tail in cases:
             summary = summaries.morning_sheet(morning(doctor=made(summaries.LABEL_DOCTOR, DOCTOR_PATH, raw)))

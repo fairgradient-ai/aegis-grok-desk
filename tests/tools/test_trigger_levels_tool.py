@@ -26,7 +26,7 @@ from unittest import mock
 import book as book_tool
 import book_check as book_check_tool
 import trigger_levels as tool  # the tool scripts/trigger_levels.py
-from aegis_desk import alert_lint, desk_paths, levels, state
+from aegis_desk import alert_lint, desk_paths, levels, quote_cache, state
 from tests.engine.test_levels import ALERT, REGULAR_SHEET, WMT_EQUITY_ROW
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -167,7 +167,7 @@ class RegularTest(DeskCopy):
                          payload["rulebook"])
         counts = {group["group_id"]: (group["price_levels"], group["resting_eligible"]) for group in payload["groups"]}
         self.assertEqual({WMT: (3, 1), NVDA: (5, 1), SPY: (3, 0)}, counts)
-        self.assertEqual((None, [], "tradier:sandbox", 15), (payload["plan"], payload["warnings"], body["source"],
+        self.assertEqual((None, [], "alpaca:paper", 15), (payload["plan"], payload["warnings"], body["source"],
                                                             body["delay_min"]))
         self.assertFalse(self.exists("state/rule_state.json"), "trigger_levels never writes the rule state")
         self.assertFalse(self.exists("plans/%s.md" % WMT))
@@ -322,8 +322,9 @@ class ErrorTest(DeskCopy):
         self.assertIn("penny_classes", body["error"]["message"])
 
     def test_refused_market_data_is_unavailable(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
-        code, body = self.run_json()
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = self.run_json()
         self.assertEqual((20, "unavailable"), (code, body["status"]))
         self.assertFalse(self.exists("levels/2026-11-03.md"))
 

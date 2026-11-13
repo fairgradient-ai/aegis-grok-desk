@@ -216,7 +216,7 @@ ships as 0.1.1.
 - [ ] Notifications and Timezone of each routine-owning Bot, read back.
 - [ ] The connector readback line: no connected app or MCP server can act in a brokerage account.
 - [ ] The three Auto-review rules pasted, and a Test run that raised no card.
-- [ ] The token source (doctor check 4) and the sandbox check (check 5).
+- [ ] The key source (doctor check 4) and the paper-key check (check 5).
 - [ ] The `desk.toml` sha256, the `positions.csv` verdict, the rulebook version and sha, the `structuring.toml`
   sha256 (or that you chose to set your criteria later), and the configuration acknowledgement line.
 - [ ] Every routine created paused, read back.

@@ -1,4 +1,4 @@
-EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha 3f9a01bc) fired: loss 2x credit; quote grade E: the conservative side stands | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
+EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha 3f9a01bc) fired: loss 2x credit; quote grade E: the conservative side stands | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
 also fired: your rule DTE21: time to expiry 0 trading days (your threshold: at or below 21 trading days) | your plan: review a roll
 also fired: your rule PIN3: distance from the strike 0.07 % (your threshold: at or below 3 %) and time to expiry 0 trading days (your threshold: at or below 3 trading days) | your plan: review and decide
 suppressed by your row tags: DELTA_WATCH, DELTA_SIGNAL, CAP

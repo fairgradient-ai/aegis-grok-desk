@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "answers.json")
 EXPECTED = os.path.join(ROOT, "tests", "fixtures", "init", "expected_desk.toml")
 FIXTURE_DESK_TOML = os.path.join(ROOT, "tests", "fixtures", "desk", "desk.toml")
-EXPECTED_SHA = "f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94"
+EXPECTED_SHA = "8245fc1428ddc9590d39ec32332eeff8dba0f6173142936a6fbae84cea89c18e"
 STRUCTURING_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuring-answers.json")
 EXPECTED_STRUCTURING = os.path.join(ROOT, "tests", "fixtures", "init", "expected_structuring.toml")
 EXPECTED_STRUCTURING_SHA = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
@@ -156,13 +156,13 @@ class RenderTest(TempRoot):
         self.assertEqual((0, "ok"), (code, body["status"]))
         written = read_bytes(os.path.join(self.root, "desk.toml"))
         self.assertEqual(read_bytes(EXPECTED), written)
-        self.assertEqual(962, len(written))
+        self.assertEqual(1037, len(written))
         self.assertEqual(EXPECTED_SHA, hashlib.sha256(written).hexdigest())
         self.assertEqual(["desk.toml"], self.files(), "desk_init writes desk.toml only: no state, no runtime directory")
         payload = body["payload"]
         self.assertEqual(list(tool.PAYLOAD_KEYS), sorted(payload, key=tool.PAYLOAD_KEYS.index))
         self.assertEqual(["desk.toml"], payload["written"])
-        self.assertEqual({"path": "desk.toml", "sha256": EXPECTED_SHA, "bytes": 962,
+        self.assertEqual({"path": "desk.toml", "sha256": EXPECTED_SHA, "bytes": 1037,
                           "text": written.decode("utf-8")}, payload["desk_toml"])
         self.assertIsNone(payload["calendar_toml"])
         self.assertEqual(HINT, payload["acknowledge"])
@@ -192,21 +192,23 @@ class RenderTest(TempRoot):
     def test_human_output_names_the_file_its_hash_and_the_acknowledgement(self) -> None:
         code, out = self.invoke(json_mode=False)
         self.assertEqual(0, code)
-        self.assertEqual(["wrote desk.toml (962 bytes, sha256 %s)" % EXPECTED_SHA, HINT], out.rstrip("\n").split("\n"))
+        self.assertEqual(["wrote desk.toml (1037 bytes, sha256 %s)" % EXPECTED_SHA, HINT], out.rstrip("\n").split("\n"))
 
-    def test_optional_keys_token_file_and_penny_classes(self) -> None:
+    def test_optional_keys_credentials_file_and_penny_classes(self) -> None:
         answers = fixture_answers()
-        answers["market_data"]["token_file"] = "/workspace/.aegis-secrets/tradier.token"
+        answers["market_data"]["credentials_file"] = "/workspace/.aegis-secrets/alpaca.key"
         answers["levels"] = {"penny_classes": ["SPY", "QQQ"], "penny_all_classes": ["SPXW"]}
         self.assertEqual(0, self.invoke(answers)[0])
         text = read_bytes(os.path.join(self.root, "desk.toml")).decode("utf-8")
-        self.assertIn('token_env = "TRADIER_API_TOKEN"\ntoken_file = "/workspace/.aegis-secrets/tradier.token"\n'
-                      'feed_delay_min = 15\n', text)
+        self.assertIn('[market_data]\nvendor = "alpaca"\nhost = "paper"\nkey_env = "APCA_API_KEY_ID"\n'
+                      'secret_env = "APCA_API_SECRET_KEY"\ncredentials_file = "/workspace/.aegis-secrets/alpaca.key"\n'
+                      'options_feed = "indicative"\nstock_feed = "iex"\nfeed_delay_min = 15\n', text)
         self.assertTrue(text.endswith('[levels]\norder_shape_enabled = false\npenny_classes = ["SPY", "QQQ"]\n'
                                       'penny_all_classes = ["SPXW"]\n'), text)
         cfg = desk_config.load_desk_config(os.path.join(self.root, "desk.toml"))
         self.assertEqual((("SPY", "QQQ"), ("SPXW",)), (cfg.levels.penny_classes, cfg.levels.penny_all_classes))
-        self.assertEqual("/workspace/.aegis-secrets/tradier.token", cfg.market_data.token_file)
+        self.assertEqual("/workspace/.aegis-secrets/alpaca.key", cfg.market_data.credentials_file)
+        self.assertEqual(("APCA_API_KEY_ID", "APCA_API_SECRET_KEY"), (cfg.market_data.key_env, cfg.market_data.secret_env))
 
 
 class RefusalTest(TempRoot):
@@ -223,12 +225,33 @@ class RefusalTest(TempRoot):
         self.assertEqual(["desk.toml"], body["payload"]["replaced"])
         self.assertEqual("active", desk_config.load_desk_config(os.path.join(self.root, "desk.toml")).desk.cadence_profile)
 
-    def test_production_is_refused(self) -> None:
+    def test_live_is_refused(self) -> None:
         answers = fixture_answers()
-        answers["market_data"]["host"] = "production"
+        answers["market_data"]["host"] = "live"
         code, body = self.run_json(answers)
-        self.assertEqual((1, "production_host"), (code, body["error"]["code"]))
+        self.assertEqual((1, "live_host"), (code, body["error"]["code"]))
+        self.assertIn("paper", body["error"]["message"])
         self.assertEqual([], self.files())
+
+    def test_a_key_given_where_its_variable_name_belongs_is_refused_without_echo(self) -> None:
+        # The answers carry the NAMES of the two environment variables; a pasted key ID or secret
+        # (no underscore, not the upper-case variable shape) is refused and never printed back.
+        for field, value in (("key_env", "PKFAKE0000AAAA1111ZZ"), ("secret_env", "fakeSecretValue0000aaaa1111bbbb2222cccc"),
+                             ("key_env", "pk-not-a-name"), ("secret_env", "APCA API SECRET")):
+            answers = fixture_answers()
+            answers["market_data"][field] = value
+            code, out = self.invoke(answers)
+            body = json.loads(out)
+            self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]), (field, value))
+            self.assertIn("market_data.%s" % field, body["error"]["message"])
+            self.assertNotIn(value, out, "a value given where a variable NAME belongs is never echoed")
+        answers = fixture_answers()
+        answers["market_data"]["secret_env"] = "APCA_API_KEY_ID"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]))
+        self.assertEqual([], self.files())
+        # One rule for both readers: desk.toml's own loader refuses the same pasted values.
+        self.assertIs(desk_config.ENV_NAME_RE, tool.ENV_VAR_NAME_RE)
 
     def test_invalid_answers_write_nothing(self) -> None:
         def changed(edit: Any) -> Dict[str, Any]:
@@ -253,9 +276,13 @@ class RefusalTest(TempRoot):
             changed(lambda a: a["owner"]["attention_thresholds"].pop("pl_trade_abs")),
             changed(lambda a: a["owner"].update(disclosures_acknowledged=["", "x"])),
             changed(lambda a: a["rates"].update(as_of="2026-13-01")),
-            changed(lambda a: a["market_data"].update(token_file="")),
-            changed(lambda a: a["market_data"].update(vendor="tradier")),
+            changed(lambda a: a["market_data"].update(credentials_file="")),
+            changed(lambda a: a["market_data"].update(vendor="alpaca")),
+            changed(lambda a: a["market_data"].update(options_feed="opra")),
+            changed(lambda a: a["market_data"].update(token_env="APCA_API_KEY_ID")),
+            changed(lambda a: a["market_data"].pop("secret_env")),
             changed(lambda a: a["market_data"].update(host="local")),
+            changed(lambda a: a["market_data"].update(host="sandbox")),
             changed(lambda a: a.pop("rates")),
             changed(lambda a: a.update(levels={"order_shape_enabled": True})),
             {"schema_version": 1},

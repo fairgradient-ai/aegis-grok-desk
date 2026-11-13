@@ -56,8 +56,8 @@ The ROLL ticket of that command:
 
 ```text
 TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold 200 WMT shares and 2 short calls (level 1)
 in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
 entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
@@ -192,8 +192,8 @@ UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to
 ## UNWIND_STOCK: the short call before the shares
 
 ```text
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); after leg 2 you hold no WMT shares and no option (level 0)
 in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
 entered as one multi-leg order, some brokers class shares and options together as a combination, which can need a higher level
@@ -231,7 +231,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 From the SPY protective put (AG-20261028-03), the lines after the leg:
 
 ```text
-leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 cash: +980.00 at the conservative prices (mid +995.00); the most the steps need at once: 0.00; the desk does not see your cash balance
 the 2026-12-18 620 put is out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 is all time value
 after the leg, your 100 SPY shares carry no put: their downside is unhedged
@@ -242,8 +242,8 @@ after the leg, your 100 SPY shares carry no put: their downside is unhedged
 The same group with `--action ROLL --new-expiration 2027-03-19 --new-strike 610`:
 
 ```text
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 cash: -1330.00 at the conservative prices (mid -1305.00); the most the steps need at once: 2310.00; the desk does not see your cash balance
 after both legs: group delta 69.69, max loss 4700.00, max profit unbounded, breakeven 657.00

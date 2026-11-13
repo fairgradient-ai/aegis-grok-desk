@@ -145,7 +145,7 @@ class ReconRootTest(DeskCopy):
     def test_every_settlement_branch_and_the_verdict(self) -> None:
         code, body = run_json(self.argv("recon", RECON_NOW))
         self.assertEqual(20, code, body)
-        self.assertEqual(("unavailable", "tradier:sandbox", 15), (body["status"], body["source"], body["delay_min"]))
+        self.assertEqual(("unavailable", "alpaca:paper", 15), (body["status"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(("UNAVAILABLE", 20, "2026-11-24", "pre", "recon"),
                          (payload["verdict"], payload["exit_code"], payload["et_date"], payload["session"]["session"],
@@ -189,8 +189,9 @@ class ReconRootTest(DeskCopy):
         self.assertEqual(("fetch_failed:network", 0, None), (history["AAPL"]["missing_reason"], history["AAPL"]["bars"],
                                                              history["AAPL"]["served_from"]))
         ledger = self.ledger()
-        self.assertEqual(5, len(ledger), ledger)
-        self.assertEqual(["/v1/markets/history"] * 4 + ["/v1/markets/quotes"], [record["path"] for record in ledger])
+        self.assertEqual(6, len(ledger), ledger)
+        self.assertEqual(["/v2/stocks/bars"] * 4 + ["/v2/stocks/quotes/latest", "/v1beta1/options/quotes/latest"],
+                         [record["path"] for record in ledger])
         self.assertEqual(["AMD__2026-11-20__2026-11-23.json", "NVDA__2026-11-20__2026-11-23.json", "WMT__2026-11-20__2026-11-23.json"],
                          self.history_files())
 
@@ -221,7 +222,7 @@ class ReconRootTest(DeskCopy):
         self.assertNotIn("x -1", text)
         self.assertIn("quote check: 2 symbols quoted (SPY, SPY261218P00620000)", lines)
         self.assertTrue(any(line.startswith("snapshot: data/positions/2026-11-24.csv") for line in lines), text)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 20:59 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 20:59 UTC", lines[-1])
         for edit_line in RECON_EDIT_LINES:
             self.assertNotIn(edit_line, lines, "the diff block prints only with --diff")
         code, text = run_tool(self.argv("recon", RECON_NOW, json_mode=False, extra=["--diff"]))
@@ -272,7 +273,7 @@ class ReconRootTest(DeskCopy):
         self.assertEqual("cache", history["WMT"]["served_from"])
         self.assertEqual("cache", history["AMD"]["served_from"])
         self.assertEqual("fetch_failed:network", history["AAPL"]["missing_reason"], "a failure is never cached")
-        self.assertEqual(6, len(self.ledger()), "three cached histories, one AAPL retry, quotes within the TTL")
+        self.assertEqual(7, len(self.ledger()), "three cached histories, one AAPL retry, quotes within the TTL")
         self.assertEqual(["SPY", SPY_PUT], body["payload"]["quote_check"]["quoted"])
 
     def test_acted_unchanged_nag_from_the_acks_journal(self) -> None:
@@ -313,13 +314,13 @@ class MainRootTest(DeskCopy):
         self.assertEqual(["NVDA", "NVDA261120C00150000", "SPY", SPY_PUT, "WMT", "WMT261120C00105000"],
                          payload["quote_check"]["quoted"])
         self.assertEqual([], payload["history"])
-        self.assertEqual(1, len(self.ledger()), "six symbols are one request")
+        self.assertEqual(2, len(self.ledger()), "six symbols are one batch: equities, then options")
         self.assertEqual([f["kind"] for f in payload["findings"]], [])
         self.assertEqual("data/positions/2026-11-03.csv", payload["snapshot"]["path"])
         code, text = run_tool(self.argv("regular", REGULAR_NOW, json_mode=False))
         self.assertEqual(0, code)
         self.assertTrue(text.splitlines()[0].startswith("CLEAN"), text)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", text.splitlines()[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", text.splitlines()[-1])
 
     def test_post_expiry_saturday_is_edits_pending(self) -> None:
         code, body = run_json(self.argv("post_expiry", POST_EXPIRY_NOW))
@@ -391,11 +392,12 @@ class MainRootTest(DeskCopy):
         code, body = run_json(self.argv("regular", REGULAR_NOW))
         self.assertEqual((1, "error", "calendar_invalid"), (code, body["status"], body["error"]["code"]))
 
-    def test_production_host_and_invalid_config(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_live_host_and_invalid_config(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
-        self.assertEqual((20, "unavailable", "production_host"), (code, body["status"], body["error"]["code"]))
-        self.rewrite("desk.toml", 'host = "production"', 'host = "sandbox"')
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+        self.assertIn('host must be "paper"', body["error"]["message"])
+        self.rewrite("desk.toml", 'host = "live"', 'host = "paper"')
         self.rewrite("desk.toml", "grace_min = 5", "grace_min = 31")
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
         self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
@@ -467,7 +469,7 @@ class MessageAndRecordTest(DeskCopy):
                 lint = posted_lint(body["payload"])
                 self.assertTrue(lint.ok, lint.problems)
                 self.assertEqual([], [p.pattern for p in alert_lint.FORBIDDEN_PATTERNS if p.search(body["payload"]["message"])])
-                self.assertEqual("Tradier sandbox, delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
+                self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of %s UTC" % as_of[11:16], text.splitlines()[-1])
                 _code, diff_out = self.run_on(self.fresh_root(source), fixture_set, now, True, extra=["--diff"])
                 self.assertEqual(body["payload"]["message"], json.loads(diff_out)["payload"]["message"],
                                  "the message never carries the --diff rows")

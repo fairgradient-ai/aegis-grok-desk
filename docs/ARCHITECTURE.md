@@ -37,7 +37,7 @@ Grok routine (14:05 ET)
      2. the slot and its chain (routines/manifest.toml); a closed day -> quiet
      3. step: book_check --post, in the same process
           positions.csv --+
-          quotes ---------+--> book: marks, IV, Greeks, P/L       (one GET /v1/markets/quotes batch)
+          quotes ---------+--> book: marks, IV, Greeks, P/L       (one quotes batch: two GETs, stocks then options)
           rules/ADOPTED --+--> the adopted rulebook, its sha checked against rules/ADOPTED
                                --> evaluation with state/rule_state.json and the rows' tags
                                --> transitions and the posting rules
@@ -146,11 +146,13 @@ for order-shaped text. Where the numbers and thresholds come from is in [PROVENA
 
 ## Trust boundaries
 
-- **One network path.** `scripts/aegis_desk/tradier_client.py` is the only module that may open a connection: GET only,
-  the sandbox host, seven allow-listed market-data paths, no redirects, no proxy. `scripts/check_no_write_paths.py`
+- **One network path.** `scripts/aegis_desk/alpaca_client.py` is the only module that may open a connection: GET only,
+  two pinned hosts (Alpaca's market-data host and its paper trading host, the live trading host refused), seven
+  allow-listed read paths, no redirects, no proxy. `scripts/check_no_write_paths.py`
   proves this by reading every module's syntax tree.
-- **One credential.** A Tradier sandbox market-data token, which cannot reach a live account. The doctor verifies it
-  and refuses a production host.
+- **One credential.** An Alpaca paper key pair, used only to read market data, which cannot reach a live account.
+  The doctor verifies that it is a paper key (one read of the paper trading host's clock), and `desk.toml` refuses any
+  host but `paper`.
 - **Owner-authority actions.** Adopting rules, rewriting `desk.toml` or `structuring.toml`, acknowledging a change,
   snoozing or marking a signal acted, and recording the connector readback need your tap on an Ask-first card; the
   commands carry `--owner-tapped`, or for an adoption your typed phrase. Each run of a structuring tool also asks first.
@@ -172,7 +174,7 @@ The owner's decisions behind the design (2026-10-30):
 | Who creates it | the owner created `fairgradient-ai/aegis-grok-desk` | pull requests to `main` |
 | Visibility and license | public, MIT | a `LICENSE` and an `ATTRIBUTION.md` in every skill folder; HyperGrok's MIT notice kept for the adapted mechanics |
 | Where positions come from | one hand-edited `positions.csv` | no brokerage API; marks come from market data |
-| Market data | the Tradier sandbox token, 15 minutes delayed, no Greeks served | the desk computes implied volatility and Greeks itself; cadence and rules are tuned for delayed data |
+| Market data | Alpaca's free plan with a paper key: IEX stock quotes and indicative option quotes, 15 minutes delayed and approximate (not exchange quotes) | every quote segment labels the option quotes approximate; the desk computes implied volatility and Greeks itself and ignores the vendor's; cadence and rules are tuned for delayed data |
 | Where alerts go | the Grok Bot chats only | each routine posts in its owning Bot's chat; no external channel ships |
 | Runtimes | Grok Bot and Grok Build both first-class | a Grok Bot bootstrap with a receipt, and a Grok Build plugin install with the hook |
 | Roles and skills | original, not copied from the reference | purpose-built roles, skills, routines and tools |
@@ -185,5 +187,4 @@ The owner's decisions behind the design (2026-10-30):
 - For the Aegis Structuring Desk, the roll analysis of long puts, short puts and collars, weekly expirations, a
   cash-balance check and per-account approval levels are planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
-  journal review, and md_proxy, a local read-only proxy that would bring production market data inside the guarantee,
-  are planned for Stage 3 (not in this release).
+  journal review, are planned for Stage 3 (not in this release).

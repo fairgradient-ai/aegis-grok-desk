@@ -69,9 +69,9 @@ copy with quotes, backslashes and ``$IFS`` removed. It denies:
 * S3 an HTTP library write (``.post(``, ``.put(``, ``.patch(``, ``.delete(``, ``->post(``, ``.post_form(``,
   ``.request("POST"``, ``Request(... data=``, ``urlopen(... data=``, a ``urlopen`` or ``Request`` call with a second
   positional argument (the request body), ``method: "POST"``, ``Net::HTTP::Post``, ``CURLOPT_POST``) and a target;
-* S4 any HTTP client or library call that names a broker host, reads included, unless every URL it names on a broker
-  host is a market-data read path (:data:`MARKET_DATA_PATH_RE`: Tradier's ``/v1/markets/...``); an account or order
-  path there is labelled as one.
+* S4 any HTTP client or library call that names a broker host, reads included (market-data reads too: the desk's
+  tools read market data from Python, never through a shell or an MCP tool); an account or order path there is
+  labelled as one.
 
 A target is a broker host (:data:`BROKER_HOSTS`, any subdomain) or an account or order path (``/v<n>/accounts``,
 ``/accounts/.../orders``, an ``/order`` or ``/orders`` path segment).
@@ -80,19 +80,19 @@ MCP calls deny when, after removing a leading ``mcp__``, the tool name split int
 camelCase boundaries) holds one of :data:`MCP_VERBS` (``order``, ``orders``, ``trade``, ``trades``, ``cancel``,
 ``replace``, ``submit``, ``buy``, ``sell``, ``liquidate``, ``exercise``) or a token that runs a verb into its object
 (:data:`COMPOUND_VERB_RE`: ``PLACEORDER``, ``placeorder``, ``selltoclose``, ``closeallpositions``), so the server
-names ``snaptrade`` and ``tradier`` pass; when the tool closes a position (``close`` with ``position`` or
+names ``snaptrade`` and ``alpaca`` pass; when the tool closes a position (``close`` with ``position`` or
 ``positions``: ``close_position``, ``close_all_positions``) or opens one (a tool name that starts with ``open`` and
 names a position: ``open_position``; ``get_open_position`` passes); or when the input holds a key equal to ``order``,
 ``orders``, ``trade`` or ``trades`` (any case; ``orderBy`` passes) whose value is an object, a list or text other than
 a sort direction (``{"order": "desc"}`` passes), an identifier-shaped value with a verb token (``sell_to_close``,
-``tradier_place_order``, a URL ending in ``/orders``), or any string the shell scan denies. A string value that holds
+``alpaca_place_order``, a URL ending in ``/orders``), or any string the shell scan denies. A string value that holds
 a JSON object or array (``"params_json": "{...}"``) is decoded and walked too. Known false positives, by design: an
 MCP tool whose name or identifier input carries one of the verbs (a review tool's ``submit``, a ``replace_text``
 tool, a server name written ``SnapTrade``, a one-word search for ``order``), free text that quotes a write sample (a
 pull request body), and on the shell side a command that writes a file holding a write sample (a heredoc), a read
 whose flag is a curl body flag (``curl -G --data-urlencode``, ``wget -T``) on a broker host, a git subcommand outside
-the read list whose text holds a write sample (``git stash push -m``), and any HTTP call to a broker host outside
-Tradier's market-data paths (a broker's own web page included).
+the read list whose text holds a write sample (``git stash push -m``), and any HTTP call to a broker host (a broker's own web page and its
+market-data reads included).
 An input more than :data:`MAX_DEPTH` levels deep, with more than :data:`MAX_NODES` nodes or with more than
 :data:`MAX_TEXT` characters of strings is denied as unreadable, and so is stdin JSON nested too deeply to parse; a shell
 command longer than :data:`MAX_TEXT` characters is denied too unless it only reads, so a scan always ends well inside
@@ -180,14 +180,12 @@ HTTPIE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 HTTPIE_DATA_RE = re.compile(r"^[A-Za-z0-9_.\[\]@-]+(?::=|=)(?!=)")
 
 BROKER_HOSTS: Tuple[str, ...] = (
-    "tradier.com", "snaptrade.com", "alpaca.markets", "tastytrade.com", "tastyworks.com", "schwabapi.com",
+    "snaptrade.com", "alpaca.markets", "tastytrade.com", "tastyworks.com", "schwabapi.com",
     "schwab.com", "robinhood.com", "interactivebrokers.com", "ibkr.com", "etrade.com", "webull.com", "public.com",
     "tradestation.com", "fidelity.com", "vanguard.com", "firstrade.com",
 )
 BROKER_HOST_RE = re.compile(r"(?i)(?<![a-z0-9-])(?:%s)(?![a-z0-9-])" % "|".join(re.escape(host) for host in BROKER_HOSTS))
 BROKER_URL_RE = re.compile(BROKER_HOST_RE.pattern + r"(?::\d{1,5})?(/[^\s'\"<>`|;&(){},\\]{0,500})?")
-MARKET_DATA_PATH_RE = re.compile(r"(?i)^/v1/markets(?:[/?#]|$)")
-"""The only paths on a broker host a call may name without a deny: Tradier's market-data reads."""
 ACCOUNT_PATH_RE = re.compile(r"(?i)/v\d+/accounts\b|/accounts/[^\s'\"]{0,200}?/orders?\b|/orders?\b(?![\w.-])")
 HTTP_CLIENT_RE = re.compile(r"(?i)(?<![\w.-])(?:curl|wget2?|https?|xhs?|httpie|aria2c|invoke-webrequest|"
                             r"invoke-restmethod|iwr|irm)(?:\.exe)?(?![\w.-])")
@@ -459,13 +457,13 @@ def client_write(text: str) -> bool:
 
 
 def broker_call(text: str) -> Optional[str]:
-    """The first broker-host URL in ``text`` whose path is not a market-data read, as ``host/path``."""
-    for match in BROKER_URL_RE.finditer(text):
-        path = match.group(1) or ""
-        if not MARKET_DATA_PATH_RE.match(path):
-            host = BROKER_HOST_RE.match(text, match.start())
-            return "%s%s" % (host.group(0) if host else match.group(0), path[:60])
-    return None
+    """The first broker-host URL in ``text``, as ``host/path``."""
+    match = BROKER_URL_RE.search(text)
+    if match is None:
+        return None
+    path = match.group(1) or ""
+    host = BROKER_HOST_RE.match(text, match.start())
+    return "%s%s" % (host.group(0) if host else match.group(0), path[:60])
 
 
 def _finding(text: str) -> Optional[str]:

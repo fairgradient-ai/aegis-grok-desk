@@ -55,7 +55,8 @@ TOOL = "expiry_checklist"
 DESCRIPTION = ("expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open "
                "option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker "
                "cutoff), dividend and pin tiers")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 LABEL_NO_QUOTE = "no quote"
 EARLIEST_NOTE = "the earliest act-by of the listed contracts (each line names its own)"
 """The Final Call header's note when the listed legs' act-bys differ (a short leg's session close, a long leg's broker
@@ -79,7 +80,7 @@ OUTPUT: Dict[str, Any] = {
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
     "message": "string: the human text exactly, without the final newline",
-    "as_of": "ISO-8601 UTC: the instant of the text's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)",
+    "as_of": "ISO-8601 UTC: the instant of the text's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)",
 }
 RECORD_SUBDIR = "expiry"
 """``reports/expiry/``: the docket records (module notes)."""
@@ -95,7 +96,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--tomorrow", action="store_true", help="the T-1 preview: contracts on their last trading day tomorrow")
     parser.add_argument("--final-call", action="store_true", help="the expiry-day sheet: contracts on their last trading day today")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

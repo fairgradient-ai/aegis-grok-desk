@@ -108,7 +108,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times (a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -119,11 +119,11 @@ Payload (`--json` envelope key `payload`):
 | `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
-- `as_of`: `"ISO-8601 UTC: the instant of the text's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)"`
+- `as_of`: `"ISO-8601 UTC: the instant of the text's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)"`
 - `counts`: `{"expired": "integer", "fired": "integer", "noted": "integer", "open_option_legs": "integer", "quarantined_groups": "integer", "unavailable": "integer"}`
 - `exit_code`: `"10 | 20 | 0"`
 - `expired`: `[{"expiration": "YYYY-MM-DD", "row_number": "integer", "symbol": "string"}]`
@@ -146,7 +146,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the book of record: every position marked from the desk's quotes with IV, Greeks, P/L, payoff metrics and day P/L against the desk's own snapshot; unavailable is a verdict (exit 20), never a zero
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -159,7 +159,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--snapshot` | none | write data/book/<ET date>.json, the snapshot of record (atomic, under the desk lock) |
 | `--report` | none | write reports/book.md |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -172,7 +172,7 @@ Payload (`--json` envelope key `payload`):
 - `portfolio`: `{"beta_weighted_delta": {"r2_flag": "unavailable", "value": null}, "concentration": {"by_underlying": {"SYMBOL": "percent (2 dp) | null"}, "declared_equity": "decimal string"}, "day_pl": "decimal string | null (sum over the ok groups whose every open leg has a day P/L; an ok group with a gap is excluded whole and named in warnings; null when none counts)", "net_delta": "float | null", "open_groups": "integer", "quarantined_groups": [{"group_id": "string", "reasons": ["string"]}], "realized_pl_mtd": "decimal string", "realized_pl_today": "decimal string", "realized_pl_ytd": "decimal string", "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null"}`
 - `rates`: `{"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}`
 - `session`: `"pre | open | closed | holiday | early_close | weekend (--now classified with the calendar's full closures: an injected closure is holiday)"`
-- `sources`: `[{"delay_min": "integer minutes", "name": "tradier:sandbox", "receipt_utc": "ISO-8601 UTC | null"}]`
+- `sources`: `[{"delay_min": "integer minutes", "name": "alpaca:paper", "receipt_utc": "ISO-8601 UTC | null"}]`
 - `underlyings`: `{"SYMBOL": {"as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "day_change_source": "desk snapshot", "mark_mid": "decimal string | null", "move_pct_from_prev_eod": "decimal string (2 dp) | null", "prev_eod_mid": "decimal string | null (the previous snapshot's mid)", "quote_grade": "A-F | null"}}`
 - `warnings`: `["string"]`
 
@@ -182,7 +182,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the routine check: the book, the adopted exit rules, the rule state and the posting rules; prints the linted message to post (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, pre-close, watch alive) or quiet; --post records it
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ Payload (`--json` envelope key `payload`):
 | `--next-run-utc` | `ISO-8601-UTC` | the routine's next run: after the session's close, one observation is enough |
 | `--routine` | `ID` | the routine id of the heartbeat and of the re-post ladder (default book-check) |
 | `--scheduled-et` | `HH:MM` | the routine's America/New_York slot, for its lateness |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -273,7 +273,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: reconcile positions.csv: settle expired legs from official closes and settlement values, list proposed edits (never applied), check quotes, coverage, roll links and acknowledged-but-unchanged groups, snapshot the file; CLEAN / EDITS_PENDING / UNAVAILABLE / ERRORS
-- network access: GET https://sandbox.tradier.com/v1/markets/{quotes,history} only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v2/stocks/bars only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -285,11 +285,11 @@ Payload (`--json` envelope key `payload`):
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--diff` | none | print the proposed edits as CSV lines (the JSON payload always lists them) |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
-- `as_of`: `"ISO-8601 UTC: the instant of the prose's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)"`
+- `as_of`: `"ISO-8601 UTC: the instant of the prose's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)"`
 - `counts`: `{"closed_groups": "integer", "edits": "integer", "expired_legs": "integer", "groups": "integer", "open_groups": "integer", "quarantined_groups": "integer", "unavailable": "integer", "warnings": "integer"}`
 - `edits`: `[{"cells": ["string"], "csv_line": "exact CSV line in header order", "fields": {"column": "text"}, "group_id": "string", "kind": "update | add", "outcome": "string", "reason": "string", "row_number": "integer | null"}]`
 - `et_date`: `"YYYY-MM-DD (America/New_York date of --now)"`
@@ -313,8 +313,8 @@ Payload (`--json` envelope key `payload`):
 - script: `scripts/desk_doctor.py`
 - tool version: 0.2.0
 - mode: read-only
-- description: the desk doctor: release pin, interpreter, holiday table, token source, sandbox, machine role, broker-looking environment names, desk files, market status, connector readback, heartbeats and the engine selftest; PASS / WARN / FAIL per check, one verdict, state/doctor.json
-- network access: GET https://sandbox.tradier.com/v1/markets/clock once (full mode only); none with --offline, --quick or --selftest
+- description: the desk doctor: release pin, interpreter, holiday table, key source, paper key, machine role, broker-looking environment names, desk files, market status, connector readback, heartbeats and the engine selftest; PASS / WARN / FAIL per check, one verdict, state/doctor.json
+- network access: GET https://paper-api.alpaca.markets/v2/clock once with the paper key pair (full mode only); none with --offline, --quick or --selftest
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -330,7 +330,7 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
-- `checks`: `[{"id": "release_pin | interpreter | holiday_table | token_source | sandbox | machine_role | broker_env | desk_files | market_status | connector_readback | heartbeats | selftest", "number": "integer 1-12", "reason": "string (one line, never a secret)", "status": "PASS | WARN | FAIL"}]`
+- `checks`: `[{"id": "release_pin | interpreter | holiday_table | key_source | paper_key | machine_role | broker_env | desk_files | market_status | connector_readback | heartbeats | selftest", "number": "integer 1-12", "reason": "string (one line, never a secret)", "status": "PASS | WARN | FAIL"}]`
 - `counts`: `{"fail": "integer", "pass": "integer", "warn": "integer"}`
 - `failed`: `["check id"]`
 - `machine_role`: `"shared | owner_private"`
@@ -373,7 +373,7 @@ Payload (`--json` envelope key `payload`):
 
 Input (`--schema` key `input`):
 
-- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"host": "sandbox (production is refused in this release)", "token_env": "string (the environment variable that holds the sandbox token)", "token_file": "string (optional; a file with no group or other permission bits)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, structuring, or any of these together)", "structuring": {"collar": {"cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)", "objective": "cap_within_budget", "strike_floor": "cost_basis | none"}, "covered_call": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, at the bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}, "disclosure_acknowledged": "structuring-suggestions-1 (given only after the owner acknowledges the disclosure the interview shows last)", "general": {"max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)", "max_spread_pct": "decimal string: percent, 0 < x <= 25"}, "protective_put": {"dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "enabled": "boolean", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "objective": "stress_cost_per_day", "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90"}, "roll": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "credit_only": "boolean (a net debit fails it; a zero net passes)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, the new call's bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}}}`
+- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"credentials_file": "string (optional; a file with no group or other permission bits holding the key ID on line 1 and the secret on line 2)", "host": "paper (live is refused: the desk holds an Alpaca paper key pair only)", "key_env": "string (the NAME of the environment variable that holds the paper key ID, for example APCA_API_KEY_ID; never the key itself)", "secret_env": "string (the NAME of the environment variable that holds the paper secret, for example APCA_API_SECRET_KEY; never the secret itself)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, structuring, or any of these together)", "structuring": {"collar": {"cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)", "objective": "cap_within_budget", "strike_floor": "cost_basis | none"}, "covered_call": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, at the bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}, "disclosure_acknowledged": "structuring-suggestions-1 (given only after the owner acknowledges the disclosure the interview shows last)", "general": {"max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)", "max_spread_pct": "decimal string: percent, 0 < x <= 25"}, "protective_put": {"dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "enabled": "boolean", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "objective": "stress_cost_per_day", "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90"}, "roll": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "credit_only": "boolean (a net debit fails it; a zero net passes)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, the new call's bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}}}`
 
 ## eod_summary
 
@@ -418,7 +418,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the adopted exit rules evaluated against the book: one verdict per group (EXIT_SIGNAL, UNAVAILABLE, WATCH, HOLD) with every fired, pending, unavailable and suppressed rule; reads the rule state, never writes it
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline or --book
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -433,7 +433,7 @@ Payload (`--json` envelope key `payload`):
 | `--dry-run` | none | state that nothing is written (required with --rules; exit_check never writes rule state) |
 | `--book` | `PATH` | evaluate a saved book (a book.json or a data/book/ snapshot) instead of building one |
 | `--next-run-utc` | `ISO-8601-UTC` | the caller's next run: after the session's close a single observation suffices |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -461,7 +461,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: a ticket for a group you hold in positions.csv, only when you ask: the legs of CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT or ROLL in the safe order with their quotes, the approval-level check, the cash and the realized estimate; you supply the limit and act in your brokerage account
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes (one batch of the group's symbols) and, for ROLL, /v1/markets/options/chains of the replacement's expiration, through the quote cache; none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest (one batch of the group's symbols) and, for ROLL, the replacement expiration's chain (https://paper-api.alpaca.markets/v2/options/contracts, then https://data.alpaca.markets/v1beta1/options/snapshots/<UNDERLYING>), through the quote cache; none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -476,7 +476,7 @@ Payload (`--json` envelope key `payload`):
 | `--action` | `CLOSE \| UNWIND_STOCK \| LET_ASSIGN \| MONETIZE_PUT \| ROLL` | CLOSE (the option legs), UNWIND_STOCK (the shares and every option leg), LET_ASSIGN (the short option left to expiry), MONETIZE_PUT (the long put of a protective put or a collar) or ROLL (a covered call's short call or a protective put's long put replaced) (required) |
 | `--new-expiration` | `YYYY-MM-DD` | ROLL only, with --new-strike: the replacement's expiration, later than the held leg's |
 | `--new-strike` | `K` | ROLL only, with --new-expiration: the replacement's strike (its root and right are the held leg's) |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -525,7 +525,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker cutoff), dividend and pin tiers
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -539,11 +539,11 @@ Payload (`--json` envelope key `payload`):
 | `--week` | none | every contract whose last trading day is in the current ET week |
 | `--tomorrow` | none | the T-1 preview: contracts on their last trading day tomorrow |
 | `--final-call` | none | the expiry-day sheet: contracts on their last trading day today |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
-- `as_of`: `"ISO-8601 UTC: the instant of the text's footer line (Tradier sandbox, delayed 15 min, as of HH:MM UTC)"`
+- `as_of`: `"ISO-8601 UTC: the instant of the text's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)"`
 - `counts`: `{"expired": "integer", "fired": "integer", "listed": "integer", "open_option_legs": "integer", "quarantined_groups": "integer", "unavailable": "integer"}`
 - `exit_code`: `"10 | 20 | 0"`
 - `expired`: `[{"expiration": "YYYY-MM-DD", "row_number": "integer", "symbol": "string"}]`
@@ -641,7 +641,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: a public market snapshot of one symbol: its quote, the nearest standard expiration at least 20 calendar days out, the ATM implied volatility and the expected move to it, stated two ways; not a signal
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and /v1/markets/options/chains only (three requests); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, https://paper-api.alpaca.markets/v2/options/contracts (the expirations, then one expiration's contracts) and https://data.alpaca.markets/v1beta1/options/snapshots/<SYMBOL> only (at least four requests, more when a listing pages); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -653,10 +653,10 @@ Payload (`--json` envelope key `payload`):
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--symbol` | `SYMBOL` | the underlying, for example SPY (required, except with --demo: SPY) |
-| `--demo` | none | synthetic sample data: --offline on this checkout's tests/fixtures/desk at 2026-11-03T19:50:00Z (the regular fixture set); writes nothing; not with --desk-root, --now, --fixture-set or --token-file |
+| `--demo` | none | synthetic sample data: --offline on this checkout's tests/fixtures/desk at 2026-11-03T19:50:00Z (the regular fixture set); writes nothing; not with --desk-root, --now, --fixture-set or --credentials-file |
 | `--rate` | `R` | the risk-free rate the IV is solved at, a decimal in [0, 1) (default 0.04) |
-| `--token-file` | `PATH` | read the sandbox token from this file when TRADIER_API_TOKEN is not set (live runs only) |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--credentials-file` | `PATH` | read the Alpaca paper key pair (key ID on line 1, secret on line 2) from this file when APCA_API_KEY_ID and APCA_API_SECRET_KEY are not set (default /workspace/.aegis-secrets/alpaca.key; live runs only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -674,7 +674,7 @@ Payload (`--json` envelope key `payload`):
 - `q`: `"decimal string (0)"`
 - `quote`: `{"as_of": "ISO-8601 UTC (min of the bid and ask stamps)", "ask": "decimal string (as printed)", "bid": "decimal string (at least two decimals, as printed)", "mid": "decimal string (S, as printed)"}`
 - `rate`: `"decimal string (--rate)"`
-- `requests_made`: `"integer (3)"`
+- `requests_made`: `"integer (requests sent: 4, more only when a contract listing or the snapshots page)"`
 - `strike`: `"decimal string (the ATM strike)"`
 - `symbol`: `"string"`
 - `tau_years`: `"float (seconds from the call's as-of to the exercise cutoff / 31,536,000)"`
@@ -685,7 +685,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: validate positions.csv, group the legs into structures and run the first-observation plausibility check of every open leg against its quote; CLEAN, or the quarantined groups and file errors (never writes the file)
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -696,7 +696,7 @@ Payload (`--json` envelope key `payload`):
 | `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -720,7 +720,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: on the owner's request only: a covered call, protective put or collar on a group that holds shares only, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never a new symbol, a spread, an uncovered short or a cash-secured put; never in a routine
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and /v1/markets/options/chains only, through the quote cache (at most 20 requests and 4 chains a run); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -733,7 +733,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--trade` | `AG-YYYYMMDD-NN` | the trade id of a group in positions.csv that holds shares only (required) |
 | `--structure` | `covered_call \| protective_put \| collar` | the overlay: covered_call, protective_put, collar (required) |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -785,8 +785,8 @@ Payload (`--json` envelope key `payload`):
 - script: `scripts/quote_cache.py`
 - tool version: 0.2.0
 - mode: read-only
-- description: serve quotes from the desk cache or the GET-only Tradier client (TTL, 60/min budget, chains on demand); never places, modifies or cancels an order
-- network access: GET https://sandbox.tradier.com/v1/markets/{quotes,options/chains} only; none with --offline
+- description: serve quotes from the desk cache or the GET-only Alpaca paper client (TTL, 200/min budget, chains on demand); never places, modifies or cancels an order
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and, for --chain, /v1beta1/options/snapshots/<SYMBOL> with https://paper-api.alpaca.markets/v2/options/contracts only; none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -801,15 +801,15 @@ Payload (`--json` envelope key `payload`):
 | `--chain` | `SYMBOL` | also fetch one option chain (on demand only; needs --expiration) |
 | `--expiration` | `YYYY-MM-DD` | the chain's expiration date |
 | `--force` | none | refetch even when the cached copy is inside the TTL |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
-- `budget`: `{"left": "integer (60 - 5 headroom - used)", "window_60s_used": "integer (ledger records in the window plus this run's own requests)"}`
+- `budget`: `{"left": "integer (200 - 20 headroom - used)", "window_60s_used": "integer (ledger records in the window plus this run's own requests)"}`
 - `chain`: `{"count": "integer", "expiration": "YYYY-MM-DD", "missing_reason": "string | null", "options": ["quote objects (strike, option_type, bid, ask, mid)"], "served_from": "fetch | cache | null", "symbol": "string"}`
 - `fixture_set`: `"string | null (offline runs)"`
 - `missing`: `{"SYMBOL": "unmatched | quota_guard | per_run_cap | market_closed | fetch_failed:<status>"}`
-- `quotes`: `[{"age_min": "integer minutes from as_of to now | null", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "ask_date": "ISO-8601 UTC | null", "bid": "decimal string | null", "bid_date": "ISO-8601 UTC | null", "expiration_date": "YYYY-MM-DD | null", "fetched_utc": "ISO-8601 UTC", "last": "decimal string | null", "mid": "decimal string | null", "option_type": "call | put | null", "source": "fetch | cache", "strike": "decimal string | null", "symbol": "string", "type": "stock | etf | option | index | null", "underlying": "string | null"}]`
+- `quotes`: `[{"age_min": "integer minutes from as_of to now | null", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "ask_date": "ISO-8601 UTC | null", "bid": "decimal string | null", "bid_date": "ISO-8601 UTC | null", "expiration_date": "YYYY-MM-DD | null", "fetched_utc": "ISO-8601 UTC", "last": "decimal string | null", "mid": "decimal string | null", "option_type": "call | put | null", "source": "fetch | cache", "strike": "decimal string | null", "symbol": "string", "type": "stock | option | null", "underlying": "string | null"}]`
 - `requests_made`: `"integer requests this run"`
 - `session`: `"market_clock.SessionInfo.as_dict() (--now classified with the calendar's full closures: an injected closure is session holiday)"`
 - `stale`: `["quote objects as above (source stale): expired cache copies the fetch could not refresh; display only"]`
@@ -821,7 +821,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: grade quotes A-F: session-aware per-side freshness against the desk's bound, spread bands, fair and liquidation marks; stale or missing is UNAVAILABLE (exit 20), never HOLD
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -834,7 +834,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `symbols` (positional) | `SYMBOL` (zero or more) | equity, ETF or OCC option symbols to grade |
 | `--force` | none | refetch even when the cached copy is inside the TTL |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -851,7 +851,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: on the owner's request only: the replacement candidates for the short call of a covered call, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and /v1/markets/options/chains only, through the quote cache (at most 20 requests and 4 chains a run); none with --offline
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -863,7 +863,7 @@ Payload (`--json` envelope key `payload`):
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--trade` | `AG-YYYYMMDD-NN` | the trade id of a covered call group in positions.csv (required) |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -916,7 +916,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the single routine entry point: checks the release pin, runs one manifest routine's steps in-process with JSON captured, composes and lints the one message the Bot posts verbatim, and records the heartbeat, the journal, the step copies and the run record
-- network access: GET https://sandbox.tradier.com/v1/markets/... only, through the step tools' quote cache; none with --offline
+- network access: GET https://data.alpaca.markets/... and https://paper-api.alpaca.markets/v2/options/contracts only (Alpaca paper market data), through the step tools' quote cache; none with --offline
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -1050,7 +1050,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the adopted and a candidate rulebook evaluated on one book with a scratch rule state: the group verdicts that would change (exit 10), the rule and section results that differ, the rules added, removed and changed; nothing is written
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline or --book
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -1065,7 +1065,7 @@ Payload (`--json` envelope key `payload`):
 | `--book` | `PATH` | compare on a saved book instead of building one |
 | `--latest-snapshot` | none | compare on the newest snapshot of record in data/book/ |
 | `--next-run-utc` | `ISO-8601-UTC` | the caller's next run: after the session's close a single observation suffices |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
@@ -1095,7 +1095,7 @@ Payload (`--json` envelope key `payload`):
 - tool version: 0.2.0
 - mode: read-only
 - description: the threshold-level sheet: every adopted rule of every open group as the option, spread or underlying price, band or date at which its own reading turns, linted; writes levels/<D>.md and levels/<D>.json (and plans/<group>.md with --plan); reads the rule state, never writes it
-- network access: GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline or --book
+- network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
 
 | Flag | Value | Help |
 | --- | --- | --- |
@@ -1108,7 +1108,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--plan` | `GROUP_ID` | also write the exit-plan card plans/<group id>.md of this group (a group or trade id) |
 | `--from-snapshot` | none | read the snapshot of record data/book/<ET date of --now>.json instead of fetching quotes |
-| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only) |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 

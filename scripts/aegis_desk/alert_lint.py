@@ -97,8 +97,8 @@ or the leg grammar's effect words (:data:`STRUCTURING_EFFECT_RE`) must be one of
 (:data:`STRUCTURING_LEG_RES`): ``leg N of M: closes your long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of
 M: opens a new long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of M: closes Q of your long SYMBOL shares``,
 each optionally followed by `` | `` and exactly one of the quote segments the tools print (``bid P, ask P, mid P |
-quote grade G, Tradier sandbox, N-min delayed, as of HH:MM UTC``, ``ask P | quote grade G, N min old``, the bare
-sides) and the grade E note; any other leg line is ``order_field`` (the effect words are unambiguous: a closing twin of
+quote grade G, SOURCE, N-min delayed, as of HH:MM UTC``, SOURCE being one of :data:`aegis_desk.data_source.ALL_WORDS`;
+``ask P | quote grade G, N min old``; the bare sides) and the grade E note; any other leg line is ``order_field`` (the effect words are unambiguous: a closing twin of
 a side word would read as the wrong direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
 from any subject, a preference, probability, risk, return, valuation and non-advice claims, an assurance, urgency,
 suitability, the bare instruction verb in any form, order-type, duration and route abbreviations, a trade verb outside
@@ -123,6 +123,8 @@ import datetime
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+from . import data_source
 
 MIDDLE_DOT: str = "·"
 FOOTER_DELAY_MIN: int = 15
@@ -327,17 +329,21 @@ STRUCTURING_LEG_START_RE = STRUCTURING_LEG_DETECT_RE
 """The name the leg detector had before the PR 3b review (a line start only): the detector now reads the whole line."""
 _LEG_PRICE = r"[0-9]+\.[0-9]{2,}"
 _LEG_SIDES = (r"(?:bid {p}(?:, ask {p})?(?:, mid {p})?|ask {p}(?:, mid {p})?|mid {p})").format(p=_LEG_PRICE)
-_LEG_TAIL = (r"(?: \| (?:{sides} \| quote grade [A-F], Tradier sandbox, [0-9]+-min delayed, as of "
+_LEG_SOURCE = "(?:%s)" % "|".join(re.escape(words) for words in data_source.ALL_WORDS)
+"""The source phrases a quote segment may name (:data:`aegis_desk.data_source.ALL_WORDS`), as one alternation."""
+_LEG_TAIL = (r"(?: \| (?:{sides} \| quote grade [A-F], {source}, [0-9]+-min delayed, as of "
              r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|(?:bid|ask) {p} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
-             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, p=_LEG_PRICE)
+             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, p=_LEG_PRICE,
+                                                                       source=_LEG_SOURCE)
 STRUCTURING_LEG_RES: Tuple["re.Pattern[str]", ...] = (
     re.compile(r"^leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
                r"[A-Z][A-Z0-9]{0,5} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+(?:\.[0-9]+)? (?:call|put)" + _LEG_TAIL),
     re.compile(r"^leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares" + _LEG_TAIL),
 )
 """The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, each followed only by
-the quote segments the tools print (review L2-2: no free tail): ``| bid P, ask P, mid P | quote grade G, Tradier sandbox,
-N-min delayed, as of HH:MM UTC``, ``| ask P | quote grade G, N min old``, the bare sides, and the grade E note."""
+the quote segments the tools print (review L2-2: no free tail): ``| bid P, ask P, mid P | quote grade G, SOURCE,
+N-min delayed, as of HH:MM UTC`` (SOURCE: one of :data:`aegis_desk.data_source.ALL_WORDS`), ``| ask P | quote grade G,
+N min old``, the bare sides, and the grade E note."""
 FILLER_WORDS: Tuple[str, ...] = ("so", "then", "and", "now", "please", "just", "simply", "also", "kindly")
 """Words skipped at a sentence start before the imperative test (``so close ...`` starts with its verb)."""
 PLAN_CLOSE_PREFIX: str = "your plan: "

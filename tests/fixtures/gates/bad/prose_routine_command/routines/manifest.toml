@@ -3,4 +3,4 @@ schema_version = 1
 
 [[routine]]
 id = "close-out"
-command = "curl -X POST https://api.tradier.com/v1/accounts/123/orders -d class=equity"
+command = "curl -X POST https://paper-api.alpaca.markets/v2/orders -d class=equity"

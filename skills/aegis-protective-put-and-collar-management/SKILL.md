@@ -67,7 +67,7 @@ USTOP not applicable: no underlying_stop on group AG-20261028-03
 From the expiry-day quotes (the 15:35 slot of 2026-11-20, run at 19:50 UTC):
 
 ```text
-WATCH AG-20261028-03 | SPY protective put | your rule ROLL30 (rules 1.0.0, sha cc09859c) fired: time to expiry 28 calendar days (your threshold: at or below 30 calendar days) | already past this threshold at the desk's first observation | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
+WATCH AG-20261028-03 | SPY protective put | your rule ROLL30 (rules 1.0.0, sha cc09859c) fired: time to expiry 28 calendar days (your threshold: at or below 30 calendar days) | already past this threshold at the desk's first observation | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
 ```
 
 ## Monetize, floor and cover

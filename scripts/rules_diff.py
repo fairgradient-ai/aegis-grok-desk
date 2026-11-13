@@ -204,7 +204,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--next-run-utc", metavar="ISO-8601-UTC", default=None,
                         help="the caller's next run: after the session's close a single observation suffices")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

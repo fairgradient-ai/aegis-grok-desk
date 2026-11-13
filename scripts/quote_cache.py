@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""quote_cache.py: serve the desk's quotes from the cache or the GET-only Tradier client.
+"""quote_cache.py: serve the desk's quotes from the cache or the GET-only Alpaca paper market-data client.
 
 Usage::
 
@@ -7,17 +7,17 @@ Usage::
         [--force] [--fixture-set NAME] [--json] [--schema] [--timeout S] [--desk-root DIR]
         [--offline] [--now ISO-8601-UTC]
 
-Reads ``desk.toml`` under ``--desk-root``, refuses ``host = "production"`` (exit 20: production
-market data waits for the market-data proxy, plan section 10), builds the client (``--offline``
-serves the recorded fixture set ``fixtures/tradier/<NAME>`` of the desk root, default ``regular``;
-online, the token comes from the configured environment variable or file, and a missing token is
-exit 20, never 1) and prints one line per symbol::
+Reads ``desk.toml`` under ``--desk-root`` (any host but ``paper`` is refused: ``desk_config`` refuses ``live`` at
+load, exit 1, and the client builder refuses anything else with exit 20), builds the client (``--offline``
+serves the recorded fixture set ``fixtures/alpaca/<NAME>`` of the desk root, default ``regular``;
+online, the Alpaca paper key pair comes from the two configured environment variables or the credentials file, and a
+missing key pair is exit 20, never 1) and prints one line per symbol::
 
     SYMBOL bid/ask mid as-of HH:MM:SS ET (age N min) source
 
 with ``source`` ``fetch`` or ``cache`` (``stale`` for an expired copy the fetch could not refresh,
 display only), ``SYMBOL UNAVAILABLE: <reason>`` for anything not served, the chain when asked, and
-the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. On a weekend, a holiday or a full
+the footer ``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC``. On a weekend, a holiday or a full
 closure of ``research/calendar.toml`` nothing is fetched (one ``NYSE closed`` line; cached copies are
 shown). The session (the fetch decision, the session line and the JSON ``session``) is ``--now``
 classified with the calendar's full closures (``[[closures]] kind = "full"``, read when the file is
@@ -32,7 +32,7 @@ when any is missing, 1 on a configuration or file error (``desk_root``, ``config
 directory belongs), 2 on usage (a symbol that fails the client's pattern included). ``--json`` prints
 the shared envelope with ``payload = {"quotes": [...], "stale": [...], "missing": {...},
 "requests_made", "budget": {"window_60s_used", "left"}, "session", "warnings", "fixture_set"[,
-"chain"]}``; ``source`` is ``tradier:sandbox`` and ``delay_min`` the feed delay.
+"chain"]}``; ``source`` is ``alpaca:paper`` and ``delay_min`` the feed delay.
 The library (``aegis_desk.quote_cache``) never reads the wall clock: ``now`` is ``--now`` or the
 clock read once here.
 """
@@ -52,11 +52,13 @@ from aegis_desk.market_types import MarketTypesError, Quote, parse_iso_date  # n
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "quote_cache"
-DESCRIPTION = ("serve quotes from the desk cache or the GET-only Tradier client (TTL, 60/min budget, "
+DESCRIPTION = ("serve quotes from the desk cache or the GET-only Alpaca paper client (TTL, 200/min budget, "
                "chains on demand); never places, modifies or cancels an order")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/{quotes,options/chains} only; none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and, for "
+                  "--chain, /v1beta1/options/snapshots/<SYMBOL> with "
+                  "https://paper-api.alpaca.markets/v2/options/contracts only; none with --offline")
 OUTPUT: Dict[str, Any] = {
-    "quotes": [{"symbol": "string", "type": "stock | etf | option | index | null", "bid": "decimal string | null",
+    "quotes": [{"symbol": "string", "type": "stock | option | null", "bid": "decimal string | null",
                 "ask": "decimal string | null", "mid": "decimal string | null", "last": "decimal string | null",
                 "bid_date": "ISO-8601 UTC | null", "ask_date": "ISO-8601 UTC | null", "as_of": "ISO-8601 UTC | null",
                 "age_min": "integer minutes from as_of to now | null", "source": "fetch | cache",
@@ -66,7 +68,7 @@ OUTPUT: Dict[str, Any] = {
     "missing": {"SYMBOL": "unmatched | quota_guard | per_run_cap | market_closed | fetch_failed:<status>"},
     "requests_made": "integer requests this run",
     "budget": {"window_60s_used": "integer (ledger records in the window plus this run's own requests)",
-               "left": "integer (60 - 5 headroom - used)"},
+               "left": "integer (200 - 20 headroom - used)"},
     "session": ("market_clock.SessionInfo.as_dict() (--now classified with the calendar's full closures: an "
                 "injected closure is session holiday)"),
     "warnings": ["string"],
@@ -88,7 +90,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--expiration", metavar="YYYY-MM-DD", default=None, help="the chain's expiration date")
     parser.add_argument("--force", action="store_true", help="refetch even when the cached copy is inside the TTL")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

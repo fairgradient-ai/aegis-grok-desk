@@ -286,7 +286,7 @@ class FixedLineTest(unittest.TestCase):
 # Golden texts at the regular instant
 # ------------------------------------------------------------------------------------------------
 
-WMT_ROLL = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+WMT_ROLL = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
@@ -304,7 +304,7 @@ prices: European Black-Scholes-Merton on the quotes' mids; early exercise of the
 
 FOOTER_NOW = alert_lint.structuring_footer_line(NOW)
 
-NVDA_ROLL = """STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+NVDA_ROLL = """STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
@@ -322,11 +322,11 @@ SPY_ROLL_NA = """NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 
 PUT_NOTHING = """NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
 """ + FOOTER_NOW
 
-WMT_CALL = """PROPOSAL WMT covered call | on 200 WMT shares you hold in account 1 of desk.toml (margin) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+WMT_CALL = """PROPOSAL WMT covered call | on 200 WMT shares you hold in account 1 of desk.toml (margin) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a covered call on the 200 WMT shares: 5 passed your criteria, 15 failed
 BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0597 | the highest among the 5 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 45 calendar days inside your window 40 to 75; absolute delta 0.32 inside your band 0.15 to 0.35; bid 2.80 at or above your minimum 0.50; spread 3.51 % within your maximum 25 %; strike 112.5 above your stock cost 98.50
 accepted earnings: earnings on 2026-11-17 (before the open) fall inside the call's life (by #earnings-ok)
 accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's life (by #assign-ok)
@@ -341,11 +341,11 @@ you supply the limit; the desk prints none
 if you decide to act, you type it into your brokerage account yourself and you supply the limit
 """ + FOOTER
 
-SPY_PUT = """PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+SPY_PUT = """PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
 BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum 25 %
 after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now unbounded), breakeven 655.50 (now 632.40)
 leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)
@@ -358,13 +358,13 @@ you supply the limit; the desk prints none
 if you decide to act, you type it into your brokerage account yourself and you supply the limit
 """ + FOOTER
 
-SPY_COLLAR = """PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+SPY_COLLAR = """PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed
 BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
 the score ranks the candidates only on the objective you chose; it is not a forecast
 tie on cap_within_budget broken by the put strike (higher first)
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Tradier sandbox, 15-min delayed, as of 19:31 UTC
+leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your maximum 25 %; call strike 680 above your stock cost 632.40
 accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
 accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
@@ -381,7 +381,7 @@ you supply the limit; the desk prints none
 if you decide to act, you type it into your brokerage account yourself and you supply the limit
 """ + FOOTER
 
-EXPIRY_DAY = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Tradier sandbox, 15-min delayed, as of 19:31 UTC
+EXPIRY_DAY = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 replacement candidates for the short 2026-11-20 105 call: 0 passed your criteria, 10 failed
 no candidate passed every criterion: the desk names no best candidate
 the net credits close the held 2026-11-20 105 call | ask 0.16 | quote grade E, 18 min old | quote grade E: the conservative side stands
@@ -500,7 +500,7 @@ class GoldenTextTest(unittest.TestCase):
         self.assertEqual("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of "
                          "desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)", wmt[0])
         self.assertEqual("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
-                         "quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC", wmt[1])
+                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", wmt[1])
         self.assertIn("accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's "
                       "life (by #assign-ok)", wmt)
         self.assertIn("after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03", wmt)
@@ -686,7 +686,7 @@ class VerifierTest(unittest.TestCase):
     """The PR 3b verifier: review L3-2 for an account named with a phrase of the desk's own words."""
 
     def test_an_account_named_with_a_desk_phrase_does_not_withhold_the_text(self) -> None:
-        for name in ("covered call", "Tradier", "Tradier sandbox", "roll analysis", "the shares"):
+        for name in ("covered call", "Alpaca", "Alpaca paper", "roll analysis", "the shares"):
             w = T.Writer()
             lines = [T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP),
                      "the shares of the group are free"]

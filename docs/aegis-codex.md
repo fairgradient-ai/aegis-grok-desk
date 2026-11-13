@@ -35,11 +35,11 @@ There is no hook for Codex. The controls are the code and the credential:
 
 - the repository holds no broker write path, and `bash scripts/check.sh` proves it ([SECURITY.md](../SECURITY.md),
   layers 1 to 3);
-- the only credential the desk uses is a Tradier sandbox market-data token, which cannot reach a live account. Keep
-  anything that can reach real money out of the environment Codex runs in, and configure no MCP server whose tools
-  can place or change orders.
+- the only credential the desk uses is an Alpaca paper key pair, used only to read market data, which cannot reach a
+  live account. Keep anything that can reach real money out of the environment Codex runs in, and configure no MCP
+  server whose tools can place or change orders.
 
-A first run needs no token: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now).
+A first run needs no key: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now).
 
 ## Other runtimes
 

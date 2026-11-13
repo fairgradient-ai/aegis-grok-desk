@@ -1447,8 +1447,8 @@ def _subject(group: PositionGroup) -> str:
 def _index(group: PositionGroup) -> Optional[Applicability]:
     legs = group.open_legs or group.legs
     if any(row.is_index_underlying for row in legs):
-        return Applicability(VERDICT_NOT_APPLICABLE, NA_INDEX, "%s is on the index %s: the sandbox cannot quote index "
-                             "underlyings, so the desk prices no candidate for it" % (_subject(group), group.underlying))
+        return Applicability(VERDICT_NOT_APPLICABLE, NA_INDEX, "%s is on the index %s: the data source cannot quote "
+                             "index options, so the desk prices no candidate for it" % (_subject(group), group.underlying))
     return None
 
 

@@ -5,9 +5,9 @@ Short answers for the owner, from what this release does. The details are linked
 ## What does setup ask me for?
 
 One thing. You paste the Start prompt from the [README](../README.md#start) into a new Grok Bot. The Aegis Desk Lead
-builds the desk, shows you a demo on a sample book, and asks you for one thing: a free Tradier sandbox market-data
-token, added through the secure secret card, never pasted in chat. It checks the token with one live market snapshot
-and returns a receipt. Nothing else is asked in the first run.
+builds the desk, shows you a demo on a sample book, and asks you for one thing: a free Alpaca paper key (a key ID and
+its secret), added through the secure secret card, never pasted in chat. It checks the key with one live market
+snapshot and returns a receipt. Nothing else is asked in the first run.
 
 Everything else waits until you say so:
 
@@ -22,58 +22,76 @@ Say "add my positions" first. Whichever phrase you say first, the Lead checks wh
 Ask-first rules, the connected-apps check and the desk settings) and does any missing part before anything else.
 [SETUP.md](../SETUP.md) section 9 has each step.
 
-## How do I get a Tradier sandbox token?
+## How do I get an Alpaca paper key?
 
-The desk reads delayed market data from Tradier's sandbox, its free practice (paper trading) environment. You need a
-free Tradier account, then its sandbox token. Tradier no longer offers a developer-only sandbox without an account.
+The desk reads delayed market data from Alpaca with a paper key: the key of Alpaca's free practice (paper trading)
+account, which anyone can open with an email address, with no funding and no brokerage application (Alpaca's
+documentation, read 2026-11-13).
 
-1. **Open a Tradier account.** Go to [tradier.com](https://tradier.com) and choose Sign up. Tradier's API FAQ says
-   API access comes with the account at no extra cost, and that the sandbox is free. Whether the account must be
-   funded first is not confirmed. For personal use you need no Developer Portal.
-2. **Find the tokens.** Log in at [web.tradier.com/login](https://web.tradier.com/login), click your name in the top
-   right corner and choose API Access, or go straight to
-   [web.tradier.com/user/api](https://web.tradier.com/user/api). That page manages the tokens for both the live and
-   the sandbox environments. On a phone, open the same page in your phone's browser (not in a Bot's browser); a path
-   inside Tradier's mobile app is not confirmed.
-3. **Copy the sandbox token, and only that one.** The production token, under Production Account Access, sits on the
-   same page and comes first: leave it alone. Tradier's help calls the sandbox section Sandbox Account Access (Paper
-   trading) and describes enrolling in paper trading there if no sandbox token is listed yet; we could not confirm
-   those labels on the page itself. The token is hidden: tap the eye icon to show it and the copy icon to copy it.
-4. **Add it through the secure secret card** when the Aegis Desk Lead asks, never in chat. Tradier's advice: "Treat
-   your API tokens like passwords ... Anyone with access to your token can make API calls and take actions on your
-   account."
+1. **Open a paper account.** Go to [alpaca.markets](https://alpaca.markets) and sign up with your email address. A
+   paper-only account starts with simulated money and costs nothing; the free plan is Alpaca's default.
+2. **Switch to Paper Trading.** Log in to the dashboard and make sure the environment switch says Paper Trading,
+   not Live. Do this on a computer or in your phone's browser, not in a Bot's browser.
+3. **Generate the key.** In the API Keys panel on the right side of the dashboard, choose Generate New Key. Alpaca
+   shows the key ID and the secret. The secret is shown only once: if you lose it, generate a new pair, which stops
+   the old one working.
+4. **Add both through the secure secret card** when the Aegis Desk Lead asks, never in chat: the key ID as
+   `APCA_API_KEY_ID` and the secret as `APCA_API_SECRET_KEY`.
 
-The two tokens are separate. A sandbox token works with `https://sandbox.tradier.com/v1/` and a production token with
-`https://api.tradier.com/v1/`; Tradier lists using one with the other's endpoints as a cause of a 401 error. The desk
-talks only to the sandbox host, and its doctor checks the token with one read of the sandbox clock: a 401 or 403
-fails with `not a sandbox token: remove and rotate`.
+Paper and live keys are separate. Paper key IDs usually start with `PK` and live ones with `AK`, but Alpaca calls that
+a visual hint, not a security check. The desk's checks send your key to Alpaca's paper trading host, which refuses
+keys from another environment with a 401 or 403, so a live key fails them (Alpaca documents the mismatch error; it
+does not publish a separate paper/live test). The first run's market snapshot lists option contracts on that host and
+fails with `UNAVAILABLE: not a paper key: ...`; the desk doctor reads that host's clock once and fails with `not a
+paper key: remove it and add a paper key`. Alpaca's market-data host answers live keys too, so only the paper-host
+step tells the two apart. Copy the key from the Paper Trading dashboard only.
+
+What the free plan gives the desk:
+
+- **Stocks:** the IEX exchange's own quotes, the only stock feed a paper-only account is entitled to.
+- **Options:** Alpaca's indicative feed. Its option quotes are delayed 15 minutes and are not actual exchange (OPRA)
+  quotes; Alpaca describes them as indicative and modified. Every desk message that shows a quote labels them
+  approximate. Real exchange option quotes need Alpaca's paid subscription; the desk's `options_feed = "opra"`
+  setting is for a subscriber only.
+- **Rate:** 200 market-data requests a minute, shared by every tool of the desk.
+
+A licence note: Alpaca's market data is licensed for your personal use. An Alpaca staff reply on its forum says it
+may not be provided, or anything derived from it, to third parties. The desk shows it only to you, the owner; if
+anyone else, or a business, will see the desk's messages, ask Alpaca for written confirmation first.
 
 ## Can the desk place a trade for me?
 
 No. This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
 
 No tool in this repository sends anything but a read-only market-data request, and
-`scripts/check_no_write_paths.py` proves it on every gate run. No Bot holds a brokerage credential; the only
-credential is a Tradier sandbox market-data token, which cannot reach a live account. When you ask a Bot to trade, it
+`scripts/check_no_write_paths.py` proves it on every gate run. No Bot holds a live brokerage credential; the only
+credential is an Alpaca paper key pair, used only to read market data, which cannot reach a live account. When you ask a Bot to trade, it
 answers with the boundary sentence above: the decision and the order are yours, in your brokerage account. When you
 ask the Aegis Structuring Desk for a ticket, it lists the legs with their quotes and carries no order fields: you
 supply the limit and type it into your brokerage account yourself, if you decide to act. See
 [SECURITY.md](../SECURITY.md).
 
-One honest gap: the sandbox token could place paper orders on Tradier's practice host. The Auto-review rule that
+One honest gap: the paper key could place paper orders on Alpaca's paper trading host. The Auto-review rule that
 makes Grok Bot ask you before any order, brokerage write or brokerage sign-in is added when you say "add my
 positions", and it comes first whichever later phrase you say first. Between the first run and then, the desk holds
-only that sandbox token, which cannot reach a live account, and the desk's code still has no way to write: its
-market-data client sends GET requests only, and the repository gate proves it. If you paste the production token by
-mistake, the live check in the first run fails with `auth:` and the Lead asks you to delete it from the secret card at
-once; until you do, no Ask-first rule guards it.
+only that paper key, which cannot reach a live account, and the desk's code still has no way to write: its
+market-data client sends GET requests only, and the repository gate proves it. A live key pasted by mistake fails the
+first run's market snapshot with `UNAVAILABLE: not a paper key: ...`, because its contract listing is read on Alpaca's
+paper trading host, which refuses keys from another environment; the desk doctor's paper check rests on the same
+refusal from "add my positions" on. Until you delete a live key from the secret card, no Ask-first rule guards it, so
+copy only from the Paper Trading dashboard.
 
 ## Why is the data 15 minutes late, and what does the desk do about it?
 
-The desk uses the Tradier sandbox feed, which is delayed 15 minutes. Every message names its source, the delay and
-the UTC time of its quotes, for example `Tradier sandbox, 15-min delayed, as of 19:31 UTC`. A quote counts as fresh
+The desk uses Alpaca's free data: IEX stock quotes (real time, from the IEX exchange only) and indicative option
+quotes, which are delayed 15 minutes and approximate (not exchange quotes). The desk treats every quote as 15 minutes
+delayed, the conservative bound. Every message names its source,
+the delay and the UTC time of its quotes, for example `Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC`. A quote counts as fresh
 during the session when it is no older than 25 minutes (the 15-minute delay, a 5-minute cache and 5 minutes of
-grace); an older quote makes the rule that needs it UNAVAILABLE. A take-profit rule reads the conservative side of the
+grace); an older quote makes the rule that needs it UNAVAILABLE. An implied volatility is computed only when the
+option quote and its stock quote are stamped within 60 seconds of each other; if the delayed option quotes turn out
+to be stamped 15 minutes behind the real-time stock quotes, those lines say UNAVAILABLE rather than mix the two
+([PROVENANCE.md](PROVENANCE.md) records this open item). A take-profit rule reads the conservative side of the
 quote, so a wide spread can only delay it. For real-time watching, use your broker's alerts at the prices on the
 threshold-level sheet.
 
@@ -123,21 +141,21 @@ See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-
 ## Index options and AM settlement?
 
 The desk treats an index underlying as one it cannot quote: an index row gets the warning `UNQUOTABLE_INDEX`, and a
-rule that needs the index level is UNAVAILABLE. Tradier's older documentation said the sandbox serves no index data;
-what its current documentation says was not confirmed. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
+rule that needs the index level is UNAVAILABLE. Alpaca serves index option data on its paid exchange feed; whether
+its free indicative feed serves index options to a paper account is not confirmed, so the desk does not rely on it. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
 settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. Sourcing
 those values is planned for Stage 2 (not in this release).
 
-## Can I use production data?
+## Can I use live-account data?
 
-Not in this release. A production host is refused, with the message `production market data is not supported before
-the market-data proxy (Stage 3); use the sandbox host`. A production token can trade, so it would leave the
-guarantee. A local read-only proxy that would hold it outside the Bots' reach is planned for Stage 3 (not in this release).
+No. The desk holds a paper key only, and `desk.toml` must say `host = "paper"`: any other host, `live` included,
+stops `desk.toml` from loading, with the message `[market_data] host must be "paper" (got "live"): the desk holds a
+paper key only, and the live trading host is refused`. A live key can trade, so it would leave the guarantee.
 
 ## How are Greeks computed?
 
-The desk computes them itself and never takes them from the feed (Tradier's older documentation said the sandbox
-serves no Greeks; its current documentation was not confirmed): implied volatility from the quote's mid
+The desk computes them itself and never takes them from the feed (Alpaca's option snapshots carry Greeks and implied
+volatility computed from indicative quotes; the desk ignores them): implied volatility from the quote's mid
 with the generalised Black-Scholes-Merton model, and European Greeks in desk units (theta per calendar day, vega per
 volatility point). The dividend yield comes from `research/calendar.toml`, or 0 with a warning on the leg. Early
 exercise is not modelled in Stage 1; an American lattice is planned for Stage 2 (not in this release). The

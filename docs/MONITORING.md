@@ -99,8 +99,9 @@ desk computer sleeps when nothing wakes it, so these two anchors are how you kno
 
 ## How late can an alert be?
 
-- The data is the Tradier sandbox feed, delayed 15 minutes. Every message names its source, the delay and the UTC
-  time of its quotes.
+- The data is Alpaca's free feed: IEX stock quotes (real time, from the IEX exchange only) and indicative option
+  quotes, delayed 15 minutes and approximate (not exchange quotes). The desk treats every quote as 15 minutes delayed,
+  the conservative bound. Every message names its source, the delay and the UTC time of its quotes.
 - Grok Bot routines can start late: queue delays of 10 to 37 minutes are reported, worst between 08:00 and 12:00 ET.
   A run may be skipped during an outage, and it is not replayed.
 - On the lean profile the book checks are about two hours apart.

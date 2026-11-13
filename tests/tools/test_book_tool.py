@@ -18,8 +18,10 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
+from unittest import mock
 
 from aegis_desk import book as library
+from aegis_desk import quote_cache
 
 import book as tool  # the tool module scripts/book.py, not the library aegis_desk.book
 
@@ -129,11 +131,17 @@ class AlwaysOnTest(DeskCopy):
 
 
 class PlumbingTest(DeskCopy):
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_refused_at_load(self) -> None:
+        self.rewrite("desk.toml", 'host = "paper"', 'host = "live"')
         code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+
+    def test_refused_market_data_is_exit_20(self) -> None:
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = run_json(["--json", "--offline", "--desk-root", self.root, "--now", REGULAR_NOW])
         self.assertEqual(20, code)
-        self.assertEqual(("unavailable", "production_host"), (body["status"], body["error"]["code"]))
+        self.assertEqual(("unavailable", "no_credential"), (body["status"], body["error"]["code"]))
 
     def test_invalid_config_is_exit_1(self) -> None:
         self.rewrite("desk.toml", "grace_min = 5", "grace_min = 31")
@@ -172,7 +180,7 @@ class JourneysTest(DeskCopy):
     def test_regular_book_is_exit_0_with_the_goldens(self) -> None:
         code, body = run_json(self.argv())
         self.assertEqual(0, code, body)
-        self.assertEqual(("ok", "book", "tradier:sandbox", 15, "2026-11-03T19:50:00+00:00"),
+        self.assertEqual(("ok", "book", "alpaca:paper", 15, "2026-11-03T19:50:00+00:00"),
                          (body["status"], body["tool"], body["source"], body["delay_min"], body["generated_at"]))
         payload = body["payload"]
         self.assertEqual(set(library.BOOK_KEYS), set(payload))
@@ -191,7 +199,7 @@ class JourneysTest(DeskCopy):
                           wmt["breakevens"], wmt["data_quality"]))
         self.assertEqual(("open", "as of 14:31:12 ET"), (payload["session"], payload["as_of_label"]))
         self.assertIn("day P/L unavailable: no snapshot for 2026-11-02 (the desk's first day?)", payload["warnings"])
-        self.assertEqual(1, len(self.ledger()), "one quotes request for the whole book")
+        self.assertEqual(2, len(self.ledger()), "one quotes batch for the whole book: equities, then options")
         self.assertEqual("ok", payload["legs"][1]["iv_status"])
         self.assertIsInstance(payload["legs"][1]["iv"], float)
 
@@ -271,7 +279,7 @@ class JourneysTest(DeskCopy):
         self.assertTrue(os.path.isfile(report))
         with open(report, encoding="utf-8") as handle:
             content = handle.read()
-        for needle in ("AG-20261020-01", "covered_call", "4097.00", "Tradier sandbox, delayed 15 min"):
+        for needle in ("AG-20261020-01", "covered_call", "4097.00", "Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min"):
             self.assertIn(needle, content)
         self.assertIn("reports/book.md", text)
         self.assertIn("data/book/2026-11-03.json", text)
@@ -280,7 +288,7 @@ class JourneysTest(DeskCopy):
         code, text = run_tool(self.argv(json_mode=False))
         self.assertEqual(0, code, text)
         lines = text.splitlines()
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
         self.assertIn("as of 14:31:12 ET", lines[-2])
         joined = "\n".join(lines)
         for needle in ("AG-20261020-01 covered_call WMT", "net cost 19016.00", "max profit 1984.00", "max loss 19016.00",
@@ -328,7 +336,7 @@ class InjectedClosureTest(DeskCopy):
         self.assertEqual(20, code, text)
         lines = text.splitlines()
         self.assertEqual(CLOSED_TODAY_LINE, lines[-2])
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:50 UTC", lines[-1], "no quote stamp: the run's own instant")
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:50 UTC", lines[-1], "no quote stamp: the run's own instant")
         self.assertEqual([], self.ledger(), "no quote fetch")
         self.assertIsNone(ORDER_SHAPED.search(text), text)
         code, body = run_json(self.argv())
@@ -368,7 +376,7 @@ class InjectedClosureTest(DeskCopy):
         self.assertEqual([12, 12, 31], [leg["dte_trading"] for leg in payload["legs"]
                                         if leg["occ"] is not None and leg["status"] == "open"],
                          "one trading day off every open leg that spans the closure")
-        self.assertEqual(1, len(self.ledger()))
+        self.assertEqual(2, len(self.ledger()))
 
 
 if __name__ == "__main__":

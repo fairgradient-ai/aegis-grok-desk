@@ -3,6 +3,62 @@
 ## 0.2.0 (unreleased)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).
+- **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run
+  action is a free Alpaca paper key pair (a key ID and its secret, from a paper-only account opened with an email
+  address), added through the secure secret card as `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, never pasted in chat
+  (SETUP section 7, the bootstrap skill, the FAQ). The fallback is the 0600 file `/workspace/.aegis-secrets/alpaca.key`
+  (key ID on line 1, secret on line 2); `opening_bell.py --token-file` becomes `--credentials-file`.
+- The one network module is now `scripts/aegis_desk/alpaca_client.py` (`check_no_write_paths.NETWORK_CLIENT`), with
+  every earlier safety property kept: one literal GET with no body, redirects refused, no proxy handler, TLS 1.2 or
+  later, a response-size cap, redaction of both the key ID and the secret, and refusal of an answer that echoes
+  either (a non-200 body that echoes either in JSON escapes is withheld whole). Two hosts are pinned: `data.alpaca.markets` (`/v2/stocks/quotes/latest`, `/v2/stocks/bars`,
+  `/v1beta1/options/quotes/latest`, `/v1beta1/options/snapshots/<UNDERLYING>`) and `paper-api.alpaca.markets` (only
+  `/v2/clock`, `/v2/calendar` and `/v2/options/contracts`). The live trading host `api.alpaca.markets` is refused.
+  Answers are paginated (`next_page_token`, at most 10 pages, each counted as a request); new statuses
+  `no_credential`, `credential_file_mode`, `subscription` (a request the free plan does not cover) and `incomplete`
+  replace `no_token` and `token_file_mode`.
+- The free plan's feeds, labelled: stocks from IEX; options from Alpaca's indicative feed, delayed 15 minutes and not
+  exchange (OPRA) quotes. Every quote segment, footer, alert, structuring text and the Opening Bell's snapshot line
+  now name the source from one constant (`aegis_desk.data_source`): `Alpaca paper (IEX stocks, indicative options:
+  approximate)`. `options_feed = "opra"` is accepted for a subscriber. `feed_delay_min` stays 15, the conservative
+  bound, and the indicative feed requires at least 15. The Structuring Desk's disclosure text now says the quotes are
+  delayed Alpaca paper quotes, the option quotes approximate (its id is unchanged).
+- `desk.toml` `[market_data]`: `vendor = "alpaca"`, `host = "paper"` (any other host, `live` included, fails at load),
+  `key_env`, `secret_env`, optional `credentials_file`, `options_feed`, `stock_feed = "iex"`; `token_env` and
+  `token_file` are gone. `key_env` and `secret_env` must be upper-case variable names with an underscore
+  (`APCA_API_KEY_ID`), one rule shared with `desk_init.py`, so a pasted key ID or secret is refused and never shown.
+  `desk_init.py` writes the new block and refuses a live host (`live_host`).
+- The desk doctor: check 4 is `key_source` (names the two variable names or the file, never a value); check 5 is
+  `paper_key`, one GET of `/v2/clock` on the paper trading host (which refuses a key from another environment):
+  `paper key verified`, or a 401/403 FAIL `not a paper key: remove it and add a paper key`. Check 7 exempts exactly
+  the configured key and secret names from the broker-name rule (any other `ALPACA_*` name still fails; a configured
+  `APCA_LIVE_*` name fails too) and fails on an `APCA_API_BASE_URL` that names the live trading host.
+- The live Opening Bell reads its contract listing on the paper trading host, so a key that host refuses after the
+  market-data host answered it is `UNAVAILABLE: not a paper key: ...` (exit 20, `not_paper_key`): a live key fails the
+  first run's check.
+- Quote grading: an ask of 0 under a positive bid (Alpaca's "no active offer") is a missing ask, `ask missing (no
+  offer)`, grade F, never a crossed market.
+- The quote cache counts every request, not every call: a quotes batch with stocks and options is 2 requests, a chain
+  at least 2 (the contract listing, then the snapshots). The desk-wide window is 200 requests a minute (the free
+  plan's market-data limit) minus a headroom of 20; no new fetch starts once a run has made 40 requests (a chain
+  only while its minimum of 2 still fits; a paginated answer can finish past 40), and a run fetches at most 4
+  chains. A symbol the vendor did not quote is `fetch_failed:not_returned`. Index options stay unquotable, now worded
+  "the data source cannot quote index options".
+- The offline fixtures moved to `tests/fixtures/desk*/fixtures/alpaca/` in Alpaca's response shapes, generated from
+  the same synthetic values, so every price, size and stamp golden holds; request counts and the `desk.toml` hash in
+  the journeys changed.
+- The write-side Ask-first Auto-review rule now names Alpaca: any request to a brokerage's order, position or account
+  endpoints, including any request to `api.alpaca.markets`, and any request to `paper-api.alpaca.markets` other than
+  `/v2/clock`, `/v2/calendar` and `/v2/options/contracts` (487 characters; the Allow rule says "GET-only Alpaca paper
+  client").
+  Paste the reprinted rules (`routine_audit.py --rules-text`) again. The Grok Build deny rules name the Alpaca hosts.
+- The broker-write hook no longer exempts any market-data read on a broker host: an HTTP call that names a broker host
+  is denied, reads included (the desk's tools read market data from Python, never through a shell or an MCP tool).
+  The replaced vendor's host left the hook's broker-host list; a write to any account or order path is still denied
+  on every host.
+- 3103 tests in all (floor 3103).
+- Every document, skill, agent and role skill is rewritten for Alpaca, including the FAQ's paper-key answer, the free
+  plan's limits and the personal-use data licence note.
 
 ## 0.1.1 (2026-11-13)
 

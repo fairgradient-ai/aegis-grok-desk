@@ -25,9 +25,12 @@ name = "Roth IRA"
 type = "ira"
 
 [market_data]
-vendor = "tradier"
-host = "sandbox"
-token_env = "TRADIER_API_TOKEN"
+vendor = "alpaca"
+host = "paper"
+key_env = "APCA_API_KEY_ID"
+secret_env = "APCA_API_SECRET_KEY"
+options_feed = "indicative"
+stock_feed = "iex"
 feed_delay_min = 15
 quote_ttl_min = 5
 grace_min = 5

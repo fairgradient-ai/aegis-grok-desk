@@ -12,7 +12,7 @@ underlying in ONE quotes request through ``aegis_desk.quote_cache.get_quotes`` (
 quotes with ``aegis_desk.quote_qc.assess`` and builds the book through ``aegis_desk.book.load_book`` (the
 library entry point PR 2c's tools share). Prints one line per group followed by one per leg (structure, marks,
 P/L on the mid and liquidation bases, grade, IV, DTE), the portfolio line, the warnings, the session label and
-the footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``.
+the footer ``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC``.
 
 The session the book is graded in (``session``, ``as_of_label``, the fetch decision, the session line and the
 snapshot's date) is ``--now`` classified with the calendar's full closures (``[[closures]] kind = "full"`` in
@@ -40,7 +40,7 @@ intrinsic value at the underlying's usable mid stamped within 60 s of the option
 number for one leg.
 
 Exit 0 when every open group is ``ok``, 20 when any group is unavailable or quarantined or the market data
-is refused (production host, no token, expired holiday table), 1 on a configuration or file error
+is refused (a host other than paper, no key pair, expired holiday table), 1 on a configuration or file error
 (``desk_root``, ``config_invalid``, ``positions_missing``, ``positions_invalid``, ``calendar_invalid``,
 ``io_error``, ``lock_busy``), 2 on usage. ``--json`` payload: the book dict exactly (plan section 8
 ``book.json``; money as decimal strings through the envelope's encoder).
@@ -62,7 +62,8 @@ from aegis_desk.version import release_version  # noqa: E402
 TOOL = "book"
 DESCRIPTION = ("the book of record: every position marked from the desk's quotes with IV, Greeks, P/L, payoff "
                "metrics and day P/L against the desk's own snapshot; unavailable is a verdict (exit 20), never a zero")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 GREEKS_SHAPE = {"delta": "float", "gamma": "float", "theta": "float per day", "vega": "float per vol point",
                 "rho": "float per 1 %"}
 OUTPUT: Dict[str, Any] = {
@@ -72,7 +73,7 @@ OUTPUT: Dict[str, Any] = {
     "as_of_label": "as of HH:MM:SS ET | as of close HH:MM ET | as of prior close YYYY-MM-DD HH:MM ET | NYSE closed",
     "data_quality": {"grades": {"A": "n", "B": "n", "C": "n", "D": "n", "E": "n", "F": "n"}, "usable_legs": "integer",
                      "unavailable_legs": "integer", "bound_min": "integer minutes"},
-    "sources": [{"name": "tradier:sandbox", "delay_min": "integer minutes", "receipt_utc": "ISO-8601 UTC | null"}],
+    "sources": [{"name": "alpaca:paper", "delay_min": "integer minutes", "receipt_utc": "ISO-8601 UTC | null"}],
     "rates": {"risk_free_rate": "decimal string", "source": "string", "as_of": "YYYY-MM-DD"},
     "config_sha": {"desk_toml": "sha256", "positions_csv": "sha256", "calendar_toml": "sha256 | null"},
     "legs": [{"row_number": "integer (physical line)", "trade_id": "string | null", "group_id": "string", "account": "string",
@@ -142,7 +143,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
                         help="write data/book/<ET date>.json, the snapshot of record (atomic, under the desk lock)")
     parser.add_argument("--report", action="store_true", help="write reports/book.md")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

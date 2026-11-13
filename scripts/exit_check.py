@@ -33,11 +33,11 @@ reported there and never make a group UNAVAILABLE nor change the exit code), the
 ``MOVE5_DOWN, MOVE5_UP and DAILY need the previous end-of-day snapshot (none for YYYY-MM-DD)``), the verdict counts,
 the CONFIG CHANGED list (the sha256 of ``desk.toml``, ``positions.csv``, the adopted rulebook file and
 ``structuring.toml`` against ``state/desk_state.json["acknowledged_hashes"]``; a missing key is unacknowledged, a
-missing structuring.toml with no acknowledged hash is no change; it never changes the exit code) and the data footer ``Tradier sandbox, delayed 15 min, as of HH:MM UTC``. Every number printed is the
+missing structuring.toml with no acknowledged hash is no change; it never changes the exit code) and the data footer ``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC``. Every number printed is the
 value the engine decided on (``aegis_desk.exit_rules``, decision 15), written as a plain decimal.
 
 Exit codes, by the one verdict table: 10 when any group is EXIT_SIGNAL, 20 when any group is UNAVAILABLE (and none
-EXIT_SIGNAL), 0 otherwise; 20 also when the market data is refused (production host, no token, an expired holiday
+EXIT_SIGNAL), 0 otherwise; 20 also when the market data is refused (a host other than paper, no key pair, an expired holiday
 table); 1 on a desk, configuration, rulebook or book file error (``desk_root``, ``config_invalid``,
 ``positions_missing``, ``positions_invalid``, ``calendar_invalid``, ``book_invalid``, the rulebook codes,
 ``io_error``); 2 on usage. ``--json`` payload: ``{rulebook {version, sha, path, adopted, rules}, dry_run,
@@ -78,7 +78,8 @@ TOOL = "exit_check"
 DESCRIPTION = ("the adopted exit rules evaluated against the book: one verdict per group (EXIT_SIGNAL, UNAVAILABLE, "
                "WATCH, HOLD) with every fired, pending, unavailable and suppressed rule; reads the rule state, never "
                "writes it")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline or --book"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline or --book")
 
 ORIGIN_QUOTES = "quotes"
 ORIGIN_FILE = "file"
@@ -625,7 +626,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--next-run-utc", metavar="ISO-8601-UTC", default=None,
                         help="the caller's next run: after the session's close a single observation suffices")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

@@ -132,7 +132,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--from-snapshot", action="store_true",
                         help="read the snapshot of record data/book/<ET date of --now>.json instead of fetching quotes")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

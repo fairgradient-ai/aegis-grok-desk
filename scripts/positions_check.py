@@ -12,7 +12,7 @@ group; a file error fails the whole file), groups the legs into structures
 option legs, their underlyings and the open stock legs, through ``quote_cache.get_quotes``; never
 chains): an option row whose entry premium per share lies outside ``[mid / 20, mid x 20]`` is the
 row ERROR ``unit mismatch? entry 3.42 vs mark 0.12`` and quarantines its group; a stock row outside
-``[mid / 10, mid x 10]`` is a WARNING; an index underlying is warned as unquotable on the sandbox;
+``[mid / 10, mid x 10]`` is a WARNING; an index underlying is warned as unquotable (the data source cannot quote index options);
 an expired leg is left to ``csv_recon.py``. A cached copy is good enough for this order-of-magnitude
 check, so the test also runs after the close.
 
@@ -49,7 +49,8 @@ from aegis_desk.version import release_version  # noqa: E402
 TOOL = "positions_check"
 DESCRIPTION = ("validate positions.csv, group the legs into structures and run the first-observation plausibility check "
                "of every open leg against its quote; CLEAN, or the quarantined groups and file errors (never writes the file)")
-NETWORK_ACCESS = "GET https://sandbox.tradier.com/v1/markets/quotes only (through the quote cache); none with --offline"
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
+                  "(through the quote cache); none with --offline")
 VERDICTS = (recon.VERDICT_CLEAN, recon.VERDICT_UNAVAILABLE, recon.VERDICT_ERRORS)
 OUTPUT: Dict[str, Any] = {
     "verdict": " | ".join(VERDICTS) + " (ERRORS is reported through the error envelope: error.code positions_invalid, "
@@ -85,7 +86,7 @@ def user_agent(version: str) -> str:
 def build_parser(version: str) -> contract.ReadOnlyParser:
     parser = contract.ReadOnlyParser(tool=TOOL, tool_version=version, description=DESCRIPTION)
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 
@@ -211,7 +212,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if stamps:
                 footer_as_of = max(stamps)
         checks = recon.plausibility(positions.rows, quotes, missing=missing, expired_rows=plan.expired_rows,
-                                    sandbox=market.cfg.market_data.host == desk_config.HOSTS[0])
+                                    index_unquotable=market.cfg.market_data.host in desk_config.HOSTS)
         for group_id, errors in recon.plausibility_quarantine(checks, positions.rows).items():
             quarantined.setdefault(group_id, []).extend(str(error) for error in errors)
     live = [group for group in groups if group.group_id not in quarantined]

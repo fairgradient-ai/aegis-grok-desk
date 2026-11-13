@@ -1,12 +1,12 @@
-"""The desk doctor's checks: release pin, interpreter, holiday table, token, sandbox, machine role, broker-looking
+"""The desk doctor's checks: release pin, interpreter, holiday table, key source, paper key, machine role, broker-looking
 environment names, desk files, market status, connector readback, heartbeats and the engine selftest. Standard
 library only.
 
 New for Aegis Desk (plan sections 9 and 10; PR 2d decision D2-12). ``scripts/desk_doctor.py`` runs these checks
 and writes ``state/doctor.json``; this module holds each check as a function of its inputs, so every reason is
 tested through the seams the decision names (the environment mapping, whether ``/workspace`` exists, the local UTC
-offset, the checkout answer of ``check_grok_template.checkout_state``, the find-spec and token loaders, the sandbox
-client) and nothing here imports a gate script, reads the wall clock or writes a file.
+offset, the checkout answer of ``check_grok_template.checkout_state``, the find-spec and credential loaders, the
+paper-host client) and nothing here imports a gate script, reads the wall clock or writes a file.
 
 Checks
 ------
@@ -23,23 +23,29 @@ one-line reason that never carries a secret.
    missing here).
 3. ``holiday_table``: ``market_clock.table_status`` of the ET date; anything but ``ok`` FAILs (60 days before the
    table expires).
-4. ``token_source``: ``tradier_client.load_token`` with ``desk.toml``'s ``token_env`` and ``token_file``; PASS names
-   the source, ``no_token`` and ``token_file_mode`` FAIL with the client's message (sources, never the value);
+4. ``key_source``: ``alpaca_client.load_credential`` with ``desk.toml``'s ``key_env``, ``secret_env`` and
+   ``credentials_file``; PASS names the source (the two variable NAMES, or the file whose mode has no group or other
+   bits), ``no_credential`` and ``credential_file_mode`` FAIL with the client's message (sources, never a value);
    ``--offline`` reads nothing (WARN).
-5. ``sandbox``: a ``production`` host FAILs with no request; ``--offline`` WARNs; otherwise :func:`verify_sandbox`
-   asks the sandbox clock once (``GET /v1/markets/clock``): an answer PASSes, 401 or 403 FAIL ``not a sandbox
-   token: remove and rotate``, any other failure WARNs with its status.
+5. ``paper_key``: any host but ``paper`` FAILs with no request; ``--offline`` WARNs; otherwise
+   :func:`verify_paper_key` asks the PAPER trading host's clock once (``GET https://paper-api.alpaca.markets/v2/clock``
+   with the key pair; never the data host, which serves live keys too): an answer PASSes ``paper key verified``, 401
+   or 403 FAIL ``not a paper key: remove it and add a paper key`` (a live key, or a wrong or deleted one), any other
+   failure WARNs with its status.
 6. ``machine_role`` (:func:`machine_role`): ``owner_private`` only when ``AEGIS_MACHINE_ROLE`` is exactly
    ``owner_private`` AND ``/workspace`` does not exist, else ``shared`` (``desk.toml`` cannot set it); always PASS.
 7. ``broker_env``: environment variable NAMES only (values are never read); a name split on ``_``, ``-`` and its
    camel-case humps (``schwabToken`` is ``SCHWAB``, ``TOKEN``) and upper-cased FAILs when a part is in
    :data:`BROKER_NAME_PARTS`, starts with a broker's name of :data:`BROKER_NAME_PREFIXES` (``SCHWABAPIKEY``), or two
-   adjacent parts are in :data:`BROKER_NAME_PAIRS` (``E_TRADE``, ``TD_AMERITRADE``, ``IB_GATEWAY``, and a Tradier
-   name that says live, production, brokerage or trading: such a token can trade); the configured ``token_env`` is
-   excluded. Generic words match whole parts only, so ``GCM_INTERACTIVE``, ``BORDER_COLOR``, ``RECORDER_PATH`` and
-   ``SORTORDER`` pass.
-8. ``desk_files``: ``desk.toml`` (``desk_config``; a ``production`` market-data host FAILs here too, with no request,
-   so the quick doctor of the pre-open routine agrees with check 5), ``positions.csv`` (file errors FAIL, quarantined
+   adjacent parts are in :data:`BROKER_NAME_PAIRS` (``E_TRADE``, ``TD_AMERITRADE``, ``IB_GATEWAY``, and an Alpaca
+   ``APCA`` name that says live or production: such a key can trade); exactly the configured ``key_env`` and
+   ``secret_env`` names are exempt from the part and prefix rules (a set: any other ``ALPACA_*`` name still FAILs),
+   never from the pair rule (a configured ``APCA_LIVE_API_KEY_ID`` still FAILs). One value is read:
+   :data:`ALPACA_BASE_URL_ENV` (``APCA_API_BASE_URL``, the Alpaca SDKs' trading-host setting) FAILs when its host is
+   the live trading host ``api.alpaca.markets`` (the message names the variable and the host, nothing else). Generic
+   words match whole parts only, so ``GCM_INTERACTIVE``, ``BORDER_COLOR``, ``RECORDER_PATH`` and ``SORTORDER`` pass.
+8. ``desk_files``: ``desk.toml`` (``desk_config``, which refuses a ``live`` host at load; any other host but
+   ``paper`` FAILs here too, with no request, so the quick doctor of the pre-open routine agrees with check 5), ``positions.csv`` (file errors FAIL, quarantined
    groups WARN),
    the adopted rulebook (``exit_rules.load_adopted_rulebook``: ``<code>: <first problem>`` FAILs),
    ``research/calendar.toml`` (missing WARNs, unusable FAILs) and, only when the file exists, ``structuring.toml``
@@ -67,12 +73,14 @@ import importlib.util
 import os
 import re
 import sys
+import urllib.parse
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from . import (
     alert_lint,
+    alpaca_client,
     alerts,
     bsm,
     calendar_events,
@@ -88,7 +96,6 @@ from . import (
     state,
     structuring_config,
     toml_compat,
-    tradier_client,
 )
 from .desk_paths import DeskPaths
 from .grouping import group_positions
@@ -98,7 +105,7 @@ WARN: str = "WARN"
 FAIL: str = "FAIL"
 STATUSES: Tuple[str, ...] = (PASS, WARN, FAIL)
 CHECKS: Tuple[Tuple[int, str], ...] = (
-    (1, "release_pin"), (2, "interpreter"), (3, "holiday_table"), (4, "token_source"), (5, "sandbox"),
+    (1, "release_pin"), (2, "interpreter"), (3, "holiday_table"), (4, "key_source"), (5, "paper_key"),
     (6, "machine_role"), (7, "broker_env"), (8, "desk_files"), (9, "market_status"), (10, "connector_readback"),
     (11, "heartbeats"), (12, "selftest"),
 )
@@ -115,7 +122,7 @@ DOCTOR_FILE: str = "doctor.json"
 RECORD_SCHEMA: int = 1
 
 DESK_STDLIB_MODULES: Tuple[str, ...] = (
-    "argparse", "collections", "contextlib", "copy", "csv", "dataclasses", "datetime", "decimal", "errno", "fcntl",
+    "argparse", "calendar", "collections", "contextlib", "copy", "csv", "dataclasses", "datetime", "decimal", "errno", "fcntl",
     "functools", "hashlib", "http", "importlib", "io", "json", "math", "numbers", "os", "re", "socket", "ssl", "stat",
     "string", "subprocess", "sys", "tempfile", "time", "traceback", "typing", "unicodedata", "urllib",
 )
@@ -124,13 +131,16 @@ pin check; ``traceback`` for ``routine.py``'s incident files)."""
 
 TEMPLATE_LABEL: str = "template/grok-bot.json"
 DEVELOPMENT_REASON: str = "development checkout (no tag)"
-TOKEN_OFFLINE_REASON: str = "not checked offline (offline runs load no credential)"
-NO_CONFIG_TOKEN_REASON: str = "not checked: desk.toml cannot be used (see desk_files)"
-SANDBOX_PRODUCTION_REASON: str = "production host is outside the guarantee before the market-data proxy"
-SANDBOX_OFFLINE_REASON: str = "not verified offline"
-SANDBOX_NO_TOKEN_REASON: str = "sandbox not verified: no token (see token_source)"
-SANDBOX_NO_CONFIG_REASON: str = "not verified: desk.toml cannot be used (see desk_files)"
-SANDBOX_AUTH_REASON: str = "not a sandbox token: remove and rotate"
+KEY_OFFLINE_REASON: str = "not checked offline (offline runs load no credential)"
+NO_CONFIG_KEY_REASON: str = "not checked: desk.toml cannot be used (see desk_files)"
+PAPER_HOST_REASON: str = "only the paper host is supported: the desk holds a paper key pair and never points at a live account"
+PAPER_OFFLINE_REASON: str = "not verified offline"
+PAPER_NO_KEY_REASON: str = "paper key not verified: no key pair (see key_source)"
+PAPER_NO_CONFIG_REASON: str = "not verified: desk.toml cannot be used (see desk_files)"
+PAPER_AUTH_REASON: str = "not a paper key: remove it and add a paper key"
+PAPER_VERIFIED_REASON: str = "paper key verified"
+ALPACA_BASE_URL_ENV: str = "APCA_API_BASE_URL"
+"""The Alpaca SDKs' trading-host variable: the one environment VALUE check 7 reads (a live host there FAILs)."""
 MACHINE_ROLE_ENV: str = "AEGIS_MACHINE_ROLE"
 ROLE_SHARED: str = "shared"
 ROLE_OWNER_PRIVATE: str = "owner_private"
@@ -145,9 +155,8 @@ BROKER_NAME_PREFIXES: Tuple[str, ...] = (
 )
 """Brokers' own names: a part that starts with one is broker-looking (``SCHWABAPIKEY``, ``IBKRTOKEN``)."""
 BROKER_NAME_PAIRS = frozenset({
-    ("INTERACTIVE", "BROKERS"), ("ACCOUNT", "ID"), ("TRADIER", "ACCOUNT"), ("E", "TRADE"), ("TD", "AMERITRADE"),
-    ("IB", "GATEWAY"), ("TRADIER", "LIVE"), ("TRADIER", "PROD"), ("TRADIER", "PRODUCTION"), ("TRADIER", "BROKERAGE"),
-    ("TRADIER", "TRADING"),
+    ("INTERACTIVE", "BROKERS"), ("ACCOUNT", "ID"), ("E", "TRADE"), ("TD", "AMERITRADE"), ("IB", "GATEWAY"),
+    ("APCA", "LIVE"), ("APCA", "PROD"), ("APCA", "PRODUCTION"), ("APCA", "ACCOUNT"), ("APCA", "TRADING"),
 })
 CONNECTOR_KEY: str = "connector_readback_utc"
 CONNECTOR_MAX_AGE_DAYS: int = 30
@@ -267,50 +276,54 @@ def holiday_table_check(et_date: datetime.date) -> Check:
 
 
 # --------------------------------------------------------------------------------------------
-# 4-5: token and sandbox
+# 4-5: key source and paper key
 # --------------------------------------------------------------------------------------------
 
 
-def token_source_check(cfg: Optional[desk_config.DeskConfig], offline: bool,
-                       load: Optional[Callable[[str, Optional[str]], Any]] = None) -> Tuple[Check, Any]:
-    """Check 4 and the token it found (``None`` unless it PASSes)."""
+def key_source_check(cfg: Optional[desk_config.DeskConfig], offline: bool,
+                     load: Optional[Callable[[str, str, Optional[str]], Any]] = None) -> Tuple[Check, Any]:
+    """Check 4 and the credential it found (``None`` unless it PASSes); the reason names sources, never a value."""
     if offline:
-        return check(4, WARN, TOKEN_OFFLINE_REASON), None
+        return check(4, WARN, KEY_OFFLINE_REASON), None
     if cfg is None:
-        return check(4, WARN, NO_CONFIG_TOKEN_REASON), None
-    loader = tradier_client.load_token if load is None else load
+        return check(4, WARN, NO_CONFIG_KEY_REASON), None
+    market = cfg.market_data
+    loader = alpaca_client.load_credential if load is None else load
     try:
-        token = loader(cfg.market_data.token_env, cfg.market_data.token_file)
-    except tradier_client.TradierError as exc:
+        credential = loader(market.key_env, market.secret_env, market.credentials_file)
+    except alpaca_client.AlpacaError as exc:
         return check(4, FAIL, exc.message), None
-    if token.source == "env":
-        return check(4, PASS, "token from environment variable %s" % cfg.market_data.token_env), token
-    return check(4, PASS, "token from file %s (no group or other permission bits)" % cfg.market_data.token_file), token
+    if credential.source == "env":
+        return check(4, PASS, "key pair from environment variables %s and %s" % (market.key_env, market.secret_env)), \
+            credential
+    return check(4, PASS, "key pair from file %s (no group or other permission bits)" % market.credentials_file), \
+        credential
 
 
-def verify_sandbox(client: Any) -> Check:
-    """Check 5's one request: ``client.clock()`` (``GET /v1/markets/clock``)."""
+def verify_paper_key(client: Any) -> Check:
+    """Check 5's one request: ``client.clock()`` (``GET /v2/clock`` on the paper trading host)."""
     try:
         answer = client.clock()
-    except tradier_client.TradierError as exc:
+    except alpaca_client.AlpacaError as exc:
         if exc.status == "auth":
-            return check(5, FAIL, SANDBOX_AUTH_REASON)
-        return check(5, WARN, "sandbox not verified: %s" % exc.status)
-    return check(5, PASS, "sandbox clock answered (%s)" % answer.state)
+            return check(5, FAIL, PAPER_AUTH_REASON)
+        return check(5, WARN, "paper key not verified: %s" % exc.status)
+    return check(5, PASS, "%s (paper clock answered: %s)" % (PAPER_VERIFIED_REASON, answer.state))
 
 
-def sandbox_check(cfg: Optional[desk_config.DeskConfig], token: Any, offline: bool,
-                  client_factory: Callable[[Any], Any]) -> Check:
-    """Check 5: refuse production, skip offline, else :func:`verify_sandbox` on ``client_factory(token)``."""
+def paper_key_check(cfg: Optional[desk_config.DeskConfig], credential: Any, offline: bool,
+                    client_factory: Callable[[Any], Any]) -> Check:
+    """Check 5: refuse any host but paper, skip offline, else :func:`verify_paper_key` on
+    ``client_factory(credential)``."""
     if cfg is None:
-        return check(5, WARN, SANDBOX_NO_CONFIG_REASON)
-    if cfg.market_data.host != "sandbox":
-        return check(5, FAIL, SANDBOX_PRODUCTION_REASON)
+        return check(5, WARN, PAPER_NO_CONFIG_REASON)
+    if cfg.market_data.host not in desk_config.HOSTS:
+        return check(5, FAIL, PAPER_HOST_REASON)
     if offline:
-        return check(5, WARN, SANDBOX_OFFLINE_REASON)
-    if token is None:
-        return check(5, WARN, SANDBOX_NO_TOKEN_REASON)
-    return verify_sandbox(client_factory(token))
+        return check(5, WARN, PAPER_OFFLINE_REASON)
+    if credential is None:
+        return check(5, WARN, PAPER_NO_KEY_REASON)
+    return verify_paper_key(client_factory(credential))
 
 
 # --------------------------------------------------------------------------------------------
@@ -339,25 +352,49 @@ def _name_parts(name: str) -> List[str]:
     return [hump.upper() for piece in name.replace("-", "_").split("_") for hump in _HUMP_RE.findall(piece)]
 
 
-def broker_env_names(names: Iterable[str], token_env: Optional[str]) -> List[str]:
-    """The broker-looking names among ``names`` (module notes, check 7), sorted; ``token_env`` is excluded."""
+def broker_env_names(names: Iterable[str], excluded: Iterable[str] = ()) -> List[str]:
+    """The broker-looking names among ``names`` (module notes, check 7), sorted. Exactly the names in ``excluded``
+    (the configured ``key_env`` and ``secret_env``) are exempt from the part and prefix rules, never from the pair
+    rule: a configured ``APCA_LIVE_*`` name still FAILs."""
+    skip = frozenset(excluded)
     flagged = []
     for name in names:
-        if name == token_env:
-            continue
         parts = _name_parts(name)
-        if any(part in BROKER_NAME_PARTS or part.startswith(BROKER_NAME_PREFIXES) for part in parts) or any(
-                pair in BROKER_NAME_PAIRS for pair in zip(parts, parts[1:])):
+        paired = any(pair in BROKER_NAME_PAIRS for pair in zip(parts, parts[1:]))
+        named = name not in skip and any(
+            part in BROKER_NAME_PARTS or part.startswith(BROKER_NAME_PREFIXES) for part in parts)
+        if paired or named:
             flagged.append(name)
     return sorted(set(flagged))
 
 
-def broker_env_check(environ: Mapping[str, str], token_env: Optional[str]) -> Check:
-    """Check 7 over the NAMES of ``environ`` (the values are never read)."""
+def live_base_url(value: Any) -> bool:
+    """Whether ``value`` (an ``APCA_API_BASE_URL``) names the live trading host ``api.alpaca.markets``: its host, with
+    or without a scheme, port or path, any case."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    text = value.strip()
+    if "://" not in text:
+        text = "https://" + text
+    try:
+        host = urllib.parse.urlsplit(text).hostname
+    except ValueError:
+        return False
+    return (host or "").rstrip(".").lower() == alpaca_client.LIVE_HOST
+
+
+def broker_env_check(environ: Mapping[str, str], excluded: Iterable[str] = ()) -> Check:
+    """Check 7 over the NAMES of ``environ`` (no value is read but :data:`ALPACA_BASE_URL_ENV`'s, compared with the
+    live trading host); ``excluded`` are the configured key variable names."""
     names = list(environ.keys())
-    flagged = broker_env_names(names, token_env)
+    flagged = broker_env_names(names, excluded)
+    problems = []
+    if live_base_url(environ.get(ALPACA_BASE_URL_ENV)):
+        problems.append("%s points at the live trading host %s" % (ALPACA_BASE_URL_ENV, alpaca_client.LIVE_HOST))
     if flagged:
-        return check(7, FAIL, "broker-looking environment variable(s): %s" % ", ".join(flagged))
+        problems.append("broker-looking environment variable(s): %s" % ", ".join(flagged))
+    if problems:
+        return check(7, FAIL, "; ".join(problems))
     return check(7, PASS, "no broker-looking environment variable name (%d names checked)" % len(names))
 
 
@@ -373,8 +410,8 @@ def desk_files_check(paths: DeskPaths, et_date: datetime.date) -> Tuple[Check, O
     cfg: Optional[desk_config.DeskConfig] = None
     try:
         cfg = desk_config.load_desk_config(paths.desk_toml)
-        if cfg.market_data.host != "sandbox":
-            parts.append((FAIL, "desk.toml host %s: %s" % (cfg.market_data.host, SANDBOX_PRODUCTION_REASON)))
+        if cfg.market_data.host not in desk_config.HOSTS:
+            parts.append((FAIL, "desk.toml host %s: %s" % (cfg.market_data.host, PAPER_HOST_REASON)))
         else:
             parts.append((PASS, "desk.toml loads (sha %s)" % cfg.sha256[:8]))
     except desk_config.DeskConfigError as exc:
@@ -618,16 +655,18 @@ __all__ = [
     "RECORD_SCHEMA",
     "ROLE_OWNER_PRIVATE",
     "ROLE_SHARED",
-    "SANDBOX_AUTH_REASON",
-    "SANDBOX_OFFLINE_REASON",
-    "SANDBOX_PRODUCTION_REASON",
+    "PAPER_AUTH_REASON",
+    "PAPER_HOST_REASON",
+    "PAPER_OFFLINE_REASON",
+    "PAPER_VERIFIED_REASON",
     "SELFTEST_BSM_ARGS",
     "SELFTEST_BSM_GOLDEN",
     "SELFTEST_NAMES",
     "STATUSES",
-    "TOKEN_OFFLINE_REASON",
+    "KEY_OFFLINE_REASON",
     "WARN",
     "WORKSPACE_DIR",
+    "ALPACA_BASE_URL_ENV",
     "broker_env_check",
     "broker_env_names",
     "check",
@@ -643,12 +682,13 @@ __all__ = [
     "machine_role_check",
     "market_status_check",
     "release_pin_check",
-    "sandbox_check",
+    "paper_key_check",
     "selftest_check",
     "selftest_message",
     "selftest_results",
-    "token_source_check",
+    "key_source_check",
+    "live_base_url",
     "verdict",
-    "verify_sandbox",
+    "verify_paper_key",
     "worst",
 ]

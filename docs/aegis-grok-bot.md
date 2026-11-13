@@ -16,13 +16,13 @@ what protects you on Grok Bot and how you can check it.
 
 The Lead clones the pinned release, runs the repository gate, creates the four Bots and their group chat, the Aegis
 Options Floor, and installs the skills with a readback of each. It shows you a demo on a copy of the made-up sample
-desk, so you see real tool output before you are asked anything. Then it asks you for one thing: a free Tradier
-sandbox market-data token, added through the secure secret card, never pasted in chat. The
-[FAQ](FAQ.md#how-do-i-get-a-tradier-sandbox-token) explains how to get one. The Lead checks the token with one live
+desk, so you see real tool output before you are asked anything. Then it asks you for one thing: a free Alpaca
+paper key (a key ID and its secret), added through the secure secret card, never pasted in chat. The
+[FAQ](FAQ.md#how-do-i-get-an-alpaca-paper-key) explains how to get one. The Lead checks the key with one live
 market snapshot and returns the receipt, which names the phrases below. Its last line is:
 
 ```text
-Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
+Setup stayed read-only: one Alpaca paper key pair was added by you; no order was created or sent.
 ```
 
 ### Then, the phrases
@@ -48,7 +48,7 @@ template contract and why the paste prompt comes first.
 | --- | --- |
 | `/workspace/aegis-grok-desk` | the release checkout, a clone of the tag `v0.2.0`; nothing in it is edited |
 | `/workspace/aegis-desk` | the desk root: `desk.toml`, `positions.csv`, your adopted rules and every file the tools write |
-| `/workspace/.aegis-secrets/tradier.token` | the token file, only if you choose it instead of the secret card (mode 0600) |
+| `/workspace/.aegis-secrets/alpaca.key` | the key file (the key ID on line 1, the secret on line 2), only if you choose it instead of the secret card (mode 0600) |
 
 As Grok Bot's documentation describes it, your Bots share one computer, `/workspace` survives between sessions,
 installed packages do not, and the computer sleeps soon after you disconnect. So the desk needs nothing installed (the
@@ -61,19 +61,23 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
 1. **No write code.** The only network path in the repository is a market-data client that sends GET requests only.
    The repository gate proves it, and SETUP runs it once: `bash scripts/check.sh`. [SECURITY.md](../SECURITY.md)
    explains each layer.
-2. **One sandbox token.** The only credential is a Tradier sandbox market-data token. It cannot reach a live account.
-   You add it through the secure secret card in the first run and never paste it in chat. A secret added there is
-   visible to every Bot on the computer, as Grok Bot staff have reported, which is why nothing that can reach real
-   money may be added: if the production token is pasted by mistake, the live check fails with `auth:` and the Lead
-   asks you to delete it from the card at once. The token could place paper orders on Tradier's sandbox; the
-   write-side Ask-first rule (item 4) covers that from "add my positions" on, and until then the repository code
-   still has no write path (item 1). The full doctor verifies the token with one GET of the sandbox clock:
+2. **One paper key.** The only credential is an Alpaca paper key pair, used only to read market data. It cannot
+   reach a live account. You add it through the secure secret card in the first run and never paste it in chat. A
+   secret added there is visible to every Bot on the computer, as Grok Bot staff have reported, which is why nothing
+   that can reach real money may be added. The first run's live check lists option contracts on Alpaca's paper
+   trading host, which refuses a live key (`UNAVAILABLE: not a paper key: ...`); copy the key only from the Paper
+   Trading dashboard all the same, as defence in depth. The key could
+   place paper orders on Alpaca's paper trading host; the write-side Ask-first rule (item 4) covers that from "add my
+   positions" on, and until then the repository code still has no write path (item 1). The full doctor verifies that
+   it is a paper key with one GET of the paper trading host's clock, which refuses a key from another environment
+   with a 401 or 403 (Alpaca's documented mismatch error; it publishes no separate paper/live test):
 
    ```text
    python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
    ```
 
-   A 401 or 403 fails its check 5 with `not a sandbox token: remove and rotate`.
+   A 401 or 403 fails its check 5 with `not a paper key: remove it and add a paper key`; then you delete both secrets
+   from the card at once.
 3. **No app or MCP server that can trade.** Connected apps and MCP servers are account-wide: one that can place or
    change orders would give that ability to every Bot. When you say "add my positions", you answer whether any of
    them can trade, and after your tap the Lead records that answer with this owner-authority command:
@@ -95,12 +99,12 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    On this release, the three texts are:
 
    ```text
-   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
-   Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, including any request to tradier.com/v1/accounts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
+   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+   Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, and any request to a brokerage's order, position or account endpoints, including any request to api.alpaca.markets, and any request to paper-api.alpaca.markets other than /v2/clock, /v2/calendar and /v2/options/contracts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
    Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
 
-   The tool reports their lengths: `allow (506 of 1000 characters)`, `ask_first_writes (315 of 1000 characters)` and
+   The tool reports their lengths: `allow (511 of 1000 characters)`, `ask_first_writes (487 of 1000 characters)` and
    `ask_first_owner_authority (333 of 1000 characters)`. Auto-review is model-based, and an "Ask first" rule wins over
    an "Allow" rule. Staff have reported that it can still ask for approval despite an Allow rule.
 5. **Your tap is the signature.** `desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`,
@@ -159,9 +163,9 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   verdict: PASS (2 checks; warnings: none; failures: none); nothing written (selftest)
   ```
 
-- **One Test run** of the `preopen` routine, when you say "turn on monitoring". It proves that routines see the token
+- **One Test run** of the `preopen` routine, when you say "turn on monitoring". It proves that routines see the key
   and the desk files, and the Lead reports whether it raised an Ask-first card. It runs the quick doctor, which has no
-  sandbox check: the interactive full doctor verified the sandbox.
+  paper-key check: the interactive full doctor verified the paper key.
 - **Readbacks** in the first run of every Bot's Name and Job, every skill (`template`, `installed`, `pointer` or
   `mismatch`) and the Floor's members; of the connected apps and MCP servers when you say "add my positions"; and of
   Notifications and Timezone on the three routine-owning Bots when you say "turn on monitoring".

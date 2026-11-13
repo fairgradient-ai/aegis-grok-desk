@@ -23,8 +23,9 @@
     ]
   },
   "market_data": {
-    "host": "sandbox",
-    "token_env": "TRADIER_API_TOKEN"
+    "host": "paper",
+    "key_env": "APCA_API_KEY_ID",
+    "secret_env": "APCA_API_SECRET_KEY"
   },
   "rates": {
     "risk_free_rate": "0.0412",

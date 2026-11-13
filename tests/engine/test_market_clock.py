@@ -703,8 +703,9 @@ class ReconcileVendorStateTest(unittest.TestCase):
         self.assertFalse(result.agree)
         self.assertIn("vendor 'closed'", result.disagreement)
 
-    def test_tradier_clock_payload_shape(self) -> None:
-        payload = {"clock": {"date": "2026-11-02", "description": "Market is closed", "state": "closed",
+    def test_clock_record_shape(self) -> None:
+        # the market-data client's normalised clock record (alpaca_client.ClockResult), bare or in a wrapper
+        payload = {"clock": {"date": "2026-11-02", "description": None, "state": "closed",
                              "timestamp": 1762097400, "next_change": "09:30", "next_state": "open"}}
         result = mc.reconcile_vendor_state(self.open_info, payload)
         self.assertEqual(result.effective_session, mc.SESSION_CLOSED)

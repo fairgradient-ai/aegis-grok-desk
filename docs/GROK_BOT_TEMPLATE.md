@@ -78,7 +78,7 @@ no `mismatch`, the Floor, the readbacks, the doctor's verdict, every pending ite
 Its last line is exactly:
 
 ```text
-Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
+Setup stayed read-only: one Alpaca paper key pair was added by you; no order was created or sent.
 ```
 
 Authoring and publishing mechanics adapted from HyperGrok Trading Desk (Galleon Labs, MIT), release 1.7.0 plus unreleased changes, commit 75a4c79 (docs/GROK_BOT_TEMPLATE.md); see [ATTRIBUTION.md](../ATTRIBUTION.md).

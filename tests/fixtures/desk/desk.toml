@@ -1,5 +1,5 @@
 # Fixture desk root (tests/fixtures/desk): the owner configuration the offline tool tests and
-# the command journeys load. Sandbox host; freshness bound = 15 + 5 + 5 = 25 minutes (plan
+# the command journeys load. Alpaca paper host; freshness bound = 15 + 5 + 5 = 25 minutes (plan
 # section 8). Tools copy this tree to a temporary directory before anything writes.
 # Money values parse as Decimal; the cutoff as datetime.time; as_of as datetime.date.
 [desk]
@@ -27,10 +27,13 @@ name = "Roth IRA"
 type = "ira"
 
 [market_data]
-vendor = "tradier"
-host = "sandbox"                    # the reader also accepts "production"; the tools refuse it (Stage 3)
-token_env = "TRADIER_API_TOKEN"     # token_file is left at its default; offline runs load no credential
-feed_delay_min = 15                 # the sandbox feed is delayed 15 minutes (>= 15 required here)
+vendor = "alpaca"
+host = "paper"                      # paper only: the desk holds an Alpaca paper key pair; "live" is refused
+key_env = "APCA_API_KEY_ID"         # the NAMES of the variables, never the values; credentials_file is left
+secret_env = "APCA_API_SECRET_KEY"  # at its default; offline runs load no credential
+options_feed = "indicative"         # the free feed: 15-minute delayed, approximate (not exchange quotes)
+stock_feed = "iex"                  # the only stock feed a paper-only account is entitled to
+feed_delay_min = 15                 # indicative options are delayed 15 minutes (>= 15 required here)
 quote_ttl_min = 5
 grace_min = 5
 pin_band = 0.25

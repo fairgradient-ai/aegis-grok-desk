@@ -131,7 +131,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import calendar_events, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
+from . import calendar_events, data_source, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
 from . import greeks as greeks_module
 from .calendar_events import CalendarFile
 from .desk_config import DeskConfig
@@ -938,15 +938,16 @@ def render_lines(document: Mapping[str, Any]) -> List[str]:
 
 
 def footer_from_document(document: Mapping[str, Any]) -> str:
-    """``Tradier sandbox, delayed 15 min, as of HH:MM UTC`` from the document's own source block."""
+    """``Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC`` from the
+    document's own source block (:func:`aegis_desk.data_source.words_for_label` of its name)."""
     source = document["sources"][0] if document["sources"] else {"name": "unknown", "delay_min": 0}
-    vendor, _, host = str(source["name"]).partition(":")
+    words = data_source.words_for_label(source["name"])
     stamps = [leg["as_of"] for leg in document["legs"] if isinstance(leg.get("as_of"), datetime.datetime)]
     as_of = max(stamps) if stamps else document["generated_at"]
     if not isinstance(as_of, datetime.datetime):
         as_of = datetime.datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
-    return "%s %s, delayed %s min, as of %s UTC" % (vendor.capitalize(), host, source["delay_min"],
-                                                     as_of.astimezone(datetime.timezone.utc).strftime("%H:%M"))
+    return "%s, delayed %s min, as of %s UTC" % (words, source["delay_min"],
+                                                 as_of.astimezone(datetime.timezone.utc).strftime("%H:%M"))
 
 
 def render_report(document: Mapping[str, Any]) -> str:

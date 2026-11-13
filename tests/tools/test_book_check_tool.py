@@ -23,7 +23,7 @@ import unittest
 from typing import Any, Dict, List, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import alert_lint, alerts, desk_paths, exit_rules, heartbeat, rule_state, signals, state
+from aegis_desk import alert_lint, alerts, desk_paths, exit_rules, heartbeat, quote_cache, rule_state, signals, state
 
 import ack as ack_tool
 import book as book_tool
@@ -532,12 +532,13 @@ class ClosedDayAndErrorsTest(DeskCopy):
         code, body = self.run_json("regular", REGULAR_NOW)
         self.assertEqual((1, "positions_invalid"), (code, body["error"]["code"]))
 
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite("desk.toml", 'host = "sandbox"', 'host = "production"')
-        code, body = self.run_json("regular", REGULAR_NOW)
-        self.assertEqual((20, "production_host"), (code, body["error"]["code"]))
-        self.assertFalse(os.path.exists(os.path.join(self.root, "state", "heartbeat")), "a dry run records nothing")
-        code, body = self.run_json("regular", REGULAR_NOW, "--post")
+    def test_refused_market_data_is_exit_20(self) -> None:
+        refusal = quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache, "build_client", side_effect=refusal):
+            code, body = self.run_json("regular", REGULAR_NOW)
+            self.assertEqual((20, "no_credential"), (code, body["error"]["code"]))
+            self.assertFalse(os.path.exists(os.path.join(self.root, "state", "heartbeat")), "a dry run records nothing")
+            code, body = self.run_json("regular", REGULAR_NOW, "--post")
         self.assertEqual(20, code)
         record, status = heartbeat.read_heartbeat(self.paths, "book-check")
         self.assertEqual(("ok", 20, "unavailable"), (status, record["exit_code"], record["status"]))

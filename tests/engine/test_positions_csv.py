@@ -153,7 +153,7 @@ class AegisOptionCasesTest(unittest.TestCase):
         self.assertEqual(100, row.multiplier)
         self.assertEqual(D("8.00"), row.entry_price_per_share)
 
-    def test_option_row_compact_tradier_form(self) -> None:
+    def test_option_row_compact_vendor_form(self) -> None:
         row = only_row(parse("acct-001,,AAPL240119C00150000,option,2,1600.00,,,,", header=OPTION_HEADER))
         self.assertEqual("AAPL  240119C00150000", row.occ.canonical)
         self.assertEqual(datetime.date(2024, 1, 19), row.expiration)

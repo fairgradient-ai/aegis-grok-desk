@@ -15,14 +15,16 @@ import shutil
 import tempfile
 import unittest
 from typing import Any, Dict, List, Sequence, Tuple
+from unittest import mock
 
 from aegis_desk import contract
+from aegis_desk import quote_cache as quote_cache_library
 
 import quote_qc as tool  # the tool module scripts/quote_qc.py, not the library
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
-CLIENT_MODULE = os.path.join(ROOT, "scripts", "aegis_desk", "tradier_client.py")
+CLIENT_MODULE = os.path.join(ROOT, "scripts", "aegis_desk", "alpaca_client.py")
 REGULAR_NOW = "2026-11-03T19:50:00Z"
 AFTER_CLOSE_NOW = "2026-11-03T21:25:00Z"
 PRE_OPEN_NOW = "2026-11-03T13:00:00Z"
@@ -51,7 +53,7 @@ def now_flag_present() -> bool:
 NOW_READY = now_flag_present()
 NOW_SKIP = "waits for the shared --now flag of ReadOnlyParser (Builder C)"
 READY = os.path.isfile(CLIENT_MODULE) and NOW_READY
-SKIP = "waits for scripts/aegis_desk/tradier_client.py (Builder A) and the shared --now flag (Builder C)"
+SKIP = "waits for scripts/aegis_desk/alpaca_client.py and the shared --now flag (Builder C)"
 
 
 def run_tool(argv: Sequence[str]) -> Tuple[int, str]:
@@ -123,13 +125,21 @@ class AlwaysOnTest(DeskCopy):
 class PlumbingTest(DeskCopy):
     """Config and host checks: no client is built, but ``main`` resolves ``args.now``."""
 
-    def test_production_host_is_refused_with_exit_20(self) -> None:
-        self.rewrite_desk_toml('host = "sandbox"', 'host = "production"')
+    def test_a_live_host_is_refused_at_load_with_exit_1(self) -> None:
+        self.rewrite_desk_toml('host = "paper"', 'host = "live"')
         code, body = run_json(["SPY", "--json", "--offline", "--desk-root", self.root])
+        self.assertEqual((1, "error", "config_invalid"), (code, body["status"], body["error"]["code"]))
+        self.assertIn('host must be "paper" (got "live")', body["error"]["message"])
+
+    def test_refused_market_data_is_exit_20(self) -> None:
+        refusal = quote_cache_library.MarketDataRefused(quote_cache_library.REFUSED_NO_CREDENTIAL,
+                                                        quote_cache_library.NO_CREDENTIAL_MESSAGE)
+        with mock.patch.object(quote_cache_library, "build_client", side_effect=refusal):
+            code, body = run_json(["SPY", "--json", "--offline", "--desk-root", self.root])
         self.assertEqual(20, code)
-        self.assertEqual(("unavailable", "production_host"), (body["status"], body["error"]["code"]))
-        self.assertEqual("production market data is not supported before the market-data proxy (Stage 3); "
-                         "use the sandbox host", body["error"]["message"])
+        self.assertEqual(("unavailable", "no_credential"), (body["status"], body["error"]["code"]))
+        self.assertEqual("no market-data key: add the Alpaca paper key ID and secret through the secret card "
+                         "(or the acknowledged credentials file)", body["error"]["message"])
 
     def test_invalid_config_is_exit_1(self) -> None:
         self.rewrite_desk_toml('grace_min = 5', 'grace_min = 31')
@@ -142,7 +152,7 @@ class GradingJourneysTest(DeskCopy):
     def test_regular_set_grades_a(self) -> None:
         code, body = run_json(self.argv("SPY", "WMT"))
         self.assertEqual(0, code, body)
-        self.assertEqual(("ok", "tradier:sandbox", 15), (body["status"], body["source"], body["delay_min"]))
+        self.assertEqual(("ok", "alpaca:paper", 15), (body["status"], body["source"], body["delay_min"]))
         payload = body["payload"]
         self.assertEqual(25, payload["bound_min"])
         self.assertEqual("open", payload["session"]["session"])
@@ -166,7 +176,7 @@ class GradingJourneysTest(DeskCopy):
         self.assertEqual(["0.03", "6.25", "0.01", "3.02", "0.06", "4.38"], [s["spread_pct"] for s in symbols])
         # Decimal from the vendor digits: (3.1 + 3.3) / 2 renders as 3.2, never a padded 3.20.
         self.assertEqual(["148.925", "3.2", "648.12", "9.95", "104.23", "3.425"], [s["mark_mid"] for s in symbols])
-        self.assertEqual(1, len(self.ledger()), "six symbols are one request")
+        self.assertEqual(2, len(self.ledger()), "six symbols are one batch: equities, then options")
 
     def test_prose_lines_and_footer(self) -> None:
         code, text = run_tool(self.argv("SPY", "WMT", "WMT261120C00105000", json_mode=False))
@@ -176,7 +186,7 @@ class GradingJourneysTest(DeskCopy):
         self.assertIn("WMT A fresh 104.20/104.26 0.06% 104.23 104.20 104.26 as of 14:31:12 ET", lines)
         self.assertIn("WMT261120C00105000 B fresh 3.35/3.50 4.38% 3.425 3.35 3.50 as of 14:31:12 ET", lines)
         self.assertIn("session open; freshness bound 25 min", lines)
-        self.assertEqual("Tradier sandbox, delayed 15 min, as of 19:31 UTC", lines[-1])
+        self.assertEqual("Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC", lines[-1])
 
     def test_stale_set_is_exit_20(self) -> None:
         code, body = run_json(self.argv("SPY", fixture_set="stale"))
@@ -231,7 +241,7 @@ class GradingJourneysTest(DeskCopy):
         self.assertEqual(20, code)
         spx = body["payload"]["symbols"][1]
         self.assertEqual(("SPX", "F", "missing"), (spx["symbol"], spx["grade"], spx["status"]))
-        self.assertEqual(["cache: unmatched"], spx["reasons"])
+        self.assertEqual(["cache: fetch_failed:not_returned"], spx["reasons"])
         self.assertEqual("A", body["payload"]["symbols"][0]["grade"])
 
     def test_fixture_set_defaults_to_regular_in_the_payload(self) -> None:
@@ -289,7 +299,7 @@ class CalendarClosureTest(DeskCopy):
         self.assertEqual(20, code, text)
         self.assertEqual(["SPY F missing -/- - - - - NYSE closed", "WMT F missing -/- - - - - NYSE closed",
                           "NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today",
-                          "Tradier sandbox, delayed 15 min, as of 19:50 UTC"], text.splitlines())
+                          "Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:50 UTC"], text.splitlines())
         self.assertEqual([], self.ledger())
 
     def test_a_cached_copy_on_a_closure_day_is_graded_closed_day(self) -> None:
@@ -309,7 +319,7 @@ class CalendarClosureTest(DeskCopy):
         self.assertEqual(["SPY F closed_day 648.10/648.14 0.01% - - - NYSE closed",
                           "warning: SPY served from a cache copy 40 min old (TTL 5 min): no fetch on a non-trading day",
                           "NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today",
-                          "Tradier sandbox, delayed 15 min, as of 19:31 UTC"], text.splitlines())
+                          "Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of 19:31 UTC"], text.splitlines())
         self.assertEqual(1, len(self.ledger()))
 
     def test_a_closure_on_the_previous_trading_day_moves_the_prior_close(self) -> None:

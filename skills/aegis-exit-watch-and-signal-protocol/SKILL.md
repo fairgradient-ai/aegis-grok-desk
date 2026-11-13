@@ -73,7 +73,7 @@ A synthetic example (stale quotes, the 14:05 slot, 2026-11-03 19:50 UTC): DTE21 
 the group is UNAVAILABLE and the fired rule is listed under the banner.
 
 ```text
-UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
+UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
 unavailable: your rule TP80: row 4 WMT261120C00105000: quote grade F (stale): no fresh ask
 unavailable: your rule USTOP: underlying WMT: no usable mark (quote grade F)
 also fired: your rule DTE21: time to expiry 13 trading days (your threshold: at or below 21 trading days) | already past this threshold at the desk's first observation | your plan: review a roll

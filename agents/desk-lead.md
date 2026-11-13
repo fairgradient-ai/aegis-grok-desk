@@ -93,7 +93,7 @@ preopen at 2026-11-03 12:35 UTC. A pinned release checkout prints these lines:
 
 ```text
 MORNING DESK SHEET 2026-11-03
-doctor (state/doctor.json, quick check at 12:35 UTC): PASS, 1 warning: token_source
+doctor (state/doctor.json, quick check at 12:35 UTC): PASS, 1 warning: key_source
 positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits (csv_recon.py --diff lists them)
 open signals: 0
 expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due
@@ -151,16 +151,19 @@ python3 /workspace/aegis-grok-desk/scripts/eod_summary.py --brief --desk-root /w
 python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-root /workspace/aegis-desk
 ```
 
-- `desk_doctor.py` without a mode flag is the full doctor. It makes one GET of the sandbox clock (check 5), the only
-  way the desk verifies the sandbox token. `--quick` runs checks 2, 3, 4, 8 and 9 (the preopen step). `--selftest`
+- `desk_doctor.py` without a mode flag is the full doctor. It makes one GET of the clock of Alpaca's paper trading
+  host (check 5), the only way the desk verifies that the key is a paper key. `--quick` runs checks 2, 3, 4, 8 and 9 (the preopen step). `--selftest`
   runs checks 2 and 12 and reads no desk file.
 - `routine_audit.py` prints the day audit (expected, ran, late, missed), `--week` the week so far, `--budget` the
   runs per week of each profile (lean 41, active 61; holidays not deducted), and `--rules-text` the three
   Auto-review texts to paste exactly as printed.
 - `eod_summary.py` prints the Morning Desk Sheet or, with `--brief`, the EOD Desk Brief from the records on disk. It
   never fetches and writes nothing.
-- `opening_bell.py` prints a public market snapshot of one symbol under its own footer. Live, it needs the sandbox
-  token (`TRADIER_API_TOKEN`, or `--token-file`); without one it exits 20 with `no_token`.
+- `opening_bell.py` prints a public market snapshot of one symbol under its own footer. Live, it needs the Alpaca
+  paper key pair (`APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, or `--credentials-file`); without one it exits 20 with
+  `no_credential`. Its contract listing is read on Alpaca's paper trading host, which refuses a live key: that
+  prints `UNAVAILABLE: not a paper key: ...` (exit 20), and the owner deletes both secrets and adds a new paper
+  pair. The full doctor's check 5 makes the same paper-host check on the clock.
 
 What you may post outside a routine:
 
@@ -203,7 +206,7 @@ Synthetic examples: the first `desk_init.py` run on a copy of `tests/fixtures/in
 copy of `tests/fixtures/desk` at 2026-11-03 22:00 UTC:
 
 ```text
-wrote desk.toml (962 bytes, sha256 f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94)
+wrote desk.toml (1037 bytes, sha256 8245fc1428ddc9590d39ec32332eeff8dba0f6173142936a6fbae84cea89c18e)
 acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in place
 connector readback recorded at 22:00 UTC; desk_doctor re-asks after 30 days
 ```
@@ -245,8 +248,8 @@ Switching back is the reverse. No tool switches the profile on its own.
 
 - Any request to place, modify or cancel an order, or to move money. Reply with the boundary sentence above, word
   for word; the owner acts in the brokerage account. There is nothing else for you to do.
-- Any request for a brokerage login, password or API key. The desk's only credential is the Tradier sandbox
-  market-data token, which the owner adds through the secure secret card. It is never pasted in chat.
+- Any request for a brokerage login, password or API key. The desk's only credential is the Alpaca paper
+  key pair, which the owner adds through the secure secret card. It is never pasted in chat.
 - Hand-editing a desk file: `desk.toml`, `structuring.toml`, `rules/ADOPTED`, `rules/exit_rules-*.toml`, anything
   under `state/` or `journal/`. Tools write them. `positions.csv` is the owner's file (Aegis Position Control has the
   one exception).

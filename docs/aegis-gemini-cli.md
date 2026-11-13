@@ -33,15 +33,15 @@ No hook is claimed for Gemini CLI. The controls are the code and the credential:
 
 - the repository holds no broker write path, and `bash scripts/check.sh` proves it ([SECURITY.md](../SECURITY.md),
   layers 1 to 3);
-- the only credential the desk uses is a Tradier sandbox market-data token, which cannot reach a live account. Keep
-  anything that can reach real money out of the environment Gemini CLI runs in.
+- the only credential the desk uses is an Alpaca paper key pair, used only to read market data, which cannot reach a
+  live account. Keep anything that can reach real money out of the environment Gemini CLI runs in.
 
 ## Release check
 
 The extension also contains `hooks/hooks.json`, the hook file for Claude Code and Grok Build. At release, the install
 is checked for any error Gemini CLI reports while reading it.
 
-A first run needs no token: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now).
+A first run needs no key: the recorded synthetic snapshot in the README's [Try it now](../README.md#try-it-now).
 
 ## Other runtimes
 

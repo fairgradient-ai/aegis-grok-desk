@@ -3,7 +3,7 @@
 
 Usage::
 
-    python3 scripts/opening_bell.py --symbol SPY [--rate 0.04] [--token-file PATH] [--fixture-set NAME] [--json]
+    python3 scripts/opening_bell.py --symbol SPY [--rate 0.04] [--credentials-file PATH] [--fixture-set NAME] [--json]
         [--schema] [--timeout S] [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
     python3 scripts/opening_bell.py --demo [--symbol SPY] [--rate 0.04] [--json]
 
@@ -11,21 +11,24 @@ Usage::
     python3 scripts/opening_bell.py --demo
 
 The README's "try it now" (PR 2d decision D2-14): a public market snapshot, not a signal; it touches no position and
-no desk record. Exactly three read-only requests through ``aegis_desk.tradier_client``: ``quotes([SYMBOL])``,
-``option_expirations(SYMBOL)`` and ``option_chain(SYMBOL, expiration)``.
+no desk record. Three read-only calls through ``aegis_desk.alpaca_client`` (Alpaca's paper environment):
+``quotes([SYMBOL])`` (one request on the IEX stock feed), ``option_expirations(SYMBOL, today)`` (the contract
+listing) and ``option_chain(SYMBOL, expiration)`` (the expiration's contract listing, then its snapshots on the free
+indicative options feed): four requests, more only when a listing pages.
 
-* Live, no desk file is read: the token is ``tradier_client.load_token("TRADIER_API_TOKEN", --token-file)`` (the
-  environment variable first, then the file, which must carry no group or other permission bits; neither is exit 20
-  ``no_token``) and the client is the sandbox host's.
-* ``--offline`` (which needs ``--desk-root``) replays ``<desk root>/fixtures/tradier/<--fixture-set, default
+* Live, no desk file is read: the paper key pair is ``alpaca_client.load_credential("APCA_API_KEY_ID",
+  "APCA_API_SECRET_KEY", --credentials-file or the default /workspace/.aegis-secrets/alpaca.key)`` (both environment
+  variables first, then the file: the key ID on line 1, the secret on line 2, with no group or other permission bits;
+  neither is exit 20 ``no_credential``) and the client is the paper host's, on the indicative options feed.
+* ``--offline`` (which needs ``--desk-root``) replays ``<desk root>/fixtures/alpaca/<--fixture-set, default
   regular>/`` with ``--now`` as the receipt instant, and writes nothing: no quote cache, no runtime directory.
 * ``--demo`` is the README's three-command try-it: ``--offline --desk-root <this checkout>/tests/fixtures/desk --now
   2026-11-03T19:50:00Z`` (:data:`DEMO_DESK_ROOT`, :data:`DEMO_NOW`) on the regular fixture set, ``--symbol`` SPY unless
   given. The desk root is found from this script's own location, so the command works from any directory. It writes
   nothing and loads no credential, and the text opens with :data:`DEMO_LINE`, a plain line that says the data is
   synthetic sample data (it prints no number and passes the same strict lint). ``--demo`` with ``--desk-root``,
-  ``--now``, ``--fixture-set`` or ``--token-file`` (a live run's credential) is a usage error; a redundant ``--offline``
-  is accepted.
+  ``--now``, ``--fixture-set`` or ``--credentials-file`` (a live run's credential) is a usage error; a redundant
+  ``--offline`` is accepted.
 
 The arithmetic: the mid ``S = (bid + ask) / 2`` (Decimal); the expiration is the first listed date at least 20
 calendar days after the ET date of ``--now`` that is the settlement day of its month's third Friday
@@ -36,7 +39,8 @@ call and a put that minimises ``(|K - S|, K)``; the call and put mids are invert
 expected move is stated both ways and labelled: straddle-based ``(call mid + put mid) x 0.80`` (Decimal, to the cent,
 half-even) and one-sigma ``S x IV x sqrt(tau)`` (to the cent).
 
-The text (on a ``--demo`` run, :data:`DEMO_LINE` first; D2-14's five lines, then the market-snapshot footer
+The text (on a ``--demo`` run, :data:`DEMO_LINE` first; D2-14's five lines, the fifth naming the source with
+:data:`aegis_desk.data_source.WORDS`, so the indicative option quotes read as approximate; then the market-snapshot footer
 ``alert_lint.snapshot_footer_line``: a public quote shown before any rule exists, so the rules footer's "deterministic
 rules you adopted" would not be true) is relayed
 verbatim, so it is held to every post's rule: each
@@ -48,8 +52,11 @@ named, the text not printed). ``--json`` carries ``payload.emitted`` (``alert_li
 document a relay is re-linted against) and ``payload.lint``; its money fields are the printed strings' Decimals
 (``648.10``, never ``648.1``).
 
-Exit 0; 20 when the market answer is unusable: no token (``no_token``, ``token_file_mode``), a request fails
-(``request_failed``), no two-sided quote (``no_quote``, ``no_two_sided_quote``), no qualifying expiration
+Exit 0; 20 when the market answer is unusable: no key pair (``no_credential``, ``credential_file_mode``), a request fails
+(``request_failed``), the paper trading host refuses with 401/403 a key pair the market-data host has just answered
+(``not_paper_key``: the contract listing lives on the paper host, which refuses a live key, so the owner deletes
+both secrets and adds a new paper pair; a refusal of the first, market-data request stays ``request_failed``: a
+mismatched or deleted pair), no two-sided quote (``no_quote``, ``no_two_sided_quote``), no qualifying expiration
 (``no_expiration``), no strike with both a call and a put (``no_strike_pair``), a solver status that is not ``ok``
 (``iv_failed``) or an option stamp more than 60 s from the underlying's (``stamps_unaligned``); 1 on a desk-root or
 fixture-set error (``desk_root``, ``fixtures_missing``) or a text that fails the lint (``lint_failed``); 2 on usage. ``--json`` payload: as ``--schema`` describes.
@@ -69,19 +76,25 @@ import sys  # noqa: E402
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence, Tuple  # noqa: E402
 
-from aegis_desk import alert_lint, alerts, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, state, tradier_client, units  # noqa: E402
+from aegis_desk import alert_lint, alerts, alpaca_client, data_source, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, state, units  # noqa: E402
 from aegis_desk.market_types import Quote  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "opening_bell"
 DESCRIPTION = ("a public market snapshot of one symbol: its quote, the nearest standard expiration at least 20 calendar "
                "days out, the ATM implied volatility and the expected move to it, stated two ways; not a signal")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and "
-                  "/v1/markets/options/chains only (three requests); none with --offline")
-TOKEN_ENV = desk_config.DEFAULT_TOKEN_ENV
-HOST = "sandbox"
-SOURCE = "%s:%s" % (desk_config.VENDOR, HOST)
-FEED_DELAY_MIN = desk_config.SANDBOX_MIN_FEED_DELAY_MIN
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest, "
+                  "https://paper-api.alpaca.markets/v2/options/contracts (the expirations, then one expiration's "
+                  "contracts) and https://data.alpaca.markets/v1beta1/options/snapshots/<SYMBOL> only (at least four "
+                  "requests, more when a listing pages); none with --offline")
+KEY_ENV = desk_config.DEFAULT_KEY_ENV
+SECRET_ENV = desk_config.DEFAULT_SECRET_ENV
+CREDENTIALS_FILE = desk_config.DEFAULT_CREDENTIALS_FILE
+HOST = desk_config.HOSTS[0]
+SOURCE = data_source.label(desk_config.VENDOR, HOST)
+OPTIONS_FEED = desk_config.DEFAULT_OPTIONS_FEED
+SOURCE_WORDS = data_source.words_for_feed(OPTIONS_FEED)
+FEED_DELAY_MIN = desk_config.INDICATIVE_MIN_FEED_DELAY_MIN
 DEFAULT_RATE = "0.04"
 DEFAULT_FIXTURE_SET = "regular"
 DEMO_DESK_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "desk")
@@ -94,6 +107,11 @@ DEMO_LINE = "Demo: synthetic sample data from the desk's test fixtures, not real
 MIN_DAYS_OUT = 20
 STRADDLE_FACTOR = Decimal("0.80")
 ALIGNMENT_S = expiry.SPOT_ALIGNMENT_S
+NOT_PAPER_KEY_MESSAGE = ("not a paper key: Alpaca's paper trading host refused the key pair (HTTP %s) after the "
+                         "market-data host answered it; delete both secrets and add a new pair from the Paper Trading "
+                         "dashboard")
+"""``not_paper_key``: the contract listing is read on the paper trading host, which answers 401/403 to a live key
+(Alpaca documents the environment-mismatch error; it publishes no separate paper/live test)."""
 SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.]{0,9}\Z")
 RATE_RE = re.compile(r"^[0-9]+([.][0-9]+)?\Z")
 CENT = Decimal("0.01")
@@ -103,7 +121,7 @@ QUOTE_LINE = "%s %s mid (bid %s, ask %s), as of %s"
 EXPIRATION_LINE = "nearest standard expiration at least %s out: %s (%s)"
 IV_LINE = "ATM implied volatility at the %s strike: %s (call %s, put %s; mids %s and %s; r %s, q %s)"
 MOVE_LINE = ("expected move to %s: straddle-based (call mid + put mid) x %s = %s; one-sigma S x IV x sqrt(tau) = %s")
-SNAPSHOT_LINE = "Tradier %s, delayed %s, as of %s; a public market snapshot, not a signal"
+SNAPSHOT_LINE = "%s, delayed %s, as of %s; a public market snapshot, not a signal"
 PAYLOAD_KEYS: Tuple[str, ...] = ("symbol", "quote", "expiration", "dte_calendar", "strike", "call", "put", "atm_iv",
                                  "tau_years", "rate", "q", "expected_move", "requests_made", "fixture_set", "demo",
                                  "message", "emitted", "lint")
@@ -122,7 +140,7 @@ OUTPUT: Dict[str, Any] = {
     "q": "decimal string (0)",
     "expected_move": {"straddle": "decimal string ((call mid + put mid) x 0.80, to the cent)",
                       "one_sigma": "decimal string (S x IV x sqrt(tau), to the cent)"},
-    "requests_made": "integer (3)",
+    "requests_made": "integer (requests sent: 4, more only when a contract listing or the snapshots page)",
     "fixture_set": "string | null (offline runs)",
     "demo": "boolean (true: --demo, the checkout's synthetic fixture desk; the text opens with the demo line)",
     "message": "string: the text exactly as printed (five lines, then the market-snapshot footer; a --demo run opens "
@@ -169,14 +187,15 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
                         help="the underlying, for example SPY (required, except with --demo: SPY)")
     parser.add_argument("--demo", action="store_true",
                         help="synthetic sample data: --offline on this checkout's tests/fixtures/desk at %s (the regular "
-                             "fixture set); writes nothing; not with --desk-root, --now, --fixture-set or --token-file"
-                             % DEMO_NOW)
+                             "fixture set); writes nothing; not with --desk-root, --now, --fixture-set or "
+                             "--credentials-file" % DEMO_NOW)
     parser.add_argument("--rate", metavar="R", default=DEFAULT_RATE,
                         help="the risk-free rate the IV is solved at, a decimal in [0, 1) (default %s)" % DEFAULT_RATE)
-    parser.add_argument("--token-file", metavar="PATH", default=None,
-                        help="read the sandbox token from this file when %s is not set (live runs only)" % TOKEN_ENV)
+    parser.add_argument("--credentials-file", metavar="PATH", default=None,
+                        help="read the Alpaca paper key pair (key ID on line 1, secret on line 2) from this file when %s "
+                             "and %s are not set (default %s; live runs only)" % (KEY_ENV, SECRET_ENV, CREDENTIALS_FILE))
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 
@@ -184,7 +203,7 @@ def validate(parser: contract.ReadOnlyParser, args: Any) -> None:
     if args.demo:
         given = [flag for flag, present in (("--desk-root", args.desk_root_explicit), ("--now", args.now is not None),
                                             ("--fixture-set", args.fixture_set is not None),
-                                            ("--token-file", args.token_file is not None)) if present]
+                                            ("--credentials-file", args.credentials_file is not None)) if present]
         if given:
             parser.error("--demo names its own fixture desk, instant and fixture set and loads no credential; it cannot "
                          "be combined with %s" % ", ".join(given))
@@ -209,8 +228,8 @@ def validate(parser: contract.ReadOnlyParser, args: Any) -> None:
     args.rate_decimal = rate
     if args.fixture_set is not None and not args.offline:
         parser.error("--fixture-set applies only to --offline runs")
-    if args.token_file is not None and args.offline:
-        parser.error("--token-file applies to live runs (offline runs load no credential)")
+    if args.credentials_file is not None and args.offline:
+        parser.error("--credentials-file applies to live runs (offline runs load no credential)")
 
 
 def fail(args: Any, version: str, now: datetime.datetime, code: str, message: str, exit_code: int) -> int:
@@ -312,8 +331,8 @@ def utc_clock(moment: datetime.datetime) -> str:
     return moment.astimezone(datetime.timezone.utc).strftime("%H:%M UTC")
 
 
-def open_client(args: Any, now: datetime.datetime, version: str, receipts: List[Any]) -> tradier_client.TradierClient:
-    """The offline replay client of the desk root's fixture set, or the live sandbox client with the token."""
+def open_client(args: Any, now: datetime.datetime, version: str, receipts: List[Any]) -> alpaca_client.AlpacaClient:
+    """The offline replay client of the desk root's fixture set, or the live paper-host client with the key pair."""
     agent = user_agent(version)
     if args.offline:
         try:
@@ -321,43 +340,58 @@ def open_client(args: Any, now: datetime.datetime, version: str, receipts: List[
         except desk_paths.DeskPathsError as exc:
             raise ToolError("desk_root", str(exc)) from None
         try:
-            transport = tradier_client.OfflineTransport(paths.tradier_fixtures_dir,
-                                                        args.fixture_set or DEFAULT_FIXTURE_SET, now=now)
+            transport = alpaca_client.OfflineTransport(paths.alpaca_fixtures_dir,
+                                                       args.fixture_set or DEFAULT_FIXTURE_SET, now=now)
         except ValueError as exc:
             raise ToolError("fixtures_missing", str(exc)) from None
-        return tradier_client.TradierClient(HOST, None, timeout_s=args.timeout, user_agent=agent, transport=transport,
-                                            on_request=receipts.append)
+        return alpaca_client.AlpacaClient(HOST, None, options_feed=OPTIONS_FEED, timeout_s=args.timeout,
+                                          user_agent=agent, transport=transport, on_request=receipts.append)
     try:
-        token = tradier_client.load_token(TOKEN_ENV, args.token_file)
-    except tradier_client.TradierError as exc:
+        credential = alpaca_client.load_credential(KEY_ENV, SECRET_ENV, args.credentials_file or CREDENTIALS_FILE)
+    except alpaca_client.AlpacaError as exc:
         raise Unavailable(exc.status, str(exc)) from None
-    return tradier_client.TradierClient(HOST, token, timeout_s=args.timeout, user_agent=agent,
-                                        transport=LIVE_TRANSPORT, on_request=receipts.append)
+    return alpaca_client.AlpacaClient(HOST, credential, options_feed=OPTIONS_FEED, timeout_s=args.timeout,
+                                      user_agent=agent, transport=LIVE_TRANSPORT, on_request=receipts.append)
 
 
 def request(what: str, call: Any) -> Any:
+    """Run one client call; a failure is ``request_failed``, except an ``auth`` refusal on the PAPER trading host
+    (the contract listing), which is ``not_paper_key``: the quotes request ran first, so the market-data host has
+    already answered this key pair, and the paper host refuses a key from another environment (module notes)."""
     try:
         return call()
-    except (tradier_client.TradierError, ValueError) as exc:  # a MarketTypesError is a ValueError
+    except alpaca_client.AlpacaError as exc:
+        if exc.status == "auth" and exc.path is not None and _on_paper_host(exc.path):
+            raise Unavailable("not_paper_key", NOT_PAPER_KEY_MESSAGE % exc.http_status) from None
+        raise Unavailable("request_failed", "the %s request failed: %s" % (what, exc)) from None
+    except ValueError as exc:  # a MarketTypesError is a ValueError
         raise Unavailable("request_failed", "the %s request failed: %s" % (what, exc)) from None
 
 
+def _on_paper_host(path: str) -> bool:
+    try:
+        return alpaca_client.host_for_path(path) == alpaca_client.PAPER_HOST
+    except alpaca_client.AlpacaError:
+        return False
+
+
 def snapshot(args: Any, now: datetime.datetime, version: str) -> Tuple[Dict[str, Any], List[str]]:
-    """``(payload, lines)`` of the three requests (module notes)."""
+    """``(payload, lines)`` of the three calls (module notes)."""
     receipts: List[Any] = []
     client = open_client(args, now, version, receipts)
     symbol = args.symbol
     quotes = request("quotes", lambda: client.quotes([symbol]))
     underlying = quotes.quotes.get(symbol)
     if not two_sided(underlying) or underlying.bid <= 0:
-        raise Unavailable("no_quote", "no two-sided quote for %s (unmatched: %s)" % (
-            symbol, ", ".join(quotes.unmatched) or "none"))
+        missing = list(getattr(quotes, "not_returned", ())) + list(quotes.unmatched)
+        raise Unavailable("no_quote", "no two-sided quote for %s (not returned: %s)" % (
+            symbol, ", ".join(missing) or "none"))
     spot = mid(underlying)
     spot_as_of = stamp(underlying)
     if spot_as_of is None:
         raise Unavailable("no_quote", "the %s quote carries no bid or ask stamp" % symbol)
     today = market_clock.to_et(now).date()
-    expirations = request("expirations", lambda: client.option_expirations(symbol))
+    expirations = request("expirations", lambda: client.option_expirations(symbol, today))
     expiration = standard_expiration(expirations.dates, today)
     if expiration is None:
         raise Unavailable("no_expiration", "no standard expiration of %s at least %d calendar days after %s"
@@ -408,7 +442,7 @@ def snapshot(args: Any, now: datetime.datetime, version: str) -> Tuple[Dict[str,
                    alerts.fmt_pct(pct(solved["call"]), w.emitted), alerts.fmt_pct(pct(solved["put"]), w.emitted),
                    w.price(call_mid), w.price(put_mid), w.number(args.rate.strip()), w.number("0")),
         MOVE_LINE % (w.date(expiration), w.number(format(STRADDLE_FACTOR, "f")), w.price(straddle), w.price(one_sigma)),
-        SNAPSHOT_LINE % (HOST, alerts.fmt_minutes(FEED_DELAY_MIN, w.emitted), w.clock(as_of)),
+        SNAPSHOT_LINE % (SOURCE_WORDS, alerts.fmt_minutes(FEED_DELAY_MIN, w.emitted), w.clock(as_of)),
         alerts.fmt_footer(as_of, FEED_DELAY_MIN, w.emitted, w.clocks, kind=alert_lint.FOOTER_SNAPSHOT),
     ]
     if args.demo:

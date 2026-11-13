@@ -29,11 +29,12 @@ import tempfile
 import unittest
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from unittest import mock
+from urllib.parse import urlsplit
 
 import ack as ack_tool
 import desk_init as desk_init_tool
 import propose as tool  # the tool scripts/propose.py
-from aegis_desk import alert_lint, contract, desk_paths, state, structuring, structuring_text, tradier_client
+from aegis_desk import alert_lint, alpaca_client, contract, desk_paths, state, structuring, structuring_text
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
@@ -57,7 +58,7 @@ def footer(clock: str) -> str:
 
 
 FOOTER_1931 = footer("19:31")
-SOURCE = "Tradier sandbox, 15-min delayed, as of 19:31 UTC"
+SOURCE = "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC"
 MODEL = ("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is "
          "not modelled")
 LIMIT = "you supply the limit; the desk prints none"
@@ -409,8 +410,8 @@ class GoldenTest(DeskCopy):
                          [[label["by"], label["code"]] for label in best["accepted"]])
         self.assertEqual({"stage": "best_candidate", "ok": True, "owner_level": 2, "required_level": 1},
                          {k: payload["approval"][k] for k in ("stage", "ok", "owner_level", "required_level")})
-        self.assertEqual({"made": 4, "chains": 2, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 51}, payload["requests"])
+        self.assertEqual({"made": 6, "chains": 2, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 174}, payload["requests"])
         self.assertEqual("\n".join(WMT_BEST_TEXT), payload["message"])
         self.assertTrue(payload["lint"]["ok"])
 
@@ -428,7 +429,7 @@ class GoldenTest(DeskCopy):
                          (payload["candidates"][1]["id"], payload["candidates"][1]["status"],
                           payload["candidates"][1]["score"]))
         self.assertEqual(("4550.00", "655.50"), (payload["after"]["max_loss"], payload["after"]["breakeven"]))
-        self.assertEqual((3, 1), (payload["requests"]["made"], payload["requests"]["chains"]))
+        self.assertEqual((4, 1), (payload["requests"]["made"], payload["requests"]["chains"]))
 
     def test_spy_collar_without_the_tag_is_none_qualifies(self) -> None:
         self.spy_shares_only()
@@ -575,20 +576,21 @@ class MarketDataTest(DeskCopy):
     def test_every_request_is_a_get_through_the_read_only_transport(self) -> None:
         self.spy_shares_only(tags=True)
         seen: List[str] = []
-        original = tradier_client.OfflineTransport.fetch
+        original = alpaca_client.OfflineTransport.fetch
 
         def recording(transport: Any, url: str, headers: Dict[str, str], timeout_s: float) -> Any:
             seen.append(url)
             return original(transport, url, headers, timeout_s)
 
-        with mock.patch.object(tradier_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
+        with mock.patch.object(alpaca_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
                 mock.patch("http.client.HTTPConnection.request", side_effect=AssertionError("no socket offline")):
             payload = self.run_json(SPY, "collar")["payload"]
-        paths = [url.split("?")[0].split("sandbox.tradier.com", 1)[-1] for url in seen]
-        self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/expirations", "/v1/markets/options/chains"], paths)
-        self.assertTrue(set(paths) <= set(tradier_client.ALLOWED_PATHS))
-        self.assertEqual({"made": 3, "chains": 1, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 52}, payload["requests"])
+        paths = [urlsplit(url).path for url in seen]
+        self.assertEqual(["/v2/stocks/quotes/latest", "/v2/options/contracts", "/v2/options/contracts",
+                          "/v1beta1/options/snapshots/SPY"], paths, "shares only: one stock quote, then the listings")
+        self.assertEqual([alpaca_client.host_for_path(path) for path in paths], [urlsplit(url).hostname for url in seen])
+        self.assertEqual({"made": 4, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 176}, payload["requests"])
         self.assertEqual(paths, [record["path"] for record in self.ledger()])
 
     def test_now_is_honoured_and_no_wall_clock_is_read(self) -> None:
@@ -694,13 +696,14 @@ class FixerTest(DeskCopy):
 
     def test_refused_market_data_is_journaled(self) -> None:
         self.prepare()
-        error = tool.quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        error = tool.quote_cache.MarketDataRefused("no_credential", tool.quote_cache.NO_CREDENTIAL_MESSAGE)
         with mock.patch.object(tool.quote_cache, "open_market_data", side_effect=error):
             code, out = call(tool.main, self.argv(SPY, "collar", json_mode=False))
         self.assertEqual(20, code)
         (record,) = self.journal()
-        self.assertEqual(("UNAVAILABLE", "no_token", "collar", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+        self.assertEqual(("UNAVAILABLE", "no_credential", "collar", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
                          (record["verdict"], record["refused_code"], record["structure"], record["text_sha256"]))
+        self.assertIn(tool.quote_cache.NO_CREDENTIAL_MESSAGE, out)
 
     def test_two_runs_in_one_second_write_one_report(self) -> None:
         self.wmt_shares_only(tags=True)

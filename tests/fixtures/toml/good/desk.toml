@@ -25,9 +25,12 @@ name = "Roth IRA"
 type = "ira"
 
 [market_data]
-vendor = "tradier"
-host = "sandbox"                    # sandbox | production (production needs md_proxy, Stage 3)
-token_env = "TRADIER_API_TOKEN"
+vendor = "alpaca"
+host = "paper"                      # paper only: the desk holds an Alpaca paper key pair, never a live one
+key_env = "APCA_API_KEY_ID"         # the NAMES of the variables, never the values
+secret_env = "APCA_API_SECRET_KEY"
+options_feed = "indicative"         # indicative (free, 15-min delayed, approximate) | opra (subscribers)
+stock_feed = "iex"
 feed_delay_min = 15
 quote_ttl_min = 5
 grace_min = 5

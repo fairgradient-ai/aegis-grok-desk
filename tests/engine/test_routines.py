@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
 MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
-AUTOREVIEW_SHA256 = "840001327b3afa304b8d5280d2ae0d37fc67bffae45ee623a297e7672874aa62"
+AUTOREVIEW_SHA256 = "2d4c4c427a551b59e152f2ff89a8ab603154e0b753dad834ff5d91313665b2da"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
 # PR 3b decision S14: the plan's Stage-2 roll-window routine is dropped (the Structuring Desk never posts alerts).
 PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1-call", "pre-event-stress",
@@ -499,7 +499,7 @@ class AutoreviewTest(unittest.TestCase):
         self.assertEqual(1000, self.autoreview.limit_chars)
         texts = routines.rules_text(self.manifest, self.autoreview)
         self.assertEqual(list(routines.RULE_KEYS), list(texts))
-        self.assertEqual({"allow": 506, "ask_first_writes": 315, "ask_first_owner_authority": 333},
+        self.assertEqual({"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 333},
                          {key: len(value) for key, value in texts.items()})
         self.assertIn(": preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs", texts["allow"])
         self.assertTrue(texts["allow"].startswith("Allow automatically: the command python3 "
@@ -518,7 +518,7 @@ class AutoreviewTest(unittest.TestCase):
         planned = dataclasses.replace(self.manifest, routines=tuple(
             dataclasses.replace(self.manifest.routines[0], id=routine_id) for routine_id in PLANNED_IDS))
         texts = routines.rules_text(planned, self.autoreview)
-        self.assertEqual(667, len(texts["allow"]), "17 planned routine ids (roll-window dropped)")
+        self.assertEqual(672, len(texts["allow"]), "17 planned routine ids (roll-window dropped)")
         self.assertEqual([], routines.rules_text_problems(planned, self.autoreview))
 
     def test_too_long_and_unnamed_texts_are_problems(self) -> None:
@@ -527,7 +527,7 @@ class AutoreviewTest(unittest.TestCase):
             dataclasses.replace(self.manifest.routines[0], id=routine_id) for routine_id in long_ids))
         problems = routines.rules_text_problems(many, self.autoreview)
         self.assertEqual(1, len(problems), problems)
-        self.assertIn("[allow_routines] renders to 1046 characters (limit 1000)", problems[0])
+        self.assertIn("[allow_routines] renders to 1051 characters (limit 1000)", problems[0])
         dropped = dataclasses.replace(self.autoreview, allow_template=self.autoreview.allow_template.replace(
             "{routine_ids}", "the desk's routines"))
         problems = routines.rules_text_problems(self.manifest, dropped)

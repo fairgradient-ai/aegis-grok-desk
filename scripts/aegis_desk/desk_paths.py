@@ -13,7 +13,7 @@ directories on request. The layout::
       data/positions/  data/book/  data/cache/
       journal/  levels/  plans/  tickets/  reports/  incidents/
       journal/structuring.jsonl  reports/rolls/  reports/proposals/
-      fixtures/tradier/<set>/   offline recorded responses (fixture desk roots only)
+      fixtures/alpaca/<set>/    offline recorded responses (fixture desk roots only)
 
 :func:`for_root` builds a :class:`DeskPaths` from an absolute, existing directory (anything else
 is a :class:`DeskPathsError`, a ``ValueError``); every attribute is an absolute path under that
@@ -43,8 +43,9 @@ RUNTIME_DIRS: Tuple[str, ...] = (
 )
 """Root-relative directories :func:`ensure_runtime_dirs` creates (in this order), and no others."""
 
-TRADIER_FIXTURES_SUBDIR: str = "tradier"
-"""Sub-directory of ``fixtures/`` holding the recorded Tradier sets (``<set>/<endpoint>__<key>.json``)."""
+ALPACA_FIXTURES_SUBDIR: str = "alpaca"
+"""Sub-directory of ``fixtures/`` holding the recorded Alpaca sets (``<set>/<endpoint>__<key>.json``, named by
+``alpaca_client.fixture_file_name``)."""
 
 
 class DeskPathsError(ValueError):
@@ -84,9 +85,9 @@ class DeskPaths:
     structuring_journal: str
 
     @property
-    def tradier_fixtures_dir(self) -> str:
-        """``fixtures/tradier`` under the root: what an offline transport is pointed at."""
-        return os.path.join(self.fixtures_dir, TRADIER_FIXTURES_SUBDIR)
+    def alpaca_fixtures_dir(self) -> str:
+        """``fixtures/alpaca`` under the root: what an offline transport is pointed at."""
+        return os.path.join(self.fixtures_dir, ALPACA_FIXTURES_SUBDIR)
 
     def relative(self, path: str) -> str:
         """``path`` relative to the root with ``/`` separators, for messages and ledgers."""
@@ -162,7 +163,7 @@ __all__ = [
     "DeskPaths",
     "DeskPathsError",
     "RUNTIME_DIRS",
-    "TRADIER_FIXTURES_SUBDIR",
+    "ALPACA_FIXTURES_SUBDIR",
     "ensure_runtime_dirs",
     "for_root",
 ]

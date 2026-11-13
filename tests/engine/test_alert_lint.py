@@ -590,15 +590,15 @@ class StructuringReviewTest(unittest.TestCase):
 
     def test_the_tools_own_lines_still_pass(self) -> None:
         for body in ("reasons: 73 calendar days inside your window 40 to 75; bid 3.55 at or above your minimum 0.50",
-                     ROLL_LEG_1 + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Tradier sandbox, 15-min delayed, "
+                     ROLL_LEG_1 + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, "
                      "as of 19:31 UTC",
                      ROLL_LEG_1 + " | ask 3.50 | quote grade B, 18 min old",
                      ROLL_LEG_1 + " | ask 0.16 | quote grade E, 18 min old | quote grade E: the conservative side stands",
-                     ROLL_LEG_1 + " | bid 0.12, ask 0.16, mid 0.14 | quote grade E, Tradier sandbox, 15-min delayed, as "
+                     ROLL_LEG_1 + " | bid 0.12, ask 0.16, mid 0.14 | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as "
                      "of 19:31 UTC | quote grade E: the conservative side stands",
                      ROLL_LEG_2 + " | bid 3.55 | quote grade B, 18 min old",
                      "leg 2 of 2: closes 200.5 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade "
-                     "A, Tradier sandbox, 15-min delayed, as of 19:31 UTC",
+                     "A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
                      "leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option",
                      "after leg 2 of this order you would hold 2 uncovered calls (level 4)",
                      "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00",
@@ -703,7 +703,7 @@ class EmittedTest(unittest.TestCase):
 
     def test_days_minutes_and_percentages_must_be_emitted(self) -> None:
         for text, number in (("dte 13 trading days", "13"), ("run 3 min late", "3"), ("45 calendar days", "45"),
-                             ("captured 52.10 %", "52.10"), ("Tradier sandbox, 15-min delayed", "15")):
+                             ("captured 52.10 %", "52.10"), ("Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed", "15")):
             with self.subTest(text=text):
                 self.assertEqual(["number_not_emitted"], codes(alert_lint.check(message(HEAD + " | " + text), [])))
                 self.assertTrue(alert_lint.check(message(HEAD + " | " + text), [number]).ok)

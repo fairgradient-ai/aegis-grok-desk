@@ -44,7 +44,7 @@ and 2 write nothing. ``--now`` (or the clock) is read to the whole second, the r
 Exit codes (S5): 0 BEST, NONE_QUALIFIES, NOTHING_TO_PROPOSE or NOT_APPLICABLE; 20 UNAVAILABLE (the market data the
 answer needs: ``market_closed``, ``group_quarantined``, ``positions_quarantined``, ``spot_unusable``,
 ``expirations_not_served``, ``chain_not_served``, ``no_candidate_priced``; ``criteria_missing``;
-``config_unacknowledged``; market data refused: ``no_token``, ``production_host``, ``token_file_mode``,
+``config_unacknowledged``; market data refused: ``no_credential``, ``live_host``, ``credential_file_mode``,
 ``holiday_table_expired``), REFUSED (``approval_level``, or ``intermediate_exposure``); 1
 ``unknown_trade``, ``desk_root``, ``config_invalid``, ``positions_invalid``, ``calendar_invalid``,
 ``structuring_invalid``, ``io_error``, ``ticket_exists``, ``lint_failed``; 2 usage. It never exits 10: it fires
@@ -84,8 +84,10 @@ DESCRIPTION = ("on the owner's request only: a covered call, protective put or c
                "priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by "
                "its declared objective; names one best candidate when one passes every criterion; never a new symbol, "
                "a spread, an uncovered short or a cash-secured put; never in a routine")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/quotes, /v1/markets/options/expirations and "
-                  "/v1/markets/options/chains only, through the quote cache (at most 20 requests and 4 chains a run); "
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and "
+                  "/v1beta1/options/snapshots/<UNDERLYING>, and "
+                  "https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, "
+                  "through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); "
                   "none with --offline")
 VERDICT_REFUSED = "REFUSED"
 CAUSE_CRITERIA_MISSING = "criteria_missing"
@@ -252,7 +254,7 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--structure", metavar="STRUCTURE", default=None, choices=STRUCTURES,
                         help="the overlay: %s (required)" % ", ".join(STRUCTURES))
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
-                        help="recorded fixture set under <desk-root>/fixtures/tradier/ (default regular; --offline only)")
+                        help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
 
 

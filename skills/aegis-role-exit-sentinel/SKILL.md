@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
-  source_sha256: 8ea3919cc188ac6151cdd78019e2c09be86964634da67aff489949e6e3918671
+  source_sha256: 015e346197eda23fbc490eac9337fcf74c7c6dce56a38653042ef05afd738764
 ---
 
 # Aegis Exit Sentinel: role skill
@@ -87,7 +87,7 @@ A synthetic example: a copy of the fixture desk at the 15:35 slot of Friday 2026
 at 19:50 UTC, one minute after `ack.py config`. The first line of the message:
 
 ```text
-EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
+EXIT SIGNAL AG-20261020-01 | WMT covered call | your rule TP80 (rules 1.0.0, sha cc09859c) fired: credit captured 95.32 % (your threshold: at or above 80 %); quote grade E: the conservative side stands | already past this threshold at the desk's first observation | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | your plan: close | not an instruction to trade; you act in your brokerage account.
 ```
 
 Its segments, in order: the verdict and the trade id; the structure; the owner's rule with its rulebook version
@@ -102,10 +102,10 @@ The plan words are fixed. The plan close prints your plan: close; the plan roll_
 More synthetic lines from the same fixture desk:
 
 ```text
-WATCH AG-20261020-01 | WMT covered call | your rule DTE21 (rules 1.0.0, sha cc09859c) fired: time to expiry 13 trading days (your threshold: at or below 21 trading days) | already past this threshold at the desk's first observation | quote grade B, Tradier sandbox, 15-min delayed, as of 19:31 UTC, run 45 min late | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
-UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Tradier sandbox, 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
+WATCH AG-20261020-01 | WMT covered call | your rule DTE21 (rules 1.0.0, sha cc09859c) fired: time to expiry 13 trading days (your threshold: at or below 21 trading days) | already past this threshold at the desk's first observation | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC, run 45 min late | your plan: review a roll | not an instruction to trade; you act in your brokerage account.
+UNAVAILABLE AG-20261020-01 | WMT covered call | rules 1.0.0, sha cc09859c: no verdict while an input is unavailable; this is not HOLD | quote grade F, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 18:50 UTC, run 45 min late | not an instruction to trade; you act in your brokerage account.
 unavailable: your rule TP80: row 4 WMT261120C00105000: quote grade F (stale): no fresh ask
-CONFIG CHANGED | desk.toml: not acknowledged -> sha 0af433cf | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
+CONFIG CHANGED | desk.toml: not acknowledged -> sha f08a18dc | positions.csv: not acknowledged -> sha 9483c8f3 | adopted rulebook: not acknowledged -> sha cc09859c | evaluated with the files as they are now | acknowledge with ack.py config --owner-tapped
 pre-close | verdicts: 2 EXIT SIGNAL, 0 UNAVAILABLE, 1 WATCH, 0 HOLD | open signals: 4 | data age: 18 min | rules 1.0.0, sha cc09859c | verify live quotes in your broker before acting
 ```
 

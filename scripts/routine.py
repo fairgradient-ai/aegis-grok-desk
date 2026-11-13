@@ -138,8 +138,8 @@ TOOL = "routine"
 DESCRIPTION = ("the single routine entry point: checks the release pin, runs one manifest routine's steps in-process "
                "with JSON captured, composes and lints the one message the Bot posts verbatim, and records the "
                "heartbeat, the journal, the step copies and the run record")
-NETWORK_ACCESS = ("GET https://sandbox.tradier.com/v1/markets/... only, through the step tools' quote cache; none "
-                  "with --offline")
+NETWORK_ACCESS = ("GET https://data.alpaca.markets/... and https://paper-api.alpaca.markets/v2/options/contracts "
+                  "only (Alpaca paper market data), through the step tools' quote cache; none with --offline")
 STEP_MODULES: Dict[str, Any] = {}
 """The step tools by name, filled by :func:`step_modules` (``set(step_modules()) == set(routines.STEP_TOOLS)``)."""
 DEFAULT_DESK_ROOT = "/workspace/aegis-desk"

@@ -30,8 +30,8 @@ from typing import Any, Dict, List, Sequence, Tuple
 from unittest import mock
 from urllib.parse import urlsplit
 
-from aegis_desk import (alert_lint, contract, desk_paths, market_clock, quote_cache, structuring_text, tickets,
-                        tradier_client)
+from aegis_desk import (alert_lint, alpaca_client, contract, desk_paths, market_clock, quote_cache, structuring_text,
+                        tickets)
 
 import ack as ack_tool
 import exit_check as exit_check_tool
@@ -60,7 +60,7 @@ MULTI = "entered as one multi-leg order, some brokers class a roll as a spread, 
 # an unwind is shares and options together, not a roll (reviews L1-5, L2-6, L4-5)
 MULTI_UNWIND = ("entered as one multi-leg order, some brokers class shares and options together as a combination, "
                 "which can need a higher level")
-QUOTE = "quote grade %s, Tradier sandbox, 15-min delayed, as of 19:31 UTC"
+QUOTE = "quote grade %s, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC"
 WMT_HEAD = "TICKET AG-20261020-01 | WMT covered call | %s (action %s) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
 SPY_HEAD = "TICKET AG-20261028-03 | SPY protective put | %s (action %s) | account 2 of desk.toml (ira) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
 WMT_CALL_LEG = "leg 1 of %d: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | " + QUOTE % "B"
@@ -344,8 +344,8 @@ class GoldenTextTest(DeskCase):
                           replacement["candidate"]["net_credit_total"]))
         self.assertEqual("extrinsic_per_day", replacement["objective"]["id"])
         self.assertIsNotNone(payload["model_note"])
-        self.assertEqual({"made": 2, "chains": 1, "per_run_max_requests": 20, "per_run_max_chains": 4,
-                          "budget_left": 53}, payload["requests"])
+        self.assertEqual({"made": 4, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
+                          "budget_left": 176}, payload["requests"])
         self.assertEqual("5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c",
                          payload["criteria"]["sha256"])
         self.assertEqual("2026-11-03T20:20:00+00:00", payload["valid_until"])
@@ -372,7 +372,7 @@ class GoldenTextTest(DeskCase):
         self.assertEqual((0, "TICKET"), (code, body["payload"]["verdict"]))
         self.assertIn("FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is "
                       "unknown and counts as inside the new call's life", body["payload"]["message"])
-        self.assertIn("bid 0.12, ask 0.16, mid 0.14 | quote grade E, Tradier sandbox, 15-min delayed, as of 19:31 UTC | "
+        self.assertIn("bid 0.12, ask 0.16, mid 0.14 | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | "
                       "quote grade E: the conservative side stands", body["payload"]["message"])
 
 
@@ -521,7 +521,7 @@ class QuietTest(DeskCase):
     def test_replacement_not_listed(self) -> None:
         code, body = self.run_json(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "117")
         payload = body["payload"]
-        self.assertEqual((20, "unavailable", "UNAVAILABLE", "replacement_not_listed", 2),
+        self.assertEqual((20, "unavailable", "UNAVAILABLE", "replacement_not_listed", 4),
                          (code, body["status"], payload["verdict"], payload["cause"], payload["requests"]["made"]))
         self.assertEqual("UNAVAILABLE | AG-20261020-01 ROLL ticket | the chain does not list that contract\n" + FOOTER
                          + "19:50 UTC", payload["message"])
@@ -646,7 +646,8 @@ class MarketDataRefusedTest(DeskCase):
     (``quote_cache.MarketDataRefused``: "Tools map it to exit 20"), and so is an expired holiday table."""
 
     def test_refused_market_data_and_an_expired_holiday_table_are_unavailable(self) -> None:
-        for error, code in ((quote_cache.MarketDataRefused("no_token", "no market-data token is configured"), "no_token"),
+        for error, code in ((quote_cache.MarketDataRefused(quote_cache.REFUSED_NO_CREDENTIAL, quote_cache.NO_CREDENTIAL_MESSAGE),
+                             "no_credential"),
                             (market_clock.TableExpiredError("the table ends 2027-12-31"), "holiday_table_expired")):
             with self.subTest(code=code):
                 with mock.patch.object(exit_ticket.quote_cache, "open_market_data", side_effect=error):
@@ -689,8 +690,9 @@ class WithheldTest(DeskCase):
 
 class RequestsTest(DeskCase):
     def test_request_counts(self) -> None:
-        cases = [((WMT, "CLOSE"), 1), ((WMT, "LET_ASSIGN"), 1), ((SPY, "MONETIZE_PUT"), 1), ((SPY, "UNWIND_STOCK"), 1),
-                 ((NVDA, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "160"), 2), ((WMT, "MONETIZE_PUT"), 0)]
+        # a quote batch with an option leg is two requests (equities, then options); a chain is two more
+        cases = [((WMT, "CLOSE"), 2), ((WMT, "LET_ASSIGN"), 2), ((SPY, "MONETIZE_PUT"), 2), ((SPY, "UNWIND_STOCK"), 2),
+                 ((NVDA, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "160"), 4), ((WMT, "MONETIZE_PUT"), 0)]
         for args, made in cases:
             with self.subTest(args=args):
                 self.tearDown()
@@ -708,24 +710,25 @@ class RequestsTest(DeskCase):
         self.assertIn("computed 19:55 UTC, valid until 20:25 UTC (30 min)", payload["message"])
 
     def test_every_request_is_an_allow_listed_get(self) -> None:
-        original = tradier_client.OfflineTransport.fetch
+        original = alpaca_client.OfflineTransport.fetch
         seen: List[str] = []
 
         def recording(transport: Any, url: str, headers: Any, timeout_s: float) -> Any:
             seen.append(url)
             return original(transport, url, headers, timeout_s)
 
-        with mock.patch.object(tradier_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
+        with mock.patch.object(alpaca_client.OfflineTransport, "fetch", autospec=True, side_effect=recording), \
                 mock.patch("http.client.HTTPConnection.request", autospec=True) as request:
             code, body = self.run_json(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115")
         self.assertEqual(0, code)
         self.assertEqual(0, request.call_count)
-        self.assertEqual(2, len(seen))
-        self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/chains"], [urlsplit(url).path for url in seen])
-        self.assertTrue(all(urlsplit(url).path in tradier_client.ALLOWED_PATHS for url in seen))
+        paths = ["/v2/stocks/quotes/latest", "/v1beta1/options/quotes/latest", "/v2/options/contracts",
+                 "/v1beta1/options/snapshots/WMT"]
+        self.assertEqual(paths, [urlsplit(url).path for url in seen])
+        self.assertTrue(all(alpaca_client.host_for_path(urlsplit(url).path) == urlsplit(url).hostname for url in seen))
         with open(os.path.join(self.root, "data", "cache", "ledger.jsonl"), encoding="utf-8") as handle:
             ledger = [json.loads(line) for line in handle]
-        self.assertEqual(["/v1/markets/quotes", "/v1/markets/options/chains"], [record["path"] for record in ledger])
+        self.assertEqual(paths, [record["path"] for record in ledger])
 
 
 QUARANTINED_ROW = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261030-05,2026-10-30,-400.00,,2.50,open,"
@@ -782,12 +785,12 @@ class FixerTest(DeskCase):
 
     def test_refused_market_data_is_journaled(self) -> None:
         self.ack()
-        error = quote_cache.MarketDataRefused("no_token", "no market-data token: add the Tradier sandbox token")
+        error = quote_cache.MarketDataRefused("no_credential", quote_cache.NO_CREDENTIAL_MESSAGE)
         with mock.patch.object(exit_ticket.quote_cache, "open_market_data", side_effect=error):
             code, out = self.run_text(WMT, "CLOSE")
         self.assertEqual(20, code)
         (record,) = self.journal()
-        self.assertEqual(("UNAVAILABLE", "no_token", "CLOSE", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
+        self.assertEqual(("UNAVAILABLE", "no_credential", "CLOSE", hashlib.sha256(out[:-1].encode("utf-8")).hexdigest()),
                          (record["verdict"], record["refused_code"], record["action"], record["text_sha256"]))
 
     def test_an_unwind_of_fractional_shares(self) -> None:

@@ -71,7 +71,8 @@ class GeneratorInStepTests(unittest.TestCase):
     def test_committed_svgs_match_a_fresh_render(self) -> None:
         env = dict(os.environ)
         env["PYTHONDONTWRITEBYTECODE"] = "1"
-        env.pop("TRADIER_API_TOKEN", None)
+        env.pop("APCA_API_KEY_ID", None)
+        env.pop("APCA_API_SECRET_KEY", None)
         proc = subprocess.run([sys.executable, GENERATOR, "--check"], cwd=ROOT, env=env, capture_output=True,
                               text=True, encoding="utf-8", timeout=120, check=False)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)

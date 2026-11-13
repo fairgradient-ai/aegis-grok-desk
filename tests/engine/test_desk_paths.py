@@ -66,8 +66,8 @@ class ForRootTest(unittest.TestCase):
             value = dataclasses.asdict(paths)[name]
             self.assertTrue(os.path.isabs(value), name)
             self.assertEqual(os.path.join(self.root, *rel.split("/")), value, name)
-        self.assertEqual(os.path.join(self.root, "fixtures", "tradier"), paths.tradier_fixtures_dir)
-        self.assertEqual("tradier", desk_paths.TRADIER_FIXTURES_SUBDIR)
+        self.assertEqual(os.path.join(self.root, "fixtures", "alpaca"), paths.alpaca_fixtures_dir)
+        self.assertEqual("alpaca", desk_paths.ALPACA_FIXTURES_SUBDIR)
 
     def test_trailing_separator_and_dot_segments_are_normalised(self) -> None:
         paths = desk_paths.for_root(self.root + os.sep)
@@ -192,9 +192,9 @@ class FixtureDeskRootTest(unittest.TestCase):
         paths = desk_paths.for_root(FIXTURE_DESK)
         self.assertTrue(os.path.isfile(paths.desk_toml), paths.desk_toml)
         self.assertTrue(os.path.isfile(paths.positions_csv), paths.positions_csv)
-        self.assertTrue(os.path.isdir(paths.tradier_fixtures_dir), paths.tradier_fixtures_dir)
+        self.assertTrue(os.path.isdir(paths.alpaca_fixtures_dir), paths.alpaca_fixtures_dir)
         for name in ("regular", "after_close", "stale", "pre_open", "holiday"):
-            self.assertTrue(os.path.isdir(os.path.join(paths.tradier_fixtures_dir, name)), name)
+            self.assertTrue(os.path.isdir(os.path.join(paths.alpaca_fixtures_dir, name)), name)
         # The committed fixture root holds only owner files and recorded responses: no runtime state.
         for rel in ("state", "data", "journal", "levels", "plans", "reports", "incidents"):
             self.assertFalse(os.path.exists(os.path.join(FIXTURE_DESK, rel)), rel)
