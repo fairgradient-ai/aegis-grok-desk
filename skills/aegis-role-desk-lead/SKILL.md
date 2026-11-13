@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 7ad6b447bb30a42d8fd8833eba9f1e42d8f3b2a43e7a38f5831a1365eee6b393
+  source_sha256: 300e20da240d621d7817edc02bf2138bd2a5dc2aba725959e9a1445aa9a756c0
 ---
 
 # Aegis Desk Lead: role skill
@@ -38,7 +38,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 | What | Written by | Where |
 | --- | --- | --- |
 | The desk configuration | `desk_init.py`, only after the owner's tap | `/workspace/aegis-desk/desk.toml` |
-| The owner's dividend intake | `desk_init.py` (answers with `ex_dividends`) | `research/calendar.toml` |
+| The owner's dividend and earnings intake | `desk_init.py` (answers with `ex_dividends`, `earnings`) | `research/calendar.toml` |
 | The doctor's last result | `desk_doctor.py` | `state/doctor.json` |
 | The Morning Desk Sheet | `routine.py preopen` | your chat, 07:30 ET |
 | The EOD Desk Brief | `routine.py eod-brief` | your chat, 17:10 ET |
@@ -143,16 +143,22 @@ places the owner has to go.
 | a new or changed position, a fill, positions.csv, expiry, assignment | the draft and the verbatim save of `agents/position-control.md`, then `positions_check.py`, `csv_recon.py`, `expiry_checklist.py`, `assignment_watch.py` (Position Control) |
 | "how's my book?" | the P/L lines of the latest EOD DESK BRIEF, quoted as posted, with its date |
 | whether the desk ran, the doctor, the configuration, a rule change | `routine_audit.py`, `desk_doctor.py`, `desk_init.py`, `rules_diff.py`, `rules_adopt.py` |
+| updating the desk to a newer release | `docs/UPDATING.md`, step by step, ending with the update receipt |
 | choices for a position the owner holds (a closing, unwind, let-assign or roll ticket, a roll analysis, a covered call, protective put or collar on shares they hold), and the criteria interview | `exit_ticket.py`, `roll_analysis.py`, `propose.py`, each only on the owner's request, and the interview of `docs/STRUCTURING.md` (Structuring Desk) |
 
+- When candidates fail only on an earnings or ex-dividend date, offer `allow` in `structuring.toml` (structuring
+  only, no alert silenced) beside the row tags `#earnings-ok` / `#assign-ok` (one position, but they silence its
+  exit alerts), with those effects; never suggest a tag first (`aegis-overlay-proposals`).
 - Which structure fits is the owner's choice: you describe what each one does (income, a floor, or both) and price
   the one they pick; you never pick it for them.
 - One voice in the Floor: you answer the owner there. The other Bots post their routine output, plan cards and
   handoff receipts, and speak to the owner only to correct a fact with a tool's output.
 - A live view of marks, Greeks and limits (the Aegis Book & Risk Analyst) is planned for Stage 2 (not in this release).
 - Sourcing earnings and ex-dividend dates (the Aegis Events and Calendar Analyst) is
-  planned for Stage 2 (not in this release). In Stage 1 the owner states each dividend in the desk interview, and
-  `desk_init.py` writes it.
+  planned for Stage 2 (not in this release). In Stage 1 the owner states each dividend and earnings date, in the
+  desk interview or whenever they learn one ("update the calendar", SETUP section 9.5), and `desk_init.py` writes
+  it. A date the owner has not given is UNAVAILABLE: never say a company "has not declared" a dividend or name a
+  date from memory.
 - The weekly review (the Aegis Review Desk) is planned for Stage 3 (not in this release).
 
 ### Interactive commands
@@ -215,10 +221,10 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade <trade id> -
   asked for that answer, post its output verbatim and follow `agents/structuring-desk.md` for what you may add.
 
 - `desk_init.py` writes `desk.toml` from the owner's interview answers (the JSON its `--schema` describes) and,
-  from answers that hold `ex_dividends`, `research/calendar.toml`. Answers that would rewrite an existing `desk.toml`
-  or `research/calendar.toml` are refused unless the owner taps `--replace --owner-tapped`; the dividend intake's
-  second run, with answers that hold only `ex_dividends`, writes `research/calendar.toml`. A replacement rewrites the
-  whole file: a new dividend intake re-enters every entry.
+  from answers that hold `ex_dividends` or `earnings`, `research/calendar.toml`. Answers that would rewrite an
+  existing `desk.toml` or `research/calendar.toml` are refused unless the owner taps `--replace --owner-tapped`; the
+  calendar intake's run, with answers that hold only `ex_dividends` and `earnings`, writes `research/calendar.toml`.
+  A replacement rewrites the whole file: keep every entry in `setup/dividends.json` and add the new one.
 - `rules_adopt.py` takes the owner's typed phrase `--owner-phrase "adopt rules X.Y.Z"` and has no `--owner-tapped`
   flag. It refuses during regular trading hours unless the owner taps `--allow-rth`.
 - `ack.py config --owner-tapped` acknowledges the current SHA-256 of `desk.toml`, `positions.csv`, the adopted

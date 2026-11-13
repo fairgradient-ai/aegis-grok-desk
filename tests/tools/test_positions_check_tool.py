@@ -241,5 +241,15 @@ class RegularRootTest(DeskCopy):
             self.assertNotIn(word, lowered, word)
 
 
+class MoneyCentsTest(unittest.TestCase):
+    def test_a_group_cost_prints_to_the_cent(self) -> None:
+        # the owner's 321.6301 NVDA shares: a cost total with six decimals printed as noise in the chat
+        from decimal import Decimal
+        self.assertEqual(("48252.63", "19016.00", "-480.00", "0.12", "-"),
+                         (tool.money_cents(Decimal("48252.630993")), tool.money_cents(Decimal("19016")),
+                          tool.money_cents(Decimal("-480.00")), tool.money_cents(Decimal("0.125")),
+                          tool.money_cents(None)))
+
+
 if __name__ == "__main__":
     unittest.main()

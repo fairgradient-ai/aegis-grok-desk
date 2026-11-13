@@ -115,6 +115,9 @@ CORRUPT_LINE: str = "UNAVAILABLE: %s %s cannot be read (moved aside)"
 INVALID_LINE: str = "UNAVAILABLE: %s %s cannot be read (%s)"
 INVALID_WHY: str = "not the record the desk writes"
 DOCKET_NONE_LINE: str = "expiry docket: none recorded today (%s missing)"
+LEVELS_NONE_YET_LINE: str = "last night's levels: none yet (the end-of-day level sheet has not run on this desk)"
+"""The morning sheet's levels line when no level sheet was ever written (a new desk's first mornings): the expected
+state, said plainly instead of an UNAVAILABLE line."""
 PARTIAL_JOURNAL_LINE: str = "%s has lines that do not parse: they were skipped (the file is kept as it is)"
 EARLY_CLOSE_NO_DOCKET: str = "the expiry docket is unavailable, so the contracts on their last trading day are unknown"
 TODO_NOTHING: str = "to do: nothing pending"
@@ -790,6 +793,8 @@ def morning_sheet(inputs: MorningInputs) -> Summary:
         c.add(early_close_line(c, inputs.early_close_et, inputs.docket, inputs.et_date))
     if inputs.levels.ok:
         c.add(levels_line(c, inputs.levels))
+    elif inputs.levels.status == ARTIFACT_MISSING and inputs.levels.found_date is None:
+        c.add(LEVELS_NONE_YET_LINE)  # no level sheet of any date yet: a new desk, not a failure
     else:
         c.unavailable_line(inputs.levels)
     for note in inputs.notes:

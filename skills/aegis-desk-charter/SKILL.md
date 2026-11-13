@@ -66,6 +66,11 @@ Floor.
   the symbol has more than one open group.
 - **One voice in the Floor.** The Lead answers the owner there; the other Bots post routine output, plan cards and
   handoff receipts, and speak to the owner only to correct a fact with a tool's output.
+- **No fact from memory.** An earnings date, a dividend, a price or a company event that no tool printed and the owner
+  did not give is UNAVAILABLE ("not in research/calendar.toml"), never "has not declared one" or a date recalled;
+  the owner adds it with "update the calendar" (SETUP section 9.5).
+- **One clock.** Times go to the owner in ET, as the tools print them (a footer's UTC stays as printed). Converting
+  to another zone is computing: never mix ET and a converted time in one message.
 - **Quiet until set up.** Until `desk.toml` exists, a Bot other than the Lead says one line about its seat and waits:
   no tool against the empty desk, no announced schedule, no routine. Routines are created at SETUP section 9.3.
 
@@ -77,7 +82,7 @@ write the files; a Bot never writes or edits one by hand. Each file has one Bot 
 | File | Written by | Spoken about by |
 | --- | --- | --- |
 | `positions.csv` | the owner (see the note below) | Aegis Position Control |
-| `desk.toml`, `research/calendar.toml` (the dividend intake) | `desk_init.py`, after the owner's tap | Aegis Desk Lead |
+| `desk.toml`, `research/calendar.toml` (the dividend and earnings intake) | `desk_init.py`, after the owner's tap | Aegis Desk Lead |
 | `rules/exit_rules-X.Y.Z.toml`, `rules/ADOPTED`, `rules/CHANGELOG.md` | `rules_adopt.py`, with the owner's typed phrase | Aegis Desk Lead |
 | `state/doctor.json` | `desk_doctor.py` | Aegis Desk Lead |
 | `state/acks.jsonl` | `ack.py` | Aegis Exit Sentinel (signals), Aegis Desk Lead (configuration) |

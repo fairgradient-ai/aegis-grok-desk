@@ -22,9 +22,12 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
   / ``penny_all_classes`` lists follow ``order_shape_enabled`` when non-empty. The host must be ``paper``: ``live``
   is exit 1 ``live_host`` (the desk holds a paper key pair only). The text is validated in memory by
   ``desk_config.parse_desk_toml_text`` before anything is written (a failure is exit 1 ``config_invalid``).
-* ``research/calendar.toml`` (when the answers hold ``ex_dividends``): one ``[symbols.<SYM>]`` table per symbol, in
-  sorted order, with ``ex_dividend = { date = ..., amount = ..., status = "confirmed" | "estimated", source =
-  "owner-entered", checked_utc = <--now> }`` or ``{ status = "none", source = <the owner's>, checked_utc = <--now> }``,
+* ``research/calendar.toml`` (when the answers hold ``ex_dividends``, ``earnings`` or both): one ``[symbols.<SYM>]``
+  table per symbol of either, in sorted order, with ``earnings = { date = ..., time = "pre" | "post" | "unknown",
+  status = "confirmed" | "estimated", source = "owner-entered", checked_utc = <--now> }`` or ``{ status = "none",
+  source = <the owner's>, checked_utc = <--now> }`` first when the symbol has one, then ``ex_dividend = { date = ...,
+  amount = ..., status = "confirmed" | "estimated", source = "owner-entered", checked_utc = <--now> }`` or ``{ status =
+  "none", source = <the owner's>, checked_utc = <--now> }``,
   validated by ``calendar_events.parse_calendar_text`` (exit 1 ``calendar_invalid``). The bootstrap runs the tool a
   second time for this intake once ``positions.csv`` is validated, with answers that hold no ``desk``.
 * ``structuring.toml`` (when the answers hold ``structuring``, which may stand alone like ``ex_dividends``; PR 3b
@@ -73,7 +76,7 @@ from aegis_desk import calendar_events, desk_config, state, structuring_config, 
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "desk_init"
-DESCRIPTION = ("render desk.toml once from the owner's interview answers (the ex-dividend intake into "
+DESCRIPTION = ("render desk.toml once from the owner's interview answers (the ex-dividend and earnings intake into "
                "research/calendar.toml and the structuring intake into structuring.toml), byte for byte, validated "
                "before it is written; owner-authority")
 NETWORK_ACCESS = "none"
@@ -101,8 +104,8 @@ DESK_HEADER: Tuple[str, ...] = (
     "# hash and book_check posts CONFIG CHANGED until the owner acknowledges it.",
 )
 CALENDAR_HEADER: Tuple[str, ...] = (
-    "# research/calendar.toml: the owner's ex-dividend intake, rendered by scripts/desk_init.py; every entry is dated",
-    "# and sourced, and unknown is never zero. Earnings, settlement values and closures are added by hand.",
+    "# research/calendar.toml: the owner's ex-dividend and earnings intake, rendered by scripts/desk_init.py; every",
+    "# entry is dated and sourced, and unknown is never zero. Settlement values and closures are added by hand.",
 )
 STRUCTURING_HEADER: Tuple[str, ...] = (
     "# structuring.toml: rendered by scripts/desk_init.py from the owner's structuring interview; a hand edit changes its",
@@ -115,7 +118,7 @@ CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vend
                              "order_shape_enabled": "false"}
 """The rendered values the interview does not ask."""
 TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends",
-                             "structuring")
+                             "earnings", "structuring")
 DESK_KEYS: Tuple[str, ...] = ("engagement", "cadence_profile", "chatty_or_quiet")
 OWNER_KEYS: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity", "attention_thresholds",
                                "disclosures_acknowledged", "accounts")
@@ -126,6 +129,7 @@ RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
 DATED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status")
 NONE_DIVIDEND_KEYS: Tuple[str, ...] = ("status", "source")
+DATED_EARNINGS_KEYS: Tuple[str, ...] = ("date", "time", "status")
 STRUCTURING_KEYS: Tuple[str, ...] = ("disclosure_acknowledged",) + structuring_config.SECTIONS[1:]
 """The keys of the ``structuring`` answers: the disclosure id, then one object per section after ``[disclosure]``."""
 STRUCTURING_KINDS: Dict[str, str] = {
@@ -135,7 +139,8 @@ STRUCTURING_KINDS: Dict[str, str] = {
     "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
 }
 """How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS``)."""
-PAYLOAD_KEYS: Tuple[str, ...] = ("written", "replaced", "desk_toml", "calendar_toml", "structuring_toml", "acknowledge")
+PAYLOAD_KEYS: Tuple[str, ...] = ("written", "replaced", "desk_toml", "calendar_toml", "structuring_toml", "acknowledge",
+                                 "notes")
 _FILE_SHAPE: Dict[str, Any] = {"path": "desk-root relative path", "sha256": "hex of the written bytes",
                                "bytes": "integer", "text": "string (the file exactly)"}
 OUTPUT: Dict[str, Any] = {
@@ -144,6 +149,8 @@ OUTPUT: Dict[str, Any] = {
     "desk_toml": dict(_FILE_SHAPE, note="null when the answers hold no desk"),
     "calendar_toml": dict(_FILE_SHAPE, symbols=["symbol"], note="null when the answers hold no ex_dividends"),
     "structuring_toml": dict(_FILE_SHAPE, note="null when the answers hold no structuring"),
+    "notes": ["criteria no candidate on a reporting or quarterly-dividend stock can pass (a dte window past 100 "
+              "calendar days with earnings or ex_dividend = \"exclude\"); empty otherwise"],
     "acknowledge": "string | null (the next step for the owner once desk.toml or structuring.toml is written)",
 }
 _DTE_WORDS = "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90"
@@ -176,8 +183,8 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
 }
 """``ANSWERS_SHAPE["structuring"]``: every key required, decimals as JSON strings, no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
-    "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, structuring, or "
-                      "any of these together)",
+    "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, "
+                      "structuring, or any of these together)",
     "desk": {"engagement": "string", "cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
              "chatty_or_quiet": " | ".join(desk_config.CHATTY_OR_QUIET)},
     "owner": {"broker_exercise_cutoff_et": "HH:MM (America/New_York)", "approval_level": "integer 0-5 (self-attested)",
@@ -196,6 +203,9 @@ ANSWERS_SHAPE: Dict[str, Any] = {
     "levels": {"penny_classes": ["OCC root (optional)"], "penny_all_classes": ["OCC root (optional)"]},
     "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or "
                                "{status none, source string} (optional; written to research/calendar.toml)"},
+    "earnings": {"SYMBOL": "{date YYYY-MM-DD, time pre | post | unknown, status confirmed | estimated} or "
+                           "{status none, source string} (optional; written to research/calendar.toml with the "
+                           "ex_dividends of the same answers)"},
     "structuring": STRUCTURING_SHAPE,
 }
 
@@ -372,34 +382,65 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_calendar_toml(intake: Any, now: datetime.datetime) -> Tuple[str, List[str]]:
-    """``(text, symbols)``: the ``research/calendar.toml`` of the ex-dividend intake (module notes)."""
+def _intake_table(intake: Any, name: str) -> Dict[str, Any]:
+    if intake is None:
+        return {}
     if not isinstance(intake, dict) or not intake:
+        raise answers_error("%s must be an object of SYMBOL: entry with at least one symbol" % name)
+    for symbol in intake:
+        if not isinstance(symbol, str) or not calendar_events.SYMBOL_RE.match(symbol):
+            raise answers_error("%s.%s: a symbol is written upper-case as the vendor quotes it (%s)"
+                                % (name, symbol, calendar_events.SYMBOL_RE.pattern))
+    return intake
+
+
+def _earnings_body(entry: Any, where: str, checked: str) -> str:
+    status = entry.get("status") if isinstance(entry, dict) else None
+    if status in DATED_STATUSES:
+        table(entry, where, DATED_EARNINGS_KEYS, DATED_EARNINGS_KEYS)
+        if entry["time"] not in calendar_events.TIMES:
+            raise answers_error("%s.time must be one of %s" % (where, ", ".join(calendar_events.TIMES)))
+        return "date = %s, time = %s, status = %s, source = %s, checked_utc = %s" % (
+            date_value(entry["date"], where + ".date"), json.dumps(entry["time"]), json.dumps(status),
+            json.dumps(OWNER_ENTERED), checked)
+    if status == calendar_events.STATUS_NONE:
+        table(entry, where, NONE_DIVIDEND_KEYS, NONE_DIVIDEND_KEYS)
+        return "status = %s, source = %s, checked_utc = %s" % (json.dumps(status),
+                                                               text_value(entry["source"], where + ".source"), checked)
+    raise answers_error("%s.status must be confirmed, estimated (with date and time) or none (with source)" % where)
+
+
+def _dividend_body(entry: Any, where: str, checked: str) -> str:
+    status = entry.get("status") if isinstance(entry, dict) else None
+    if status in DATED_STATUSES:
+        table(entry, where, DATED_DIVIDEND_KEYS, DATED_DIVIDEND_KEYS)
+        return "date = %s, amount = %s, status = %s, source = %s, checked_utc = %s" % (
+            date_value(entry["date"], where + ".date"), decimal_value(entry["amount"], where + ".amount"),
+            json.dumps(status), json.dumps(OWNER_ENTERED), checked)
+    if status == calendar_events.STATUS_NONE:
+        table(entry, where, NONE_DIVIDEND_KEYS, NONE_DIVIDEND_KEYS)
+        return "status = %s, source = %s, checked_utc = %s" % (
+            json.dumps(status), text_value(entry["source"], where + ".source"), checked)
+    raise answers_error("%s.status must be confirmed, estimated (with date and amount) or none (with source)" % where)
+
+
+def render_calendar_toml(intake: Any, now: datetime.datetime, earnings: Any = None) -> Tuple[str, List[str]]:
+    """``(text, symbols)``: the ``research/calendar.toml`` of the ex-dividend and earnings intake (module notes)."""
+    if intake is None and earnings is None:
         raise answers_error("ex_dividends must be an object of SYMBOL: entry with at least one symbol")
+    dividends = _intake_table(intake, "ex_dividends")
+    reports = _intake_table(earnings, "earnings")
     checked = now.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines: List[str] = list(CALENDAR_HEADER) + ["schema_version = %d" % calendar_events.SCHEMA_VERSION]
-    symbols = sorted(intake)
+    symbols = sorted(set(dividends) | set(reports))
     for symbol in symbols:
-        where = "ex_dividends.%s" % symbol
-        if not isinstance(symbol, str) or not calendar_events.SYMBOL_RE.match(symbol):
-            raise answers_error("%s: a symbol is written upper-case as the vendor quotes it (%s)"
-                                % (where, calendar_events.SYMBOL_RE.pattern))
-        entry = intake[symbol]
-        status = entry.get("status") if isinstance(entry, dict) else None
-        if status in DATED_STATUSES:
-            table(entry, where, DATED_DIVIDEND_KEYS, DATED_DIVIDEND_KEYS)
-            body = "date = %s, amount = %s, status = %s, source = %s, checked_utc = %s" % (
-                date_value(entry["date"], where + ".date"), decimal_value(entry["amount"], where + ".amount"),
-                json.dumps(status), json.dumps(OWNER_ENTERED), checked)
-        elif status == calendar_events.STATUS_NONE:
-            table(entry, where, NONE_DIVIDEND_KEYS, NONE_DIVIDEND_KEYS)
-            body = "status = %s, source = %s, checked_utc = %s" % (
-                json.dumps(status), text_value(entry["source"], where + ".source"), checked)
-        else:
-            raise answers_error("%s.status must be confirmed, estimated (with date and amount) or none (with source)"
-                                % where)
         key = symbol if BARE_KEY_RE.match(symbol) else json.dumps(symbol)
-        lines += ["", "[symbols.%s]" % key, "ex_dividend = { %s }" % body]
+        lines += ["", "[symbols.%s]" % key]
+        if symbol in reports:
+            lines.append("earnings = { %s }" % _earnings_body(reports[symbol], "earnings.%s" % symbol, checked))
+        if symbol in dividends:
+            lines.append("ex_dividend = { %s }" % _dividend_body(dividends[symbol], "ex_dividends.%s" % symbol,
+                                                                checked))
     return "\n".join(lines) + "\n", symbols
 
 
@@ -457,9 +498,9 @@ def read_answers(path: str) -> Dict[str, Any]:
     answers = table(answers, "the answers", TOP_KEYS, ("schema_version",))
     if answers["schema_version"] != SCHEMA_VERSION or isinstance(answers["schema_version"], bool):
         raise answers_error("the answers' schema_version must be %d" % SCHEMA_VERSION)
-    if "desk" not in answers and "ex_dividends" not in answers and "structuring" not in answers:
+    if not any(key in answers for key in ("desk", "ex_dividends", "earnings", "structuring")):
         raise answers_error("the answers render nothing: give desk (with owner, market_data and rates), ex_dividends, "
-                            "structuring or several of them")
+                            "earnings, structuring or several of them")
     for key in ("owner", "market_data", "rates", "levels"):
         if key in answers and "desk" not in answers:
             raise answers_error("%s goes with desk" % key)
@@ -496,6 +537,7 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
     calendar_text: Optional[str] = None
     structuring_text: Optional[str] = None
     symbols: List[str] = []
+    notes: List[str] = []
     desk_toml = os.path.join(root, "desk.toml")  # desk_paths.for_root's layout; the root may not exist yet
     calendar_toml = os.path.join(root, "research", "calendar.toml")
     structuring_toml = os.path.join(root, structuring_config.FILE_NAME)
@@ -506,8 +548,8 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
         except desk_config.DeskConfigError as exc:
             raise ToolError("config_invalid", "the rendered desk.toml does not load: %s" % exc.reason) from None
         planned.append((desk_toml, desk_text))
-    if "ex_dividends" in answers:
-        calendar_text, symbols = render_calendar_toml(answers["ex_dividends"], now)
+    if "ex_dividends" in answers or "earnings" in answers:
+        calendar_text, symbols = render_calendar_toml(answers.get("ex_dividends"), now, answers.get("earnings"))
         try:
             calendar_events.parse_calendar_text(calendar_text, path=calendar_toml)
         except calendar_events.CalendarError as exc:
@@ -516,11 +558,12 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
     if "structuring" in answers:
         structuring_text = render_structuring_toml(answers["structuring"])
         try:
-            structuring_config.parse_structuring_toml_text(structuring_text, path=structuring_toml)
+            criteria = structuring_config.parse_structuring_toml_text(structuring_text, path=structuring_toml)
         except structuring_config.StructuringConfigError as exc:
             raise ToolError("structuring_invalid",
                             "the rendered structuring.toml does not load: %s" % exc.reason) from None
         planned.append((structuring_toml, structuring_text))
+        notes = structuring_config.never_passing_notes(criteria)
     replaced = [path for path, _text in planned if os.path.exists(path)]
     if replaced and not (args.replace and args.owner_tapped):
         first = replaced[0]
@@ -544,6 +587,7 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
                              if structuring_text is not None else None),
         "acknowledge": (ACKNOWLEDGE_HINT if desk_text is not None
                         else ACKNOWLEDGE_STRUCTURING if structuring_text is not None else None),
+        "notes": notes,
     }
     lines = ["%s %s (%d bytes, sha256 %s)" % ("replaced" if entry["path"] in payload["replaced"] else "wrote",
                                             entry["path"], entry["bytes"], entry["sha256"])
@@ -551,6 +595,7 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
              if entry is not None]
     if payload["acknowledge"]:
         lines.append(payload["acknowledge"])
+    lines.extend("note: %s" % note for note in notes)
     return payload, lines
 
 

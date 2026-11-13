@@ -213,10 +213,12 @@ acknowledged. After the tap, the **owner-authority** command writes `desk.toml` 
 the text; saving it to `/workspace/aegis-desk/positions.csv` raises its Ask-first card, and the owner's tap is the
 approval. Then it runs `positions_check.py` and `csv_recon.py`, and the owner confirms the verdict.
 
-**Dividends.** For each held symbol, short calls first: the next ex-dividend date, amount and `confirmed` or
-`estimated`, or `none` with a source. A symbol left out is reported UNAVAILABLE, never zero. Write
-`/workspace/aegis-desk/setup/dividends.json` (only `ex_dividends`); after the tap, `desk_init.py --answers` with it
-(**owner-authority**) writes `research/calendar.toml`. Last, the full doctor:
+**Dividends and earnings.** For each held symbol, short calls first: the next ex-dividend date, amount and
+`confirmed` or `estimated`, or `none` with a source; and the next earnings date, `pre` (before the open), `post`
+(after the close) or `unknown`, and `confirmed` or `estimated`, or `none` with a source (an ETF). The owner's numbers,
+never yours: a date or a dividend the owner does not give is left out and reported UNAVAILABLE, never zero and never
+"none declared" from memory. Write `/workspace/aegis-desk/setup/dividends.json` (`ex_dividends` and `earnings`); after
+the tap, `desk_init.py --answers` with it (**owner-authority**) writes `research/calendar.toml`. Last, the full doctor:
 `python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk`. Check 4 names the
 key source, never a value; check 5 asks the clock of Alpaca's paper trading host, which refuses a key from another
 environment (`paper key verified`; a 401 or 403 fails with `not a paper key: remove it and add a paper key`: the owner deletes
@@ -285,6 +287,22 @@ each section with its documented defaults (starting points, not a judgment that 
 `python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk`,
 joined with `&&` to `ack.py config --owner-tapped` so one tap writes and acknowledges it. Each later request (`exit_ticket.py`, `roll_analysis.py`, `propose.py`)
 raises the owner-authority card; the tap records that the owner asked.
+
+### 9.5 "update the calendar"
+
+Whenever the owner gives a new earnings or ex-dividend date (or `research/calendar.toml` lists one as past or
+missing: `calendar_check.py`), the Desk Lead adds it to `/workspace/aegis-desk/setup/dividends.json`, keeping every
+other entry, shows the changed entries, and runs `desk_init.py --answers /workspace/aegis-desk/setup/dividends.json
+--replace --owner-tapped --desk-root /workspace/aegis-desk` joined with `&&` to `ack.py config --owner-tapped` in one
+card (**owner-authority**). A replacement rewrites the whole file, so the answers always hold every entry.
+
+### 9.6 "update the desk"
+
+For a desk already set up from an earlier release, the owner pastes the update prompt of the README. The Desk Lead
+follows [docs/UPDATING.md](docs/UPDATING.md): the changelog in plain words, the checkout moved to the new tag after the
+owner's tap, the gate, each Bot's skills refreshed with a readback, any changed Auto-review text re-pasted, the
+routines re-checked, and the update receipt. The desk files under `/workspace/aegis-desk` are never rewritten by an
+update.
 
 ## 10. If you are not Grok Bot
 

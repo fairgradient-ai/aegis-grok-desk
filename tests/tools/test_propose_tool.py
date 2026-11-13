@@ -611,10 +611,10 @@ class GoldenTest(DeskCopy):
                   encoding="utf-8") as handle:
             json.dump(bars, handle)
         lines = self.run_text(SPY, "collar")
-        model = lines.index(MODEL)
-        self.assertRegex(lines[model + 1], r"^spot: \d+ option legs quoted more than 60 seconds from the stock quote "
-                                           r"were priced against the stock's one-minute IEX bar of the minute each "
-                                           r"was quoted in$")
+        model = lines.index("> - " + structuring_text.MODEL_LINE)
+        self.assertRegex(lines[model + 1], r"^> - spot: \d+ option legs quoted more than 60 seconds from the stock "
+                                           r"quote were priced against the stock's one-minute IEX bar of the minute "
+                                           r"each was quoted in$")
         payload = self.run_json(SPY, "collar")["payload"]
         self.assertEqual(("BEST", "SPY270319P00620000+SPY270319C00680000"), (payload["verdict"], payload["best"]))
         self.assertTrue(all(leg["spot_bar_utc"] for leg in payload["candidates"][0]["legs"]))

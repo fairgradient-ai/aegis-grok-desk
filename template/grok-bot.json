@@ -10,25 +10,25 @@
     "aegis-compliance-voice-and-number-discipline": "c7e6d79d6bff23d7f638b15d8d9d20e979124b595ac0e720d1e6fff7d7a806f2",
     "aegis-covered-call-and-cash-secured-put-management": "26acb94ca5e8f29bd6359fd8b105aeb3e905b435de6057490cad973c9bc21bdc",
     "aegis-desk-bootstrap-and-onboarding": "48a2d940faa86da532661ced5e631c3d5c71f20c21a5553aca788872fb8d2f34",
-    "aegis-desk-charter": "5c7d679594fe06b37628a26ed88417a8841404f9f848f9372b0be62e96e3c381",
+    "aegis-desk-charter": "5438ef7aacb8f00a29d6e03429c21ff6a9947cc9359f8908bcec5e906645c554",
     "aegis-desk-incident-playbooks": "d9ad6266f4298c7b4160e16935d564b72733c1730dda1a8363a9cdde693366fb",
     "aegis-exit-watch-and-signal-protocol": "4206dd4b584102c8d31513a559cdd517b2d5f8615de98cc25f109ace78e20743",
     "aegis-expiry-and-assignment-protocol": "02bdad94825f96c47b36f19cb3d01c48df9b1465817995fa92c6e7a5d18b16c6",
     "aegis-market-data-budget-and-quality": "c62ae8c7b44063366c8fa31aceb63eac89abf99b93529895940d432fc333d9cd",
-    "aegis-overlay-proposals": "d1b3a85a700cab337c606c847850a65d279d3f55dbae171523f94d0f24a5be29",
+    "aegis-overlay-proposals": "ee8d5f449ed8fb4800345ae0ffb6d0056863c7954c1315ec7f48265c6b3c345c",
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "6dba49db669c1cf49d091e3587dd0dce6880f1273e45015ba454ad8d344fa112",
     "aegis-roll-decision-framework": "e4841261dc49563a1456df8c6f6e08276efcc64299890e3df65ae5907f78964f",
     "aegis-routines-and-quiet-rules": "737be8fd1c39bb084b450fa12530b77459988845fdff2d0e64ab5bd5d12c60b3",
     "aegis-rules-dsl-and-change-control": "9a9b7524ae04db7a1d9bcf3d558c4774e7733a8920ff4610e6b12b283e19d92e",
     "aegis-threshold-levels": "0fd181ec7f695f0bda6b8b28c79a51fb24dea011e0ba38e33eb6cf2e5912669f",
-    "aegis-ticket-and-unwind-order": "e9d0191483c6c06541a7dc3d894d3e0153da9ae432de82f3148155aeba8db37a",
+    "aegis-ticket-and-unwind-order": "3fb1c028ea286b6f5a1cc70feb22e07b6a6dfb9cacffeaec2b7cf1b2384c3a32",
     "aegis-vertical-spread-management": "b7884f66476f8299a5be34845d042470c62cf5820f44e5959b51f704217ac4e8"
   },
   "roleSkills": {
-    "aegis-role-desk-lead": "86d83068af3ca25f6df2d1934a985d1ec250e7e6bb11a40f3c6ba19a0a542427",
+    "aegis-role-desk-lead": "d99c10dda9c99d85e58e81299ec22eb0064e2aea8892d610553c888e63fb54dc",
     "aegis-role-exit-sentinel": "194be4f71d2022a39e999f25561ed280957e48511f7e3906c4144d459308d6f2",
     "aegis-role-position-control": "6ecc995c76fe57e9ebb93316e4a4e7a9e73e7b72dc7c7cad86d3f8f1e2610929",
-    "aegis-role-structuring-desk": "42b380346e02e75f79b9c5a8a09830668b8f3ecdebb1d5474a4542dea2e0424f"
+    "aegis-role-structuring-desk": "cb6d358badca32b6d90984a24e34a723a3d886cec38de283ee0bacbea6b6df2f"
   }
 }

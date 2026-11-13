@@ -304,10 +304,8 @@ checks read `[protective_put]`.
 - A ticket carries no `positions.csv` lines: the fill price is unknown until the owner reports it, and the file's
   edits have one owner. The ticket says `after a fill, tell the Aegis Desk Lead the fill; it proposes the
   positions.csv lines`.
-- The Desk Lead proposes the lines from the owner's own fill (Position Control's close, partial-close and roll
-  recipes) and saves them through the save's Ask-first card; a fill already given in the conversation is never asked
-  for again. The next book check posts CONFIG CHANGED until `ack.py config --owner-tapped`, which the Lead offers
-  joined to the owner's next request so one tap covers both.
+- The Desk Lead proposes the lines from the owner's own fill (Position Control's recipes), saved through the save's
+  card, never asking again for a fill already given; `ack.py config --owner-tapped` joins the next request's card.
 - After a LET_ASSIGN ticket, the post-expiry reconciliation proposes the lines after expiry.
 
 ## Files and the record

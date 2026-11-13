@@ -81,7 +81,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `desk.toml` | `desk_init.py`, after your tap | your configuration; never written by a routine |
 | `positions.csv` | you | the book of record; never written by a tool |
 | `rules/exit_rules-X.Y.Z.toml`, `rules/ADOPTED`, `rules/CHANGELOG.md` | `rules_adopt.py` | the adopted versions (immutable), the adopted version and shas, the append-only log |
-| `research/calendar.toml` | `desk_init.py` (dividend intake), then you | ex-dividend and earnings dates, settlement values, closures |
+| `research/calendar.toml` | `desk_init.py` (dividend and earnings intake), then you | ex-dividend and earnings dates, settlement values, closures |
 | `structuring.toml` | `desk_init.py` (the structuring interview), after your tap | your structuring criteria; never written by a routine or a structuring tool |
 | `state/desk_state.json` | `book_check.py`, `ack.py`, `rules_adopt.py` | last verdicts, acknowledged hashes, the connector readback |
 | `state/rule_state.json` | `book_check.py --post`, `rules_adopt.py` | each rule's state per position |

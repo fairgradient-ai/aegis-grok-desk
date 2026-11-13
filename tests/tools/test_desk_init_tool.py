@@ -13,6 +13,7 @@ import tests._path  # noqa: F401
 import contextlib
 import copy
 import dataclasses
+import datetime
 import hashlib
 import io
 import json
@@ -126,8 +127,8 @@ class SchemaAndUsageTest(TempRoot):
         self.assertEqual(("desk_init", "none"), (body["tool"], body["network_access"]))
         self.assertEqual(["answers"], sorted(body["input"]))
         answers = body["input"]["answers"]
-        self.assertEqual(["desk", "ex_dividends", "levels", "market_data", "owner", "rates", "schema_version",
-                          "structuring"], sorted(answers))
+        self.assertEqual(["desk", "earnings", "ex_dividends", "levels", "market_data", "owner", "rates",
+                          "schema_version", "structuring"], sorted(answers))
         shape = answers["structuring"]
         self.assertEqual(sorted(tool.STRUCTURING_KEYS), sorted(shape))  # --schema prints sorted keys
         self.assertEqual(("disclosure_acknowledged", "general", "covered_call", "roll", "protective_put", "collar"),
@@ -366,6 +367,61 @@ class DividendIntakeTest(TempRoot):
         self.assertEqual([], self.files())
 
 
+COLLAR_NOTES = [
+    '[collar] dte starts at 120 calendar days with earnings = "exclude": every call that long spans a quarterly '
+    'earnings date, so a stock that reports earnings never passes; earnings = "allow" accepts it in the structuring '
+    'tools only (your exit alerts are unchanged)',
+    '[collar] dte starts at 120 calendar days with ex_dividend = "exclude": every call that long spans a quarterly '
+    'ex-dividend date, so a stock that pays a quarterly dividend never passes; ex_dividend = "allow" accepts it in the '
+    'structuring tools only (your exit alerts are unchanged)',
+]
+"""The documented defaults' collar window (120 to 210 days) with both events excluded: criteria no candidate on a
+reporting, dividend-paying stock can pass (the owner's NVDA collar, 2026-11-13), said before the owner relies on them."""
+
+class EarningsIntakeTest(TempRoot):
+    """The owner's earnings dates go into research/calendar.toml with the dividends, so a structuring answer reads a
+    known date instead of counting an unknown one as inside every call's life (the owner's NVDA collar, 2026-11-13)."""
+
+    EARNINGS = {"NVDA": {"date": "2026-11-17", "time": "post", "status": "confirmed"},
+                "SPY": {"status": "none", "source": "owner: an ETF reports no earnings"}}
+
+    def test_earnings_and_dividends_render_one_calendar(self) -> None:
+        os.makedirs(self.root)
+        code, body = self.run_json({"schema_version": 1, "ex_dividends": DividendIntakeTest.INTAKE,
+                                    "earnings": self.EARNINGS})
+        self.assertEqual(0, code, body)
+        text = read_bytes(os.path.join(self.root, "research", "calendar.toml")).decode("utf-8")
+        self.assertIn('[symbols.NVDA]\nearnings = { date = 2026-11-17, time = "post", status = "confirmed", '
+                      'source = "owner-entered", checked_utc = 2026-11-04T15:20:00Z }\nex_dividend = { date = '
+                      '2026-12-03, amount = 0.01, status = "estimated", source = "owner-entered", checked_utc = '
+                      '2026-11-04T15:20:00Z }\n', text)
+        self.assertIn('[symbols.SPY]\nearnings = { status = "none", source = "owner: an ETF reports no earnings", '
+                      'checked_utc = 2026-11-04T15:20:00Z }\n', text)
+        cal = calendar_events.load_calendar(os.path.join(self.root, "research", "calendar.toml"))
+        self.assertEqual(["BRK.B", "NVDA", "SPY", "WMT"], sorted(cal.symbols))
+        self.assertEqual(datetime.date(2026, 11, 17), cal.symbols["NVDA"].earnings.date)
+        self.assertIsNone(cal.symbols["WMT"].earnings)
+        self.assertEqual(["BRK.B", "NVDA", "SPY", "WMT"], body["payload"]["calendar_toml"]["symbols"])
+
+    def test_earnings_alone_render_the_calendar(self) -> None:
+        os.makedirs(self.root)
+        code, body = self.run_json({"schema_version": 1, "earnings": self.EARNINGS})
+        self.assertEqual(0, code, body)
+        self.assertEqual(["research/calendar.toml"], body["payload"]["written"])
+
+    def test_invalid_earnings(self) -> None:
+        os.makedirs(self.root)
+        for earnings in ({"NVDA": {"date": "2026-11-17", "status": "confirmed"}},
+                         {"NVDA": {"date": "2026-11-17", "time": "noon", "status": "confirmed"}},
+                         {"NVDA": {"status": "none"}},
+                         {"NVDA": {"status": "unknown", "source": "x"}},
+                         {"nvda": {"status": "none", "source": "x"}},
+                         {}):
+            code, body = self.run_json({"schema_version": 1, "earnings": earnings})
+            self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]), earnings)
+        self.assertEqual([], self.files())
+
+
 class StructuringIntakeTest(TempRoot):
     """PR 3b decision S3 and designer C's D2: the structuring intake renders structuring.toml byte for byte, validated
     by structuring_config before anything is written."""
@@ -391,6 +447,17 @@ class StructuringIntakeTest(TempRoot):
                          payload["structuring_toml"])
         self.assertEqual(STRUCTURING_HINT, payload["acknowledge"])
         self.assertEqual(STRUCTURING_HINT, tool.ACKNOWLEDGE_STRUCTURING)
+
+    def test_criteria_that_can_pass_carry_no_note(self) -> None:
+        os.makedirs(self.root)
+        values = copy.deepcopy(S3_VALUES)
+        values["collar"]["earnings"] = values["collar"]["ex_dividend"] = "allow"
+        code, body = self.run_json({"schema_version": 1, "structuring": values})
+        self.assertEqual(0, code, body)
+        self.assertEqual([], body["payload"]["notes"])
+        values = copy.deepcopy(S3_VALUES)
+        code, body = self.run_json({"schema_version": 1, "structuring": values}, "--replace", "--owner-tapped")
+        self.assertEqual(COLLAR_NOTES, body["payload"]["notes"])
 
     def test_the_rendering_and_its_header_lines(self) -> None:
         text = tool.render_structuring_toml(S3_VALUES)
@@ -419,7 +486,8 @@ class StructuringIntakeTest(TempRoot):
         code, out = self.invoke(structuring_answers(), json_mode=False)
         self.assertEqual(0, code)
         self.assertEqual(["wrote structuring.toml (%d bytes, sha256 %s)" % (EXPECTED_STRUCTURING_BYTES,
-                                                                           EXPECTED_STRUCTURING_SHA), STRUCTURING_HINT],
+                                                                           EXPECTED_STRUCTURING_SHA), STRUCTURING_HINT]
+                         + ["note: " + note for note in COLLAR_NOTES],
                          out.rstrip("\n").split("\n"))
 
     def test_with_the_desk_answers_the_desk_hint_is_used(self) -> None:

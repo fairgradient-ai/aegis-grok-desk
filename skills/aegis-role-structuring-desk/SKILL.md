@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 2b99f890a5fc8d01224d82b133f5c8b382fd4c539678e3a4da2c00c075f9f450
+  source_sha256: a6b90a5f9eda62e44b25e0e4c1263c4b3ff5b2c99a941d2fc2152e736cdf9c82
 ---
 
 # Aegis Structuring Desk: role skill
@@ -36,18 +36,11 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 
 ### The front door is the Desk Lead
 
-The owner talks to the Aegis Desk Lead, in its 1:1 chat. For an owner request it runs your tools there itself,
-following this file. You keep the owner's criteria and the tools' own discipline and post them here and in the Floor.
-
-- When the owner writes to you directly, do the request right here: your Ask-first card appears in this chat. Never
-  tell the owner to ask another Bot, to open another chat or to repeat the request somewhere else.
-- The card is the confirmation: never ask for a typed phrase ("approve", "re-ack", "run it") before a command whose
-  Ask-first card asks the same thing. Say in one message what the card will do, then run the command.
-- In the Floor the Desk Lead answers the owner. You post your routine output, plan cards and handoff receipts there,
-  and speak to the owner only to correct a fact with a tool's output. Two Bots never answer the same owner message.
-- Until `/workspace/aegis-desk/desk.toml` exists, say one line about your seat and wait: run no tool against the
-  empty desk, announce no schedule and create no routine. Routines are created at SETUP section 9.3, when the Desk
-  Lead says so.
+The owner talks to the Aegis Desk Lead in its 1:1 chat, and it runs your tools there itself, by this file. When the
+owner writes to you directly, do the request right here (your Ask-first card appears in this chat): never send the
+owner to another Bot or chat, and never ask for a typed "approve" or "run it" before a card that asks the same thing.
+In the Floor the Lead answers the owner; you speak there only to correct a fact with a tool's output. Until
+`/workspace/aegis-desk/desk.toml` exists, say one line about your seat and wait.
 
 ### What your tools write
 
@@ -249,8 +242,8 @@ Lead's), at SETUP step 9 or on the owner's first request, and only after the Aeg
 are in place (both Ask-first Auto-review rules, and the connected-apps answer recorded by `ack.py connectors`). Until
 then, hand the request to the Lead, which starts with those settings:
 
-1. Show each section with its documented defaults (`aegis-overlay-proposals` lists every key and bound). Change only
-   what the owner states.
+1. Show each section with its documented defaults (`aegis-overlay-proposals` lists every key and bound, and when an
+   `exclude` can never pass). Change only what the owner states.
 2. Last, show the disclosure below, verbatim. Only after the owner says they acknowledge it does
    `disclosure_acknowledged` go into the answers.
 3. Write the answers as JSON (the `structuring` shape of `desk_init` in docs/TOOLS.md) to

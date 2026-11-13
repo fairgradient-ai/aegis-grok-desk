@@ -227,13 +227,14 @@ class MorningSheetTest(DeskCopy):
             "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",
             "open signals: 0",
             "UNAVAILABLE: expiry docket reports/expiry/2026-11-03.week.json missing",
-            "UNAVAILABLE: levels sheet levels/2026-11-02.json missing",
+            # no level sheet of any date yet: a new desk's expected state, not an UNAVAILABLE line
+            "last night's levels: none yet (the end-of-day level sheet has not run on this desk)",
             alert_lint.footer_line(contract.parse_utc_instant(REGULAR_NOW)),
         ], out.rstrip("\n").split("\n"))
         self.assertEqual(before, self.tree(), "eod_summary writes nothing, not even a runtime directory")
         code, body = self.run_json(now=REGULAR_NOW)
         self.assertEqual((20, "unavailable"), (code, body["status"]))
-        self.assertEqual(["doctor result", "reconciliation", "expiry docket", "levels sheet"],
+        self.assertEqual(["doctor result", "reconciliation", "expiry docket"],
                          [item["label"] for item in body["payload"]["unavailable"]])
         self.assertRelinted(body["payload"])
 
