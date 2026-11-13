@@ -3,7 +3,7 @@
 `template/grok-bot.json` is the release contract for a public Grok Bot template of the Aegis Desk Lead: the Bot's
 profile, the pinned release, the one skill the template carries, and the sha256 of every skill file in the release.
 This release does not publish a template. Its status is `unpublished`, and publishing is your action as the owner,
-after the tag `v0.1.1` exists.
+after the tag `v0.2.0` exists.
 
 The README's Start prompt is the main way in, and a template is the second. Grok Bot staff confirmed, through
 2026-10-21, that a template import can drop skills. Whichever way the Lead starts, the bootstrap reads back every
@@ -29,7 +29,7 @@ dropped is installed from the checkout, and one that differs is reported as `mis
 On this checkout, before the tag exists, it prints:
 
 ```text
-skip: template/grok-bot.json source.release 0.1.1 has no local tag v0.1.1; tag comparison not run (expected before the release is tagged)
+skip: template/grok-bot.json source.release 0.1.1 has no local tag v0.2.0; tag comparison not run (expected before the release is tagged)
 ok: Grok Bot template is unpublished, release 0.1.1, 22 verified skill file(s), exports 1
 ```
 
@@ -41,8 +41,8 @@ ok: Grok Bot template is unpublished, release 0.1.1, 22 verified skill file(s), 
   role skill `skills/aegis-role-*/SKILL.md` under `roleSkills`, and export at least one skill. No skill ships
   unhashed.
 - **`published`**: it also carries `publicShareUrl`, and that link must appear in `README.md` and `docs/FAQ.md`.
-- **Once the tag `v0.1.1` exists** in the checkout, every claimed file must be byte-identical to its copy at the tag
-  (`git show v0.1.1:<path>`). Before that, the comparison is skipped out loud, as above.
+- **Once the tag `v0.2.0` exists** in the checkout, every claimed file must be byte-identical to its copy at the tag
+  (`git show v0.2.0:<path>`). Before that, the comparison is skipped out loud, as above.
 
 ## The hashes
 

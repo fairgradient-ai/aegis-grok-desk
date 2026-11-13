@@ -16,7 +16,7 @@ This installs the latest GitHub release of the repository. The first release is 
 pinned clone:
 
 ```text
-git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
 ```
 
 ## What loads

@@ -142,7 +142,7 @@ The Structuring Desk names a best candidate from three inputs it does not check 
 
 ## The release pin check: what it covers and what it does not
 
-`routine.py` runs no step unless the checkout is pinned: a git work tree whose HEAD is the commit of the tag `v0.1.1`
+`routine.py` runs no step unless the checkout is pinned: a git work tree whose HEAD is the commit of the tag `v0.2.0`
 and whose `git status` lists no path, tracked or untracked (ignored paths are not listed). Otherwise it prints one
 INCIDENT line, writes an incident file and exits 20. Within that check:
 

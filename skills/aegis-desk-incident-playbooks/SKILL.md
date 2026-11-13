@@ -27,7 +27,7 @@ Three rules hold in every incident:
 | Line | Meaning |
 | --- | --- |
 | `INCIDENT \| <id> <slot> ET \| <tool> failed (<code>); the other steps ran; details in incidents/<file>` | one step of a routine failed; the rest of the message stands |
-| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.1.1: <reason>; no step ran \| ...` | the pin check refused the run |
+| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.2.0: <reason>; no step ran \| ...` | the pin check refused the run |
 | `INCIDENT \| <id> \| another run of this routine holds its lock; this run did nothing` | two runs overlapped |
 | `INCIDENT \| <id> \| the routine did not run (routine_crashed): ...` | an unexpected error; a traceback is in `incidents/<stamp>-<id>-crash.md` |
 | `WITHHELD \| <tool>: the text failed the alert lint (<codes>) and is withheld; <tool>.py shows it` | one part failed the lint and was not printed |
@@ -140,15 +140,15 @@ Lead never acknowledges a change on the owner's behalf.
 
 ## The checkout is not the pinned release, or git refuses it
 
-Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.1.1. If not, no step runs.
+Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.2.0. If not, no step runs.
 From a development checkout (synthetic):
 
 ```text
-INCIDENT | preopen | the desk checkout is not the pinned release v0.1.1: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
+INCIDENT | preopen | the desk checkout is not the pinned release v0.2.0: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
 ```
 
 The reasons the pin check can give include `the checkout has <n> uncommitted or untracked path(s)`, `HEAD <commit> is
-not the commit of v0.1.1 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
+not the commit of v0.2.0 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
 
 - **Uncommitted or untracked paths.** Something wrote into the checkout. The Lead lists the paths with the read-only
   `git -C /workspace/aegis-grok-desk --no-optional-locks status --short` and reports them; the owner decides. A desk

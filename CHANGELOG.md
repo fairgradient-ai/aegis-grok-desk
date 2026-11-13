@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- Version bump to 0.2.0 (`release_bump.py 0.2.0`).
+
 ## 0.1.1 (2026-11-13)
 
 - Onboarding on Grok Bot is staged. The first run (SETUP sections 1 to 8) asks the owner for one thing: a free

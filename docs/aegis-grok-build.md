@@ -12,7 +12,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 Pinned to the release tag, trusted so that its hook runs:
 
 ```text
-grok plugin install fairgradient-ai/aegis-grok-desk@v0.1.1 --trust
+grok plugin install fairgradient-ai/aegis-grok-desk@v0.2.0 --trust
 ```
 
 Or through the marketplace in `.grok-plugin/marketplace.json`, whose source is pinned to the same tag:
@@ -139,11 +139,11 @@ clone on your own machine.
 - Use a pinned shallow clone, not the plugin install directory, which may not be a git checkout:
 
   ```text
-  git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git
+  git clone --depth 1 --branch v0.2.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
   ```
 
   `routine.py` runs no step unless the checkout is the clean tag; on this clone the pin check reads
-  `release v0.1.1 at <commit>, clean`.
+  `release v0.2.0 at <commit>, clean`.
 - Keep the desk root outside the clone. A desk root inside it is refused (exit 2), because the run's files would make
   the checkout dirty. Pass it every time: `python3 scripts/routine.py <routine id> --desk-root <your desk directory>`.
   The desk root holds `desk.toml`, `positions.csv` and your adopted rules (SETUP step 9).
