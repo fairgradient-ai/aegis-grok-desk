@@ -215,13 +215,13 @@ class FixedLineTest(unittest.TestCase):
         self.assertEqual("you supply the limit; the desk prints none", T.LIMIT_LINE)
         self.assertEqual("if you decide to act, you type it into your brokerage account yourself and you supply the limit",
                          T.ACT_LINE)
-        self.assertEqual("after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        self.assertEqual("after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
                          T.AFTER_FILL_LINE)
         self.assertEqual("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
                          "American-style options is not modelled", T.MODEL_LINE)
         self.assertEqual("the score ranks the candidates only on the objective you chose; it is not a forecast",
                          T.CAVEAT_LINE)
-        self.assertEqual("a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
+        self.assertEqual("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                          "and strike", T.POINTER_LINE)
         w = T.Writer()
         self.assertEqual("valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
@@ -298,7 +298,7 @@ after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.0
 candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
 candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
 failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 """ + FOOTER
 
@@ -312,7 +312,7 @@ candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | 
 candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 """ + FOOTER
 
@@ -389,7 +389,7 @@ candidate 1: closes the 2026-11-20 105 call and opens the 2027-01-15 115 call | 
 candidate 2: closes the 2026-11-20 105 call and opens the 2027-01-15 120 call | net credit 1.54 | extrinsic_per_day 0.0289 | FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
 candidate 3: closes the 2026-11-20 105 call and opens the 2027-01-15 105 call | net credit 6.74 | extrinsic_per_day 0.1174 | FAILS_CRITERION abs_delta: absolute delta 0.54 outside your band 0.15 to 0.35 | FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
 failed your criteria: 10 (abs_delta 8, strike_floor 2, earnings 10)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 """ + FOOTER
 

@@ -18,7 +18,8 @@ the owner's own confirmation. A step that cannot be done is reported with its ex
 depends on it stays pending. Nothing is ever reported as done on a guess.
 
 The first run asks the owner for one thing: a free Alpaca paper key (a key ID and its secret), added through the
-secure secret card, never pasted in chat. The owner's touchpoints are three: paste the Start prompt, add the key through the card, read the receipt. No
+secure secret card, never pasted in chat. The Desk Lead is the owner's one front door, for setup and after it: the
+owner never has to open another Bot's chat (`aegis-desk-charter`, "The front door"). The owner's touchpoints are three: paste the Start prompt, add the key through the card, read the receipt. No
 Auto-review rule, connector readback, Notifications, Timezone, interview, positions, rules or routines are asked for
 in the first run; each waits for its phrase (step 8).
 
@@ -88,7 +89,8 @@ python3 scripts/opening_bell.py --demo
 - From `agents/structuring-desk.md`: Name "Aegis Structuring Desk", Job "On-request choices desk of the options
   desk".
 
-Read back each Bot's native Name and Job. Its standing instructions are its role skill (`aegis-role-desk-lead`,
+Read back each Bot's native Name and Job. Tell the other three Bots that setup is under way: until `desk.toml` exists
+each introduces itself in one line and waits (no tool against the empty desk, no announced schedule, no routine). Its standing instructions are its role skill (`aegis-role-desk-lead`,
 `aegis-role-exit-sentinel`, `aegis-role-position-control` or `aegis-role-structuring-desk`), enabled for that Bot only.
 The Stage-2 and Stage-3 seats are not in this release; asked for one, a Bot says so.
 
@@ -146,8 +148,8 @@ UNAVAILABLE: not a paper key: Alpaca's paper trading host refused the key pair (
 ## 8. The receipt
 
 One message. It opens with three plain lines: the desk is built (four Bots, the Floor, the skills, release v0.2.0);
-whether live market data works; and that nothing else is needed now, with "say 'add my positions'" when the owner
-wants the desk to watch the book. Then the evidence:
+whether live market data works; and that nothing else is needed now, that the owner talks to the Desk Lead here for
+everything, with "say 'add my positions'" when the owner wants the desk to watch the book. Then the evidence:
 
 - the release and the pin check line; the `check.sh` result; the demo commands run (synthetic);
 - the four Bots by Name and Job; each skill and its status; the Floor and its members;

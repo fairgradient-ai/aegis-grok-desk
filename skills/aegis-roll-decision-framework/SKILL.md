@@ -129,7 +129,7 @@ after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.0
 candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
 candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
 failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```

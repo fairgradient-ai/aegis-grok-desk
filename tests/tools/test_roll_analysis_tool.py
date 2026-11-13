@@ -82,7 +82,7 @@ WMT_TEXT = [
     "candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | "
     "extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40",
     "failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)",
-    "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike",
+    "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike",
     "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not "
     "modelled",
     FOOTER_1931,
@@ -101,7 +101,7 @@ NVDA_TEXT = [
     "candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | "
     "extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | " + NVDA_EX,
     "failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)",
-    "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike",
+    "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike",
     "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not "
     "modelled",
     FOOTER_1931,

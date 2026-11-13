@@ -63,13 +63,17 @@ SOURCE_WORDS: str = data_source.WORDS
 
 LIMIT_LINE: str = "you supply the limit; the desk prints none"
 ACT_LINE: str = "if you decide to act, you type it into your brokerage account yourself and you supply the limit"
-AFTER_FILL_LINE: str = "after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines"
+AFTER_FILL_LINE: str = "after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines"
 AFTER_EXPIRY_LINE: str = ("after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv "
                           "lines")
 MODEL_LINE: str = ("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
                    "options is not modelled")
+SPOT_BAR_LINE: str = ("spot: %s option %s quoted more than %s seconds from the stock quote %s priced against the "
+                      "stock's one-minute IEX bar of the minute %s quoted in")
+"""The line after :data:`MODEL_LINE` when a priced leg solved its volatility against a one-minute bar
+(``structuring.attach_spot_bars``); absent otherwise."""
 CAVEAT_LINE: str = "the score ranks the candidates only on the objective you chose; it is not a forecast"
-POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
+POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                      "and strike")
 NONE_QUALIFIES_LINE: str = "no candidate passed every criterion: the desk names no best candidate"
 FIXED_LINES: Tuple[str, ...] = (LIMIT_LINE, ACT_LINE, AFTER_FILL_LINE, AFTER_EXPIRY_LINE, MODEL_LINE, CAVEAT_LINE,
@@ -929,7 +933,18 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
         lines.extend([NONE_QUALIFIES_LINE, held_line(w, held)])
     lines.extend(candidate_line(w, candidate, held, ranking.objective.id) for candidate in rest[:max(0, shown)])
     lines.extend([failure_counts_line(w, ranking.failed, ranking.failure_counts), POINTER_LINE, MODEL_LINE])
+    lines.extend(spot_bar_lines(w, answer))
     return lines
+
+
+def spot_bar_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
+    """:data:`SPOT_BAR_LINE` when some priced leg used a one-minute bar for its spot, else nothing."""
+    count = structuring.spot_bar_count(answer)
+    if not count:
+        return []
+    one = count == 1
+    return [SPOT_BAR_LINE % (w.count(count), "leg" if one else "legs", w.count(structuring.SPOT_ALIGNMENT_SECONDS),
+                             "was" if one else "were", "it was" if one else "each was")]
 
 
 def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) -> List[str]:
@@ -978,7 +993,9 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
     lines.append(failure_counts_line(w, ranking.failed, ranking.failure_counts))
     if answer.outside_bands is not None:
         lines.append(outside_bands_line(w, answer.outside_bands))
-    lines.extend([MODEL_LINE, LIMIT_LINE, ACT_LINE])
+    lines.append(MODEL_LINE)
+    lines.extend(spot_bar_lines(w, answer))
+    lines.extend([LIMIT_LINE, ACT_LINE])
     return lines
 
 

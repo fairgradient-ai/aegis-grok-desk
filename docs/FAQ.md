@@ -67,7 +67,7 @@ No tool in this repository sends anything but a read-only market-data request, a
 `scripts/check_no_write_paths.py` proves it on every gate run. No Bot holds a live brokerage credential; the only
 credential is an Alpaca paper key pair, used only to read market data, which cannot reach a live account. When you ask a Bot to trade, it
 answers with the boundary sentence above: the decision and the order are yours, in your brokerage account. When you
-ask the Aegis Structuring Desk for a ticket, it lists the legs with their quotes and carries no order fields: you
+ask the Aegis Desk Lead for a ticket, it lists the legs with their quotes and carries no order fields: you
 supply the limit and type it into your brokerage account yourself, if you decide to act. See
 [SECURITY.md](../SECURITY.md).
 
@@ -122,9 +122,9 @@ The [exit rules page](EXIT_RULES.md) has the details.
 
 ## How do I record a trade, a close, an expiry or an assignment?
 
-Tell Aegis Position Control what you did in your broker, in your own words, for example "I sold 2 NVDA 20-Nov 150
-calls at 3.20 against my 200 shares". It drafts the exact `positions.csv` lines; you approve them, and it saves them
-exactly as approved, or you apply them yourself. For an expiry or an assignment, `csv_recon.py
+Tell the Aegis Desk Lead what you did in your broker, in your own words, for example "I sold 2 NVDA 20-Nov 150
+calls at 3.20 against my 200 shares". It drafts the exact `positions.csv` lines and shows them; your tap on the save's
+card approves them and it saves them exactly as shown, or you apply them yourself. For an expiry or an assignment, `csv_recon.py
 --diff` proposes the lines after the expiry, inferred from the official close: check them against your broker before
 you apply them. After any change, CONFIG CHANGED posts until you tap `ack.py config --owner-tapped`. See
 [POSITIONS_CSV.md](POSITIONS_CSV.md).
@@ -177,7 +177,8 @@ Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its 
 
 ## What are my choices for a position?
 
-Ask the Aegis Structuring Desk, in its chat or in the Floor. It answers only your own request, with one of three tool
+Ask the Aegis Desk Lead, in its chat (or in the Floor, and it continues in its chat, where the approval card can
+appear). It answers only your own request, with one of three tool
 texts: a ticket (closing the option legs, unwinding the shares too, letting a short option go to expiry, closing a
 long put for its value, or replacing a leg you name), a roll analysis for a covered call's short call, or a covered
 call, protective put or collar on shares you hold. It needs your criteria in `structuring.toml` first: say "set up the

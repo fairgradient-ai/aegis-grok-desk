@@ -112,6 +112,10 @@ records, built into the shared ``market_types`` types with their ``from_record``
 * History (``history``): :data:`PATH_STOCK_BARS` with ``timeframe=1Day`` (or ``1Week`` /
   ``1Month``), ``adjustment=raw``, ``feed=<stock_feed>``; a bar's ``date`` is the America/New_York
   date of its ``t``.
+* Minute bars (``minute_bars``): the same path with ``timeframe=1Min`` between two UTC instants; a bar's
+  ``start_utc`` is its ``t`` (the start of its minute) and its ``close`` the last trade of that minute on the stock
+  feed. The Structuring Desk reads the stock's price at an option quote's own stamp from them, when the option was
+  quoted more than 60 seconds before the stock (the indicative feed updates a thinly traded option less often).
 * Clock (``clock``): :data:`PATH_CLOCK` on the paper host; ``state`` is ``open`` or ``closed``
   from ``is_open``, ``date`` the ET date of ``timestamp``, ``next_change`` the ET ``HH:MM`` of
   ``next_close`` (open) or ``next_open`` (closed) and ``next_state`` the state it leads to.
@@ -167,7 +171,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple
 
@@ -284,6 +288,8 @@ HEADER_ACCEPT: str = "application/json"
 CREDENTIAL_SOURCES: Tuple[str, ...] = ("env", "file")
 HISTORY_INTERVALS: Tuple[str, ...] = ("daily", "weekly", "monthly")
 HISTORY_TIMEFRAMES: Dict[str, str] = {"daily": "1Day", "weekly": "1Week", "monthly": "1Month"}
+MINUTE_TIMEFRAME: str = "1Min"
+"""The ``timeframe`` of :meth:`AlpacaClient.minute_bars`."""
 DEFAULT_FIXTURE_SET: str = "regular"
 SUBSCRIPTION_MARKER: str = "subscription does not permit"
 
@@ -641,6 +647,9 @@ def fixture_file_name(path: str, params: Dict[str, str]) -> str:
         else:
             stem = "contracts__%s__%s__%s" % (underlying, params.get("expiration_date_gte", ""),
                                               params.get("expiration_date_lte", ""))
+    elif template == PATH_STOCK_BARS and params.get("timeframe") == MINUTE_TIMEFRAME:
+        stem = "minute_bars__%s__%s__%s" % (params.get("symbols", "").upper(), _compact_instant(params.get("start", "")),
+                                            _compact_instant(params.get("end", "")))
     elif template == PATH_STOCK_BARS:
         stem = "bars__%s__%s__%s" % (params.get("symbols", "").upper(), params.get("start", ""), params.get("end", ""))
     elif template == PATH_CLOCK:
@@ -655,6 +664,12 @@ def fixture_file_name(path: str, params: Dict[str, str]) -> str:
             raise ValueError("offline page token %r must match %s" % (token, _PAGE_TOKEN_RE.pattern))
         stem += "__page-%s" % token
     return stem + ".json"
+
+
+def _compact_instant(text: str) -> str:
+    """An RFC 3339 instant without ``-`` and ``:`` (``2026-11-03T19:31:00Z`` -> ``20261103T193100Z``), so a minute-bar
+    fixture name holds no colon."""
+    return text.replace("-", "").replace(":", "")
 
 
 def _fixture_key(name: str) -> str:
@@ -794,6 +809,35 @@ class StrikesResult:
 @dataclass(frozen=True)
 class HistoryResult:
     bars: List[Bar]
+    receipt: RequestReceipt
+    raw: Dict[str, Any]
+    receipts: Tuple[RequestReceipt, ...] = ()
+
+
+@dataclass(frozen=True)
+class MinuteBar:
+    """One one-minute bar: ``start_utc`` (the start of its minute, aware UTC) and its ``close`` (the minute's last
+    trade on the stock feed); ``raw`` is the record :meth:`from_record` reads back from the cache."""
+
+    start_utc: datetime.datetime
+    close: Optional[Decimal]
+    volume: Optional[int] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_record(cls, raw: Dict[str, Any]) -> "MinuteBar":
+        if not isinstance(raw, dict):
+            raise MarketTypesError("minute bar", "expected an object, got %s" % type(raw).__name__)
+        start = from_rfc3339(raw.get("t"), "t")
+        if start is None:
+            raise MarketTypesError("t", "missing")
+        return cls(start_utc=start, close=to_decimal(raw.get("close"), "close"), volume=to_int(raw.get("volume"), "volume"),
+                   raw=dict(raw))
+
+
+@dataclass(frozen=True)
+class MinuteBarsResult:
+    bars: List[MinuteBar]
     receipt: RequestReceipt
     raw: Dict[str, Any]
     receipts: Tuple[RequestReceipt, ...] = ()
@@ -1014,6 +1058,20 @@ def _et_date(value: Any, field_name: str) -> datetime.date:
 def _bar_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     return {"date": _et_date(raw.get("t"), "bars.t").isoformat(), "open": raw.get("o"), "high": raw.get("h"),
             "low": raw.get("l"), "close": raw.get("c"), "volume": raw.get("v")}
+
+
+def _minute_bar_record(raw: Dict[str, Any]) -> Dict[str, Any]:
+    start = from_rfc3339(raw.get("t"), "bars.t")
+    if start is None:
+        raise MarketTypesError("bars.t", "missing")
+    return {"t": _rfc3339_utc(start), "close": raw.get("c"), "volume": raw.get("v")}
+
+
+def _rfc3339_utc(moment: datetime.datetime) -> str:
+    """``YYYY-MM-DDTHH:MM:SSZ`` of an aware instant (whole seconds: Alpaca's bars are stamped on the minute)."""
+    if moment.tzinfo is None:
+        raise ValueError("expected an aware datetime, got %r" % (moment,))
+    return moment.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _et_hhmm(value: Any, field_name: str) -> Optional[str]:
@@ -1590,6 +1648,24 @@ class AlpacaClient:
                               http_status=receipts[-1].http_status, path=PATH_STOCK_BARS) from exc
         return HistoryResult(bars, receipts[-1], {"pages": documents}, tuple(receipts))
 
+    def minute_bars(self, symbol: str, start: datetime.datetime, end: datetime.datetime) -> MinuteBarsResult:
+        """One-minute bars of ``symbol`` from ``start`` to ``end`` (aware instants), raw, on the stock feed."""
+        start_text = _rfc3339_utc(start)
+        end_text = _rfc3339_utc(end)
+        if end < start:
+            raise ValueError("end %s is before start %s" % (end_text, start_text))
+        ticker = _validate_symbol(symbol)
+        params: Dict[str, str] = {"symbols": ticker, "timeframe": MINUTE_TIMEFRAME, "start": start_text,
+                                  "end": end_text, "adjustment": "raw", "feed": self._stock_feed,
+                                  "limit": str(BARS_PAGE_LIMIT)}
+        pages, receipts, documents = self._paged(PATH_STOCK_BARS, params, 1, _bars_page_parser(ticker))
+        try:
+            bars = [MinuteBar.from_record(_minute_bar_record(item)) for page in pages for item in page]
+        except MarketTypesError as exc:
+            raise AlpacaError("decode", self._clean("%s: %s" % (exc.field, exc.message)),
+                              http_status=receipts[-1].http_status, path=PATH_STOCK_BARS) from exc
+        return MinuteBarsResult(bars, receipts[-1], {"pages": documents}, tuple(receipts))
+
     def clock(self) -> ClockResult:
         """The market clock on the paper host (module notes)."""
         info, receipt, document = self._complete(PATH_CLOCK, {}, 0, _parse_clock)
@@ -1721,6 +1797,9 @@ __all__ = [
     "MAX_MESSAGE_CHARS",
     "MAX_PAGES",
     "MAX_RESPONSE_BYTES",
+    "MINUTE_TIMEFRAME",
+    "MinuteBar",
+    "MinuteBarsResult",
     "OPTIONS_FEEDS",
     "OPTIONS_FEED_INDICATIVE",
     "OfflineTransport",

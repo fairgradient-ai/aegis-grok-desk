@@ -3,6 +3,25 @@
 ## 0.2.0 (unreleased)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).
+- **One front door.** The owner talks to one Bot, the Aegis Desk Lead, in its 1:1 chat, for setup and everything
+  after it: questions, position changes, plan cards, tickets, roll analyses, proposals, the criteria interview and
+  re-acknowledgements. The Lead runs each seat's tools by that seat's agent file and enables the skills they need; no
+  Bot sends the owner to another chat. The Ask-first card is the confirmation (no typed "approve", "re-ack" or "run
+  it" before a card), the owner-authority commands of one request run as one `&&`-joined command line so one tap
+  covers them, a trade id is found from the symbol instead of copied by the owner, one Bot answers the owner in the
+  Floor, and Bots other than the Lead stay quiet until `desk.toml` exists (no tool on the empty desk, no routine
+  before SETUP section 9.3). Saving `positions.csv` joins the owner-authority Auto-review rule (391 of 1000
+  characters), so the save's card replaces the typed approval. Ticket texts now say `after a fill, tell the Aegis Desk
+  Lead the fill` and `ask the Aegis Desk Lead for a ROLL ticket`.
+- **Options quoted minutes before the stock are priced, not dropped.** On a live paper account the indicative feed
+  updated thinly traded WMT options minutes before the IEX stock quote, and every collar candidate came back
+  UNPRICED `spot_unaligned`. The Structuring Desk now solves such an option's implied volatility against the stock's
+  one-minute IEX bar of the minute the option was quoted in (`alpaca_client.minute_bars`, `timeframe=1Min` on the
+  allow-listed bars path, cached by `quote_cache.get_minute_bars`, one request), and reads its Greeks at the current
+  spot; the text adds `spot: <n> option legs quoted more than 60 seconds from the stock quote were priced against the
+  stock's one-minute IEX bar of the minute each was quoted in`, and the leg JSON carries `spot_bar_utc`. An option
+  with no bar for its minute stays unpriced. A stock quote reused from an earlier run's cache but stamped more than 60
+  seconds before the chains is refetched once first (`structuring.align_spot`). PROVENANCE's open item is closed.
 - **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run
   action is a free Alpaca paper key pair (a key ID and its secret, from a paper-only account opened with an email
   address), added through the secure secret card as `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, never pasted in chat

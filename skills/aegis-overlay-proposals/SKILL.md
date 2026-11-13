@@ -100,7 +100,8 @@ the window too, because the next one is not known. The labels and their acceptan
 
 ## The interview and the acknowledgement
 
-The Structuring Desk runs the interview in its own chat, at SETUP step 9 or on the owner's first request:
+The interview runs in the chat the owner is using (the Desk Lead's, the front door), at SETUP step 9 or on the
+owner's first request:
 
 1. Section by section, it shows the defaults above and changes only what the owner states.
 2. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says

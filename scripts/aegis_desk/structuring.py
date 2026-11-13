@@ -24,6 +24,16 @@ Loading (designer Q's D3)
 3. :func:`load_chains`: ``quote_cache.get_chain`` per candidate expiration, ascending; the first expiration not served
    makes the answer UNAVAILABLE ``chain_not_served`` (no best is named on partial data) and the rest are listed
    ``not requested``. The window spans at most 90 days, so at most four monthlies: the per-run chain cap holds.
+4. :func:`align_spot`: when the underlying's stamp is more than 60 s older than the newest option stamp of the chains
+   (a copy the cache served from an earlier run, inside the TTL), the group's quotes are refetched once with
+   ``force`` and the book, the before-state and the spot are rebuilt from them, so the run prices against a stock
+   quote from the same moment as its options. The refetch costs one quotes request and is said in a warning.
+5. :func:`attach_spot_bars`: an option quoted more than 60 s from the stock quote (the free indicative feed updates a
+   thinly traded option less often than the stock) is priced against the stock's one-minute IEX bar of the minute
+   it was quoted in (``quote_cache.get_minute_bars``, one request): its implied volatility is solved from the
+   option's mid and that bar's close, a pair at most 60 s apart, and its Greeks are then evaluated at the current
+   spot. The leg's ``spot_bar_utc`` names the bar and the text says how many legs used one; an option with no bar for
+   its minute stays UNPRICED ``spot_unaligned``. A spot is never taken from a different minute.
 4. :func:`requests_block`: ``{made, chains, per_run_max_requests, per_run_max_chains, budget_left}``.
 
 Pricing and quote QC (designer Q's D4)
@@ -295,6 +305,12 @@ SECOND_EX_DATE_HORIZON_DAYS: int = 80
 gets ``dividend_unknown`` (S4): a second ex-date may fall before it."""
 EXPIRING_SECONDS: int = book.EXPIRING_SECONDS
 SPOT_ALIGNMENT_SECONDS: int = book.SPOT_ALIGNMENT_SECONDS
+WARNING_SPOT_REALIGNED: str = ("%s quote refetched to line up with the option quotes: the first copy was stamped %s, "
+                                "the new one %s, the newest option %s")
+"""The warning :func:`align_spot` adds when it replaced a spot older than the chains by more than 60 s."""
+WARNING_SPOT_NOT_REALIGNED: str = ("%s quote stamped %s could not be refetched newer; the newest option is stamped %s, "
+                                   "so candidates more than 60 s from the stock quote stay unpriced")
+"""The warning :func:`align_spot` adds when its refetch gave no usable, newer spot."""
 CONTRACT_SIZE: int = units.CONTRACT_MULTIPLIER
 SCORE_QUANTUM: Decimal = Decimal("0.0001")
 PCT_QUANTUM: Decimal = Decimal("0.01")
@@ -379,7 +395,8 @@ class Accepted:
 
 LEG_KEYS: Tuple[str, ...] = ("occ", "root", "right", "strike", "expiration", "last_trading_day", "dte_calendar",
                              "dte_trading", "bid", "ask", "mid", "spread_pct", "grade", "quote_status", "quote_age_min",
-                             "as_of", "tau_years", "iv", "delta", "abs_delta", "greeks", "unpriced")
+                             "as_of", "tau_years", "iv", "delta", "abs_delta", "greeks", "unpriced",
+                             "spot_bar_utc")
 
 
 @dataclass(frozen=True)
@@ -409,6 +426,9 @@ class PricedLeg:
     abs_delta: Optional[Decimal] = None
     greeks: Optional[Dict[str, float]] = None
     unpriced: Optional[Reason] = None
+    spot_bar_utc: Optional[datetime.datetime] = None
+    """The start of the one-minute bar whose close was the spot the implied volatility was solved against, when the
+    stock quote was stamped too far from this option's; ``None`` when the stock quote itself was used."""
 
     def as_dict(self) -> Dict[str, Any]:
         out = {key: getattr(self, key) for key in LEG_KEYS}
@@ -673,6 +693,9 @@ class PricingContext:
     underlying: str
     max_spread_pct: Decimal
     extra_holidays: Mapping[datetime.date, str] = field(default_factory=dict)
+    spot_bars: Mapping[datetime.datetime, Decimal] = field(default_factory=dict)
+    """The stock's one-minute closes by the start of their minute (UTC): the spot at an option quote's own stamp when
+    the stock quote is stamped more than :data:`SPOT_ALIGNMENT_SECONDS` from it (:func:`attach_spot_bars`)."""
 
     @property
     def q(self) -> float:
@@ -779,13 +802,20 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     if unpriced is None and (quote.contract_size != CONTRACT_SIZE or leg.root != ctx.underlying
                              or (quote.underlying or ctx.underlying).strip().upper() != ctx.underlying):
         unpriced = Reason(KEY_UNPRICED, CODE_NONSTANDARD_CONTRACT, quote.contract_size, CONTRACT_SIZE)
-    spot = ctx.spot_mid
+    current_spot = spot = ctx.spot_mid
     if unpriced is None and spot is None:
         unpriced = Reason(KEY_UNPRICED, CODE_SPOT_UNAVAILABLE, ctx.spot.grade, None)
     if unpriced is None and (qc.as_of is None or ctx.spot.as_of is None
                              or abs((ctx.spot.as_of - qc.as_of).total_seconds()) > SPOT_ALIGNMENT_SECONDS):
-        apart = None if qc.as_of is None or ctx.spot.as_of is None else abs((ctx.spot.as_of - qc.as_of).total_seconds())
-        unpriced = Reason(KEY_UNPRICED, CODE_SPOT_UNALIGNED, apart, SPOT_ALIGNMENT_SECONDS)
+        bar_start = None if qc.as_of is None else quote_cache.floor_minute(qc.as_of)
+        bar_close = None if bar_start is None else ctx.spot_bars.get(bar_start)
+        if bar_close is not None and bar_close > 0:
+            spot = bar_close  # the stock's price in the minute the option was quoted (module notes)
+            leg = replace(leg, spot_bar_utc=bar_start)
+        else:
+            apart = (None if qc.as_of is None or ctx.spot.as_of is None
+                     else abs((ctx.spot.as_of - qc.as_of).total_seconds()))
+            unpriced = Reason(KEY_UNPRICED, CODE_SPOT_UNALIGNED, apart, SPOT_ALIGNMENT_SECONDS)
     seconds = None
     if qc.as_of is not None:
         seconds = (market_clock.exercise_cutoff_utc(expiration, False, None, extra) - qc.as_of).total_seconds()
@@ -798,7 +828,9 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, ctx.q)
     if not result.ok or result.sigma is None:
         return replace(leg, unpriced=Reason(KEY_UNPRICED, IV_CODE_PREFIX + result.status, leg.mid, None))
-    values = greeks_module.european_greeks(right, float(spot), float(strike), leg.tau_years, ctx.rate, ctx.q,
+    assert current_spot is not None
+    # the Greeks at the current spot: the volatility is the option's, the delta is the position's now
+    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, ctx.q,
                                            result.sigma)
     return replace(leg, iv=result.sigma, delta=values.delta, abs_delta=abs_delta_2dp(values.delta),
                    greeks={"delta": values.delta, "gamma": values.gamma, "theta": values.theta, "vega": values.vega,
@@ -1646,8 +1678,9 @@ class GroupBook:
     cache: Optional[CacheResult]
 
 
-def load_group_book(target: Target) -> GroupBook:
-    """ONE quotes batch for the target group's symbols and the book built for that group only (never ``load_book``)."""
+def load_group_book(target: Target, force: bool = False) -> GroupBook:
+    """ONE quotes batch for the target group's symbols and the book built for that group only (never ``load_book``);
+    ``force`` asks the cache for fresh copies (:func:`align_spot`)."""
     market, group = target.market, target.group
     assert group is not None
     symbols = book.request_batch([group], target.today, target.calendar)
@@ -1656,7 +1689,8 @@ def load_group_book(target: Target) -> GroupBook:
     verdicts: Dict[str, QuoteQC] = {}
     if symbols:
         result = quote_cache.get_quotes(symbols, now=target.now, cfg=market.cache, client=market.client,
-                                        paths=market.paths, allow_fetch=target.session.trading_day, run=market.run)
+                                        paths=market.paths, force=force, allow_fetch=target.session.trading_day,
+                                        run=market.run)
         quotes, verdicts = book.assess_quotes(result, symbols, now=target.now, session=target.session,
                                               bound_min=market.bound_min, prior_close_utc=target.prior_close_utc)
     built = book.build_book(now=target.now, cfg=market.cfg, paths=market.paths, positions=target.positions,
@@ -1951,6 +1985,83 @@ def _held(answer: Answer, row: PositionRow) -> Optional[Answer]:
     return None
 
 
+def newest_option_stamp(chains: Mapping[datetime.date, Sequence[Quote]]) -> Optional[datetime.datetime]:
+    """The newest stamp among the chains' quotes, ``None`` when none carries one."""
+    stamps = [q.as_of for chain in chains.values() for q in chain if q.as_of is not None]
+    return max(stamps) if stamps else None
+
+
+def align_spot(answer: Answer, chains: Mapping[datetime.date, Sequence[Quote]]) -> Optional[Answer]:
+    """Refetch the group's quotes once when the underlying's stamp is more than :data:`SPOT_ALIGNMENT_SECONDS` older
+    than the newest option stamp of ``chains`` (module notes, "Loading" 4); ``answer`` closed when the refetched held
+    leg is unusable, else ``None``. A copy the cache served from an earlier run (inside the TTL) is the usual cause:
+    priced against fresh chains, every candidate would be UNPRICED ``spot_unaligned``. A refetch that does not give a
+    usable, newer spot keeps the first one (the candidates then say ``spot_unaligned`` as before) with a warning."""
+    pricing, target = answer.pricing, answer.target
+    assert pricing is not None and target is not None
+    newest = newest_option_stamp(chains)
+    old = pricing.spot.as_of
+    if newest is None or old is None or (newest - old).total_seconds() <= SPOT_ALIGNMENT_SECONDS:
+        return None
+    refreshed = load_group_book(target, force=True)
+    spot = refreshed.spot
+    if (spot is None or not spot.usable_for_rules or spot.mark_mid is None or spot.as_of is None
+            or spot.as_of <= old):
+        answer.warnings.append(WARNING_SPOT_NOT_REALIGNED % (target.group.underlying if target.group else "",
+                                                           _utc_clock(old), _utc_clock(newest)))
+        return None
+    answer.warnings.append(WARNING_SPOT_REALIGNED % (target.group.underlying if target.group else "",
+                                                   _utc_clock(old), _utc_clock(spot.as_of), _utc_clock(newest)))
+    if refreshed.cache is not None:
+        answer.warnings.extend("quote cache: %s" % warning for warning in refreshed.cache.warnings)
+    answer.book = refreshed
+    answer.group_context = group_context(target, refreshed)
+    answer.before = answer.group_context.before
+    answer.pricing = replace(pricing, spot=spot)
+    if answer.held is not None:
+        row = next(r for r in target.group.open_legs if r.row_number == answer.held.row_number)
+        return _held(answer, row)
+    return None
+
+
+def attach_spot_bars(answer: Answer, chains: Mapping[datetime.date, Sequence[Quote]]) -> None:
+    """The stock's one-minute bars for the options of ``chains`` quoted more than :data:`SPOT_ALIGNMENT_SECONDS` from
+    the stock quote and still inside the freshness bound (module notes, "Loading" 5): ONE minute-bar request, set on
+    the pricing context; a request that serves no bar leaves those options UNPRICED ``spot_unaligned`` as before."""
+    pricing, target = answer.pricing, answer.target
+    assert pricing is not None and target is not None and target.group is not None
+    spot_stamp = pricing.spot.as_of
+    if spot_stamp is None:
+        return
+    oldest = target.now - datetime.timedelta(minutes=pricing.bound_min)
+    stamps = sorted({q.as_of for chain in chains.values() for q in chain
+                     if q.as_of is not None and q.as_of >= oldest
+                     and abs((spot_stamp - q.as_of).total_seconds()) > SPOT_ALIGNMENT_SECONDS})
+    if not stamps:
+        return
+    market = target.market
+    result = quote_cache.get_minute_bars(target.group.underlying, stamps, now=target.now, cfg=market.cache,
+                                         client=market.client, paths=market.paths,
+                                         allow_fetch=target.session.trading_day, run=market.run)
+    answer.warnings.extend("quote cache: %s" % warning for warning in result.warnings)
+    closes = {start: bar.close for start, bar in result.bars.items() if bar.close is not None}
+    if closes:
+        answer.pricing = replace(pricing, spot_bars=closes)
+
+
+def spot_bar_count(answer: Answer) -> int:
+    """How many priced candidate legs solved their volatility against a one-minute bar (the text's disclosure)."""
+    if answer.ranking is None:
+        return 0
+    legs = {leg.occ: leg for candidate in answer.ranking.candidates for leg in candidate.legs
+            if leg.spot_bar_utc is not None and leg.unpriced is None}
+    return len(legs)
+
+
+def _utc_clock(moment: datetime.datetime) -> str:
+    return moment.astimezone(datetime.timezone.utc).strftime("%H:%M:%S UTC")
+
+
 def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     """Expirations, chains, candidates and the ranking (module notes, "Loading" 2-3)."""
     target = answer.target
@@ -1971,7 +2082,11 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     if block.not_evaluated:
         return _unavailable(answer, CAUSE_CHAIN_NOT_SERVED)
     answer.chains = chains
-    assert answer.events is not None
+    stopped = align_spot(answer, chains)
+    if stopped is not None:
+        return stopped
+    attach_spot_bars(answer, chains)
+    assert answer.events is not None and answer.pricing is not None and answer.group_context is not None
     built = candidates_for(answer.kind, chains, answer.pricing, answer.group_context, answer.section, answer.events,
                            held=answer.held)
     answer.outside_bands = built.outside_bands
@@ -2130,6 +2245,11 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     answer.expirations = block
     if block.not_evaluated:
         return _unavailable(answer, CAUSE_CHAIN_NOT_SERVED)
+    stopped = align_spot(answer, chains)
+    if stopped is not None:
+        return stopped
+    attach_spot_bars(answer, chains)
+    assert answer.pricing is not None and answer.group_context is not None and answer.held is not None
     wanted = expiry.plain_decimal(Decimal(strike))
     listed = [q for q in chains[expiration] if (q.option_type or "").upper() == row.occ.right
               and q.strike is not None and expiry.plain_decimal(q.strike) == wanted and q.expiration_date == expiration

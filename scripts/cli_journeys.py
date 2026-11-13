@@ -590,7 +590,7 @@ JOURNEYS += (
     tool_journey("routine_audit --rules-text -> three Auto-review texts within 1000 characters",
                  ("routine_audit.py", "--rules-text"), 0,
                  {"status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-                  "payload.lengths": {"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 333},
+                  "payload.lengths": {"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391},
                   "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
     tool_journey("book --snapshot pre_open, trigger_levels --from-snapshot, then routine preopen 07:30 pre_open -> "
                  "MORNING DESK SHEET",

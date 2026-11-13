@@ -74,7 +74,7 @@ structuring tool ever writes it. Until it exists and you have acknowledged it, t
 
 ### The interview
 
-The Structuring Desk runs it in its own chat, at SETUP step 9 or at your first request. If you ask before you have
+The Desk Lead runs it in its own chat (the one chat you use), at SETUP step 9 or at your first request. If you ask before you have
 said "add my positions", the Desk Lead first adds that step's two safety settings (the two Ask-first Auto-review rules
 and the connected-apps check), because the interview ends in an owner-tapped command:
 
@@ -255,6 +255,14 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   never judged against your criteria, so it never counts as failing them. When not one candidate of the window could
   be priced, the answer is UNAVAILABLE (exit 20, no report): `no candidate in your window could be priced`, followed by
   the reason they share or by `(the reasons differ; the JSON lists each)`.
+- **The stock price each option is priced against.** An option's implied volatility is solved against a stock price
+  from the same moment: the stock quote when it is stamped within 60 seconds of the option's, otherwise the stock's
+  one-minute IEX bar of the minute the option was quoted in (one extra request; the free indicative feed updates a
+  thinly traded option less often than the stock). The Greeks are then read at the current spot. When a bar was used,
+  a line follows the model line: `spot: <n> option legs quoted more than 60 seconds from the stock quote were priced
+  against the stock's one-minute IEX bar of the minute each was quoted in`, and each such leg's JSON carries
+  `spot_bar_utc`. An option with no bar for its minute stays `not priced` (`the underlying's quote is stamped too far
+  from the option's`). A stock quote reused from an earlier run's cache but older than the chains is refetched first.
 
 ### The objectives
 
@@ -397,7 +405,7 @@ after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.0
 candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
 candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
 failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
@@ -420,7 +428,7 @@ candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | 
 candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
 failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
@@ -448,7 +456,7 @@ after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, brea
 prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 you supply the limit; the desk prints none
 valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
-after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
+after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines
 if you decide to act, you type it into your brokerage account yourself and you supply the limit
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
@@ -622,8 +630,9 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 ## After a fill
 
 A ticket carries no `positions.csv` lines: the fill price is unknown until you have it, and the file has one owner.
-After a fill, tell Aegis Position Control the fill; it proposes the `positions.csv` lines with its close, partial-close
-and roll recipes, and you apply them. After an expiry, its post-expiry check proposes them. Once `positions.csv`
+After a fill, tell the Aegis Desk Lead the fill; it proposes the `positions.csv` lines with Position Control's close,
+partial-close and roll recipes, and your tap on the save's card applies them. After an expiry, Position Control's
+post-expiry check proposes them. Once `positions.csv`
 changes, every structuring tool answers `config_unacknowledged` until you tap `ack.py config --owner-tapped`.
 
 ## Limits
