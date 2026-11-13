@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1 (unreleased)
+## 0.2.1 (2026-11-13)
 
 - Version bump to 0.2.1 (`release_bump.py 0.2.1`).
 - The alert lint's fixed leg grammar takes one leading `- ` list mark, and a leg's quote segment may end at its grade
@@ -81,7 +81,7 @@
   update receipt; the desk files are never rewritten, and the page lists what 0.2.1 changes for an existing desk.
 - 12 more tests, 3120 in all (floor 3120).
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-13)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).
 - **Market data now comes from Alpaca, read with a paper key; Tradier support is removed.** The owner's one first-run
