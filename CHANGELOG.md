@@ -3,6 +3,10 @@
 ## 0.2.1 (unreleased)
 
 - Version bump to 0.2.1 (`release_bump.py 0.2.1`).
+- The alert lint's fixed leg grammar takes one leading `- ` list mark, and a leg's quote segment may end at its grade
+  (`| bid P, ask P, mid P | quote grade G`) when the text names its quote source once in its header: the groundwork
+  for the Structuring Desk's easier-to-read layout. Any other list mark, an indent or a free tail after a leg is
+  still `order_field`.
 
 ## 0.2.0 (unreleased)
 

@@ -502,6 +502,45 @@ class StructuringFooterTest(unittest.TestCase):
         self.assertEqual(["footer_missing"], codes(rules), "the grammar is a structuring rule; the rules footer refuses "
                          "the leg line outright")
 
+    def test_the_leg_grammar_takes_a_list_mark_and_a_quote_grade_alone(self) -> None:
+        # 0.2.1: the structuring texts print their legs as list items, and a proposal or ticket names the quote source
+        # once in its header, so a leg's quote segment may end at its grade; nothing else joins the grammar
+        passing = ("- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+                   "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote "
+                   "grade B",
+                   "leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote "
+                   "grade A",
+                   "- leg 2 of 3: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A",
+                   "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+                   "grade E | quote grade E: the conservative side stands",
+                   "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
+                   "grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC")
+        for line in passing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertTrue(result.ok, result.problems)
+        leg = "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call"
+        failing = ("-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+                   "-  " + leg, "* " + leg, "+ " + leg, "  - " + leg, "- - " + leg, "-- " + leg, "1. " + leg,
+                   "- " + leg + " | quote grade B",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B | 3.45",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, firm",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, 18 min old, firm",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade G",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade b",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 |quote grade B")
+        for line in failing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertEqual(["order_field"], codes(result), result.problems)
+                self.assertEqual(["line 1, column 1: a leg line outside the fixed leg grammar"], result.problems)
+        for kind, footer in ((alert_lint.FOOTER_RULES, FOOTER),
+                             (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line(AS_OF))):
+            with self.subTest(footer=kind):
+                result = alert_lint.check(passing[0] + "\n" + footer, emitted_of(passing[0]), footer=kind)
+                self.assertIn("footer_missing", codes(result), "a listed leg is structuring content under any other "
+                                                               "footer")
+
 
 # The PR 3b review of structuring mode (L2-2, L2-3, L2-4, L2-7, BD7): every line below passed the lint before the
 # fixer pass. Order-shaped words among them are assembled from pieces, as everywhere in this file.

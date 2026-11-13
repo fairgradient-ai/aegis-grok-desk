@@ -96,10 +96,13 @@ capitals-and-digits word is whitelisted as a rule id). A line that holds a leg r
 or the leg grammar's effect words (:data:`STRUCTURING_EFFECT_RE`) must be one of the fixed leg grammar
 (:data:`STRUCTURING_LEG_RES`): ``leg N of M: closes your long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of
 M: opens a new long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of M: closes Q of your long SYMBOL shares``,
-each optionally followed by `` | `` and exactly one of the quote segments the tools print (``bid P, ask P, mid P |
-quote grade G, SOURCE, N-min delayed, as of HH:MM UTC``, SOURCE being one of :data:`aegis_desk.data_source.ALL_WORDS`;
-``ask P | quote grade G, N min old``; the bare sides) and the grade E note; any other leg line is ``order_field`` (the effect words are unambiguous: a closing twin of
-a side word would read as the wrong direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
+optionally listed with one leading ``- `` (the structuring texts list their legs), each optionally followed by `` | ``
+and exactly one of the quote segments the tools print (``bid P, ask P, mid P | quote grade G, SOURCE, N-min delayed, as
+of HH:MM UTC``, SOURCE being one of :data:`aegis_desk.data_source.ALL_WORDS`; the sides and the grade alone, ``bid P,
+ask P, mid P | quote grade G``, when the text names its source once in its header; ``ask P | quote grade G, N min
+old``; the bare sides) and the grade E note; any other leg line is ``order_field``, any other list mark, indent or
+free tail included (the effect words are unambiguous: a closing twin of a side word would read as the wrong
+direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
 from any subject, a preference, probability, risk, return, valuation and non-advice claims, an assurance, urgency,
 suitability, the bare instruction verb in any form, order-type, duration and route abbreviations, a trade verb outside
 the base table, and a price after ``at`` or ``for`` or a few words after ``limit``, ``pay`` or ``price``) is matched like
@@ -332,18 +335,22 @@ _LEG_SIDES = (r"(?:bid {p}(?:, ask {p})?(?:, mid {p})?|ask {p}(?:, mid {p})?|mid
 _LEG_SOURCE = "(?:%s)" % "|".join(re.escape(words) for words in data_source.ALL_WORDS)
 """The source phrases a quote segment may name (:data:`aegis_desk.data_source.ALL_WORDS`), as one alternation."""
 _LEG_TAIL = (r"(?: \| (?:{sides} \| quote grade [A-F], {source}, [0-9]+-min delayed, as of "
-             r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|(?:bid|ask) {p} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
-             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, p=_LEG_PRICE,
-                                                                       source=_LEG_SOURCE)
+             r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|{sides} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
+             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, source=_LEG_SOURCE)
+_LEG_MARK = r"^(?:- )?"
+"""The one list mark a leg line may start with (0.2.1: the structuring texts list their legs as ``- `` items)."""
 STRUCTURING_LEG_RES: Tuple["re.Pattern[str]", ...] = (
-    re.compile(r"^leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
+    re.compile(_LEG_MARK + r"leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
                r"[A-Z][A-Z0-9]{0,5} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+(?:\.[0-9]+)? (?:call|put)" + _LEG_TAIL),
-    re.compile(r"^leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares" + _LEG_TAIL),
+    re.compile(_LEG_MARK + r"leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares"
+               + _LEG_TAIL),
 )
-"""The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, each followed only by
-the quote segments the tools print (review L2-2: no free tail): ``| bid P, ask P, mid P | quote grade G, SOURCE,
-N-min delayed, as of HH:MM UTC`` (SOURCE: one of :data:`aegis_desk.data_source.ALL_WORDS`), ``| ask P | quote grade G,
-N min old``, the bare sides, and the grade E note."""
+"""The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, optionally listed with
+one leading ``- ``, each followed only by the quote segments the tools print (review L2-2: no free tail): ``| bid P,
+ask P, mid P | quote grade G, SOURCE, N-min delayed, as of HH:MM UTC`` (SOURCE: one of
+:data:`aegis_desk.data_source.ALL_WORDS`), the sides and the grade alone (``| bid P, ask P, mid P | quote grade G``, the
+source named once in the text's header), ``| ask P | quote grade G, N min old``, the bare sides, and the grade E
+note."""
 FILLER_WORDS: Tuple[str, ...] = ("so", "then", "and", "now", "please", "just", "simply", "also", "kindly")
 """Words skipped at a sentence start before the imperative test (``so close ...`` starts with its verb)."""
 PLAN_CLOSE_PREFIX: str = "your plan: "
