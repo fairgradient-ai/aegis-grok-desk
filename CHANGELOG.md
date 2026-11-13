@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-11-13)
 
 - Onboarding on Grok Bot is staged. The first run (SETUP sections 1 to 8) asks the owner for one thing: a free
   Tradier sandbox market-data token, added through the secure secret card, never pasted in chat. It shows a demo on
