@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (unreleased)
+
+- Version bump to 0.2.1 (`release_bump.py 0.2.1`).
+
 ## 0.2.0 (unreleased)
 
 - Version bump to 0.2.0 (`release_bump.py 0.2.0`).

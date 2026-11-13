@@ -1,7 +1,7 @@
 {
   "name": "aegis-desk",
   "description": "Read-only options desk roles and skills.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {"name": "FairGradient"},
   "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
   "repository": "https://github.com/fairgradient-ai/aegis-grok-desk",

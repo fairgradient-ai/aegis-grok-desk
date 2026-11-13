@@ -9,7 +9,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 ## Start
 
 Create a new Bot and paste the Start prompt from the [README](../README.md#start). It points at the bootstrap skill
-and at [SETUP.md](../SETUP.md), both pinned to the tag `v0.2.0`. SETUP.md is the full runbook. This page explains
+and at [SETUP.md](../SETUP.md), both pinned to the tag `v0.2.1`. SETUP.md is the full runbook. This page explains
 what protects you on Grok Bot and how you can check it.
 
 ### The first run
@@ -46,7 +46,7 @@ template contract and why the paste prompt comes first.
 
 | Path | What it is |
 | --- | --- |
-| `/workspace/aegis-grok-desk` | the release checkout, a clone of the tag `v0.2.0`; nothing in it is edited |
+| `/workspace/aegis-grok-desk` | the release checkout, a clone of the tag `v0.2.1`; nothing in it is edited |
 | `/workspace/aegis-desk` | the desk root: `desk.toml`, `positions.csv`, your adopted rules and every file the tools write |
 | `/workspace/.aegis-secrets/alpaca.key` | the key file (the key ID on line 1, the secret on line 2), only if you choose it instead of the secret card (mode 0600) |
 
@@ -129,16 +129,16 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   current directory. A desk root inside the checkout, or the checkout itself, is a usage error (exit 2), because the
   run's files would make the checkout dirty.
 - It runs no step unless the checkout is the clean release: a git work tree whose HEAD is the commit of the tag
-  `v0.2.0` and whose `git status` lists nothing. Otherwise it prints one INCIDENT line, writes an incident file and
+  `v0.2.1` and whose `git status` lists nothing. Otherwise it prints one INCIDENT line, writes an incident file and
   exits 20. From a development checkout, on a copy of the fixture desk at 2026-11-03 19:50 UTC (synthetic):
 
   ```text
-  INCIDENT | book-check | the desk checkout is not the pinned release v0.2.0: development checkout (no tag); no step ran | details in incidents/20261103T195000.000000Z-dirty-checkout.md
+  INCIDENT | book-check | the desk checkout is not the pinned release v0.2.1: development checkout (no tag); no step ran | details in incidents/20261103T195000.000000Z-dirty-checkout.md
   deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 19:50 UTC
   ```
 
-- The pin check gives one reason. On the release it is `release v0.2.0 at <commit>, clean`. Otherwise it is one of
-  `development checkout (no tag)`, `HEAD <commit> is not the commit of v0.2.0 (<commit>)`,
+- The pin check gives one reason. On the release it is `release v0.2.1 at <commit>, clean`. Otherwise it is one of
+  `development checkout (no tag)`, `HEAD <commit> is not the commit of v0.2.1 (<commit>)`,
   `the checkout has <n> uncommitted or untracked path(s)`,
   `git status failed (exit <n>); the checkout cannot be verified`, `not a git checkout`, `git is unavailable` or
   `git refuses this checkout: it is owned by another user (see SETUP)`. For the last one, SETUP gives the one command
