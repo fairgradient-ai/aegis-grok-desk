@@ -1,19 +1,58 @@
-PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 3c5e9a10) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; call strike 680 above your stock cost 632.40
-accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
-accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
-after both legs: group delta 24.14, max loss 1165.00, max profit 4835.00, breakeven 631.65
-leg order: leg 1 first; after leg 1 a protective put (level 2 by the desk's convention); after leg 2 a collar (level 2)
-approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
-candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92
-candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92
-failed your criteria: 6 (max_net_debit 6)
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold
+
+| account | SPY mid | your cost | quotes |
+|---|--:|--:|---|
+| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates that passed every criterion
+- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A
+- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| floor | 4.34 % below | 3 to 10 % | 🟢 |
+| cap | 4.92 % above | 2 to 10 % | 🟢 |
+| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | 🟢 |
+| call strike | 680 | at or above your cost 632.40 | 🟢 |
+| calendar days | 136 | 120 to 210 | 🟢 |
+| spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
+| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
+| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 63,240.00 | 1,165.00 |
+| max profit | unbounded | 4,835.00 |
+| breakeven | 632.40 | 631.65 |
+| group delta | 100.00 | 24.14 |
+
+**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 100 SPY shares, 1 long put | 2 |
+| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |
+
+- entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+
+**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+
+| # | expiry | put / call | floor | cap | net per share |  |
+|--:|---|---|--:|--:|---|---|
+| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | 🟢 |
+| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | 🟢 |
+| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | 🟢 |
+
+- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+
+> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
+> - tie on cap_within_budget broken by the put strike (higher first)
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC

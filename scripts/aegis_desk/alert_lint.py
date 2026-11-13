@@ -96,10 +96,13 @@ capitals-and-digits word is whitelisted as a rule id). A line that holds a leg r
 or the leg grammar's effect words (:data:`STRUCTURING_EFFECT_RE`) must be one of the fixed leg grammar
 (:data:`STRUCTURING_LEG_RES`): ``leg N of M: closes your long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of
 M: opens a new long|short Q x ROOT YYYY-MM-DD STRIKE call|put`` or ``leg N of M: closes Q of your long SYMBOL shares``,
-each optionally followed by `` | `` and exactly one of the quote segments the tools print (``bid P, ask P, mid P |
-quote grade G, SOURCE, N-min delayed, as of HH:MM UTC``, SOURCE being one of :data:`aegis_desk.data_source.ALL_WORDS`;
-``ask P | quote grade G, N min old``; the bare sides) and the grade E note; any other leg line is ``order_field`` (the effect words are unambiguous: a closing twin of
-a side word would read as the wrong direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
+optionally listed with one leading ``- `` (the structuring texts list their legs), each optionally followed by `` | ``
+and exactly one of the quote segments the tools print (``bid P, ask P, mid P | quote grade G, SOURCE, N-min delayed, as
+of HH:MM UTC``, SOURCE being one of :data:`aegis_desk.data_source.ALL_WORDS`; the sides and the grade alone, ``bid P,
+ask P, mid P | quote grade G``, when the text names its source once in its header; ``ask P | quote grade G, N min
+old``; the bare sides) and the grade E note; any other leg line is ``order_field``, any other list mark, indent or
+free tail included (the effect words are unambiguous: a closing twin of a side word would read as the wrong
+direction). :data:`STRUCTURING_FORBIDDEN_LANGUAGE` (``SL01`` .. ``SL22``: advice
 from any subject, a preference, probability, risk, return, valuation and non-advice claims, an assurance, urgency,
 suitability, the bare instruction verb in any form, order-type, duration and route abbreviations, a trade verb outside
 the base table, and a price after ``at`` or ``for`` or a few words after ``limit``, ``pay`` or ``price``) is matched like
@@ -114,7 +117,12 @@ Alphabet
 --------
 A message is printable ASCII plus newline and tab, and the middle dot (U+00B7) inside the footer line only: a
 homoglyph, an invisible character (zero-width space, no-break space), a full-width digit, a typographic minus or a
-middle dot between two words cannot hide a number, a phrase or a sentence start from the rules above.
+middle dot between two words cannot hide a number, a phrase or a sentence start from the rules above. One exception,
+structuring mode only (0.2.1): the three status symbols of :data:`STATUS_SYMBOLS` (a green, a yellow and a red circle,
+U+1F7E2, U+1F7E1 and U+1F534, without a variation selector) may each stand at the start of a table cell, right after
+``| `` and followed by a space; anywhere else, doubled, or under the rules or snapshot footer they are ``non_ascii``.
+The sentence-start rule reads a status symbol as a list mark, so the word after it is checked as a sentence start,
+and a symbol inside a word or a number is refused, so none can split a phrase, a number or a sentence start.
 """
 
 from __future__ import annotations
@@ -173,7 +181,7 @@ STRUCTURING_EFFECT_RE = re.compile(r"(?i)\bcloses[\s_-]+your[\s_-]+(?:long|short
 _STRUCTURING_CONTENT_RE = re.compile(
     STRUCTURING_LEG_DETECT_RE.pattern[4:].join(("(?i:", ")"))
     + "|" + STRUCTURING_EFFECT_RE.pattern[4:].join(("(?i:", ")"))
-    + r"|(?m:^[ \t]*(?:TICKET|PROPOSAL|STRUCTURING|NOTHING_TO_PROPOSE)\b)"
+    + r"|(?m:^[ \t]*(?:#{1,6}[ \t]+|\*\*)?(?:TICKET|PROPOSAL|STRUCTURING|NOTHING_TO_PROPOSE)\b)"
     r"|\(action (?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL)\)|FAILS_CRITERION"
     r"|\b(?:CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL) ticket\b"
     r"|(?i:\bno[\s_-]+leg[\s_-]+to[\s_-]+enter\b|\bcriteria[\s_-]+structuring\.toml\b|\bno[\s_-]+structuring\.toml\b"
@@ -185,7 +193,7 @@ _STRUCTURING_CONTENT_RE = re.compile(
     r"|\b(?:exit_ticket|roll_analysis|propose)\.py\b)")
 """Structuring text the rules and snapshot footers can never close (module notes, review L2-4): a leg reference or the
 leg grammar's effect words anywhere, the fixed starts of the structuring texts (TICKET, PROPOSAL, STRUCTURING,
-NOTHING_TO_PROPOSE), an action tag, FAILS_CRITERION, a ranked or numbered candidate (``candidate #1``, ``1st
+NOTHING_TO_PROPOSE, also after a markdown heading mark or in bold), an action tag, FAILS_CRITERION, a ranked or numbered candidate (``candidate #1``, ``1st
 candidate``, ``rank 1``, ``best:``), the counts line, the subjects of the answers that price nothing, the three tool
 names (the structuring WITHHELD line names its tool; the routine's ``WITHHELD | <tool>:`` line is rules text) and the
 approval convention's self-attested level (``candidate 1.1.0`` and ``candidate-1.1.0.toml`` do not match)."""
@@ -193,6 +201,10 @@ _SNAPSHOT_RULE_CONTENT_RE = re.compile(r"(?i:\byour\s+rules?\b)|\bEXIT[ _]SIGNAL
                                        r"|(?i:\brules\s+[0-9]+\.[0-9]+\.[0-9]+)")
 """Rule content a market-snapshot footer can never close (module notes)."""
 ALLOWED_EXTRA_CHARACTERS: Tuple[str, ...] = ("\n", "\t", MIDDLE_DOT)
+STATUS_SYMBOLS: Tuple[str, ...] = ("\U0001F7E2", "\U0001F7E1", "\U0001F534")
+"""The structuring texts' status colours (module notes, "Alphabet"): passes, accepted by the owner, fails. Each may
+stand only at the start of a table cell of a structuring text (``| <symbol> ``)."""
+STATUS_CELL_LEAD: str = "| "
 
 CODE_EMPTY: str = "empty_message"
 CODE_NON_ASCII: str = "non_ascii"
@@ -332,18 +344,22 @@ _LEG_SIDES = (r"(?:bid {p}(?:, ask {p})?(?:, mid {p})?|ask {p}(?:, mid {p})?|mid
 _LEG_SOURCE = "(?:%s)" % "|".join(re.escape(words) for words in data_source.ALL_WORDS)
 """The source phrases a quote segment may name (:data:`aegis_desk.data_source.ALL_WORDS`), as one alternation."""
 _LEG_TAIL = (r"(?: \| (?:{sides} \| quote grade [A-F], {source}, [0-9]+-min delayed, as of "
-             r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|(?:bid|ask) {p} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
-             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, p=_LEG_PRICE,
-                                                                       source=_LEG_SOURCE)
+             r"(?:[01][0-9]|2[0-3]):[0-5][0-9] UTC|{sides} \| quote grade [A-F](?:, [0-9]+ min old)?|{sides})"
+             r"(?: \| quote grade E: the conservative side stands)?)?$").format(sides=_LEG_SIDES, source=_LEG_SOURCE)
+_LEG_MARK = r"^(?:- )?"
+"""The one list mark a leg line may start with (0.2.1: the structuring texts list their legs as ``- `` items)."""
 STRUCTURING_LEG_RES: Tuple["re.Pattern[str]", ...] = (
-    re.compile(r"^leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
+    re.compile(_LEG_MARK + r"leg [0-9]+ of [0-9]+: (?:closes your (?:long|short)|opens a new (?:long|short)) [0-9]+ x "
                r"[A-Z][A-Z0-9]{0,5} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]+(?:\.[0-9]+)? (?:call|put)" + _LEG_TAIL),
-    re.compile(r"^leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares" + _LEG_TAIL),
+    re.compile(_LEG_MARK + r"leg [0-9]+ of [0-9]+: closes [0-9]+(?:\.[0-9]+)? of your long [A-Z][A-Z0-9.]{0,9} shares"
+               + _LEG_TAIL),
 )
-"""The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, each followed only by
-the quote segments the tools print (review L2-2: no free tail): ``| bid P, ask P, mid P | quote grade G, SOURCE,
-N-min delayed, as of HH:MM UTC`` (SOURCE: one of :data:`aegis_desk.data_source.ALL_WORDS`), ``| ask P | quote grade G,
-N min old``, the bare sides, and the grade E note."""
+"""The fixed leg grammar (module notes): an option leg closed or opened, or long shares closed, optionally listed with
+one leading ``- ``, each followed only by the quote segments the tools print (review L2-2: no free tail): ``| bid P,
+ask P, mid P | quote grade G, SOURCE, N-min delayed, as of HH:MM UTC`` (SOURCE: one of
+:data:`aegis_desk.data_source.ALL_WORDS`), the sides and the grade alone (``| bid P, ask P, mid P | quote grade G``, the
+source named once in the text's header), ``| ask P | quote grade G, N min old``, the bare sides, and the grade E
+note."""
 FILLER_WORDS: Tuple[str, ...] = ("so", "then", "and", "now", "please", "just", "simply", "also", "kindly")
 """Words skipped at a sentence start before the imperative test (``so close ...`` starts with its verb)."""
 PLAN_CLOSE_PREFIX: str = "your plan: "
@@ -365,7 +381,7 @@ _DIGITS_RE = re.compile(r"(?<![0-9])\.?[0-9][0-9.,]*")
 _WORD_RE = re.compile(r"[A-Za-z]+")
 _SENTENCE_END_CHARS = ".!?;:|"
 _HARD_BOUNDARY_CHARS = "!?;:|,"
-_OPENERS = "\"'([{*_~>`#-"
+_OPENERS = "\"'([{*_~>`#-" + "".join(STATUS_SYMBOLS)
 _LIST_MARK_RE = re.compile(r"(?:[0-9]{1,3}[.)]|[A-Za-z]\))[ \t]+")
 _IDENTIFIER_FORMS: Tuple[str, ...] = ("trade_id", "signal_id", "group_id", "rules_version", "sha", "date")
 
@@ -651,6 +667,14 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
         if (" " <= char <= "~") or char in ("\n", "\t"):
             continue
         line, column = _position(text, index)
+        if char in STATUS_SYMBOLS:
+            at_cell_start = (text[max(0, index - len(STATUS_CELL_LEAD)):index] == STATUS_CELL_LEAD
+                             and text[index + 1:index + 2] == " ")
+            if structuring and at_cell_start and not any(start <= index < end for start, end in footer_spans):
+                continue
+            findings.append(Finding(CODE_NON_ASCII, line, column, "line %d, column %d: a status symbol stands only at "
+                                    "the start of a table cell of a structuring text" % (line, column)))
+            continue
         if char == MIDDLE_DOT:
             if any(start <= index < end for start, end in footer_spans):
                 continue
@@ -849,6 +873,8 @@ __all__ = [
     "PLAN_CLOSE_PREFIX",
     "SNAPSHOT_FOOTER_PREFIX",
     "SNAPSHOT_FOOTER_RE",
+    "STATUS_CELL_LEAD",
+    "STATUS_SYMBOLS",
     "STRUCTURING_FOOTER_PREFIX",
     "STRUCTURING_FOOTER_RE",
     "STRUCTURING_FORBIDDEN_LANGUAGE",

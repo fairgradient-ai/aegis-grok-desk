@@ -70,9 +70,9 @@ Every row needs `instrument_type`, `quantity`, and `symbol` or `occ_symbol`. Dat
   example rulebook's):
   - `#assign-ok`: you accept assignment; silences the rules `EXDIV`, `DELTA_WATCH`, `DELTA_SIGNAL` and `CAP` for the
     group, and the Structuring Desk's tools accept an ex-dividend date inside a short call's life for the group (the
-    label stays visible as `accepted ex_dividend`);
+    label stays visible, as a yellow row `accepted by #assign-ok`);
   - `#earnings-ok`: silences `EARN2` for the group, and the Structuring Desk's tools accept an earnings date inside a
-    short call's life (`accepted earnings`);
+    short call's life (`accepted by #earnings-ok`);
   - `#horizon:YYYY-MM`: your intended horizon;
   - a `#roll-of:AG-...` tag: this group replaced that one;
   - `#from:AG-...`: a stock row that came from that group's assignment or exercise.

@@ -502,6 +502,73 @@ class StructuringFooterTest(unittest.TestCase):
         self.assertEqual(["footer_missing"], codes(rules), "the grammar is a structuring rule; the rules footer refuses "
                          "the leg line outright")
 
+    def test_the_status_symbols_stand_only_at_a_table_cell_start(self) -> None:
+        # 0.2.1: the structuring texts colour a check with exactly three symbols, each at the start of a table cell
+        green, yellow, red = alert_lint.STATUS_SYMBOLS
+        self.assertEqual(("\U0001F7E2", "\U0001F7E1", "\U0001F534"), alert_lint.STATUS_SYMBOLS)
+        table = ("| check | this candidate | your criteria | |", "|---|---|---|:-:|",
+                 "| floor | 4.34 % below | 3 to 10 % | " + green + " |",
+                 "| ex-dividend | 2026-12-18, inside the call's life | accepted by #assign-ok | " + yellow + " |",
+                 "| 2 | 2026-12-18 112.5 | debit 0.70 | " + red + " credit_only |")
+        result = structuring_check(*table)
+        self.assertTrue(result.ok, result.problems)
+        for kind, footer in ((alert_lint.FOOTER_RULES, FOOTER),
+                             (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line(AS_OF))):
+            with self.subTest(footer=kind):
+                refused = alert_lint.check(table[2] + "\n" + footer, emitted_of(table[2]), footer=kind)
+                self.assertIn("non_ascii", codes(refused), "only a structuring text carries a status symbol")
+        misplaced = ("floor " + green + " passes", green + " floor passes", "| floor |" + green + " |",
+                     "| floor | " + green + "|", "| floor | " + green + green + " |", "| 4.34 " + green + " |",
+                     "- " + green + " floor", "| bu" + green + "y |", "| 1" + green + "2 |",
+                     "| floor | " + green + "️ |", "| floor | ✅ |", "| floor | \U0001F7E0 |")
+        for line in misplaced:
+            with self.subTest(line=line):
+                self.assertIn("non_ascii", codes(structuring_check(line, emitted=["4.34", "1", "2"])))
+        # a symbol is a list mark to the sentence-start rule: the word after it is a sentence start
+        for word in ("close", "sell", "roll", "hold", "collar"):
+            with self.subTest(word=word):
+                result = structuring_check("| floor | " + red + " " + word + " the 105 call |")
+                self.assertIn("imperative_start", codes(result), result.problems)
+
+    def test_the_leg_grammar_takes_a_list_mark_and_a_quote_grade_alone(self) -> None:
+        # 0.2.1: the structuring texts print their legs as list items, and a proposal or ticket names the quote source
+        # once in its header, so a leg's quote segment may end at its grade; nothing else joins the grammar
+        passing = ("- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+                   "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote "
+                   "grade B",
+                   "leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote "
+                   "grade A",
+                   "- leg 2 of 3: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A",
+                   "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+                   "grade E | quote grade E: the conservative side stands",
+                   "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
+                   "grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC")
+        for line in passing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertTrue(result.ok, result.problems)
+        leg = "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call"
+        failing = ("-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call",
+                   "-  " + leg, "* " + leg, "+ " + leg, "  - " + leg, "- - " + leg, "-- " + leg, "1. " + leg,
+                   "- " + leg + " | quote grade B",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B | 3.45",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, firm",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade B, 18 min old, firm",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade G",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 | quote grade b",
+                   "- " + leg + " | bid 3.35, ask 3.50, mid 3.425 |quote grade B")
+        for line in failing:
+            with self.subTest(line=line):
+                result = structuring_check(line)
+                self.assertEqual(["order_field"], codes(result), result.problems)
+                self.assertEqual(["line 1, column 1: a leg line outside the fixed leg grammar"], result.problems)
+        for kind, footer in ((alert_lint.FOOTER_RULES, FOOTER),
+                             (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line(AS_OF))):
+            with self.subTest(footer=kind):
+                result = alert_lint.check(passing[0] + "\n" + footer, emitted_of(passing[0]), footer=kind)
+                self.assertIn("footer_missing", codes(result), "a listed leg is structuring content under any other "
+                                                               "footer")
+
 
 # The PR 3b review of structuring mode (L2-2, L2-3, L2-4, L2-7, BD7): every line below passed the lint before the
 # fixer pass. Order-shaped words among them are assembled from pieces, as everywhere in this file.
@@ -570,6 +637,9 @@ REVIEW_STRUCTURING_UNDER_RULES = (
     "NOT_APPLICABLE | AG-20261028-03 collar proposal | the 100 SPY shares already carry 1 long put",
     "NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put",
     "PROPOSAL SPY collar | on 100 SPY shares you hold",
+    # 0.2.1: the desk view's markdown titles
+    "### PROPOSAL AG-20261028-03 | SPY collar on 100 shares", "## TICKET AG-20261020-01 | WMT covered call",
+    "# STRUCTURING AG-20261020-01 | WMT covered call", "**NOTHING_TO_PROPOSE** | AG-20261028-03",
     "REFUSED AG-20261020-01 | WMT covered call | closing your 2 short calls needs level 1 by the desk's convention; "
     "desk.toml records your self-attested level 0",
     "WITHHELD | the text of roll_analysis.py failed the alert lint (owner_text) and is withheld",
@@ -976,8 +1046,9 @@ def structuring_fail_fixture_table() -> Dict[str, tuple]:
     structuring = alert_lint.structuring_footer_line(AS_OF)
     caveat = "the score ranks the candidates only on the objective you chose; it is not a forecast"
     return {
+        # the desk view's status symbols stand only in a structuring text: under the rules footer they are non_ascii too
         "fail_structuring_under_rules_footer": ("pass_structuring_ticket", [(structuring, rules)], {"footer": "rules"},
-                                                ["footer_missing"]),
+                                                ["non_ascii", "footer_missing"]),
         # "your plan: close" is no exception under the structuring footer (review L2-7): an imperative start too
         "fail_rules_text_under_structuring_footer": ("pass_exit_signal", [(rules, structuring)],
                                                      {"footer": "structuring"}, ["imperative_start", "footer_missing"]),

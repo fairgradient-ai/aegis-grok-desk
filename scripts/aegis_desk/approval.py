@@ -38,11 +38,13 @@ the new put, then closes the old one; a collar proposal opens the put, then the 
 Fixed lines
 -----------
 The renderers take integers and words and append every number they print to ``emitted`` (the alert lint's list),
-so the text builders never re-word them: :func:`leg_order_line`, :func:`other_order_line` (printed only when the
-reversed order would exceed the owner's level: :func:`reverse_breach`), :data:`MULTI_LEG_NOTE` (any ticket with more
-than one leg), :func:`approval_line` and :func:`refused_line`; :func:`approval_lines` composes the first four in that
-order for a passing check, :func:`refusal_line` the REFUSED line of a refused one; :func:`holdings_words` and
-:func:`step_words` give the state and step words.
+so the text builders never re-word them: :func:`approval_heading`, :func:`step_row` (one table row per step, the
+holdings after it), :func:`other_order_line` (printed only when the reversed order would exceed the owner's level:
+:func:`reverse_breach`), :data:`MULTI_LEG_NOTES` (any order with more than one leg), :func:`approval_line`,
+:data:`BROKER_LINE` and :func:`refused_line`. :func:`approval_lines` composes the approval block of a passing check as
+the structuring texts' desk view prints it (0.2.1): a caption, the steps table and the notes;
+:func:`refusal_line` gives the REFUSED line of a refused one; :func:`holdings_words` and :func:`step_words` give the
+state and step words.
 """
 
 from __future__ import annotations
@@ -459,20 +461,33 @@ def holdings_words(holdings: Holdings, underlying: str, emitted: Optional[List[s
     return "you hold " + (", ".join(items[:-1]) + " and " + items[-1])
 
 
-def leg_order_line(steps: Sequence[Tuple[int, str]], emitted: Optional[List[str]] = None) -> str:
-    """``leg order: leg 1 first; after leg 1 <words> (level k by the desk's convention); after leg 2 <words> (level
-    k)`` from ``(level, state words after the leg)`` pairs; one leg prints ``leg order: after leg 1 <words> (level k
-    by the desk's convention)``."""
-    if not steps:
-        raise ValueError("a leg order needs at least one leg")
-    parts: List[str] = []
-    if len(steps) > 1:
-        parts.append("leg %s first" % _emit(emitted, 1))
-    for index, (level, words) in enumerate(steps, 1):
-        number = _emit(emitted, index)
-        level_text = _emit(emitted, _level(level, "a step's level"))
-        parts.append("after leg %s %s (level %s%s)" % (number, words, level_text, _CONVENTION_SUFFIX if index == 1 else ""))
-    return "leg order: " + "; ".join(parts)
+APPROVAL_HEADING: str = "approval-level check:"
+"""The approval block's caption for one leg; more legs read :func:`approval_heading`'s ``(leg 1 first)``."""
+BROKER_LINE: str = "your broker's own approval for this account decides"
+"""The end of every approval caption: the level is self-attested and the broker decides."""
+STEPS_HEADER: str = "| after | you hold | level |"
+STEPS_RULE: str = "|---|---|:-:|"
+
+
+def approval_heading(leg_count: int, emitted: Optional[List[str]] = None) -> str:
+    """``approval-level check:`` for one leg; ``approval-level check (leg 1 first):`` for more, the canonical order
+    the steps are read in."""
+    if _count(leg_count, "the leg count", positive=True) == 1:
+        return APPROVAL_HEADING
+    return "approval-level check (leg %s first):" % _emit(emitted, 1)
+
+
+def holdings_cell(holdings: Holdings, underlying: str, emitted: Optional[List[str]] = None) -> str:
+    """``100 SPY shares, 1 short call, 1 long put``: :func:`holdings_words` as a table cell."""
+    words = holdings_words(holdings, underlying, emitted)[len("you hold "):]
+    return words.replace(" and ", ", ")
+
+
+def step_row(index: int, level: int, holdings: Holdings, underlying: str, emitted: Optional[List[str]] = None) -> str:
+    """``| leg 1 | 100 SPY shares, 1 long put | 2 |``: one step of the approval table."""
+    number = _emit(emitted, _count(index, "the leg number", positive=True))
+    cell = holdings_cell(holdings, underlying, emitted)
+    return "| leg %s | %s | %s |" % (number, cell, _emit(emitted, _level(level, "a step's level")))
 
 
 def other_order_line(leg_index: int, uncovered_calls: int, level: int = 4, emitted: Optional[List[str]] = None) -> str:
@@ -485,13 +500,12 @@ def other_order_line(leg_index: int, uncovered_calls: int, level: int = 4, emitt
 
 
 def approval_line(required_level: int, owner_level: int, emitted: Optional[List[str]] = None) -> str:
-    """``approval: the highest step needs level <k> by the desk's convention, within your self-attested level <L>
-    (desk.toml); your broker's own approval for this account decides`` (``ValueError`` when k > L: that is REFUSED)."""
+    """``the highest step needs level <k> by the desk's convention, within your self-attested level <L> (desk.toml)``
+    (``ValueError`` when k > L: that is REFUSED); :data:`BROKER_LINE` follows it."""
     required, owner = _level(required_level, "the required level"), _level(owner_level, "the owner's level")
     if required > owner:
         raise ValueError("level %d is above the owner's level %d: print the REFUSED line" % (required, owner))
-    return ("approval: the highest step needs level %s by the desk's convention, within your self-attested level %s "
-            "(desk.toml); your broker's own approval for this account decides"
+    return ("the highest step needs level %s by the desk's convention, within your self-attested level %s (desk.toml)"
             % (_emit(emitted, required), _emit(emitted, owner)))
 
 
@@ -543,27 +557,32 @@ def refusal_line(result: ApprovalResult, subject: str, underlying: str, structur
 
 def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, underlying: str,
                    emitted: Optional[List[str]] = None) -> List[str]:
-    """The approval block of a passing order, in the order a ticket prints it: the leg-order line, the other-order
-    line (when the reversed order would exceed the owner's level), the multi-leg note of what the order is (more
-    than one leg: :func:`multi_leg_kind`) and the approval line. ``ValueError`` when the check is refused (print
-    :func:`refusal_line`)."""
+    """The approval block of a passing order as the structuring texts print it (the 0.2.1 desk view): the caption
+    ``**<approval_heading>** <approval_line>; <BROKER_LINE>``, a blank line, the table of what you hold after each
+    step in the leg order (:func:`step_row`) and, when there are any, a blank line and the other-order line (the
+    reversed order would exceed the owner's level) and the multi-leg note of what the order is
+    (:func:`multi_leg_kind`) as ``- `` items. ``ValueError`` when the check is refused (print :func:`refusal_line`)."""
     result = check_legs(state, legs, owner_level)
     if not result.ok:
         raise ValueError("the check is refused at level %d: print the REFUSED line" % result.required_level)
-    pairs = [(step.level, holdings_words(step.after, underlying, emitted)) for step in result.steps]
-    lines = [leg_order_line(pairs, emitted)]
+    caption = "**%s** %s; %s" % (approval_heading(len(result.steps), emitted),
+                                 approval_line(result.required_level, result.owner_level, emitted), BROKER_LINE)
+    lines = [caption, "", STEPS_HEADER, STEPS_RULE]
+    lines.extend(step_row(step.index, step.level, step.after, underlying, emitted) for step in result.steps)
+    notes = []
     breach = reverse_breach(state, legs, owner_level)
     if breach is not None:
-        lines.append(other_order_line(breach.leg_index, breach.uncovered_calls, breach.level, emitted))
+        notes.append("- " + other_order_line(breach.leg_index, breach.uncovered_calls, breach.level, emitted))
     kind = multi_leg_kind(legs)
     if kind is not None:
-        lines.append(MULTI_LEG_NOTES[kind])
-    lines.append(approval_line(result.required_level, result.owner_level, emitted))
-    return lines
+        notes.append("- " + MULTI_LEG_NOTES[kind])
+    return lines + ([""] + notes if notes else [])
 
 
 __all__ = [
+    "APPROVAL_HEADING",
     "ApprovalResult",
+    "BROKER_LINE",
     "CHECK_NAME",
     "CONVENTION",
     "CONVENTION_CLOSING",
@@ -597,21 +616,25 @@ __all__ = [
     "STEP_OPEN_LONG",
     "STEP_OPEN_SHORT_PUT",
     "STEP_OPEN_UNCOVERED_CALL",
+    "STEPS_HEADER",
+    "STEPS_RULE",
     "STEP_TABLE",
     "STRUCTURE_LEVELS",
     "StepLevel",
+    "approval_heading",
     "approval_line",
     "approval_lines",
     "check_legs",
     "holdings_of",
+    "holdings_cell",
     "holdings_words",
-    "leg_order_line",
     "multi_leg_kind",
     "multi_leg_note",
     "other_order_line",
     "refusal_line",
     "refused_line",
     "reverse_breach",
+    "step_row",
     "step_words",
     "structure_level",
 ]

@@ -20,7 +20,8 @@
 #                          metadata version/author/category, body <= 320 lines, LICENSE and
 #                          ATTRIBUTION.md (origin: new|adapted) beside it, an adapted skill's
 #                          in-body notice line, indexed in skills/README.md and SETUP.md
-#   3. links/emoji/scripts markdown links resolve; no emoji in instruction files; every
+#   3. links/emoji/scripts markdown links resolve; no emoji in instruction files (the desk view's
+#                          three status symbols only inside a fenced example); every
 #                          scripts/<name>.py named in agents, skills, rules, docs, SETUP, README,
 #                          CONTRIBUTING, AGENTS, GEMINI, CLAUDE and the routine manifest
 #                          (non-comment lines) exists, unless the line marks it "not yet" /
@@ -80,6 +81,21 @@ EXCLUDED_PREFIXES = ("tests/fixtures/", "LICENSES/")
 # enclosed alphanumerics such as the OK button, regional indicators that form flags, emoticons,
 # transport, supplemental symbols) and the emoji variation selector U+FE0F.
 EMOJI_RE = re.compile("[⌀-⏿☀-➿⬀-⯿\U0001F000-\U0001FAFF️]")
+# The Structuring Desk's three status symbols (alert_lint.STATUS_SYMBOLS: green, yellow and red circles) may appear
+# only inside a closed fenced block, where a document quotes the desk's own output; any other emoji, or these three
+# anywhere else, still fails.
+STATUS_SYMBOLS = ("\U0001F7E2", "\U0001F7E1", "\U0001F534")
+FENCED_RE = re.compile(r"^```[^\n]*\n.*?^```[ \t]*$", re.M | re.S)
+
+
+def without_quoted_status(text):
+    """``text`` with the status symbols removed from its closed fenced blocks only (the emoji check reads the rest)."""
+    def strip(match):
+        block = match.group(0)
+        for symbol in STATUS_SYMBOLS:
+            block = block.replace(symbol, "")
+        return block
+    return FENCED_RE.sub(strip, text)
 LINK_RE = re.compile(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 SCRIPT_RE = re.compile(r"\bscripts/((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_]+\.py)\b")
 PIN_RE = re.compile(r"\bv\d+\.\d+\.\d+\b")
@@ -298,7 +314,7 @@ for rel in markdown:
         resolved = os.path.normpath(target.lstrip("/") if target.startswith("/") else os.path.join(os.path.dirname(rel), target))
         if not os.path.exists(resolved):
             err(f"{rel}: broken link -> {target}")
-    if EMOJI_RE.search(text):
+    if EMOJI_RE.search(without_quoted_status(text)):
         err(f"{rel}: contains emoji")
 
 # Every scripts/<name>.py named in an instruction file must exist: agents, skills, rules, docs,

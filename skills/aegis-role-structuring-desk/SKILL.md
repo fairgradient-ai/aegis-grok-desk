@@ -3,11 +3,11 @@ name: aegis-role-structuring-desk
 description: The on-request choices desk of the read-only Aegis options desk, for positions the owner already holds. Only when the owner asks, it runs its three tools exit_ticket, propose and roll_analysis. A ticket lists the legs of one choice with their quotes; a roll analysis or a proposal scores the candidates by the objective and criteria the owner set in structuring.toml and names one best candidate with its reasons. It posts their linted text verbatim. It never fires an alert, owns no routine, never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 74aee468db123839299077c8e1479e784177dca2859b9f96a9c0f6030f3e1c8d
+  source_sha256: 52277dac970f42ef255333dc9b314b7ea0ee7a9d166954e122d95df35676fa76
 ---
 
 # Aegis Structuring Desk: role skill
@@ -89,62 +89,99 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 ### Reading the output
 
 The three tools lint their own text in structuring mode before they print it. Post the full text verbatim: every line,
-in order, the footer included. Never shorten, reorder, reword or add to it.
+in order, the footer included. Never shorten, reorder, reword or add to it. The text is markdown laid out as a desk
+view: a title, tables, list items and a quoted list of notes. Post it as it is, never inside a code block, so the chat
+renders the tables.
+
+- A status column colours each check: a green circle is a criterion the candidate passes, a yellow circle an earnings
+  or ex-dividend label the owner accepted (by `#earnings-ok`, `#assign-ok` or `structuring.toml`), and a red circle a
+  criterion it fails, followed by the keys it fails. The lint admits these three symbols only at the start of a table
+  cell of a structuring text.
+- The quote source is named once, in the notes; a leg's quote segment ends at its grade.
 
 The synthetic examples here and in your skills come from copies of the fixture desk `tests/fixtures/desk`, with the
 fixture criteria written by `desk_init.py` and acknowledged, on 2026-11-03 at 19:50 UTC with the regular quotes.
 The roll analysis of AG-20261020-01:
 
 ```text
-STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
-BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
-reasons: 73 calendar days inside your window 40 to 75; absolute delta 0.33 inside your band 0.15 to 0.35; bid 3.55 at or above your minimum 0.50; spread 2.78 % within your maximum 25 %; a net credit of 0.05 (10.00 in all) passes credit_only; strike 115 above your stock cost 98.50
-accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
-after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now 1984.00), breakeven 95.03 (now 95.08)
-candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
-candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
-failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
+
+| account | WMT mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
+- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
+- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
+| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
+| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
+| bid | 3.55 | at least 0.50 | 🟢 |
+| calendar days | 73 | 40 to 75 | 🟢 |
+| spread | 2.78 % | at most 25 % | 🟢 |
+| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 19,016.00 | 19,006.00 |
+| max profit | 1,984.00 | 3,994.00 |
+| breakeven | 95.08 | 95.03 |
+| group delta | 101.71 | 134.07 |
+
+**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | 🟢 |
+| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | 🔴 credit_only |
+| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | 🔴 credit_only |
+
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
 ```
 
-A ticket from `exit_ticket.py --trade AG-20261020-01 --action CLOSE`:
+The first blocks of a ticket from `exit_ticket.py --trade AG-20261020-01 --action CLOSE` (the approval block and the
+notes follow):
 
 ```text
-TICKET AG-20261020-01 | WMT covered call | the option legs closed (action CLOSE) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)
-leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg order: after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention)
-approval: the highest step needs level 0 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-cash: -700.00 at the conservative prices (mid -685.00); the most the steps need at once: 700.00; the desk does not see your cash balance
-realized on the closing leg: -16.00 at the conservative side (mid -1.00)
-you supply the limit; the desk prints none
-valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request
-after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
-computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
+### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)
+
+| account | computed | valid until | quotes |
+|---|---|---|---|
+| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
+
+**the legs:**
+- leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
+
+| cash | at the conservative prices | at the mids |
+|---|--:|--:|
+| net cash | -700.00 | -685.00 |
+| realized on the closing leg | -16.00 | -1.00 |
+| the most the steps need at once | 700.00 |  |
 ```
 
-A proposal starts `PROPOSAL <SYMBOL> <structure>`; the first lines of `propose.py --trade AG-20261028-03 --structure
-protective_put` on a copy whose SPY put row was removed, so the group holds shares only:
-
-```text
-PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
-BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
-```
+A proposal starts `### PROPOSAL <trade id> | a <structure> on the <n> <SYMBOL> shares you hold` and has the same
+blocks, with its approval block after the group table and its notes ending on the two limit and act lines.
 
 - A leg line names the contract by root, date, strike and right, never by an OCC symbol. It carries the leg's effect,
   never a trade-side word: `closes your short`, `opens a new long`, `closes 200 of your long WMT shares`.
-- An account is named `account <n> of desk.toml (<type>)`, never by the name the owner typed in `positions.csv`.
+- The account column names an account as `<n> of desk.toml (<type>)`, never by the name the owner typed in
+  `positions.csv`.
 - The skills `aegis-ticket-and-unwind-order`, `aegis-roll-decision-framework` and `aegis-overlay-proposals` explain
-  every line.
+  every block.
 
-An answer that prices nothing is one line and the footer (exit 0):
+An answer that prices nothing is one line, then a blank line and the footer (exit 0):
 
 ```text
 NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
@@ -158,6 +195,8 @@ NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a 
 - It is not a forecast and not a judgment about the owner. Never describe it with a word from the lint's advice
   or claim categories, and never add a preference of your own, compare candidates or comment beyond the printed
   lines.
+- The caveat quoted under the legs, `the score ranks the candidates only on the objective you chose; it is not a
+  forecast`, always follows the BEST CANDIDATE line.
 - `no candidate passed every criterion: the desk names no best candidate` is a complete answer (NONE_QUALIFIES).
   Never pick one from the failed candidates. The owner's other choices stand: a CLOSE or LET_ASSIGN ticket, or
   changing a criterion through the interview below.
@@ -255,7 +294,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 | 2 | usage: invalid arguments |
 
 These tools never exit 10: they fire nothing. A ROLL ticket whose replacement fails a criterion is still a TICKET:
-it prints the `FAILS_CRITERION` lines, because the owner named the contract.
+its checks table shows each failing criterion as a red row, because the owner named the contract.
 
 ### Failures
 

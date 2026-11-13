@@ -113,7 +113,7 @@ class WriterTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             w.words("FAILS_RULE credit_only")
         with self.assertRaises(ValueError):
-            T.failure_counts_line(w, 1, {"FAILS_RULE": 1})
+            T.counts_caption(w, 1, 0, 1, 0, {"FAILS_RULE": 1})
         with self.assertRaises(ValueError):
             T.structure_words("Brokerage (margin)")
         accounts = [type("Entry", (), {"name": "Brokerage (margin)", "type": "margin"})(),
@@ -134,10 +134,10 @@ class WriterTest(unittest.TestCase):
                 self.assertTrue(rendered.text.startswith("WITHHELD | the text of roll_analysis.py failed the alert lint ("))
                 self.assertNotIn(line, rendered.text)
                 self.assertTrue(lint(rendered.text, rendered.writer).ok, lint(rendered.text, rendered.writer).problems)
-                self.assertEqual(rendered.text.split("\n")[-1], FOOTER)
+                self.assertEqual(["", FOOTER], rendered.text.split("\n")[-2:])
         w = T.Writer()
         good = T.finish(w, [T.LIMIT_LINE], STAMP, "exit_ticket")
-        self.assertEqual((True, [], T.LIMIT_LINE + "\n" + FOOTER), (good.ok, good.codes, good.text))
+        self.assertEqual((True, [], T.LIMIT_LINE + "\n\n" + FOOTER), (good.ok, good.codes, good.text))
         self.assertEqual("structuring", good.document["footer"])
 
 
@@ -146,75 +146,96 @@ class WriterTest(unittest.TestCase):
 # ------------------------------------------------------------------------------------------------
 
 
+GREEN, YELLOW, RED = "\U0001F7E2", "\U0001F7E1", "\U0001F534"
+OBJECTIVES = structuring_config.OBJECTIVE_DEFS
+
+
 def fixed_lines() -> List[tuple]:
-    """``(name, writer, line, structuring_content)`` for every fixed line and line shape the builders print."""
+    """``(name, writer, lines, structuring_content)`` for every fixed line and line shape the builders print (the desk
+    view's tables, items and quotes included)."""
     out = []
 
     def add(name: str, build, content: bool = False) -> None:
         w = T.Writer()
-        out.append((name, w, build(w), content))
+        built = build(w)
+        out.append((name, w, built if isinstance(built, list) else [built], content))
 
     for name, line in (("LIMIT_LINE", T.LIMIT_LINE), ("ACT_LINE", T.ACT_LINE), ("AFTER_FILL_LINE", T.AFTER_FILL_LINE),
                        ("AFTER_EXPIRY_LINE", T.AFTER_EXPIRY_LINE), ("MODEL_LINE", T.MODEL_LINE),
                        ("CAVEAT_LINE", T.CAVEAT_LINE), ("POINTER_LINE", T.POINTER_LINE),
-                       ("NONE_QUALIFIES_LINE", T.NONE_QUALIFIES_LINE)):
+                       ("NONE_QUALIFIES_LINE", T.NONE_QUALIFIES_LINE), ("CASH_BALANCE_LINE", T.CASH_BALANCE_LINE),
+                       ("LEGS_CAPTION", T.LEGS_CAPTION)):
         add(name, lambda w, line=line: line, name == "NONE_QUALIFIES_LINE")
-    add("validity", lambda w: T.validity_line(w, datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC)))
+        add(name + " quoted", lambda w, line=line: "> - " + line, name == "NONE_QUALIFIES_LINE")
+    add("notes", lambda w: T.notes_block([T.MODEL_LINE, T.quotes_line(w, STAMP), T.criteria_line(w, SHA), T.LIMIT_LINE,
+                                          T.ACT_LINE, T.validity_line(w, datetime.datetime(2026, 11, 3, 20, 20,
+                                                                                           tzinfo=UTC))]))
+    add("caveat quoted", lambda w: "> " + T.CAVEAT_LINE)
+    add("context", lambda w: T.context_table(w, T.account_cell(w, "Roth IRA", ACCOUNTS, 7), "SPY", D("648.12"),
+                                             D("632.40"), STAMP))
+    add("ticket context", lambda w: T.table(["account", "computed", "valid until", "quotes"], "llll", [[
+        T.account_cell(w, "Brokerage (margin)", ACCOUNTS, 4), w.clock(NOW),
+        T.valid_until_cell(w, datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC), True), T.quotes_cell(w, STAMP)]]))
     add("criteria_missing", lambda w: T.criteria_missing_line(w))
     add("config_unacknowledged", lambda w: T.config_unacknowledged_line(w, [
         {"name": "desk_toml", "old": "a" * 64, "new": "b" * 64}, {"name": "structuring_toml", "old": None, "new": SHA}]))
     add("config_changed", lambda w: T.config_changed_line(w, [{"name": "rulebook", "old": "c" * 64, "new": "d" * 64}]))
     add("withheld", lambda w: T.withheld_line(w, "exit_ticket", ["number_not_emitted", "forbidden_language"]))
     add("let_assign", lambda w: T.let_assign_line(w, D("105"), "CALL", datetime.time(16, 30)))
-    add("cash", lambda w: T.cash_line(w, D("10.00"), D("35.00"), D("700.00")))
-    add("realized", lambda w: T.realized_line(w, D("-16.00"), D("-1.00"), 1))
-    add("ticket_header", lambda w: T.ticket_header(w, "AG-20261020-01", "WMT", "covered_call", "ROLL",
-                                                   T.account_words(w, "Brokerage (margin)", ACCOUNTS, 4), NOW,
-                                                   datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC), True))
-    add("roll_header", lambda w: T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP))
-    add("proposal_header", lambda w: T.proposal_header(w, "SPY", "collar", D("100"),
-                                                       T.account_words(w, "Roth IRA", ACCOUNTS, 7), SHA, STAMP))
-    add("leg_close", lambda w: T.leg_line(w, 1, 2, "close", "short", 2, "WMT", datetime.date(2026, 11, 20), D("105"),
-                                          "CALL", T.quote_segment(w, D("3.35"), D("3.50"), D("3.425"), "B", STAMP)), True)
-    add("leg_shares", lambda w: T.share_leg_line(w, 2, 3, D("200"), "WMT", T.quote_segment(w, D("104.20"), D("104.26"),
-                                                                                          D("104.23"), "A", STAMP)), True)
-    add("leg_open", lambda w: T.leg_line(w, 2, 2, "open", "short", 2, "WMT", JAN15, D("115"), "CALL",
-                                         T.side_segment(w, "bid", D("3.55"), "B", 18, None)), True)
-    add("best", lambda w: T.best_line(w, 1, 20, structuring_config.OBJECTIVE_DEFS["extrinsic_per_day"], D("0.0467"), 1), True)
-    add("tie", lambda w: T.tie_line(w, "cap_within_budget", "put_strike"))
+    add("cash", lambda w: T.cash_table(w, D("10.00"), D("35.00"), D("-16.00"), D("-1.00"), 1, D("700.00")))
+    add("cash without mids", lambda w: T.cash_table(w, D("-700.00"), None, D("-16.00"), None, 2, D("700.00")))
+    add("ticket_header", lambda w: T.ticket_header(w, "AG-20261020-01", "WMT", "covered_call", "ROLL"), True)
+    add("roll_header", lambda w: T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", datetime.date(2026, 11, 20),
+                                               D("105")), True)
+    add("proposal_header", lambda w: T.proposal_header(w, "AG-20261028-03", "SPY", "collar", D("100")), True)
+    add("legs", lambda w: [T.LEGS_CAPTION,
+                           "- " + T.leg_line(w, 1, 3, "close", "short", 2, "WMT", datetime.date(2026, 11, 20), D("105"),
+                                             "CALL", T.quote_segment(w, D("3.35"), D("3.50"), D("3.425"), "B")),
+                           "- " + T.share_leg_line(w, 2, 3, D("200"), "WMT", T.quote_segment(
+                               w, D("104.20"), D("104.26"), D("104.23"), "A")),
+                           "- " + T.leg_line(w, 3, 3, "close", "short", 2, "WMT", datetime.date(2026, 11, 20),
+                                             D("105"), "CALL", T.quote_segment(w, D("0.12"), D("0.16"), D("0.14"), "E",
+                                                                               structuring.GRADE_E_NOTE))], True)
+    add("best", lambda w: [T.best_line(w, 1, 20, OBJECTIVES["extrinsic_per_day"], D("0.0467"), 1),
+                           "- " + T.leg_line(w, 2, 2, "open", "short", 2, "WMT", JAN15, D("115"), "CALL",
+                                             T.side_segment(w, "bid", D("3.55"), "B", 18, None))], True)
+    add("best lowest", lambda w: T.best_line(w, 1, 12, OBJECTIVES["stress_cost_per_day"], D("0.1856"), 5), True)
+    for objective in OBJECTIVES.values():
+        add("objective " + objective.id, lambda w, objective=objective: "> - " + T.objective_line(w, objective))
+    add("tie", lambda w: "> - " + T.tie_line(w, "cap_within_budget", "put_strike"))
     add("not_applicable", lambda w: T.not_applicable_line(w, "AG-20261028-03", "roll analysis",
                                                           "AG-20261028-03 is a protective put: no short call"))
     add("unavailable", lambda w: T.unavailable_line(w, "AG-20261020-01", "roll analysis", "no usable quote of the "
                                                     "underlying"))
-    add("held", lambda w: T.held_line(w, structuring.HeldLeg(4, "WMT261120C00105000", "WMT", "CALL", "short", 2, D("105"), datetime.date(2026, 11, 20),
-                               datetime.date(2026, 11, 20), D("0.12"), D("0.16"), D("0.14"), D("28.57"), "E", "fresh", 18,
-                               STAMP, None, None, D("3.42"), D("-684.00"), D("0.16"), "ask", structuring.GRADE_E_NOTE,
-                               D("652.00"))))
+    add("held", lambda w: ["**" + T.NONE_QUALIFIES_LINE + "**", "- " + T.held_line(w, structuring.HeldLeg(
+        4, "WMT261120C00105000", "WMT", "CALL", "short", 2, D("105"), datetime.date(2026, 11, 20),
+        datetime.date(2026, 11, 20), D("0.12"), D("0.16"), D("0.14"), D("28.57"), "E", "fresh", 18, STAMP, None, None,
+        D("3.42"), D("-684.00"), D("0.16"), "ask", structuring.GRADE_E_NOTE, D("652.00")))], True)
     add("exposure_refused", lambda w: T.exposure_refused_line(w, "AG-20261020-01", "WMT", "covered_call", 1, 2))
-    add("multi_leg_collar", lambda w: T.multi_leg_line("collar"))
-    add("outside_bands", lambda w: T.outside_bands_line(w, {"puts": 7, "calls": 10}))
-    add("failure_counts", lambda w: T.failure_counts_line(w, 19, {"abs_delta": 15, "credit_only": 4, "strike_floor": 4}))
+    add("multi_leg_collar", lambda w: "- " + T.multi_leg_line("collar"))
+    add("outside_bands", lambda w: "- " + T.outside_bands_line(w, {"puts": 7, "calls": 10}))
+    add("coverage", lambda w: "- " + T.coverage_line(w, 3, D("321.6301"), "collar"))
+    add("counts", lambda w: T.counts_caption(w, 20, 0, 18, 2, {"abs_delta": 14, "ex_dividend": 18}, True), True)
     return out
 
 
 class FixedLineTest(unittest.TestCase):
     def test_every_fixed_line_lints_in_structuring_mode_only(self) -> None:
-        for name, w, line, content in fixed_lines():
-            text = closed(w, [line])
+        for name, w, lines, content in fixed_lines():
+            text = closed(w, lines)
             with self.subTest(line=name):
                 result = lint(text, w)
-                self.assertTrue(result.ok, (name, line, result.problems))
+                self.assertTrue(result.ok, (name, lines, result.problems))
                 self.assertFalse(lint(text, w, footer="rules").ok)
                 self.assertFalse(lint(text, w, footer="snapshot").ok)
                 if content:
-                    rules = line + "\n" + alert_lint.footer_line(STAMP)
+                    rules = "\n".join(lines) + "\n" + alert_lint.footer_line(STAMP)
                     refused = lint(rules, w, footer="rules")
                     self.assertIn("footer_missing", [finding.code for finding in refused.findings], name)
 
     def test_the_fixed_words(self) -> None:
         self.assertEqual("you supply the limit; the desk prints none", T.LIMIT_LINE)
-        self.assertEqual("if you decide to act, you type it into your brokerage account yourself and you supply the limit",
-                         T.ACT_LINE)
+        self.assertEqual("if you decide to act, you type it into your brokerage account yourself", T.ACT_LINE)
         self.assertEqual("after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
                          T.AFTER_FILL_LINE)
         self.assertEqual("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
@@ -223,9 +244,25 @@ class FixedLineTest(unittest.TestCase):
                          T.CAVEAT_LINE)
         self.assertEqual("a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration "
                          "and strike", T.POINTER_LINE)
+        self.assertEqual(("\U0001F7E2", "\U0001F7E1", "\U0001F534"), (T.STATUS_PASS, T.STATUS_ACCEPTED, T.STATUS_FAIL))
+        self.assertEqual(alert_lint.STATUS_SYMBOLS, (T.STATUS_PASS, T.STATUS_ACCEPTED, T.STATUS_FAIL))
         w = T.Writer()
-        self.assertEqual("valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
+        self.assertEqual("after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
                          T.validity_line(w, datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC)))
+        self.assertEqual("20:20 UTC (30 min)", T.valid_until_cell(w, datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC),
+                                                                  True))
+        self.assertEqual("21:00 UTC", T.valid_until_cell(w, datetime.datetime(2026, 11, 3, 21, 0, tzinfo=UTC), False))
+        self.assertEqual("quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+                         "UTC", T.quotes_line(T.Writer(), STAMP))
+        self.assertEqual("19:31 UTC, 15-min delayed", T.quotes_cell(T.Writer(), STAMP))
+        self.assertEqual("criteria: your structuring.toml (sha 5155427c)", T.criteria_line(T.Writer(), SHA))
+        self.assertEqual("bid 3.35, ask 3.50, mid 3.425 | quote grade B",
+                         T.quote_segment(T.Writer(), D("3.35"), D("3.50"), D("3.425"), "B"))
+        self.assertEqual("extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
+                         T.objective_line(T.Writer(), OBJECTIVES["extrinsic_per_day"]))
+        self.assertEqual("**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among "
+                         "the 5 candidates that passed every criterion",
+                         T.best_line(T.Writer(), 1, 12, OBJECTIVES["stress_cost_per_day"], D("0.1856"), 5))
         self.assertEqual("UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your "
                          "criteria (SETUP step 9)", T.criteria_missing_line(T.Writer()))
         self.assertEqual("WITHHELD | the text of exit_ticket.py failed the alert lint (forbidden_language) and is "
@@ -241,17 +278,78 @@ class FixedLineTest(unittest.TestCase):
         self.assertEqual("no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by "
                          "exception; your broker's cutoff is 16:30 ET (desk.toml)",
                          T.let_assign_line(T.Writer(), D("105"), "CALL", datetime.time(16, 30)))
-        self.assertEqual("cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; "
-                         "the desk does not see your cash balance", T.cash_line(T.Writer(), D("10.00"), D("35.00"),
-                                                                              D("700.00")))
-        self.assertEqual("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 "
-                         "of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)",
-                         T.ticket_header(T.Writer(), "AG-20261020-01", "WMT", "covered_call", "ROLL",
-                                         "account 1 of desk.toml (margin)", NOW,
-                                         datetime.datetime(2026, 11, 3, 20, 20, tzinfo=UTC), True))
+        self.assertEqual(["| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
+                          "| net cash | +10.00 | +35.00 |", "| realized on the closing leg | -16.00 | -1.00 |",
+                          "| the most the steps need at once | 700.00 |  |"],
+                         T.cash_table(T.Writer(), D("10.00"), D("35.00"), D("-16.00"), D("-1.00"), 1, D("700.00")))
+        self.assertEqual(["| cash | at the conservative prices | at the mids |", "|---|--:|--:|",
+                          "| net cash | -20,140.00 | no mid: a quote side is stale |",
+                          "| realized on the closing legs | +1,124.00 | no mid: a quote side is stale |",
+                          "| the most the steps need at once | 20,140.00 |  |"],
+                         T.cash_table(T.Writer(), D("-20140"), None, D("1124"), None, 2, D("20140")))
+        self.assertEqual("### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)",
+                         T.ticket_header(T.Writer(), "AG-20261020-01", "WMT", "covered_call", "ROLL"))
+        self.assertEqual("### TICKET AG-20261028-03 | SPY protective put: a roll of the long put (action ROLL)",
+                         T.ticket_header(T.Writer(), "AG-20261028-03", "SPY", "protective_put", "ROLL", T.ROLL_PUT_WORDS))
+        self.assertEqual("### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 "
+                         "call", T.roll_header(T.Writer(), "AG-20261020-01", "WMT", "covered_call",
+                                               datetime.date(2026, 11, 20), D("105")))
+        self.assertEqual("### PROPOSAL AG-20261022-02 | a collar on the 321.6301 NVDA shares you hold",
+                         T.proposal_header(T.Writer(), "AG-20261022-02", "NVDA", "collar", D("321.6301")))
+        self.assertEqual("1 of desk.toml (margin)", T.account_cell(T.Writer(), "Brokerage (margin)", ACCOUNTS, 4))
+        self.assertEqual("row 9 of positions.csv", T.account_cell(T.Writer(), "My Joint Acct", ACCOUNTS, 9))
         self.assertEqual("entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
                          "level", T.multi_leg_line("roll"))
         self.assertEqual(approval.MULTI_LEG_NOTE, T.multi_leg_line("roll"))
+
+    def test_the_desk_view_builders(self) -> None:
+        w = T.Writer()
+        self.assertEqual(["| a | b |", "|---|--:|", "| x | 1 |"], T.table(["a", "b"], "lr", [["x", w.count(1)]]))
+        for bad in (lambda: T.table(["a"], "lr", []), lambda: T.table(["a", "b"], "lx", []),
+                    lambda: T.table(["a", "b"], "lr", [["x"]]), lambda: T.table(["a", "b"], "lr", [["x|y", "1"]]),
+                    lambda: T.status_cell("ok"), lambda: T.status_cell(T.STATUS_FAIL, ["FAILS_RULE"]),
+                    lambda: T.counts_caption(T.Writer(), 20, 1, 18, 0, {}),
+                    lambda: T.counts_caption(T.Writer(), 1, 0, 1, 0, {"FAILS_RULE": 1})):
+            with self.assertRaises(ValueError):
+                bad()
+        self.assertEqual(RED + " credit_only, ex_dividend", T.status_cell(T.STATUS_FAIL, ["credit_only", "ex_dividend"]))
+        self.assertEqual("credit 0.05 (10.00 in all)", T.net_words(T.Writer(), D("0.05"), D("10.00")))
+        self.assertEqual("debit 0.70 (1,400.00 in all)", T.net_words(T.Writer(), D("-0.70"), D("-1400.00")))
+        self.assertEqual("credit 0.00", T.net_words(T.Writer(), D("0")))
+        self.assertEqual("63,240.00", T.Writer().amount(D("63240")))
+        self.assertEqual(("+20,140.00", "-16.00", "0.00"), (T.Writer().amount(D("20140"), signed=True),
+                                                             T.Writer().amount(D("-16"), signed=True),
+                                                             T.Writer().amount(D("0"), signed=True)))
+        w = T.Writer()
+        self.assertEqual("3 contracts cover 300 of your 321.6301 shares; the other 21.6301 are not part of the collar",
+                         T.coverage_line(w, 3, D("321.6301"), "collar"))
+        self.assertEqual(["3", "300", "321.6301", "21.6301"], w.emitted)
+        self.assertEqual("1 contract covers 100 of your 150 shares; the other 50 are not part of the covered call",
+                         T.coverage_line(T.Writer(), 1, D("150"), "covered_call"))
+        self.assertIsNone(T.coverage_line(T.Writer(), 2, D("200"), "covered_call"))
+        events = (
+            (structuring.CODE_CROSSES_EARNINGS, {"date": datetime.date(2026, 11, 17), "time": "pre"}, False,
+             "2026-11-17 (before the open), inside the call's life"),
+            (structuring.CODE_EARNINGS_UNKNOWN, {"status": "unknown"}, True,
+             "unknown in research/calendar.toml, counted inside the new call's life"),
+            (structuring.CODE_EARNINGS_UNKNOWN, {"status": "passed", "date": datetime.date(2026, 11, 17)}, True,
+             "2026-11-17 has passed, the next is unknown: counted inside the new call's life"),
+            (structuring.CODE_CROSSES_EX_DIVIDEND, {"ex_date": datetime.date(2026, 12, 18), "cum_day":
+                                                    datetime.date(2026, 12, 17), "status": "estimated"}, False,
+             "2026-12-18 (estimated, cum 2026-12-17), inside the call's life"),
+            (structuring.CODE_DIVIDEND_UNKNOWN, {"status": "second_ex_date"}, False,
+             "a second ex-date may fall before the call's last trading day"),
+            (structuring.CODE_DIVIDEND_UNKNOWN, {"status": "unknown"}, False,
+             "unknown in research/calendar.toml, counted inside the call's life"))
+        for code, value, replacement, words in events:
+            w = T.Writer()
+            key = structuring.KEY_EARNINGS if "earnings" in code else structuring.KEY_EX_DIVIDEND
+            with self.subTest(code=code, value=value):
+                self.assertEqual(words, T.event_words(w, structuring.Reason(key, code, value, None), replacement))
+                self.assertTrue(lint(closed(w, ["| earnings | " + words + " | accepted by #earnings-ok | " + YELLOW
+                                                + " |"]), w).ok)
+        with self.assertRaises(ValueError):
+            T.event_words(T.Writer(), structuring.Reason("dte", structuring.CODE_DTE_OUTSIDE_WINDOW, 30, (40, 75)))
 
     def test_applicability_and_unavailable_words_lint(self) -> None:
         texts = [S._UNAVAILABLE_WORDS[cause] for cause in S.CAUSES] + [S.TICKET_CLOSED_WORDS]
@@ -286,111 +384,277 @@ class FixedLineTest(unittest.TestCase):
 # Golden texts at the regular instant
 # ------------------------------------------------------------------------------------------------
 
-WMT_ROLL = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed
-BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0467 | the highest among the 1 candidate that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
-leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
-reasons: 73 calendar days inside your window 40 to 75; absolute delta 0.33 inside your band 0.15 to 0.35; bid 3.55 at or above your minimum 0.50; spread 2.78 % within your maximum 25 %; a net credit of 0.05 (10.00 in all) passes credit_only; strike 115 above your stock cost 98.50
-accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by #assign-ok)
-after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now 1984.00), breakeven 95.03 (now 95.08)
-candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70
-candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40
-failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+WMT_ROLL = """### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
+
+| account | WMT mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate that passed every criterion
+- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old
+- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| net per share | credit 0.05 (10.00 in all) | credit only | \U0001F7E2 |
+| strike | 115 | at or above your cost 98.50 or the held strike 105 | \U0001F7E2 |
+| absolute delta | 0.33 | 0.15 to 0.35 | \U0001F7E2 |
+| bid | 3.55 | at least 0.50 | \U0001F7E2 |
+| calendar days | 73 | 40 to 75 | \U0001F7E2 |
+| spread | 2.78 % | at most 25 % | \U0001F7E2 |
+| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | \U0001F7E1 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 19,016.00 | 19,006.00 |
+| max profit | 1,984.00 | 3,994.00 |
+| breakeven | 95.08 | 95.03 |
+| group delta | 101.71 | 134.07 |
+
+**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, strike_floor 4)
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | \U0001F7E2 |
+| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | \U0001F534 credit_only |
+| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | \U0001F534 credit_only |
+
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 """ + FOOTER
 
 FOOTER_NOW = alert_lint.structuring_footer_line(NOW)
 
-NVDA_ROLL = """STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced
-no candidate passed every criterion: the desk names no best candidate
-the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
-candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
-failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+NVDA_ROLL = """### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call
+
+| account | NVDA mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 148.925 | 141.20 | 19:31 UTC, 15-min delayed |
+
+**no candidate passed every criterion: the desk names no best candidate**
+- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old
+
+**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |
+| 2 | 2026-12-18 | 160 | debit 1.45 | 0.0276 | \U0001F534 credit_only, ex_dividend |
+| 3 | 2027-01-15 | 165 | debit 1.35 | 0.0179 | \U0001F534 credit_only, ex_dividend |
+
+- 1 fails credit_only: a net debit of 0.05
+- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life
+- 2 fails credit_only: a net debit of 1.45
+- 3 fails credit_only: a net debit of 1.35
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 """ + FOOTER
 
 SPY_ROLL_NA = """NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
+
 """ + FOOTER_NOW
 
 PUT_NOTHING = """NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
+
 """ + FOOTER_NOW
 
-WMT_CALL = """PROPOSAL WMT covered call | on 200 WMT shares you hold in account 1 of desk.toml (margin) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a covered call on the 200 WMT shares: 5 passed your criteria, 15 failed
-BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of the share price): 0.0597 | the highest among the 5 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 45 calendar days inside your window 40 to 75; absolute delta 0.32 inside your band 0.15 to 0.35; bid 2.80 at or above your minimum 0.50; spread 3.51 % within your maximum 25 %; strike 112.5 above your stock cost 98.50
-accepted earnings: earnings on 2026-11-17 (before the open) fall inside the call's life (by #earnings-ok)
-accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the call's life (by #assign-ok)
-after the leg: group delta 135.05 (now 200.00), max loss 19140.00 (now 19700.00), max profit 3360.00 (now unbounded), breakeven 95.70 (now 98.50)
-leg order: after leg 1 you hold 200 WMT shares and 2 short calls (level 1 by the desk's convention)
-approval: the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-candidate 2: the 2027-01-15 115 call | bid 3.55 | extrinsic_per_day 0.0467
-candidate 3: the 2026-12-18 115 call | bid 2.10 | extrinsic_per_day 0.0448
-failed your criteria: 15 (abs_delta 15, strike_floor 4)
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+WMT_CALL = """### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares you hold
+
+| account | WMT mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0597**, the highest among the 5 candidates that passed every criterion
+- leg 1 of 1: opens a new short 2 x WMT 2026-12-18 112.5 call | bid 2.80, ask 2.90, mid 2.85 | quote grade B
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| strike | 112.5 | at or above your cost 98.50 | \U0001F7E2 |
+| absolute delta | 0.32 | 0.15 to 0.35 | \U0001F7E2 |
+| bid | 2.80 (560.00 in all) | at least 0.50 | \U0001F7E2 |
+| calendar days | 45 | 40 to 75 | \U0001F7E2 |
+| spread | 3.51 % | at most 25 % | \U0001F7E2 |
+| earnings | 2026-11-17 (before the open), inside the call's life | accepted by #earnings-ok | \U0001F7E1 |
+| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the call's life | accepted by #assign-ok | \U0001F7E1 |
+
+| the group | now | after the leg |
+|---|--:|--:|
+| max loss | 19,700.00 | 19,140.00 |
+| max profit | unbounded | 3,360.00 |
+| breakeven | 98.50 | 95.70 |
+| group delta | 200.00 | 135.05 |
+
+**approval-level check:** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 200 WMT shares, 2 short calls | 1 |
+
+**candidates by rank:** 5 of 20 passed your criteria; 15 failed (abs_delta 15, strike_floor 4)
+
+| # | expiry | strike | delta | bid | extrinsic_per_day |  |
+|--:|---|---|--:|--:|--:|---|
+| 1 | 2026-12-18 | 112.5 | 0.32 | 2.80 | 0.0597 | \U0001F7E2 |
+| 2 | 2027-01-15 | 115 | 0.33 | 3.55 | 0.0467 | \U0001F7E2 |
+| 3 | 2026-12-18 | 115 | 0.27 | 2.10 | 0.0448 | \U0001F7E2 |
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 """ + FOOTER
 
-SPY_PUT = """PROPOSAL SPY protective put | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a protective put on the 100 SPY shares: 5 passed your criteria, 7 failed
-BEST CANDIDATE 1 of 12 by your objective stress_cost_per_day (the put's ask per calendar day per 100 of loss it offsets at your stress drop): 0.1856 | the lowest among the 5 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 136 calendar days inside your window 120 to 210; floor 5.88 % inside your band 3 to 10; it covers 91.504 per share (9150.40 in all) at your stress drop of 20 % (stressed price 518.496); spread 0.87 % within your maximum 25 %
-after the leg: group delta 69.69 (now 100.00), max loss 4550.00 (now 63240.00), max profit unbounded (now unbounded), breakeven 655.50 (now 632.40)
-leg order: after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention)
-approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-candidate 2: the 2027-03-19 620 put | ask 25.65 | stress_cost_per_day 0.1858
-candidate 3: the 2027-03-19 625 put | ask 27.05 | stress_cost_per_day 0.1868
-failed your criteria: 7 (floor_pct 7)
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+SPY_PUT = """### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
+
+| account | SPY mid | your cost | quotes |
+|---|--:|--:|---|
+| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
+- leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| floor | 5.88 % below | 3 to 10 % | \U0001F7E2 |
+| cost | ask 23.10 (2,310.00 in all) |  |  |
+| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | \U0001F7E2 |
+| calendar days | 136 | 120 to 210 | \U0001F7E2 |
+| spread | 0.87 % | at most 25 % | \U0001F7E2 |
+
+| the group | now | after the leg |
+|---|--:|--:|
+| max loss | 63,240.00 | 4,550.00 |
+| max profit | unbounded | unbounded |
+| breakeven | 632.40 | 655.50 |
+| group delta | 100.00 | 69.69 |
+
+**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 100 SPY shares, 1 long put | 2 |
+
+**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+
+| # | expiry | strike | floor | ask | stress_cost_per_day |  |
+|--:|---|---|--:|--:|--:|---|
+| 1 | 2027-03-19 | 610 | 5.88 % | 23.10 | 0.1856 | \U0001F7E2 |
+| 2 | 2027-03-19 | 620 | 4.34 % | 25.65 | 0.1858 | \U0001F7E2 |
+| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | \U0001F7E2 |
+
+> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 """ + FOOTER
 
-SPY_COLLAR = """PROPOSAL SPY collar | on 100 SPY shares you hold in account 2 of desk.toml (ira) | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed
-BEST CANDIDATE 1 of 10 by your objective cap_within_budget (the cap's distance above the share price, in percent, among pairs within your net-debit budget): 4.92 | the highest among the 4 candidates that passed every criterion
-the score ranks the candidates only on the objective you chose; it is not a forecast
-tie on cap_within_budget broken by the put strike (higher first)
-leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-reasons: 136 calendar days inside your window 120 to 210; floor 4.34 % inside your band 3 to 10; cap 4.92 % inside your band 2 to 10; a net credit of 0.75 within your net-debit budget 0.00; spreads 0.78 % and 0.75 % within your maximum 25 %; call strike 680 above your stock cost 632.40
-accepted ex_dividend: the ex-dividend date 2026-12-18 (estimated, cum 2026-12-17) falls inside the call's life (by #assign-ok)
-accepted ex_dividend: a second ex-date may fall before the call's last trading day; the calendar holds one (by #assign-ok)
-after both legs: group delta 24.14 (now 100.00), max loss 1165.00 (now 63240.00), max profit 4835.00 (now unbounded), breakeven 631.65 (now 632.40)
-leg order: leg 1 first; after leg 1 you hold 100 SPY shares and 1 long put (level 2 by the desk's convention); after leg 2 you hold 100 SPY shares, 1 short call and 1 long put (level 1)
-entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
-approval: the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-candidate 2: the 2027-03-19 610 put and the 2027-03-19 680 call | net credit 3.30 | cap_within_budget 4.92
-candidate 3: the 2027-03-19 600 put and the 2027-03-19 680 call | net credit 5.60 | cap_within_budget 4.92
-failed your criteria: 6 (max_net_debit 6)
-not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
-you supply the limit; the desk prints none
-if you decide to act, you type it into your brokerage account yourself and you supply the limit
+SPY_COLLAR = """### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold
+
+| account | SPY mid | your cost | quotes |
+|---|--:|--:|---|
+| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+
+**BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates that passed every criterion
+- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A
+- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 | quote grade A
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+| check | this candidate | your criteria |  |
+|---|---|---|:-:|
+| floor | 4.34 % below | 3 to 10 % | \U0001F7E2 |
+| cap | 4.92 % above | 2 to 10 % | \U0001F7E2 |
+| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | \U0001F7E2 |
+| call strike | 680 | at or above your cost 632.40 | \U0001F7E2 |
+| calendar days | 136 | 120 to 210 | \U0001F7E2 |
+| spreads | 0.78 % and 0.75 % | at most 25 % | \U0001F7E2 |
+| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | \U0001F7E1 |
+| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | \U0001F7E1 |
+
+| the group | now | after both legs |
+|---|--:|--:|
+| max loss | 63,240.00 | 1,165.00 |
+| max profit | unbounded | 4,835.00 |
+| breakeven | 632.40 | 631.65 |
+| group delta | 100.00 | 24.14 |
+
+**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+
+| after | you hold | level |
+|---|---|:-:|
+| leg 1 | 100 SPY shares, 1 long put | 2 |
+| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |
+
+- entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+
+**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+
+| # | expiry | put / call | floor | cap | net per share |  |
+|--:|---|---|--:|--:|---|---|
+| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | \U0001F7E2 |
+| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | \U0001F7E2 |
+| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | \U0001F7E2 |
+
+- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+
+> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
+> - tie on cap_within_budget broken by the put strike (higher first)
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+> - you supply the limit; the desk prints none
+> - if you decide to act, you type it into your brokerage account yourself
+
 """ + FOOTER
 
-EXPIRY_DAY = """STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-replacement candidates for the short 2026-11-20 105 call: 0 passed your criteria, 10 failed
-no candidate passed every criterion: the desk names no best candidate
-the net credits close the held 2026-11-20 105 call | ask 0.16 | quote grade E, 18 min old | quote grade E: the conservative side stands
-candidate 1: closes the 2026-11-20 105 call and opens the 2027-01-15 115 call | net credit 2.79 | extrinsic_per_day 0.0502 | FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
-candidate 2: closes the 2026-11-20 105 call and opens the 2027-01-15 120 call | net credit 1.54 | extrinsic_per_day 0.0289 | FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
-candidate 3: closes the 2026-11-20 105 call and opens the 2027-01-15 105 call | net credit 6.74 | extrinsic_per_day 0.1174 | FAILS_CRITERION abs_delta: absolute delta 0.54 outside your band 0.15 to 0.35 | FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
-failed your criteria: 10 (abs_delta 8, strike_floor 2, earnings 10)
-a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
-prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+EXPIRY_DAY = """### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call
+
+| account | WMT mid | your cost | quotes |
+|---|--:|--:|---|
+| 1 of desk.toml (margin) | 104.93 | 98.50 | 19:31 UTC, 15-min delayed |
+
+**no candidate passed every criterion: the desk names no best candidate**
+- the net credits close the held 2026-11-20 105 call | ask 0.16 | quote grade E, 18 min old | quote grade E: the conservative side stands
+
+**replacement candidates by rank:** 0 of 10 passed your criteria; 10 failed (abs_delta 8, strike_floor 2, earnings 10)
+
+| # | expiry | new call | net per share | extrinsic_per_day |  |
+|--:|---|---|--:|--:|---|
+| 1 | 2027-01-15 | 115 | credit 2.79 | 0.0502 | \U0001F534 earnings |
+| 2 | 2027-01-15 | 120 | credit 1.54 | 0.0289 | \U0001F534 earnings |
+| 3 | 2027-01-15 | 105 | credit 6.74 | 0.1174 | \U0001F534 abs_delta, earnings |
+
+- 1, 2, 3 fail earnings: the listed earnings date 2026-11-17 has passed, so the next one is unknown and counts as inside the new call's life
+- 3 fails abs_delta: absolute delta 0.54 outside your band 0.15 to 0.35
+- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike
+
+> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - criteria: your structuring.toml (sha 5155427c)
+
 """ + FOOTER
 
 
@@ -424,15 +688,18 @@ class GoldenTextTest(unittest.TestCase):
         answer = S.run_roll_analysis(desk.market("holiday", holiday), "AG-20261020-01", CRITERIA)
         self.assertEqual((S.VERDICT_UNAVAILABLE, holiday), (answer.verdict, T.data_as_of(answer)))
         rendered = self.render(T.roll_analysis_lines, answer)
-        self.assertEqual("UNAVAILABLE | AG-20261020-01 roll analysis | the market is closed today\n"
+        self.assertEqual("UNAVAILABLE | AG-20261020-01 roll analysis | the market is closed today\n\n"
                          + alert_lint.structuring_footer_line(holiday), rendered.text)
 
     def test_none_qualifies_shows_the_held_call(self) -> None:
         rendered = self.render(T.roll_analysis_lines, self.nvda)
         lines = rendered.text.split("\n")
-        self.assertEqual("no candidate passed every criterion: the desk names no best candidate", lines[2])
-        self.assertEqual("the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
-                         lines[3])
+        at = lines.index("**no candidate passed every criterion: the desk names no best candidate**")
+        self.assertEqual(("", "- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old"),
+                         (lines[at - 1], lines[at + 1]))
+        self.assertNotIn("BEST CANDIDATE", rendered.text)
+        self.assertIn("- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
+                      "call's life", lines)
 
     def test_a_disabled_section_is_named_by_words_the_lint_passes(self) -> None:
         # "roll: disabled ..." starts a segment with an imperative the structuring lint refuses; the section is named
@@ -442,19 +709,19 @@ class GoldenTextTest(unittest.TestCase):
         self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_DISABLED), (answer.verdict, answer.cause))
         rendered = self.render(T.roll_analysis_lines, answer)
         self.assertEqual("NOT_APPLICABLE | AG-20261020-01 roll analysis | the roll section is disabled in your "
-                         "structuring.toml\n" + alert_lint.structuring_footer_line(NOW), rendered.text)
+                         "structuring.toml\n\n" + alert_lint.structuring_footer_line(NOW), rendered.text)
         collar_off = dataclasses.replace(CRITERIA, collar=dataclasses.replace(CRITERIA.collar, enabled=False))
         answer = S.run_proposal(DeskCopy(self, 8).market(), "AG-20261028-03", "collar", collar_off)
         self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_DISABLED), (answer.verdict, answer.cause))
         rendered = self.render(T.proposal_lines, answer, owner_level=2)
         self.assertEqual("NOT_APPLICABLE | AG-20261028-03 collar proposal | the collar section is disabled in your "
-                         "structuring.toml\n" + alert_lint.structuring_footer_line(NOW), rendered.text)
+                         "structuring.toml\n\n" + alert_lint.structuring_footer_line(NOW), rendered.text)
 
     def test_a_refused_proposal_names_the_proposed_structure(self) -> None:
         rendered = self.render(T.proposal_lines, self.collar, owner_level=1)
         self.assertEqual("REFUSED AG-20261028-03 | SPY collar | opening 1 new long put needs level 2 by the desk's "
                          "convention; desk.toml records your self-attested level 1 | the desk shows nothing above your "
-                         "level; your broker's own approval decides what you can enter\n" + FOOTER, rendered.text)
+                         "level; your broker's own approval decides what you can enter\n\n" + FOOTER, rendered.text)
 
     def test_wmt_roll_analysis(self) -> None:
         rendered = self.render(T.roll_analysis_lines, self.wmt)
@@ -475,42 +742,54 @@ class GoldenTextTest(unittest.TestCase):
                 self.assertEqual(expected, self.render(lines_of, answer, **kwargs).text)
 
     def ticket(self, answer: "S.Answer") -> "T.Rendered":
-        """A ROLL ticket composed from the builders, in designer C's D6 order with S11's lines."""
+        """A ROLL ticket composed from the builders, in the desk view ``tickets.ticket_lines`` prints (0.2.1)."""
         w = T.Writer()
         held, candidate = answer.held, answer.candidate
         leg = candidate.legs[0]
         until, full = S.valid_until(NOW, answer.target.session)
-        account = T.account_words(w, answer.group_context.account, answer.target.market.cfg.owner.accounts,
-                                  held.row_number)
+        as_of = T.data_as_of(answer)
+        account = T.account_cell(w, answer.group_context.account, answer.target.market.cfg.owner.accounts,
+                                 held.row_number)
         lines = [T.ticket_header(w, answer.trade_id, answer.group_context.underlying, answer.group_context.structure,
-                                 "ROLL", account, NOW, until, full),
-                 T.leg_line(w, 1, 2, "close", held.side, held.contracts, held.root, held.expiration, held.strike,
-                            held.right, T.quote_segment(w, held.bid, held.ask, held.mid, held.grade, held.as_of, held.note)),
-                 T.leg_line(w, 2, 2, "open", "short", candidate.contracts, leg.root, leg.expiration, leg.strike, leg.right,
-                            T.quote_segment(w, leg.bid, leg.ask, leg.mid, leg.grade, leg.as_of))]
-        lines.extend(T.approval_block(w, answer, candidate, 2))
+                                 "ROLL"), "",
+                 *T.table(["account", "computed", "valid until", "quotes"], "llll",
+                          [[account, w.clock(NOW), T.valid_until_cell(w, until, full), T.quotes_cell(w, as_of)]]), "",
+                 T.LEGS_CAPTION,
+                 "- " + T.leg_line(w, 1, 2, "close", held.side, held.contracts, held.root, held.expiration, held.strike,
+                                   held.right, T.quote_segment(w, held.bid, held.ask, held.mid, held.grade, held.note)),
+                 "- " + T.leg_line(w, 2, 2, "open", "short", candidate.contracts, leg.root, leg.expiration, leg.strike,
+                                   leg.right, T.quote_segment(w, leg.bid, leg.ask, leg.mid, leg.grade)),
+                 ""]
         lines.extend(T.replacement_lines(w, answer))
-        lines.extend([T.MODEL_LINE, T.LIMIT_LINE, T.validity_line(w, until), T.AFTER_FILL_LINE, T.ACT_LINE])
-        rendered = T.finish(w, lines, T.data_as_of(answer), answer.tool, owner_texts=["Brokerage (margin)", "Roth IRA"])
+        lines.append("")
+        lines.extend(T.approval_block(w, answer, candidate, 2))
+        lines.extend(["", *T.notes_block([T.validity_line(w, until), T.quotes_line(w, as_of), T.MODEL_LINE,
+                                          T.AFTER_FILL_LINE, T.LIMIT_LINE, T.ACT_LINE])])
+        rendered = T.finish(w, lines, as_of, answer.tool, owner_texts=["Brokerage (margin)", "Roth IRA"])
         self.assertTrue(rendered.ok, rendered.lint.problems)
         return rendered
 
     def test_roll_tickets_compose_from_the_builders(self) -> None:
         wmt = self.ticket(self.replacement).text.split("\n")
-        self.assertEqual("TICKET AG-20261020-01 | WMT covered call | a roll of the short call (action ROLL) | account 1 of "
-                         "desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)", wmt[0])
-        self.assertEqual("leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | "
-                         "quote grade B, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC", wmt[1])
-        self.assertIn("accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's "
-                      "life (by #assign-ok)", wmt)
-        self.assertIn("after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03", wmt)
-        self.assertIn(approval.MULTI_LEG_NOTE, wmt)
+        self.assertEqual("### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)", wmt[0])
+        self.assertIn("| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |", wmt)
+        self.assertIn("- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote "
+                      "grade B", wmt)
+        at = wmt.index("| check | the new call | your criteria |  |")
+        self.assertEqual(["| net per share | credit 0.05 (10.00 in all) | credit only | " + GREEN + " |",
+                          "| strike | 115 | at or above your cost 98.50 or the held strike 105 | " + GREEN + " |"],
+                         wmt[at + 2:at + 4])
+        self.assertIn("| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | "
+                      + YELLOW + " |", wmt)
+        self.assertIn("| max loss | 19,016.00 | 19,006.00 |", wmt)
+        self.assertIn("- " + approval.MULTI_LEG_NOTE, wmt)
         nvda = self.ticket(S.run_replacement(DeskCopy(self).market(), "AG-20261022-02", JAN15, D("160"), CRITERIA))
         lines = nvda.text.split("\n")
-        self.assertIn("FAILS_CRITERION credit_only: a net debit of 0.05", lines)
-        self.assertIn("FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
-                      "call's life", lines)
-        self.assertEqual("account 1 of desk.toml (margin)", lines[0].split(" | ")[3])
+        self.assertIn("| net per share | debit 0.05 (10.00 in all) | credit only | " + RED + " |", lines)
+        self.assertIn("| ex-dividend | 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded by your "
+                      "structuring.toml | " + RED + " |", lines)
+        self.assertEqual("| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                         lines[4])
 
     def test_every_golden_text_lints_and_carries_no_occ_symbol(self) -> None:
         cases = [(T.roll_analysis_lines, self.wmt, {}), (T.roll_analysis_lines, self.nvda, {}),
@@ -524,8 +803,25 @@ class GoldenTextTest(unittest.TestCase):
                 self.assertNotIn("Brokerage", rendered.text)
                 self.assertNotIn("Roth", rendered.text)
                 for line in rendered.text.split("\n"):
-                    self.assertFalse(line.split(" ")[0].lower() in ("roll", "close", "exit", "collar", "hedge", "cover"),
-                                     line)
+                    for cell in line.lstrip("#*>- ").split("|"):
+                        first = cell.strip(" *").split(" ")[0].lower()
+                        self.assertNotIn(first, ("roll", "close", "exit", "collar", "hedge", "cover", "short"), line)
+                self.assertNotIn("\n\n\n", rendered.text)
+                blocks = rendered.text.split("\n\n")
+                self.assertTrue(blocks[0].startswith(("### STRUCTURING ", "### PROPOSAL ")), blocks[0])
+                for block in blocks[1:-1]:
+                    # every block renders on its own in any markdown viewer: a table (a header, its rule, its rows), a
+                    # quote, or one plain line with its items; never two plain lines a viewer would run together
+                    rows = block.split("\n")
+                    if rows[0].startswith("|"):
+                        self.assertTrue(all(row.startswith("|") and row.endswith("|") for row in rows), block)
+                        self.assertRegex(rows[1], r"^\|(?:---|--:|:-:)(?:\|(?:---|--:|:-:))*\|$")
+                        self.assertEqual({rows[0].count("|")}, {row.count("|") for row in rows}, block)
+                    elif rows[0].startswith(">"):
+                        self.assertTrue(all(row.startswith(">") for row in rows), block)
+                    else:
+                        self.assertTrue(all(row.startswith("- ") for row in rows[1:]), block)
+                self.assertEqual(alert_lint.structuring_footer_line(rendered.as_of), blocks[-1])
 
 
 # ------------------------------------------------------------------------------------------------
@@ -544,25 +840,46 @@ class FixerTextTest(unittest.TestCase):
         w = T.Writer()
         rendered = T.finish(w, T.roll_analysis_lines(w, answer), T.data_as_of(answer), answer.tool)
         self.assertTrue(rendered.ok, rendered.lint.problems)
-        reasons = [line for line in rendered.text.split("\n") if line.startswith("reasons: ")]
-        self.assertEqual(1, len(reasons))
-        self.assertTrue(reasons[0].endswith("; strike 115 below your stock cost 120.00 and not below the held strike 105"),
-                        reasons[0])
-        # at the cost exactly: "at"; above it: "above"
+        self.assertIn("| strike | 115 | at or above your cost 120.00 or the held strike 105 | " + GREEN + " |",
+                      rendered.text.split("\n"))
+        # a strike-floor failure is a red row with the same words
         best = answer.best
-        for cost, words in (("115", "strike 115 at your stock cost 115.00"), ("98.50", "strike 115 above your stock "
-                                                                                       "cost 98.50")):
-            line = T.reasons_line(T.Writer(), best, answer.section, D("25"), D(cost), D("105"))
-            self.assertTrue(line.endswith(words), line)
-        with self.assertRaises(ValueError):   # below both: the floor would have failed it
-            T.reasons_line(T.Writer(), best, answer.section, D("25"), D("120"), D("117.5"))
+        failing = dataclasses.replace(best, reasons=(structuring.Reason(
+            structuring.KEY_STRIKE_FLOOR, structuring.CODE_ROLL_DOWN_BELOW_COST, D("115"), D("120.00")),),
+            status=structuring.STATUS_FAILS_CRITERION)
+        rows = T.check_rows(T.Writer(), failing, answer.section, D("25"), D("120"), D("117.5"))
+        self.assertEqual(["strike", "115", "at or above your cost 120.00 or the held strike 117.5", RED], rows[1])
+        self.assertNotIn(RED, [row[3] for row in rows if row[0] != "strike"])
+
+    def test_an_odd_lot_proposal_says_which_shares_the_contracts_cover(self) -> None:
+        # 0.2.1: 250.5 shares carry 2 contracts; the text says the other 50.5 shares are not part of the covered call
+        # (they are why the group's max profit can stay unbounded)
+        desk = DeskCopy(self, 4, WMT_TAGS)
+        path = os.path.join(desk.root, "positions.csv")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text.replace("equity,WMT,,200,", "equity,WMT,,250.5,"))
+        answer = S.run_proposal(desk.market(), "AG-20261020-01", "covered_call", CRITERIA)
+        self.assertEqual((S.VERDICT_BEST, 2), (answer.verdict, answer.best.contracts))
+        w = T.Writer()
+        rendered = T.finish(w, T.proposal_lines(w, answer, 2), T.data_as_of(answer), answer.tool)
+        self.assertTrue(rendered.ok, rendered.lint.problems)
+        lines = rendered.text.split("\n")
+        at = lines.index("- 2 contracts cover 200 of your 250.5 shares; the other 50.5 are not part of the covered call")
+        self.assertEqual(("| group delta", "", "**approval-level check:**"),
+                         (lines[at - 2][:13], lines[at - 1], lines[at + 2][:25]))
+        self.assertIn("### PROPOSAL AG-20261020-01 | a covered call on the 250.5 WMT shares you hold", lines)
+        # whole lots print no such line
+        self.assertNotIn("not part of the", WMT_CALL + SPY_PUT + SPY_COLLAR)
 
     def test_the_owner_text_screen_reads_the_desk_dynamic_text_only(self) -> None:
         accounts = ["options", "brokerage", "positions", "desk", "criteria", "sandbox", "Brokerage (margin)", "Roth IRA"]
         w = T.Writer()
-        lines = [T.account_words(w, "Brokerage (margin)", ACCOUNTS, 4), T.account_words(w, "My Joint", ACCOUNTS, 3),
-                 T.MODEL_LINE, T.ACT_LINE, T.LIMIT_LINE, T.AFTER_FILL_LINE,
-                 T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP)]
+        lines = [T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", datetime.date(2026, 11, 20), D("105")), "",
+                 *T.context_table(w, T.account_cell(w, "Brokerage (margin)", ACCOUNTS, 4), "WMT", D("104.23"),
+                                  D("98.50"), STAMP), "", T.account_words(w, "My Joint", ACCOUNTS, 3), "",
+                 *T.notes_block([T.MODEL_LINE, T.ACT_LINE, T.LIMIT_LINE, T.AFTER_FILL_LINE, T.criteria_line(w, SHA)])]
         rendered = T.finish(w, lines, STAMP, "roll_analysis", owner_texts=accounts)
         self.assertTrue(rendered.ok, (rendered.codes, rendered.lint.problems))
         for leak, texts in (("held in Brokerage (margin)", ["Brokerage (margin)"]),
@@ -591,13 +908,16 @@ class FixerTextTest(unittest.TestCase):
         held = structuring.HeldLeg(4, "WMT261120C00105000", "WMT", "CALL", "short", 2, D("105"), datetime.date(2026, 11, 20),
                                    datetime.date(2026, 11, 20), D("3.35"), D("3.50"), D("3.425"), D("4.38"), "B", "fresh",
                                    18, STAMP, None, None, D("3.42"), D("-684.00"), D("3.50"), "ask", None, D("-16.00"))
+        self.assertEqual(D("105"), held.strike)
         w = T.Writer()
-        self.assertEqual("replacement candidates for the short 2026-11-20 105 call: 0 passed your criteria, 18 failed, 2 "
-                         "not priced", T.roll_summary_line(w, held, 0, 18, 2))
-        self.assertEqual("replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed",
-                         T.roll_summary_line(T.Writer(), held, 1, 19))
-        self.assertEqual("candidates for a collar on the 100 SPY shares: 4 passed your criteria, 6 failed, 1 not priced",
-                         T.proposal_summary_line(T.Writer(), "collar", D("100"), "SPY", 4, 6, 1))
+        self.assertEqual("**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, "
+                         "ex_dividend 18); 2 not priced",
+                         T.counts_caption(w, 20, 0, 18, 2, {"ex_dividend": 18, "abs_delta": 14}, replacement=True))
+        self.assertEqual(["14", "18", "0", "20", "18", "2"], w.emitted)
+        self.assertEqual("**candidates by rank:** 4 of 11 passed your criteria; 6 failed (max_net_debit 6); 1 not priced",
+                         T.counts_caption(T.Writer(), 11, 4, 6, 1, {"max_net_debit": 6}))
+        self.assertEqual("**candidates by rank:** 1 of 1 passed your criteria; 0 failed",
+                         T.counts_caption(T.Writer(), 1, 1, 0, 0, {}))
 
     def test_the_new_reason_words_lint(self) -> None:
         conflict = structuring.Reason(structuring.KEY_UNPRICED, structuring.CODE_QUOTE_CONFLICT, 2, None)
@@ -617,13 +937,16 @@ class FixerTextTest(unittest.TestCase):
                 with self.subTest(reason=reason):
                     self.assertTrue(result.ok, result.problems)
         w = T.Writer()
-        line = T.candidate_line(w, structuring.Candidate(
+        candidate = structuring.Candidate(
             id="WMT270115C00115000", kind=structuring.KIND_COVERED_CALL, expiration=JAN15,
             legs=(structuring.PricedLeg("WMT270115C00115000", "WMT", "CALL", D("115"), JAN15, unpriced=conflict),),
-            contracts=2, score=None, status="UNPRICED", reasons=(conflict,), rank=3))
-        self.assertEqual("candidate 3: the 2027-01-15 115 call | not priced: the chain lists the contract more than once "
-                         "with different quotes", line)
-        self.assertTrue(lint(closed(w, [line]), w).ok)
+            contracts=2, score=None, status="UNPRICED", reasons=(conflict,), rank=3)
+        self.assertEqual("not priced", T.candidate_status(candidate))
+        rows = T.candidates_table(w, [candidate], "extrinsic_per_day")
+        self.assertEqual("| 3 | 2027-01-15 | 115 | - | - | - | not priced |", rows[2])
+        reasons = T.failure_lines(w, [candidate])
+        self.assertEqual(["- 3 not priced: the chain lists the contract more than once with different quotes"], reasons)
+        self.assertTrue(lint(closed(w, rows + [""] + reasons), w).ok)
 
 
 def read(path: str) -> bytes:
@@ -688,8 +1011,8 @@ class VerifierTest(unittest.TestCase):
     def test_an_account_named_with_a_desk_phrase_does_not_withhold_the_text(self) -> None:
         for name in ("covered call", "Alpaca", "Alpaca paper", "roll analysis", "the shares"):
             w = T.Writer()
-            lines = [T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", SHA, STAMP),
-                     "the shares of the group are free"]
+            lines = [T.roll_header(w, "AG-20261020-01", "WMT", "covered_call", datetime.date(2026, 11, 20), D("105")),
+                     "", "> - " + T.criteria_line(w, SHA), "", "the shares of the group are free"]
             rendered = T.finish(w, lines, STAMP, "roll_analysis", owner_texts=[name, "Brokerage (margin)"])
             with self.subTest(name=name):
                 self.assertTrue(rendered.ok, (rendered.codes, rendered.lint.problems))

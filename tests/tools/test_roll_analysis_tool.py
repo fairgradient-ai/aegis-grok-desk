@@ -61,76 +61,136 @@ def footer(clock: str) -> str:
 FOOTER_1931 = ("computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion "
                "for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 "
                "min, as of 19:31 UTC")
-WMT_TEXT = [
-    "STRUCTURING | AG-20261020-01 roll analysis | WMT covered call | criteria structuring.toml (sha 5155427c) | "
-    "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "replacement candidates for the short 2026-11-20 105 call: 1 passed your criteria, 19 failed",
-    "BEST CANDIDATE 1 of 20 by your objective extrinsic_per_day (the bid's time value per calendar day, in percent of "
-    "the share price): 0.0467 | the highest among the 1 candidate that passed every criterion",
-    "the score ranks the candidates only on the objective you chose; it is not a forecast",
-    "leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
-    "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
-    "reasons: 73 calendar days inside your window 40 to 75; absolute delta 0.33 inside your band 0.15 to 0.35; bid 3.55 "
-    "at or above your minimum 0.50; spread 2.78 % within your maximum 25 %; a net credit of 0.05 (10.00 in all) passes "
-    "credit_only; strike 115 above your stock cost 98.50",
-    "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by "
-    "#assign-ok)",
-    "after both legs: group delta 134.07 (now 101.71), max loss 19006.00 (now 19016.00), max profit 3994.00 (now "
-    "1984.00), breakeven 95.03 (now 95.08)",
-    "candidate 2: closes the 2026-11-20 105 call and opens the 2026-12-18 112.5 call | net credit -0.70 | "
-    "extrinsic_per_day 0.0597 | FAILS_CRITERION credit_only: a net debit of 0.70",
-    "candidate 3: closes the 2026-11-20 105 call and opens the 2026-12-18 115 call | net credit -1.40 | "
-    "extrinsic_per_day 0.0448 | FAILS_CRITERION credit_only: a net debit of 1.40",
-    "failed your criteria: 19 (abs_delta 15, credit_only 4, strike_floor 4)",
-    "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike",
-    "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not "
-    "modelled",
+AFTER_CLOSE_TEXT = [
+    "UNAVAILABLE | AG-20261020-01 roll analysis | an option chain in your window was not served",
+    "",
+    footer("21:25"),
+]
+CRITERIA_MISSING_TEXT = [
+    "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria "
+    "(SETUP step 9)",
+    "",
+    footer("19:50"),
+]
+DISABLED_TEXT = [
+    "NOT_APPLICABLE | AG-20261020-01 roll analysis | the roll section is disabled in your structuring.toml",
+    "",
+    footer("19:50"),
+]
+HOLIDAY_TEXT = [
+    "UNAVAILABLE | AG-20261020-01 roll analysis | the market is closed today",
+    "",
+    "computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion "
+    "for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 "
+    "min, as of 15:00 UTC",
+]
+NVDA_TEXT = [
+    "### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call",
+    "",
+    "| account | NVDA mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 1 of desk.toml (margin) | 148.925 | 141.20 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**no candidate passed every criterion: the desk names no best candidate**",
+    "- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
+    "",
+    "**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit "
+    "1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced",
+    "",
+    "| # | expiry | new call | net per share | extrinsic_per_day |  |",
+    "|--:|---|---|--:|--:|---|",
+    "| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |",
+    "| 2 | 2026-12-18 | 160 | debit 1.45 | 0.0276 | \U0001F534 credit_only, ex_dividend |",
+    "| 3 | 2027-01-15 | 165 | debit 1.35 | 0.0179 | \U0001F534 credit_only, ex_dividend |",
+    "",
+    "- 1 fails credit_only: a net debit of 0.05",
+    "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
+    "call's life",
+    "- 2 fails credit_only: a net debit of 1.45",
+    "- 3 fails credit_only: a net debit of 1.35",
+    "- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and "
+    "strike",
+    "",
+    "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "",
     FOOTER_1931,
 ]
-NVDA_EX = "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life"
-NVDA_TEXT = [
-    "STRUCTURING | AG-20261022-02 roll analysis | NVDA covered call | criteria structuring.toml (sha 5155427c) | "
-    "Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "replacement candidates for the short 2026-11-20 150 call: 0 passed your criteria, 18 failed, 2 not priced",
-    "no candidate passed every criterion: the desk names no best candidate",
-    "the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
-    "candidate 1: closes the 2026-11-20 150 call and opens the 2027-01-15 160 call | net credit -0.05 | "
-    "extrinsic_per_day 0.0299 | FAILS_CRITERION credit_only: a net debit of 0.05 | " + NVDA_EX,
-    "candidate 2: closes the 2026-11-20 150 call and opens the 2026-12-18 160 call | net credit -1.45 | "
-    "extrinsic_per_day 0.0276 | FAILS_CRITERION credit_only: a net debit of 1.45 | " + NVDA_EX,
-    "candidate 3: closes the 2026-11-20 150 call and opens the 2027-01-15 165 call | net credit -1.35 | "
-    "extrinsic_per_day 0.0179 | FAILS_CRITERION credit_only: a net debit of 1.35 | " + NVDA_EX,
-    "failed your criteria: 18 (abs_delta 14, min_credit 1, credit_only 6, strike_floor 6, ex_dividend 18)",
-    "a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and strike",
-    "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not "
-    "modelled",
+REFUSED_TEXT = [
+    "REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs "
+    "level 1 by the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing "
+    "above your level; your broker's own approval decides what you can enter",
+    "",
+    footer("19:50"),
+]
+STALE_TEXT = [
+    "UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the underlying",
+    "",
+    footer("19:50"),
+]
+WMT_TEXT = [
+    "### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call",
+    "",
+    "| account | WMT mid | your cost | quotes |",
+    "|---|--:|--:|---|",
+    "| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |",
+    "",
+    "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 "
+    "candidate that passed every criterion",
+    "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
+    "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
+    "",
+    "> the score ranks the candidates only on the objective you chose; it is not a forecast",
+    "",
+    "| check | this candidate | your criteria |  |",
+    "|---|---|---|:-:|",
+    "| net per share | credit 0.05 (10.00 in all) | credit only | \U0001F7E2 |",
+    "| strike | 115 | at or above your cost 98.50 or the held strike 105 | \U0001F7E2 |",
+    "| absolute delta | 0.33 | 0.15 to 0.35 | \U0001F7E2 |",
+    "| bid | 3.55 | at least 0.50 | \U0001F7E2 |",
+    "| calendar days | 73 | 40 to 75 | \U0001F7E2 |",
+    "| spread | 2.78 % | at most 25 % | \U0001F7E2 |",
+    "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | \U0001F7E1 |",
+    "",
+    "| the group | now | after both legs |",
+    "|---|--:|--:|",
+    "| max loss | 19,016.00 | 19,006.00 |",
+    "| max profit | 1,984.00 | 3,994.00 |",
+    "| breakeven | 95.08 | 95.03 |",
+    "| group delta | 101.71 | 134.07 |",
+    "",
+    "**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only "
+    "4, strike_floor 4)",
+    "",
+    "| # | expiry | new call | net per share | extrinsic_per_day |  |",
+    "|--:|---|---|--:|--:|---|",
+    "| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | \U0001F7E2 |",
+    "| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | \U0001F534 credit_only |",
+    "| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | \U0001F534 credit_only |",
+    "",
+    "- a ticket for one of these: ask the Aegis Structuring Desk for a ROLL ticket with its expiration and "
+    "strike",
+    "",
+    "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    "options is not modelled",
+    "> - criteria: your structuring.toml (sha 5155427c)",
+    "",
     FOOTER_1931,
 ]
 SPY_NOT_APPLICABLE = [
     "NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the "
     "short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll "
     "analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)",
-    footer("19:50"),
-]
-DISABLED_TEXT = ["NOT_APPLICABLE | AG-20261020-01 roll analysis | the roll section is disabled in your structuring.toml",
-                 footer("19:50")]
-CRITERIA_MISSING_TEXT = [
-    "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your criteria (SETUP step 9)",
-    footer("19:50"),
-]
-REFUSED_TEXT = [
-    "REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs level 1 by "
-    "the desk's convention; desk.toml records your self-attested level 0 | the desk shows nothing above your level; "
-    "your broker's own approval decides what you can enter",
+    "",
     footer("19:50"),
 ]
 UNACKNOWLEDGED_TAIL = ("the desk names no candidate and prints no ticket while desk.toml, positions.csv or structuring.toml "
                        "differ from what you acknowledged | acknowledge with ack.py config --owner-tapped")
-STALE_TEXT = ["UNAVAILABLE | AG-20261020-01 roll analysis | no usable quote of the underlying", footer("19:50")]
-AFTER_CLOSE_TEXT = ["UNAVAILABLE | AG-20261020-01 roll analysis | an option chain in your window was not served",
-                    footer("21:25")]
-HOLIDAY_TEXT = ["UNAVAILABLE | AG-20261020-01 roll analysis | the market is closed today",
-                alert_lint.structuring_footer_line(contract.parse_utc_instant(HOLIDAY_NOW))]
 JOURNAL_KEYS = ("utc", "tool", "action", "structure", "trade_id", "verdict", "criteria_sha256", "desk_toml_sha256",
                 "positions_csv_sha256", "best_candidate", "candidates_passed", "candidates_failed", "refused_code",
                 "text_sha256")
@@ -403,7 +463,7 @@ class GoldenTest(DeskCopy):
 
     def test_expiry_day_the_held_call_closes_at_its_grade_e_ask(self) -> None:
         text = self.run_text(now=EXPIRY_DAY_NOW, fixture_set="expiry_day")
-        self.assertIn("the net credits close the held 2026-11-20 105 call | ask 0.16 | quote grade E, 18 min old | "
+        self.assertIn("- the net credits close the held 2026-11-20 105 call | ask 0.16 | quote grade E, 18 min old | "
                       "quote grade E: the conservative side stands", text)
         payload = self.run_json(now=EXPIRY_DAY_NOW, fixture_set="expiry_day")["payload"]
         self.assertEqual(("NONE_QUALIFIES", ["2027-01-15"]), (payload["verdict"], payload["expirations"]["evaluated"]))
@@ -445,7 +505,7 @@ class FailClosedTest(DeskCopy):
         after = sha256_file(self.paths.positions_csv)
         expected = ["UNAVAILABLE | CONFIG CHANGED: positions.csv: sha %s -> sha %s | %s" % (before[:8], after[:8],
                                                                                         UNACKNOWLEDGED_TAIL),
-                    footer("19:50")]
+                    "", footer("19:50")]
         self.assertEqual(expected, self.run_text(expected=20))
         payload = self.run_json(expected=20)["payload"]
         self.assertEqual(("UNAVAILABLE", "config_unacknowledged"), (payload["verdict"], payload["cause"]))
@@ -459,7 +519,7 @@ class FailClosedTest(DeskCopy):
         self.ack()
         self.init_structuring()
         expected = ["UNAVAILABLE | CONFIG CHANGED: structuring.toml: not acknowledged -> sha 5155427c | %s"
-                    % UNACKNOWLEDGED_TAIL, footer("19:50")]
+                    % UNACKNOWLEDGED_TAIL, "", footer("19:50")]
         self.assertEqual(expected, self.run_text(expected=20))
 
     def test_structuring_invalid_is_exit_1(self) -> None:
@@ -669,10 +729,11 @@ class RecordTest(DeskCopy):
             body_code, body_out = call(tool.main, self.argv())
         self.assertEqual(1, code)
         lines = out[:-1].split("\n")
-        self.assertEqual(2, len(lines))
+        self.assertEqual(3, len(lines))
         self.assertTrue(lines[0].startswith("WITHHELD | the text of roll_analysis.py failed the alert lint ("), lines[0])
         self.assertIn("number_not_emitted", lines[0])
-        self.assertTrue(lines[1].startswith("computed by the desk's tools from your criteria"), lines[1])
+        self.assertEqual("", lines[1])
+        self.assertTrue(lines[2].startswith("computed by the desk's tools from your criteria"), lines[2])
         self.assertEqual(1, body_code)
         body = json.loads(body_out)
         self.assertEqual("error", body["status"])
@@ -710,7 +771,8 @@ class FixerTest(DeskCopy):
         self.assertEqual(("UNAVAILABLE", "positions_quarantined", 0), (payload["verdict"], payload["cause"],
                                                                       payload["requests"]["made"]))
         self.assertEqual(["UNAVAILABLE | AG-20261020-01 roll analysis | positions.csv has a quarantined group "
-                          "(positions_check.py shows why): the desk cannot count the account's coverage", footer("19:50")],
+                          "(positions_check.py shows why): the desk cannot count the account's coverage", "",
+                          footer("19:50")],
                          self.run_text(expected=20))
         self.assertEqual([], self.reports())
         self.assertEqual(["positions_quarantined", "positions_quarantined"], [r["refused_code"] for r in self.journal()])
@@ -735,7 +797,7 @@ class FixerTest(DeskCopy):
         self.edit("structuring.toml", "[roll]\nenabled = true\ndte = [40, 75]", "[roll]\nenabled = true\ndte = [80, 100]")
         self.ack()
         self.assertEqual(["NOT_APPLICABLE | AG-20261020-01 roll analysis | no listed standard monthly expiration lies "
-                          "inside your roll window of 80 to 100 calendar days", footer("19:50")], self.run_text())
+                          "inside your roll window of 80 to 100 calendar days", "", footer("19:50")], self.run_text())
         payload = self.run_json()["payload"]
         self.assertEqual(("NOT_APPLICABLE", "no_expiration_in_window", None), (payload["verdict"], payload["cause"],
                                                                                payload["files"]))
@@ -752,7 +814,8 @@ class FixerTest(DeskCopy):
                         handle.write(text.replace("Roth IRA", name))
                 self.ack()
                 lines = self.run_text()
-                self.assertTrue(lines[0].startswith("STRUCTURING | AG-20261020-01 roll analysis"), lines[0])
+                self.assertTrue(lines[0].startswith("### STRUCTURING AG-20261020-01 | WMT covered call: the roll "
+                                                    "analysis"), lines[0])
                 for relative in ("desk.toml", "positions.csv"):
                     shutil.copyfile(os.path.join(FIXTURE_DESK, relative), os.path.join(self.root, relative))
 
@@ -778,9 +841,8 @@ class FixerTest(DeskCopy):
         self.edit("positions.csv", "AG-20261020-01,2026-10-20,,98.50,", "AG-20261020-01,2026-10-20,,120.00,")
         self.ack()
         lines = self.run_text()
-        (reasons,) = [line for line in lines if line.startswith("reasons: ")]
-        self.assertTrue(reasons.endswith("; strike 115 below your stock cost 120.00 and not below the held strike 105"),
-                        reasons)
+        self.assertIn("| strike | 115 | at or above your cost 120.00 or the held strike 105 | \U0001F7E2 |", lines)
+        self.assertIn("| 1 of desk.toml (margin) | 104.23 | 120.00 | 19:31 UTC, 15-min delayed |", lines)
 
     def test_fractional_shares_are_analysed(self) -> None:
         self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,200.5,")

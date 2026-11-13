@@ -48,141 +48,421 @@ HOLIDAY_NOW = "2026-11-26T15:00:00Z"
 WMT, NVDA, SPY = "AG-20261020-01", "AG-20261022-02", "AG-20261028-03"
 FOOTER = ("computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for "
           "positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of ")
-TAIL = ("you supply the limit; the desk prints none",
-        "valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
-        "after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
-        "if you decide to act, you type it into your brokerage account yourself and you supply the limit",
-        FOOTER + "19:31 UTC")
-MODEL = "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled"
-APPROVAL = ("approval: the highest step needs level %d by the desk's convention, within your self-attested level 2 "
-            "(desk.toml); your broker's own approval for this account decides")
-MULTI = "entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level"
 # an unwind is shares and options together, not a roll (reviews L1-5, L2-6, L4-5)
-MULTI_UNWIND = ("entered as one multi-leg order, some brokers class shares and options together as a combination, "
-                "which can need a higher level")
-QUOTE = "quote grade %s, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC"
-WMT_HEAD = "TICKET AG-20261020-01 | WMT covered call | %s (action %s) | account 1 of desk.toml (margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
-SPY_HEAD = "TICKET AG-20261028-03 | SPY protective put | %s (action %s) | account 2 of desk.toml (ira) | computed 19:50 UTC, valid until 20:20 UTC (30 min)"
-WMT_CALL_LEG = "leg 1 of %d: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | " + QUOTE % "B"
-SPY_PUT_LEG = "leg %d of %d: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | " + QUOTE % "B"
 
 GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
-    "wmt_close": ((WMT, "CLOSE"), 0, (
-        WMT_HEAD % ("the option legs closed", "CLOSE"),
-        WMT_CALL_LEG % 1,
-        "leg order: after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention)",
-        APPROVAL % 0,
-        "cash: -700.00 at the conservative prices (mid -685.00); the most the steps need at once: 700.00; the desk does "
-        "not see your cash balance",
-        "realized on the closing leg: -16.00 at the conservative side (mid -1.00)") + TAIL),
-    "wmt_roll": ((WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115"), 0, (
-        WMT_HEAD % ("a roll of the short call", "ROLL"),
-        WMT_CALL_LEG % 2,
-        "leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | " + QUOTE % "B",
-        "leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); "
-        "after leg 2 you hold 200 WMT shares and 2 short calls (level 1)",
-        "in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
-        MULTI, APPROVAL % 1,
-        "cash: +10.00 at the conservative prices (mid +35.00); the most the steps need at once: 700.00; the desk does "
-        "not see your cash balance",
-        "realized on the closing leg: -16.00 at the conservative side (mid -1.00)",
-        "accepted ex_dividend: the ex-dividend date 2026-11-24 (cum 2026-11-23) falls inside the new call's life (by "
-        "#assign-ok)",
-        "after both legs: group delta 134.07, max loss 19006.00, max profit 3994.00, breakeven 95.03",
-        MODEL) + TAIL),
-    "wmt_unwind": ((WMT, "UNWIND_STOCK"), 0, (
-        WMT_HEAD % ("the shares and every option leg closed", "UNWIND_STOCK"),
-        WMT_CALL_LEG % 2,
-        "leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | " + QUOTE % "A",
-        "leg order: leg 1 first; after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention); "
-        "after leg 2 you hold no WMT shares and no option (level 0)",
-        "in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
-        MULTI_UNWIND, APPROVAL % 0,
-        "cash: +20140.00 at the conservative prices (mid +20161.00); the most the steps need at once: 700.00; the desk "
-        "does not see your cash balance",
-        "realized on the closing legs: +1124.00 at the conservative side (mid +1145.00)") + TAIL),
-    "wmt_let_assign": ((WMT, "LET_ASSIGN"), 0, (
-        WMT_HEAD % ("the short option left to expiry", "LET_ASSIGN"),
-        "no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your "
-        "broker's cutoff is 16:30 ET (desk.toml)",
-        "the 2026-11-20 105 call is out of the money now: the spot mid 104.23 is below its strike",
-        # the short leg can be closed only in the session: its close, not the broker's exercise cutoff (L1-2, L2-5)
-        "if you decide otherwise, you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be "
-        "closed only while the session trades",
-        "if assigned: 200 WMT shares are called away at the strike, cash +21000.00; realized on the call and the shares "
-        "+1984.00",
-        "the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20",
-        "valid until 20:20 UTC: after that its quotes are too old, and a new ticket needs a new request",
-        "after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines",
-        FOOTER + "19:31 UTC")),
-    "wmt_monetize": ((WMT, "MONETIZE_PUT"), 0, (
-        "NOT_APPLICABLE | AG-20261020-01 MONETIZE_PUT ticket | AG-20261020-01 is a covered call: the put of a protective "
-        "put or a collar is what MONETIZE_PUT closes",
-        FOOTER + "19:50 UTC")),
-    "nvda_roll": ((NVDA, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "160"), 0, (
-        "TICKET AG-20261022-02 | NVDA covered call | a roll of the short call (action ROLL) | account 1 of desk.toml "
-        "(margin) | computed 19:50 UTC, valid until 20:20 UTC (30 min)",
-        "leg 1 of 2: closes your short 2 x NVDA 2026-11-20 150 call | bid 3.10, ask 3.30, mid 3.20 | " + QUOTE % "C",
-        "leg 2 of 2: opens a new short 2 x NVDA 2027-01-15 160 call | bid 3.25, ask 3.35, mid 3.30 | " + QUOTE % "B",
-        "leg order: leg 1 first; after leg 1 you hold 200 NVDA shares and no option (level 0 by the desk's convention); "
-        "after leg 2 you hold 200 NVDA shares and 2 short calls (level 1)",
-        "in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
-        MULTI, APPROVAL % 1,
-        "cash: -10.00 at the conservative prices (mid +20.00); the most the steps need at once: 660.00; the desk does "
-        "not see your cash balance",
-        "realized on the closing leg: -50.00 at the conservative side (mid -30.00)",
-        "FAILS_CRITERION credit_only: a net debit of 0.05",
-        "FAILS_CRITERION ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life",
-        "after both legs: group delta 137.35, max loss 27640.00, max profit 4360.00, breakeven 138.20",
-        MODEL) + TAIL),
-    "spy_monetize": ((SPY, "MONETIZE_PUT"), 0, (
-        SPY_HEAD % ("the long put closed for its value", "MONETIZE_PUT"),
-        SPY_PUT_LEG % (1, 1),
-        "leg order: after leg 1 you hold 100 SPY shares and no option (level 0 by the desk's convention)",
-        APPROVAL % 0,
-        "cash: +980.00 at the conservative prices (mid +995.00); the most the steps need at once: 0.00; the desk does "
-        "not see your cash balance",
-        "realized on the closing leg: -150.00 at the conservative side (mid -135.00)",
-        "the 2026-12-18 620 put is out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 is all "
-        "time value",
-        "after the leg, your 100 SPY shares carry no put: their downside is unhedged") + TAIL),
-    "spy_unwind": ((SPY, "UNWIND_STOCK"), 0, (
-        SPY_HEAD % ("the shares and every option leg closed", "UNWIND_STOCK"),
-        "leg 1 of 2: closes 100 of your long SPY shares | bid 648.10, ask 648.14, mid 648.12 | " + QUOTE % "A",
-        SPY_PUT_LEG % (2, 2),
-        "leg order: leg 1 first; after leg 1 you hold no SPY shares and 1 long put (level 0 by the desk's convention); "
-        "after leg 2 you hold no SPY shares and no option (level 0)",
-        MULTI_UNWIND, APPROVAL % 0,
-        "cash: +65790.00 at the conservative prices (mid +65807.00); the most the steps need at once: 0.00; the desk "
-        "does not see your cash balance",
-        "realized on the closing legs: +1420.00 at the conservative side (mid +1437.00)") + TAIL),
-    "spy_roll": ((SPY, "ROLL", "--new-expiration", "2027-03-19", "--new-strike", "610"), 0, (
-        SPY_HEAD % ("a roll of the long put", "ROLL"),
-        "leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | " + QUOTE % "A",
-        SPY_PUT_LEG % (2, 2),
-        "leg order: leg 1 first; after leg 1 you hold 100 SPY shares and 2 long puts (level 2 by the desk's "
-        "convention); after leg 2 you hold 100 SPY shares and 1 long put (level 0)",
-        MULTI, APPROVAL % 2,
-        "cash: -1330.00 at the conservative prices (mid -1305.00); the most the steps need at once: 2310.00; the desk "
-        "does not see your cash balance",
-        "realized on the closing leg: -150.00 at the conservative side (mid -135.00)",
-        "after both legs: group delta 69.69, max loss 4700.00, max profit unbounded, breakeven 657.00",
-        MODEL) + TAIL),
-    "spy_let_assign": ((SPY, "LET_ASSIGN"), 0, (
-        "NOT_APPLICABLE | AG-20261028-03 LET_ASSIGN ticket | AG-20261028-03 holds no short option: only a short option "
-        "can be left to assignment",
-        FOOTER + "19:50 UTC")),
+    "wmt_close": (('AG-20261020-01', 'CLOSE'), 0, (
+        "### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | -700.00 | -685.00 |",
+        "| realized on the closing leg | -16.00 | -1.00 |",
+        "| the most the steps need at once | 700.00 |  |",
+        "",
+        "**approval-level check:** the highest step needs level 0 by the desk's convention, within your "
+        "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 200 WMT shares, no option | 0 |",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "wmt_roll": (('AG-20261020-01', 'ROLL', '--new-expiration', '2027-01-15', '--new-strike', '115'), 0, (
+        "### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote "
+        "grade B",
+        "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | +10.00 | +35.00 |",
+        "| realized on the closing leg | -16.00 | -1.00 |",
+        "| the most the steps need at once | 700.00 |  |",
+        "",
+        "| check | the new call | your criteria |  |",
+        "|---|---|---|:-:|",
+        "| net per share | credit 0.05 (10.00 in all) | credit only | \U0001F7E2 |",
+        "| strike | 115 | at or above your cost 98.50 or the held strike 105 | \U0001F7E2 |",
+        "| absolute delta | 0.33 | 0.15 to 0.35 | \U0001F7E2 |",
+        "| bid | 3.55 | at least 0.50 | \U0001F7E2 |",
+        "| calendar days | 73 | 40 to 75 | \U0001F7E2 |",
+        "| spread | 2.78 % | at most 25 % | \U0001F7E2 |",
+        "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | "
+        "\U0001F7E1 |",
+        "",
+        "| the group | now | after both legs |",
+        "|---|--:|--:|",
+        "| max loss | 19,016.00 | 19,006.00 |",
+        "| max profit | 1,984.00 | 3,994.00 |",
+        "| breakeven | 95.08 | 95.03 |",
+        "| group delta | 101.71 | 134.07 |",
+        "",
+        "**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, "
+        "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 200 WMT shares, no option | 0 |",
+        "| leg 2 | 200 WMT shares, 2 short calls | 1 |",
+        "",
+        "- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
+        "- entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
+        "level",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
+        "American-style options is not modelled",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "wmt_unwind": (('AG-20261020-01', 'UNWIND_STOCK'), 0, (
+        "### TICKET AG-20261020-01 | WMT covered call: the shares and every option leg closed (action "
+        "UNWIND_STOCK)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote "
+        "grade B",
+        "- leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade "
+        "A",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | +20,140.00 | +20,161.00 |",
+        "| realized on the closing legs | +1,124.00 | +1,145.00 |",
+        "| the most the steps need at once | 700.00 |  |",
+        "",
+        "**approval-level check (leg 1 first):** the highest step needs level 0 by the desk's convention, "
+        "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 200 WMT shares, no option | 0 |",
+        "| leg 2 | no WMT shares, no option | 0 |",
+        "",
+        "- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
+        "- entered as one multi-leg order, some brokers class shares and options together as a combination, "
+        "which can need a higher level",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "wmt_let_assign": (('AG-20261020-01', 'LET_ASSIGN'), 0, (
+        "### TICKET AG-20261020-01 | WMT covered call: the short option left to expiry (action LET_ASSIGN)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by "
+        "exception; your broker's cutoff is 16:30 ET (desk.toml)",
+        "",
+        "| the 2026-11-20 105 call |  |",
+        "|---|---|",
+        "| now | out of the money: the spot mid 104.23 is below its strike |",
+        "| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to "
+        "expiry can be closed only while the session trades |",
+        "| if assigned | 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call "
+        "and the shares +1,984.00 |",
+        "| ex-dividend | the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20 |",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv lines",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "wmt_monetize": (('AG-20261020-01', 'MONETIZE_PUT'), 0, (
+        "NOT_APPLICABLE | AG-20261020-01 MONETIZE_PUT ticket | AG-20261020-01 is a covered call: the put of "
+        "a protective put or a collar is what MONETIZE_PUT closes",
+        "",
+        FOOTER + "19:50 UTC",
+    )),
+    "nvda_roll": (('AG-20261022-02', 'ROLL', '--new-expiration', '2027-01-15', '--new-strike', '160'), 0, (
+        "### TICKET AG-20261022-02 | NVDA covered call: a roll of the short call (action ROLL)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 2: closes your short 2 x NVDA 2026-11-20 150 call | bid 3.10, ask 3.30, mid 3.20 | quote "
+        "grade C",
+        "- leg 2 of 2: opens a new short 2 x NVDA 2027-01-15 160 call | bid 3.25, ask 3.35, mid 3.30 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | -10.00 | +20.00 |",
+        "| realized on the closing leg | -50.00 | -30.00 |",
+        "| the most the steps need at once | 660.00 |  |",
+        "",
+        "| check | the new call | your criteria |  |",
+        "|---|---|---|:-:|",
+        "| net per share | debit 0.05 (10.00 in all) | credit only | \U0001F534 |",
+        "| strike | 160 | at or above your cost 141.20 or the held strike 150 | \U0001F7E2 |",
+        "| absolute delta | 0.31 | 0.15 to 0.35 | \U0001F7E2 |",
+        "| bid | 3.25 | at least 0.50 | \U0001F7E2 |",
+        "| calendar days | 73 | 40 to 75 | \U0001F7E2 |",
+        "| spread | 3.03 % | at most 25 % | \U0001F7E2 |",
+        "| ex-dividend | 2026-12-03 (cum 2026-12-02), inside the new call's life | excluded by your "
+        "structuring.toml | \U0001F534 |",
+        "",
+        "| the group | now | after both legs |",
+        "|---|--:|--:|",
+        "| max loss | 27,630.00 | 27,640.00 |",
+        "| max profit | 2,370.00 | 4,360.00 |",
+        "| breakeven | 138.15 | 138.20 |",
+        "| group delta | 104.61 | 137.35 |",
+        "",
+        "**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, "
+        "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 200 NVDA shares, no option | 0 |",
+        "| leg 2 | 200 NVDA shares, 2 short calls | 1 |",
+        "",
+        "- in the other order, after leg 2 you would hold 2 uncovered calls (level 4)",
+        "- entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
+        "level",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
+        "American-style options is not modelled",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "spy_monetize": (('AG-20261028-03', 'MONETIZE_PUT'), 0, (
+        "### TICKET AG-20261028-03 | SPY protective put: the long put closed for its value (action "
+        "MONETIZE_PUT)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | +980.00 | +995.00 |",
+        "| realized on the closing leg | -150.00 | -135.00 |",
+        "| the most the steps need at once | 0.00 |  |",
+        "",
+        "| the put |  |",
+        "|---|---|",
+        "| the 2026-12-18 620 put | out of the money: the spot mid 648.12 is above its strike, so its bid "
+        "9.80 is all time value |",
+        "| after the leg | your 100 SPY shares carry no put: their downside is unhedged |",
+        "",
+        "**approval-level check:** the highest step needs level 0 by the desk's convention, within your "
+        "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 100 SPY shares, no option | 0 |",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "spy_unwind": (('AG-20261028-03', 'UNWIND_STOCK'), 0, (
+        "### TICKET AG-20261028-03 | SPY protective put: the shares and every option leg closed (action "
+        "UNWIND_STOCK)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 2: closes 100 of your long SPY shares | bid 648.10, ask 648.14, mid 648.12 | quote grade "
+        "A",
+        "- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | +65,790.00 | +65,807.00 |",
+        "| realized on the closing legs | +1,420.00 | +1,437.00 |",
+        "| the most the steps need at once | 0.00 |  |",
+        "",
+        "**approval-level check (leg 1 first):** the highest step needs level 0 by the desk's convention, "
+        "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | no SPY shares, 1 long put | 0 |",
+        "| leg 2 | no SPY shares, no option | 0 |",
+        "",
+        "- entered as one multi-leg order, some brokers class shares and options together as a combination, "
+        "which can need a higher level",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "spy_roll": (('AG-20261028-03', 'ROLL', '--new-expiration', '2027-03-19', '--new-strike', '610'), 0, (
+        "### TICKET AG-20261028-03 | SPY protective put: a roll of the long put (action ROLL)",
+        "",
+        "| account | computed | valid until | quotes |",
+        "|---|---|---|---|",
+        "| 2 of desk.toml (ira) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+        "",
+        "**the legs:**",
+        "- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote "
+        "grade A",
+        "- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote "
+        "grade B",
+        "",
+        "| cash | at the conservative prices | at the mids |",
+        "|---|--:|--:|",
+        "| net cash | -1,330.00 | -1,305.00 |",
+        "| realized on the closing leg | -150.00 | -135.00 |",
+        "| the most the steps need at once | 2,310.00 |  |",
+        "",
+        "| check | the new put | your criteria |  |",
+        "|---|---|---|:-:|",
+        "| floor | 5.88 % below | 3 to 10 % | \U0001F7E2 |",
+        "| cost | ask 23.10 (2,310.00 in all) |  |  |",
+        "| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price "
+        "518.496) | \U0001F7E2 |",
+        "| calendar days | 136 | 120 to 210 | \U0001F7E2 |",
+        "| spread | 0.87 % | at most 25 % | \U0001F7E2 |",
+        "",
+        "| the group | now | after both legs |",
+        "|---|--:|--:|",
+        "| max loss | 2,370.00 | 4,700.00 |",
+        "| max profit | unbounded | unbounded |",
+        "| breakeven | 643.70 | 657.00 |",
+        "| group delta | 72.52 | 69.69 |",
+        "",
+        "**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, "
+        "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+        "",
+        "| after | you hold | level |",
+        "|---|---|:-:|",
+        "| leg 1 | 100 SPY shares, 2 long puts | 2 |",
+        "| leg 2 | 100 SPY shares, 1 long put | 0 |",
+        "",
+        "- entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
+        "level",
+        "",
+        "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+        "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+        "UTC",
+        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
+        "American-style options is not modelled",
+        "> - the desk does not see your cash balance",
+        "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+        "> - you supply the limit; the desk prints none",
+        "> - if you decide to act, you type it into your brokerage account yourself",
+        "",
+        FOOTER + "19:31 UTC",
+    )),
+    "spy_let_assign": (('AG-20261028-03', 'LET_ASSIGN'), 0, (
+        "NOT_APPLICABLE | AG-20261028-03 LET_ASSIGN ticket | AG-20261028-03 holds no short option: only a "
+        "short option can be left to assignment",
+        "",
+        FOOTER + "19:50 UTC",
+    )),
 }
 
 EXPIRY_DAY_CLOSE: Tuple[str, ...] = (
-    WMT_HEAD % ("the option legs closed", "CLOSE"),
-    "leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | " + QUOTE % "E"
-    + " | quote grade E: the conservative side stands",
-    "leg order: after leg 1 you hold 200 WMT shares and no option (level 0 by the desk's convention)",
-    APPROVAL % 0,
-    "cash: -32.00 at the conservative prices (mid -28.00); the most the steps need at once: 32.00; the desk does not "
-    "see your cash balance",
-    "realized on the closing leg: +652.00 at the conservative side (mid +656.00)") + TAIL
+    "### TICKET AG-20261020-01 | WMT covered call: the option legs closed (action CLOSE)",
+    "",
+    "| account | computed | valid until | quotes |",
+    "|---|---|---|---|",
+    "| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+    "",
+    "**the legs:**",
+    "- leg 1 of 1: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+    "grade E | quote grade E: the conservative side stands",
+    "",
+    "| cash | at the conservative prices | at the mids |",
+    "|---|--:|--:|",
+    "| net cash | -32.00 | -28.00 |",
+    "| realized on the closing leg | +652.00 | +656.00 |",
+    "| the most the steps need at once | 32.00 |  |",
+    "",
+    "**approval-level check:** the highest step needs level 0 by the desk's convention, within your "
+    "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
+    "",
+    "| after | you hold | level |",
+    "|---|---|:-:|",
+    "| leg 1 | 200 WMT shares, no option | 0 |",
+    "",
+    "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
+    "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 "
+    "UTC",
+    "> - the desk does not see your cash balance",
+    "> - after a fill, tell Aegis Position Control the fill; it proposes the positions.csv lines",
+    "> - you supply the limit; the desk prints none",
+    "> - if you decide to act, you type it into your brokerage account yourself",
+    "",
+    FOOTER + "19:31 UTC",
+)
 
 
 def call(main: Any, argv: Sequence[str]) -> Tuple[int, str]:
@@ -370,10 +650,11 @@ class GoldenTextTest(DeskCase):
         code, body = self.run_json(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115",
                                    now=EXPIRY_DAY_NOW, fixture_set="expiry_day")
         self.assertEqual((0, "TICKET"), (code, body["payload"]["verdict"]))
-        self.assertIn("FAILS_CRITERION earnings: the listed earnings date 2026-11-17 has passed, so the next one is "
-                      "unknown and counts as inside the new call's life", body["payload"]["message"])
-        self.assertIn("bid 0.12, ask 0.16, mid 0.14 | quote grade E, Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC | "
-                      "quote grade E: the conservative side stands", body["payload"]["message"])
+        lines = body["payload"]["message"].split("\n")
+        self.assertIn("| earnings | 2026-11-17 has passed, the next is unknown: counted inside the new call's life | "
+                      "excluded by your structuring.toml | \U0001F534 |", lines)
+        self.assertIn("- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 0.12, ask 0.16, mid 0.14 | quote "
+                      "grade E | quote grade E: the conservative side stands", lines)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -523,7 +804,7 @@ class QuietTest(DeskCase):
         payload = body["payload"]
         self.assertEqual((20, "unavailable", "UNAVAILABLE", "replacement_not_listed", 4),
                          (code, body["status"], payload["verdict"], payload["cause"], payload["requests"]["made"]))
-        self.assertEqual("UNAVAILABLE | AG-20261020-01 ROLL ticket | the chain does not list that contract\n" + FOOTER
+        self.assertEqual("UNAVAILABLE | AG-20261020-01 ROLL ticket | the chain does not list that contract\n\n" + FOOTER
                          + "19:50 UTC", payload["message"])
 
     def test_market_closed(self) -> None:
@@ -534,7 +815,7 @@ class QuietTest(DeskCase):
                 code, out = self.run_text(WMT, "CLOSE", now=now, fixture_set=fixture_set)
                 self.assertEqual(20, code)
                 self.assertEqual("UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to act "
-                                 "on: the session is not open\n" + FOOTER + clock + " UTC\n", out)
+                                 "on: the session is not open\n\n" + FOOTER + clock + " UTC\n", out)
                 code, body = self.run_json(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115", now=now,
                                            fixture_set=fixture_set)
                 self.assertEqual((20, "market_closed", 0), (code, body["payload"]["cause"],
@@ -554,7 +835,7 @@ class QuietTest(DeskCase):
         self.assertEqual(20, code)
         self.assertEqual("REFUSED AG-20261028-03 | SPY protective put | opening 1 new long put needs level 2 by the desk's "
                          "convention; desk.toml records your self-attested level 1 | the desk shows nothing above your "
-                         "level; your broker's own approval decides what you can enter\n" + FOOTER + "19:50 UTC\n", out)
+                         "level; your broker's own approval decides what you can enter\n\n" + FOOTER + "19:50 UTC\n", out)
         code, body = self.run_json(SPY, "ROLL", "--new-expiration", "2027-03-19", "--new-strike", "610")
         payload = body["payload"]
         self.assertEqual(("REFUSED", "approval_level", 0, None), (payload["verdict"], payload["refused_code"],
@@ -573,7 +854,7 @@ class QuietTest(DeskCase):
         self.assertEqual(20, code)
         self.assertEqual("UNAVAILABLE | CONFIG CHANGED: structuring.toml: sha 5155427c -> sha %s | the desk names no "
                          "candidate and prints no ticket while desk.toml, positions.csv or structuring.toml differ from "
-                         "what you acknowledged | acknowledge with ack.py config --owner-tapped\n" % new[:8]
+                         "what you acknowledged | acknowledge with ack.py config --owner-tapped\n\n" % new[:8]
                          + FOOTER + "19:50 UTC\n", out)
         code, body = self.run_json(WMT, "CLOSE")
         payload = body["payload"]
@@ -598,7 +879,7 @@ class QuietTest(DeskCase):
         self.assertEqual("CONFIG CHANGED: adopted rulebook: sha %s -> sha %s | the structuring text below reads the files "
                          "as they are now; acknowledge with ack.py config --owner-tapped" % (old[:8], sha256_file(rulebook)[:8]),
                          lines[0])
-        self.assertEqual(GOLDEN_TEXTS["wmt_close"][2][0], lines[1])
+        self.assertEqual(["", GOLDEN_TEXTS["wmt_close"][2][0]], lines[1:3])
 
 
 class UnacknowledgedDeskTest(DeskCase):
@@ -621,7 +902,7 @@ class CriteriaMissingTest(DeskCase):
         code, out = self.run_text(WMT, "CLOSE")
         self.assertEqual(20, code)
         self.assertEqual("UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your "
-                         "criteria (SETUP step 9)\n" + FOOTER + "19:50 UTC\n", out)
+                         "criteria (SETUP step 9)\n\n" + FOOTER + "19:50 UTC\n", out)
         code, body = self.run_json(WMT, "CLOSE")
         self.assertEqual(("criteria_missing", None, None), (body["payload"]["cause"], body["payload"]["criteria"],
                                                             self.journal()[-1]["criteria_sha256"]))
@@ -638,7 +919,7 @@ class CriteriaMissingTest(DeskCase):
         self.assertEqual("CONFIG CHANGED: adopted rulebook: sha %s -> sha %s | the structuring text below reads the files "
                          "as they are now; acknowledge with ack.py config --owner-tapped\n" % (old[:8], sha256_file(rulebook)[:8])
                          + "UNAVAILABLE | no structuring.toml: the Structuring Desk shows nothing until you set your "
-                         "criteria (SETUP step 9)\n" + FOOTER + "19:50 UTC\n", out)
+                         "criteria (SETUP step 9)\n\n" + FOOTER + "19:50 UTC\n", out)
 
 
 class MarketDataRefusedTest(DeskCase):
@@ -669,8 +950,8 @@ class WithheldTest(DeskCase):
     def test_a_text_that_fails_the_lint_is_withheld(self) -> None:
         original = tickets.ticket_lines
 
-        def bad(w: Any, ticket: Any, changes: Any = ()) -> List[str]:
-            return original(w, ticket, changes) + ["close it now, you should"]
+        def bad(w: Any, ticket: Any, changes: Any = (), delay_min: int = 15) -> List[str]:
+            return original(w, ticket, changes, delay_min) + ["close it now, you should"]
 
         with mock.patch.object(tickets, "ticket_lines", side_effect=bad):
             code, out = self.run_text(WMT, "CLOSE")
@@ -678,7 +959,7 @@ class WithheldTest(DeskCase):
         body = json.loads(raw)
         self.assertEqual((1, 1), (code, json_code))
         self.assertEqual("WITHHELD | the text of exit_ticket.py failed the alert lint (forbidden_language, "
-                         "imperative_start) and is withheld; the JSON of exit_ticket.py --json shows it\n" + FOOTER
+                         "imperative_start) and is withheld; the JSON of exit_ticket.py --json shows it\n\n" + FOOTER
                          + "19:31 UTC\n", out)
         payload = body["payload"]
         self.assertEqual(("error", False, 1), (body["status"], payload["lint"]["ok"], payload["exit_code"]))
@@ -707,7 +988,10 @@ class RequestsTest(DeskCase):
                           "2026-11-03T20:25:07+00:00"),
                          (body["generated_at"], payload["computed_utc"], payload["ticket_id"], payload["valid_until"]))
         self.assertEqual("2026-11-03T19:55:07+00:00", self.journal()[-1]["utc"])
-        self.assertIn("computed 19:55 UTC, valid until 20:25 UTC (30 min)", payload["message"])
+        self.assertIn("| 1 of desk.toml (margin) | 19:55 UTC | 20:25 UTC (30 min) | 19:31 UTC, 15-min delayed |",
+                      payload["message"].split("\n"))
+        self.assertIn("> - after 20:25 UTC its quotes are too old, and a new ticket needs a new request",
+                      payload["message"].split("\n"))
 
     def test_every_request_is_an_allow_listed_get(self) -> None:
         original = alpaca_client.OfflineTransport.fetch
@@ -773,7 +1057,7 @@ class FixerTest(DeskCase):
         self.ack()
         code, out = self.run_text(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115")
         self.assertEqual(0, code, out)
-        self.assertTrue(out.startswith("TICKET AG-20261020-01 | WMT covered call"), out)
+        self.assertTrue(out.startswith("### TICKET AG-20261020-01 | WMT covered call"), out)
 
     def test_two_tickets_in_one_second_are_one_ticket(self) -> None:
         self.ack()
