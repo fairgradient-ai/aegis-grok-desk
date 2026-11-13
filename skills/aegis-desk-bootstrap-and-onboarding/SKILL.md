@@ -1,9 +1,9 @@
 ---
 name: aegis-desk-bootstrap-and-onboarding
-description: The staged Stage-1 setup of the read-only Aegis options desk on Grok Bot, for the Aegis Desk Lead. Step 0 proves routines exist; then the pinned release and its checks, the four Stage-1 Bots, the Aegis Options Floor and the skills with a readback each, Notifications and Timezone on the three routine-owning Bots, the connector and MCP readback, the Auto-review rules, the desk interview, the sandbox token and the full doctor, the live Opening Bell, positions.csv, the dividend intake, the rule-by-rule rulebook interview, the structuring interview, the routines offered paused, and the receipt. Use for a first setup, a repair or a readiness check.
+description: The first run of the read-only Aegis options desk on Grok Bot, for the Aegis Desk Lead. The pinned release and its gate, a demo on a sample book before any question, the four Stage-1 Bots, the desk skills with a readback each, the Aegis Options Floor, the one owner action of the first run (a free Tradier sandbox market-data token, added through the secure secret card, never pasted in chat, verified by a live Opening Bell) and the receipt. The later steps (add my positions, adopt my exit rules, turn on monitoring, set up the structuring desk) start only when the owner says their phrase and follow SETUP.md section 9. Use for a first setup, a repair or a readiness check.
 license: MIT
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: FairGradient
   category: desk
 ---
@@ -12,9 +12,15 @@ metadata:
 
 Adapted from HyperGrok Trading Desk (Galleon Labs, MIT), commit 75a4c79; see ATTRIBUTION.md.
 
-The Aegis Desk Lead follows these steps in order to build the owner's Stage-1 desk. Each step ends with evidence: a
-tool line, a readback, or the owner's own confirmation. A step that cannot be done is reported with the exact manual
-step for the owner, and every step that depends on it stays pending. Nothing is ever reported as done on a guess.
+The Aegis Desk Lead follows these steps in order for the owner's first run. `SETUP.md` in the checkout is the full
+runbook; this skill is its checklist for sections 1 to 8. Each step ends with evidence: a tool line, a readback, or
+the owner's own confirmation. A step that cannot be done is reported with its exact manual step, and every step that
+depends on it stays pending. Nothing is ever reported as done on a guess.
+
+The first run asks the owner for one thing: a free Tradier sandbox market-data token, added through the secure secret
+card, never pasted in chat. The owner's touchpoints are three: paste the Start prompt, add the token through the card, read the receipt. No
+Auto-review rule, connector readback, Notifications, Timezone, interview, positions, rules or routines are asked for
+in the first run; each waits for its phrase (step 8).
 
 ## Safety boundary for setup
 
@@ -23,43 +29,57 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 - Setup is read-only. No brokerage credential is asked for, read or stored, and no order is created or sent.
 - The only credential is the Tradier sandbox market-data token. The owner adds it through the secure secret card; it
   is never asked for or pasted in chat.
-- Local writes stay under `/workspace/aegis-grok-desk` (the release checkout) and `/workspace/aegis-desk` (the desk
-  root). Creating the four Bots and one private group is in scope; sharing anything publicly is not.
-- Owner-authority commands (`desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`) run only after the
-  owner taps approve on the Ask-first card. The Lead never adds `--owner-tapped` or `--allow-rth` on its own.
-- Every desk tool the Lead runs interactively passes `--desk-root /workspace/aegis-desk`.
+- Local writes stay under `/workspace/aegis-grok-desk` (the release checkout), `/workspace/aegis-desk` (the desk root)
+  and `/workspace/aegis-demo` (the sample desk copy). Creating the four Bots and one private group is in scope;
+  sharing anything publicly is not.
+- Owner-authority commands (`desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`) belong to the later
+  steps. Each runs only after the owner taps approve on its Ask-first card; the Lead never adds `--owner-tapped` or
+  `--allow-rth` on its own.
+- Numbers come from the tools, never from the Lead. UNAVAILABLE is a verdict, never a zero.
+- If a capability is unavailable, return the exact manual step and continue the independent work.
 
-## Step 0: prove routines exist
-
-Before anything else, the Lead creates one paused test routine whose prompt is only "Reply with the single word
-quiet.", reads back its name, schedule and paused state, deletes it, and reads back that it is gone. If routines are
-not available on the owner's plan, the desk cannot monitor anything: the Lead says so, records it for the receipt, and
-continues only the interactive steps.
-
-## 1. Get and verify the pinned release
+## 1. Get the pinned release
 
 ```text
-git clone --depth 1 --branch v0.1.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.1.1 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
-cd /workspace/aegis-grok-desk
-bash scripts/check.sh
-python3 scripts/desk_doctor.py --desk-root /workspace/aegis-desk
+python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 ```
 
-- If `/workspace/aegis-grok-desk` already exists, the Lead keeps it as it is: no overwrite, reset or switch. It reports
-  what the doctor's check 1 says about it.
-- If the clone fails because the tag does not exist, the release is not published yet: stop and tell the owner.
-- `bash scripts/check.sh` runs once, here. It takes a few minutes and ends with
-  `ok: all repository gates passed for /workspace/aegis-grok-desk`. Any failure stops the setup. After setup, the
-  routine checks are `python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --selftest --desk-root /workspace/aegis-desk`
-  and the doctor itself.
-- The doctor's check 1 (`release_pin`) PASSes with `release v0.1.0 at <commit>, clean`. At this point its check 8
-  FAILs (no `desk.toml` yet); that is expected until step 7.
-- If check 1 says `git refuses this checkout: it is owned by another user (see SETUP)`, the owner approves exactly
-  `git config --global --add safe.directory /workspace/aegis-grok-desk`, run as the account that runs the routines,
-  and the Lead runs the doctor again. No desk code writes git configuration.
+- If the tag does not exist, stop and tell the owner. An existing `/workspace/aegis-grok-desk` is kept as it is: no
+  overwrite, reset or switch; report what the doctor's check 1 says about it.
+- Check 1 (`release_pin`) passes with `release v0.1.1 at <commit>, clean`. Until `desk.toml` exists (SETUP section
+  9.1), checks 4, 5, 10 and 11 warn and check 8 fails; that is expected.
+- If check 1 says `git refuses this checkout: it is owned by another user (see SETUP)`, record it as pending. Its fix,
+  one owner-approved `safe.directory` command, belongs to SETUP section 9.3 step 4. Nothing in the first run needs it:
+  no `routine.py` runs before SETUP section 9.3.
 
-## 2. Create the Stage-1 Bots, the Floor and the skills
+## 2. Read the desk and run the gate
+
+Read `README.md`, `SETUP.md`, `aegis-desk-charter` and the four agent files. Then, from `/workspace/aegis-grok-desk`,
+run `bash scripts/check.sh` once. It takes a few minutes and ends with
+`ok: all repository gates passed for /workspace/aegis-grok-desk`; any failure stops the setup.
+
+## 3. Show the demo before asking anything
+
+Copy the sample desk first (tools write into their desk root), then run the demo commands of SETUP section 3:
+
+```text
+cp -r /workspace/aegis-grok-desk/tests/fixtures/desk /workspace/aegis-demo
+cd /workspace/aegis-grok-desk
+python3 scripts/opening_bell.py --demo
+```
+
+- The explicit form of the bell on the copy is
+  `python3 scripts/opening_bell.py --symbol SPY --offline --desk-root /workspace/aegis-demo --now 2026-11-03T19:50:00Z`.
+- Then `positions_check.py`, `book.py` and `trigger_levels.py` with
+  `--offline --desk-root /workspace/aegis-demo --now 2026-11-03T19:50:00Z`; each exits 0.
+- The demo runs no `routine.py`, `book_check.py` or `exit_check.py`: on the never-acknowledged sample files they open
+  with a CONFIG CHANGED line that names an owner-authority command, and `routine.py` also needs the pin check of
+  step 1. No `ack.py` command runs on the demo copy.
+- Post each output verbatim, labelled "synthetic demo on a sample book: not market data, not your positions".
+
+## 4. Create the Bots
 
 - From `agents/desk-lead.md`: Name "Aegis Desk Lead", Job "Head of the options desk".
 - From `agents/exit-sentinel.md`: Name "Aegis Exit Sentinel", Job "Exit-rule monitor of the options desk".
@@ -68,19 +88,15 @@ python3 scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 - From `agents/structuring-desk.md`: Name "Aegis Structuring Desk", Job "On-request choices desk of the options
   desk".
 
-- Each Bot gets its native Name and Job label from the list above. Its standing instructions are its role skill
-  (`aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control` or
-  `aegis-role-structuring-desk`), enabled for that Bot only.
-- Each Bot also gets the desk skills its agent file lists under `skills:`.
-- The Lead creates one private group, "Aegis Options Floor", with exactly these four Bots, and reads back its
-  members. A group holds two to six Bots, which leaves room for the two Stage-2 seats. The Aegis Book & Risk
-  Analyst and the Aegis Events and Calendar Analyst are
-  planned for Stage 2 (not in this release). The Aegis Rules Steward and the Aegis Review Desk, by direct message, are
-  planned for Stage 3 (not in this release).
+Read back each Bot's native Name and Job. Its standing instructions are its role skill (`aegis-role-desk-lead`,
+`aegis-role-exit-sentinel`, `aegis-role-position-control` or `aegis-role-structuring-desk`), enabled for that Bot only.
+The Stage-2 and Stage-3 seats are not in this release; asked for one, a Bot says so.
 
-Every skill is installed with a readback. The Lead reads back the stored name, description and body and compares them
-with `skills/<name>/SKILL.md` in the checkout; `template/grok-bot.json` records the sha256 of each file (`skills` and
-`roleSkills`). Each skill gets one status for the receipt:
+## 5. Install the skills
+
+Each Bot gets the desk skills its agent file lists under `skills:` (the list is in SETUP section 5). Every skill is
+installed with a readback: the stored name, description and body compared with `skills/<name>/SKILL.md` in the
+checkout; `template/grok-bot.json` records each file's sha256 (`skills` and `roleSkills`). One status each:
 
 - `template`: already present from the template and identical;
 - `installed`: saved now, and the readback is identical;
@@ -88,190 +104,61 @@ with `skills/<name>/SKILL.md` in the checkout; `template/grok-bot.json` records 
 - `mismatch`: the stored text differs or cannot be read back. That skill is not ready, and a shared skill with the
   same name but a different body is never enabled.
 
-## 3. The owner's switches
+## 6. Create the Aegis Options Floor
 
-The owner does these; the Lead asks, then reads back what the owner reports.
+One private group, "Aegis Options Floor", with exactly the four Bots; read back its members. A group holds two to six
+Bots, which leaves room for the Stage-2 seats. Nothing is shared publicly.
 
-1. **Notifications** on, and **Timezone** America/New_York, for the three routine-owning Bots: the Desk Lead, the
-   Aegis Exit Sentinel and Position Control. The Aegis Structuring Desk runs no routine and answers only when the owner
-   asks. No tool records these; the receipt reports them.
-2. **Auto-review rules.** The Lead prints them:
+## 7. Connect market data
 
-```text
-python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --rules-text --desk-root /workspace/aegis-desk
-```
+The one owner action. Send the owner the token steps of SETUP section 7 as written there (sign up at Tradier, API
+Access, the Sandbox Account Access section, copy only the sandbox token, never the production one above it). Facts
+SETUP marks as not confirmed are passed on as not confirmed.
 
-   It prints `paste each rule exactly as printed, one rule per line` and three rules: `allow` (506 of 1000
-   characters), `ask_first_writes` (315) and `ask_first_owner_authority` (333). The owner pastes each one exactly.
-   The third one names `desk_init.py` and the Structuring Desk's three tools, so each of their runs raises a card.
-3. **Connected apps and MCP servers.** The owner opens both lists and reads each entry back to the Lead. None may be
-   able to place or change an order; an app that can is disconnected, or its order tools turned off, by the owner. The
-   owner never signs in to a brokerage in the Bot computer's browser. When the owner confirms, and taps the Ask-first
-   card, the Lead records it:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/ack.py connectors --owner-tapped --desk-root /workspace/aegis-desk
-```
-
-   It prints `connector readback recorded at HH:MM UTC; desk_doctor re-asks after 30 days`. The doctor's check 10 then
-   passes for 30 days.
-
-## 4. The desk interview
-
-The Lead asks, one topic at a time, and writes the answers as JSON (the shape is `desk_init` "Input" in
-[docs/TOOLS.md](../../docs/TOOLS.md)) to `/workspace/aegis-desk/setup/desk-answers.json`:
-
-- the accounts (a name and `cash`, `margin` or `ira` each) and the broker's exercise cutoff in ET, `HH:MM`;
-- the self-attested options approval level (0 to 5) in the desk's convention (`aegis-ticket-and-unwind-order` has
-  the table; a broker's numbering may differ, so the owner gives the lowest level across the accounts), the
-  declared equity, the attention thresholds, the disclosures acknowledged, the engagement, `chatty` or `quiet`, and
-  the cadence profile, `lean` or `active`;
-- the market data: host `sandbox` and the token variable `TRADIER_API_TOKEN` (or a token file);
-- the risk-free rate, its source and its date.
-
-The structuring tools read the approval level. The attention thresholds, `chatty_or_quiet`, engagement and
-disclosures are recorded for later stages; no tool reads them in this release. The Lead says so. After the owner's
-tap:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/desk-answers.json --desk-root /workspace/aegis-desk
-```
-
-On the fixture answers it printed (synthetic):
-
-```text
-wrote desk.toml (962 bytes, sha256 f011fe058582203498b9082ec247cbfd388ac5b241d486ee26584c333eb91a94)
-acknowledge with ack.py config --owner-tapped once positions.csv and the adopted rulebook are in place
-```
-
-A production host is refused (exit 1, `production_host`). Answers that would rewrite an existing `desk.toml` are
-refused unless the owner taps `--replace --owner-tapped`, which rewrites the whole file from full answers.
-
-## 5. The sandbox token, the full doctor, the live Opening Bell
-
-1. The owner adds `TRADIER_API_TOKEN` through the secure secret card. The fallback is the file
-   `/workspace/.aegis-secrets/tradier.token` with mode 0600, named in the answers as the token file.
-2. The Lead runs the full doctor,
-   `python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk`. Check 4 names
-   the token's source. Check 5 makes one GET of the sandbox clock; a 401 or 403 FAILs with
-   `not a sandbox token: remove and rotate`, and the owner rotates the token. Check 8 still FAILs until step 7.
-3. Then the live Opening Bell, posted verbatim (it is a public market snapshot, not a signal):
+1. Ask for the secret `TRADIER_API_TOKEN` with the secure secret card. The owner pastes it there, never in chat. The
+   fallback is the file `/workspace/.aegis-secrets/tradier.token` with mode 0600, passed as `--token-file`.
+2. Verify with the live Opening Bell, posted verbatim (a public market snapshot, not a signal):
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-root /workspace/aegis-desk
 ```
 
-   With the token in the file, add `--token-file /workspace/.aegis-secrets/tradier.token`. Without a token the bell
-   prints `UNAVAILABLE: no_token: ...` and exits 20. Before the token, only the recorded synthetic fixture may be
-   shown, labelled as such, run from `/workspace/aegis-grok-desk`:
-   `python3 scripts/opening_bell.py --symbol SPY --offline --desk-root tests/fixtures/desk --now 2026-11-03T19:50:00Z`.
-   It replays a recorded synthetic fixture: it is not market data.
+   With the file fallback, add `--token-file /workspace/.aegis-secrets/tradier.token`. Without a token it prints
+   `UNAVAILABLE: no_token: ...` and exits 20. `UNAVAILABLE: the quotes request failed: auth: ...` is a 401 or 403,
+   often the production token pasted by mistake. Before anything else, ask the owner to delete that secret from the
+   card (or the file): a production token can trade and must never stay. Then the owner adds the sandbox token
+   through the card and you verify again.
+3. Record the token source (the card and `TRADIER_API_TOKEN`, or the file). The doctor verifies it from SETUP section
+   9.1 on, once `desk.toml` exists.
 
-## 6. positions.csv and the dividend intake
+## 8. The receipt
 
-Aegis Position Control takes this step in the Floor (`aegis-positions-csv-book-of-record`):
+One message. It opens with three plain lines: the desk is built (four Bots, the Floor, the skills, release v0.1.1);
+whether live market data works; and that nothing else is needed now, with "say 'add my positions'" when the owner
+wants the desk to watch the book. Then the evidence:
 
-1. The owner supplies the file's exact text. On the owner's explicit request, Position Control saves those exact bytes
-   to `/workspace/aegis-desk/positions.csv`: a verbatim transcription, never an edit and never derived rows.
-2. It runs `python3 /workspace/aegis-grok-desk/scripts/positions_check.py --desk-root /workspace/aegis-desk` and
-   reports the verdict, the number of rows and the file's sha256 from the snapshot line of
-   `python3 /workspace/aegis-grok-desk/scripts/csv_recon.py --desk-root /workspace/aegis-desk`. The owner confirms.
-   Errors go back to the owner with the exact row and message.
-
-Then the dividend intake, for every held symbol (short calls first): the next ex-dividend date, the amount and
-`confirmed` or `estimated`, or `none` with the owner's source. A symbol the owner cannot answer is left out: the desk
-then reports it UNAVAILABLE, never zero. The Lead writes `/workspace/aegis-desk/setup/dividends.json` with only
-`ex_dividends`, and after the owner's tap runs the tool a second time:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/dividends.json --desk-root /workspace/aegis-desk
-```
-
-It writes `research/calendar.toml`. Earnings, settlement values, closures and dividend yields are the owner's to add
-to that file by hand. A later `--replace --owner-tapped` run rewrites the whole calendar, so a re-intake re-enters
-every entry.
-
-## 7. The rulebook interview
-
-The Lead copies the examples to a candidate file and changes only what the owner states:
-
-```text
-mkdir -p /workspace/aegis-desk/rules
-cp /workspace/aegis-grok-desk/rules/examples/exit_rules-1.0.0.toml /workspace/aegis-desk/rules/candidate-1.0.0.toml
-```
-
-- Rule by rule, the Lead shows the rule's id, title, threshold, plan and source. The owner keeps it as written
-  (`origin = "example-accepted"`), changes the threshold (`origin = "owner-entered"`), or leaves it out (the rule is
-  deleted from the candidate). A rule left at `origin = "example"` is refused.
-- `DAILY` and `CONC` need an owner-entered value, or `owner_must_set = false` to keep the documented default.
-- Every held structure needs a take-profit rule that covers it; `--allow-uncovered` overrides that only when the owner
-  asks, and it is recorded.
-- Adoption runs outside regular trading hours, after the owner's tap, with the phrase the owner types:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/rules_adopt.py --file /workspace/aegis-desk/rules/candidate-1.0.0.toml --version 1.0.0 --owner-phrase "adopt rules 1.0.0" --desk-root /workspace/aegis-desk
-```
-
-During the session it refuses with `regular_trading_hours: regular trading hours (session open): an adoption waits for
-the close unless --allow-rth is given (recorded in rules/CHANGELOG.md)`. On a fixture copy with every rule accepted as
-written, it printed first (synthetic): `adopted rules 1.0.0, sha cc09859c, as rules/exit_rules-1.0.0.toml at 2026-11-03
-22:00 UTC (session closed)`. When a rulebook is already adopted, `rules_diff.py --candidate <file> --latest-snapshot
---desk-root /workspace/aegis-desk` runs first. The grammar and change control are in `aegis-rules-dsl-and-change-control`.
-
-Then the structuring interview, in the Aegis Structuring Desk's own chat (`aegis-overlay-proposals`). Section by
-section it shows the documented defaults of `structuring.toml` and changes only what the owner states; last it
-shows the disclosure `structuring-suggestions-1` verbatim, and records the acknowledgement only after the owner
-gives it. After the owner's tap, the Structuring Desk runs:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
-```
-
-On the fixture answers it printed (synthetic): `wrote structuring.toml (1090 bytes, sha256
-5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c)`. Without an acknowledged `structuring.toml` the
-Structuring Desk shows nothing, so the owner may also skip this step.
-
-Then, after the owner's tap, the configuration is acknowledged:
-
-```text
-python3 /workspace/aegis-grok-desk/scripts/ack.py config --owner-tapped --desk-root /workspace/aegis-desk
-```
-
-Synthetic: `configuration acknowledged at 2026-11-03 22:05 UTC: desk.toml sha f011fe05, positions.csv sha 9483c8f3,
-adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c`. The `structuring.toml` part appears only when
-the file exists.
-
-## 8. The routines: offered, created paused, one Test run
-
-- Each owning Bot creates its own routines from `routines/manifest.toml`: one Grok routine per slot, each prompt
-  exactly the manifest's template with the slot filled in, all created paused and read back (name, schedule, prompt,
-  paused). On the lean profile that is 2 for the Desk Lead, 5 for the Exit Sentinel and 2 for Position Control; the
-  Structuring Desk creates none. On the active profile the Sentinel adds its four extra routines, paused
-  (`aegis-routines-and-quiet-rules`).
-- One Test run of the Lead's preopen routine. It proves that routines see the token and the desk files: preopen runs
-  the quick doctor (checks 2, 3, 4, 8 and 9), which has no sandbox check; the full doctor of step 5 verified the
-  sandbox. The Lead reports whether the Test run raised an Ask-first card; the Allow rule should cover it.
-- When the owner says "turn on monitoring", each Bot unpauses its own lean routines and reads them back.
-- Last, the full doctor once more. Its heartbeat check warns until the routines have run.
-
-## 9. The receipt
-
-The Lead returns one message with the evidence of each step:
-
-- the release and the pin check line; the `check.sh` result;
+- the release and the pin check line; the `check.sh` result; the demo commands run (synthetic);
 - the four Bots by Name and Job; each skill and its status; the Floor and its members;
-- Notifications and Timezone per routine-owning Bot, as the owner reported them;
-- the three Auto-review rules pasted; whether the Test run raised a card;
-- the connector readback line; the token source (check 4) and the sandbox check (check 5);
-- the `desk.toml` sha256, the `positions_check.py` verdict and rows, the calendar written, the rulebook version and
-  sha, the `structuring.toml` sha256 (or that the owner skipped it), the configuration acknowledgement line;
-- the routines created, paused or on; the doctor's verdict line;
-- the dead-man rule: no Morning Desk Sheet by 08:00 ET or no pre-close line by 16:15 ET on a trading day means the
-  desk is not running;
-- every pending item with its manual step.
+- the live Opening Bell output, or the exact step still pending; the token source;
+- the doctor's verdict line; every pending item with its manual step.
 
-Its last line is exactly:
+Then three notes: until "add my positions" no Auto-review rule is in place, and the sandbox token cannot reach a live
+account (it could place sandbox paper orders, which the desk's GET-only code cannot, and the write-side Ask-first rule
+covers from SETUP section 9.1 on); never sign in to a brokerage in the Bot computer's browser; and the phrases for
+later: say "add my positions", "adopt my exit rules", "turn on monitoring", or optionally "set up the structuring desk".
+Each phrase runs SETUP section 9.1, 9.2, 9.3 or 9.4, prerequisites first: every later phrase first checks 9.1's
+safety settings and desk questions (both Ask-first rules, the connected-apps answer recorded by `ack.py connectors`,
+and `desk.toml`) and, if any is missing, does those first, then continues. No owner-authority command and no routine
+comes before the two Ask-first rules.
+
+Its last line is exactly the line below, and only when the live Opening Bell succeeded:
 
 ```text
 Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.
 ```
+
+If the owner added no token, the last line is
+`Setup stayed read-only: no credential was added; no order was created or sent.` If an added token failed the bell,
+the receipt names the failed line and its next step (after `auth:`, deleting that secret) and ends
+`Setup stayed read-only: a market-data token was added by you but did not pass its check; no order was created or sent.`
+Do not call the desk ready while a required check failed: name the failed check and the next safe action.

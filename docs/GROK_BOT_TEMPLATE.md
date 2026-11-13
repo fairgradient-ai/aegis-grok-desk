@@ -3,7 +3,7 @@
 `template/grok-bot.json` is the release contract for a public Grok Bot template of the Aegis Desk Lead: the Bot's
 profile, the pinned release, the one skill the template carries, and the sha256 of every skill file in the release.
 This release does not publish a template. Its status is `unpublished`, and publishing is your action as the owner,
-after the tag `v0.1.0` exists.
+after the tag `v0.1.1` exists.
 
 The README's Start prompt is the main way in, and a template is the second. Grok Bot staff confirmed, through
 2026-10-21, that a template import can drop skills. Whichever way the Lead starts, the bootstrap reads back every
@@ -19,8 +19,8 @@ dropped is installed from the checkout, and one that differs is reported as `mis
 | `status` | `unpublished` | one of `unpublished`, `ready-to-publish`, `published` |
 | `name` | `Aegis Desk Lead` | exactly this name |
 | `title` | `Head of the options desk` | present |
-| `description` | a short description of the desk, with `release 0.1.0` | 1 to 280 characters; contains `never places, modifies or cancels orders`; any `release X.Y.Z` in it equals the `plugin.json` version |
-| `source` | this repository, release `0.1.0` | the repository URL of this repository; `release` equals the `plugin.json` version, written without a `v` |
+| `description` | a short description of the desk, with `release 0.1.1` | 1 to 280 characters; contains `never places, modifies or cancels orders`; any `release X.Y.Z` in it equals the `plugin.json` version |
+| `source` | this repository, release `0.1.1` | the repository URL of this repository; `release` equals the `plugin.json` version, written without a `v` |
 | `skills` | every desk skill, keyed by name | each value is the sha256 of `skills/<name>/SKILL.md` (or an object with that `path` and its `sha256`); the file exists and its digest matches |
 | `roleSkills` | the four generated role skills | the same rule, for `skills/aegis-role-<seat>/SKILL.md` |
 | `templateSkillNames` | `aegis-desk-bootstrap-and-onboarding` | unique names, each a key of `skills` (a role skill does not count) |
@@ -29,8 +29,8 @@ dropped is installed from the checkout, and one that differs is reported as `mis
 On this checkout, before the tag exists, it prints:
 
 ```text
-skip: template/grok-bot.json source.release 0.1.0 has no local tag v0.1.0; tag comparison not run (expected before the release is tagged)
-ok: Grok Bot template is unpublished, release 0.1.0, 22 verified skill file(s), exports 1
+skip: template/grok-bot.json source.release 0.1.1 has no local tag v0.1.1; tag comparison not run (expected before the release is tagged)
+ok: Grok Bot template is unpublished, release 0.1.1, 22 verified skill file(s), exports 1
 ```
 
 ## From unpublished to published
@@ -41,8 +41,8 @@ ok: Grok Bot template is unpublished, release 0.1.0, 22 verified skill file(s), 
   role skill `skills/aegis-role-*/SKILL.md` under `roleSkills`, and export at least one skill. No skill ships
   unhashed.
 - **`published`**: it also carries `publicShareUrl`, and that link must appear in `README.md` and `docs/FAQ.md`.
-- **Once the tag `v0.1.0` exists** in the checkout, every claimed file must be byte-identical to its copy at the tag
-  (`git show v0.1.0:<path>`). Before that, the comparison is skipped out loud, as above.
+- **Once the tag `v0.1.1` exists** in the checkout, every claimed file must be byte-identical to its copy at the tag
+  (`git show v0.1.1:<path>`). Before that, the comparison is skipped out loud, as above.
 
 ## The hashes
 
@@ -72,9 +72,10 @@ its name, description and body.
 ## Evaluating a clean install
 
 Add the template as a new Bot and say "Start the desk." The Lead follows the bootstrap skill and
-[SETUP.md](../SETUP.md). A passing install returns the receipt of SETUP step 11: the release and the pin check line,
-the four Bots, every skill as `template`, `installed` or `pointer` with no `mismatch`, the Floor, the readbacks, the
-doctor's verdict and every pending item. Its last line is exactly:
+[SETUP.md](../SETUP.md). A passing install returns the receipt of SETUP step 8: a short summary first, then the
+evidence: the release and the pin check line, the four Bots, every skill as `template`, `installed` or `pointer` with
+no `mismatch`, the Floor, the readbacks, the doctor's verdict, every pending item and the phrases for the next steps.
+Its last line is exactly:
 
 ```text
 Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.

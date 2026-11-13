@@ -118,7 +118,7 @@ means at each phase, because some steps have nothing to check until their inputs
 The manifest version in `plugin.json` is the release being cut; every other manifest, the
 marketplace refs (`v<version>`), the template's `source.release` and every documented pin must
 agree, and `check_manifests.py` fails the build when they do not. Pre-release suffixes such as
-`0.1.0-dev` are rejected: a reader installs exactly one reviewed tag.
+`-dev` or `-rc1` are rejected: a reader installs exactly one reviewed tag.
 
 The release sequence (from the plan, section 12; [docs/RELEASE.md](docs/RELEASE.md) is the checklist, with
 who does each step and the evidence rows):

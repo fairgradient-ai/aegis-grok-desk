@@ -68,6 +68,10 @@ day). The fixture root holds no ``structuring.toml``, so each chain writes it on
 closed without it (criteria missing; a copy never acknowledged). The alert lint journeys cover the structuring fixtures
 too: their emitted documents carry ``"footer": "structuring"``.
 
+One journey runs the README's try-it exactly as published, ``opening_bell.py --demo --json``: the tool names this
+checkout's own fixture desk and instant, so the harness adds no ``--desk-root``, ``--offline`` or ``--now``
+(``checkout_only``); like a tool journey it runs only when the tree under test is this checkout.
+
 Usage: ``python3 scripts/cli_journeys.py [--root DIR] [--json]``. ``--root`` is the tree the
 gates are run against (default: this repository); the scripts always come from this checkout.
 Exit 0 when every journey that ran passes, 1 otherwise.
@@ -201,6 +205,7 @@ class Journey:
     desk_root: Optional[str] = None
     copy_desk_root: bool = False
     steps: Tuple[Step, ...] = ()
+    checkout_only: bool = False
 
 
 def alert_lint_journey(fixture: str, expected_exit: int, expected_json: Dict[str, Any]) -> "Journey":
@@ -232,6 +237,17 @@ def tool_journey(name: str, argv: Sequence[str], expected_exit: int = 0,
     (the main root unless ``desk_root`` says otherwise), after its ``steps`` on the same copy."""
     return Journey(name, tool_argv(argv, now), expected_exit, expected_json, desk_root, True, tuple(steps))
 
+
+def demo_journey(name: str, argv: Sequence[str], expected_exit: int = 0,
+                 expected_json: Optional[Dict[str, Any]] = None) -> Journey:
+    """A command that names this checkout's own fixture desk and instant (``opening_bell.py --demo``, the README's
+    try-it), run exactly as published: the harness adds no ``--desk-root``, ``--offline`` or ``--now``. It is evidence
+    about this checkout only, so it runs only when the tree under test is this checkout."""
+    return Journey(name, tuple(argv), expected_exit, expected_json, None, False, (), True)
+
+
+DEMO_LINE = "Demo: synthetic sample data from the desk's test fixtures, not real market prices; nothing is written"
+"""The first line of ``opening_bell.py --demo`` (its ``DEMO_LINE``)."""
 
 JOURNEYS: Tuple[Journey, ...] = (
     Journey("check_manifests --json", ("check_manifests.py", ".", "--json"), 0, {"ok": True, "version": ANY}),
@@ -561,6 +577,13 @@ JOURNEYS += (
                   "payload.dte_calendar": 45, "payload.strike": "640", "payload.call.mid": "28.65", "payload.put.mid": "17.30",
                   "payload.expected_move.straddle": "36.76", "payload.expected_move.one_sigma": "56.98",
                   "payload.requests_made": 3}),
+    demo_journey("opening_bell --demo -> synthetic sample snapshot (no desk root, no instant)",
+                 ("opening_bell.py", "--demo", "--json"), 0,
+                 {"status": "ok", "tool": "opening_bell", "payload.demo": True, "payload.fixture_set": "regular",
+                  "payload.symbol": "SPY", "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18",
+                  "payload.expected_move.straddle": "36.76", "payload.requests_made": 3, "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix=DEMO_LINE + "\nSPY 648.12 mid (bid 648.10, ask 648.14), as of 19:31 UTC",
+                                               contains=("not a signal",))}),
     tool_journey("routine_audit --budget -> lean 41, active 61 runs per week", ("routine_audit.py", "--budget"), 0,
                  {"status": "ok", "tool": "routine_audit", "payload.mode": "budget",
                   "payload.budget": {"lean": 41, "active": 61}}),
@@ -874,11 +897,11 @@ def run_journey(journey: Journey, root: str) -> Dict[str, Any]:
 
 
 def select(root: str) -> Tuple[List[Journey], List[Journey]]:
-    """``(to run, not run)``: tool journeys are skipped against a tree that is not this checkout."""
+    """``(to run, not run)``: tool and demo journeys are skipped against a tree that is not this checkout."""
     if same_tree(root):
         return list(JOURNEYS), []
-    run_now = [journey for journey in JOURNEYS if journey.desk_root is None]
-    skipped = [journey for journey in JOURNEYS if journey.desk_root is not None]
+    run_now = [journey for journey in JOURNEYS if journey.desk_root is None and not journey.checkout_only]
+    skipped = [journey for journey in JOURNEYS if journey.desk_root is not None or journey.checkout_only]
     return run_now, skipped
 
 

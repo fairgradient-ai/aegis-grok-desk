@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+- Onboarding on Grok Bot is staged. The first run (SETUP sections 1 to 8) asks the owner for one thing: a free
+  Tradier sandbox market-data token, added through the secure secret card, never pasted in chat. It shows a demo on
+  a copy of the sample desk before anything is asked, then returns a receipt that opens with three plain lines and
+  ends with `Setup stayed read-only: one sandbox market-data token was added by you; no order was created or sent.`
+  Everything else waits for a phrase the owner says, each a part of SETUP section 9:
+  - "add my positions" (9.1): first the two Ask-first Auto-review rules and the connected-apps readback
+    (`ack.py connectors --owner-tapped`), because `desk_init.py` follows; then four desk questions with the other
+    settings proposed for one "yes"; Aegis Position Control drafts the `positions.csv` rows from the owner's own
+    words and saves them once the owner approves; dividends for held symbols; the full doctor;
+  - "adopt my exit rules" (9.2): one answer (keep the examples, or name those to change or drop), proposed
+    defaults for `DAILY` and `CONC`, and `--allow-rth` offered during regular trading hours;
+  - "turn on monitoring" (9.3): the routine capability probe, Notifications and Timezone, the Allow rule for
+    `routine.py`, the `safe.directory` fix if the doctor asks, routines created paused, one Test run, unpause;
+  - "set up the structuring desk" (9.4, optional): the structuring interview. "SETUP step 9" still names the step
+    that holds the structuring criteria.
+
+  9.1 comes first: whichever phrase the owner says first, its two safety settings come before any owner-authority
+  command and any routine (SETUP section 9, the bootstrap skill, `agents/desk-lead.md`, `agents/structuring-desk.md`,
+  `docs/STRUCTURING.md`, the README, the FAQ and `SECURITY.md`). 9.2 needs 9.1's files, and 9.3 an adopted rulebook.
+- The first run's edge cases: when git refuses the checkout, the `routine.py` demo is skipped until the
+  `safe.directory` fix of 9.3 (never `--allow-dirty`); the demo's CONFIG CHANGED line is named as the sample desk's;
+  the live Opening Bell takes `--token-file` with the file fallback; a token that fails with `auth:` (often the
+  production token pasted by mistake) is deleted before anything else; and the receipt's last line says a sandbox
+  token was added only when the live bell succeeded.
+- Aegis Position Control may save rows it drafted from the owner's plain description, once the owner approves the
+  exact text shown, byte for byte, with only the owner's numbers (`agents/position-control.md`, the role skill,
+  `aegis-positions-csv-book-of-record`, `docs/POSITIONS_CSV.md`).
+- `SETUP.md` is rewritten for that shape (516 lines to 269). The bootstrap skill
+  `aegis-desk-bootstrap-and-onboarding` (metadata version 0.2.0) now covers only the first run and points to SETUP
+  section 9 for the rest.
+- `scripts/opening_bell.py --demo`: the Opening Bell on the checkout's own sample desk at its fixture instant
+  (`--offline --desk-root <checkout>/tests/fixtures/desk --now 2026-11-03T19:50:00Z`, SPY by default). It writes
+  nothing, reads no credential, and its first line says the data is a synthetic sample, not market prices. With
+  `--desk-root`, `--now`, `--fixture-set` or `--token-file` it is a usage error (exit 2). The JSON payload gains
+  `demo` (true or false). A new journey runs it exactly as published (the `Journey` record gains `checkout_only`, so
+  it never runs against another tree). 8 more tests.
+- `README.md` is rewritten for a first-time reader: see it, try it, start it. A hero image, three badges, a
+  "Try it now" with three commands ending in `--demo`, one Start prompt and its phrases, "Meet the desk",
+  "A day on the desk", "Controls", the runtimes and the repository map. The anchors other pages link to (`#start`,
+  `#try-it-now`, `#meet-the-desk`, `#controls`) are kept.
+- `assets/`: five original SVGs (the hero and the desk flow, each with a phone-width variant, and a terminal card
+  of the real `--demo` output), built by the standard-library script `assets/src/build_graphics.py`, whose
+  `--check` compares them with the committed files. `tests/gates/test_readme_assets.py` runs that check, holds every
+  text colour at 4.5:1 contrast or more, and requires a markdown link to each SVG (in `assets/src/README.md`) so the
+  link gate sees them. 4 more tests, 3052 in all (floor 3052).
+- Docs follow the staged path:
+  - `docs/FAQ.md` answers "What does setup ask me for?" and "How do I get a Tradier sandbox token?", and marks
+    unconfirmed facts as such;
+  - `SECURITY.md` says when each Grok Bot control arrives, and is honest about the window before
+    "add my positions": the sandbox token could place sandbox paper orders, while the repository code still has no
+    write path;
+  - `docs/aegis-grok-bot.md` describes the first run and the phrases;
+  - the runtime pages drop "the tag is created at release";
+  - `docs/GROK_BOT_TEMPLATE.md`, `docs/STRUCTURING.md`, `docs/EXIT_RULES.md`, `skills/README.md` and the anchors in
+    `docs/RELEASE.md` follow the new SETUP numbering.
+- Skills `aegis-routines-and-quiet-rules`, `aegis-expiry-and-assignment-protocol` and
+  `aegis-rules-dsl-and-change-control` name the phrase that starts their part of setup; `template/grok-bot.json`
+  records the new sha256 of each, of the bootstrap skill, of `aegis-positions-csv-book-of-record` and of the three
+  role skills regenerated from the edited agents.
+- Version bump to 0.1.1 (`release_bump.py 0.1.1`): every manifest, marketplace ref, tag pin, template hash, role
+  skill and tool version moves together.
+
 ## 0.1.0 (2026-11-12)
 
 - Release workflow: `.github/workflows/release.yml` tags `main` and publishes the GitHub Release. It runs only when

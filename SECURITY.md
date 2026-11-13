@@ -21,6 +21,20 @@ market-data token. It cannot reach a live account. It could place paper orders o
 write-side Ask-first rule, the hook and the connector check exist. Production market data is outside the guarantee
 and refused in this release.
 
+When each runtime control arrives on Grok Bot, honestly: setup is staged. The first run asks you for one thing: a free
+Tradier sandbox market-data token, added through the secure secret card, never pasted in chat. Nothing else is asked,
+so no Auto-review rule exists yet. The two Ask-first rules (writes, and owner authority) and the connected-apps check
+come first when you say "add my positions", before the first owner-tapped command (`desk_init.py`) runs; whichever
+later phrase you say first, SETUP section 9 starts with them, so no owner-authority command and no routine comes
+before them. The Allow rule for `routine.py` comes when you say "turn on monitoring", before any desk routine is
+created (the plan check before it creates and deletes one test routine that runs no command). Between the first run
+and "add my positions", the desk holds only the sandbox token, which cannot reach a live account but could place
+sandbox paper orders, and no rule yet makes Grok Bot ask you first. In that window the repository code still has no
+write path: the market-data client sends GET requests only, and the AST gate of layer 1 proves it on every gate run.
+No routine runs in that window, and the Lead runs no owner-authority command. If the production token is pasted by
+mistake, the first run's live check fails with `auth:` and the Lead asks you to delete it from the secret card at
+once; until then no Ask-first rule guards it.
+
 ### What proves the code cannot write (layers 1 to 3)
 
 1. **No write code.** `scripts/aegis_desk/tradier_client.py` is the only module that may open a network connection.
@@ -49,9 +63,9 @@ and refused in this release.
 
 ### What governs runtime (layers 4 to 8)
 
-4. **No trade-capable tool surface.** Connected apps and MCP servers are account-wide on Grok Bot. At setup you read
-   both lists back and confirm that none can place or change an order; `ack.py connectors --owner-tapped` records that
-   readback, and the doctor's check 10 asks again after 30 days. The agent files declare `tools: Read, Grep, Glob, Bash`,
+4. **No trade-capable tool surface.** Connected apps and MCP servers are account-wide on Grok Bot. When you say "add
+   my positions", you confirm that none of them can place or change an order; `ack.py connectors --owner-tapped`
+   records that answer, and the doctor's check 10 asks again after 30 days. The agent files declare `tools: Read, Grep, Glob, Bash`,
    so a Claude Code subagent inherits no MCP tools. You never sign in to a brokerage in the Bot computer's browser.
 5. **The broker-write hook (a backstop).** `hooks/broker_write_gate.py` is registered by `hooks/hooks.json` for Claude
    Code and Grok Build (`PreToolUse`, a shell group `Bash|PowerShell|Monitor|run_terminal_command` and an MCP group
@@ -74,8 +88,9 @@ and refused in this release.
 
    For Grok Build, deterministic deny rules for `~/.grok/config.toml` (they do not fail open) are on the
    [Grok Build page](docs/aegis-grok-build.md), to be checked at release.
-6. **Grok Bot Auto-review rules.** You paste three rules at setup, printed by `routine_audit.py --rules-text` from
-   `routines/autoreview.toml` (SETUP step 7):
+6. **Grok Bot Auto-review rules.** You paste three rules, printed by `routine_audit.py --rules-text` from
+   `routines/autoreview.toml`: the two Ask-first rules when you say "add my positions", and the Allow rule when you
+   say "turn on monitoring" (SETUP step 9; the timing is stated above, under the guarantee):
 
    ```text
    Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only sandbox client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
@@ -127,7 +142,7 @@ The Structuring Desk names a best candidate from three inputs it does not check 
 
 ## The release pin check: what it covers and what it does not
 
-`routine.py` runs no step unless the checkout is pinned: a git work tree whose HEAD is the commit of the tag `v0.1.0`
+`routine.py` runs no step unless the checkout is pinned: a git work tree whose HEAD is the commit of the tag `v0.1.1`
 and whose `git status` lists no path, tracked or untracked (ignored paths are not listed). Otherwise it prints one
 INCIDENT line, writes an incident file and exits 20. Within that check:
 

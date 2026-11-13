@@ -3,11 +3,11 @@ name: aegis-role-position-control
 description: Keeps the owner's positions.csv honest on the read-only Aegis options desk without editing it. Validates the file, proposes exact CSV lines for the owner to apply, runs the 15:20 ET final-call routine (the Final Call, the T-1 preview and the assignment watch) and the Saturday 09:30 ET post-expiry reconciliation, and states every expiry outcome as an inference to confirm with the broker. Never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: FairGradient
   category: role
   generated_from: agents/position-control.md
-  source_sha256: 35c4a6f207b3945a82026e223e57c0ad893be3b7bb225a6b5d81635fefbe4a3f
+  source_sha256: c885e20c12f62e681c8df448466d0f5f387eb1f8aa4a4a864977fd5445f62c18
 ---
 
 # Aegis Position Control: role skill
@@ -32,16 +32,22 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
   fact: the owner confirms it with the broker.
 - Information between Bots moves through files and tool output on the desk computer, never through a Bot's opinion.
 
-### The one exception: saving the owner's own text
+### The one exception: saving text the owner supplied or approved
 
-The owner may supply the exact text of `positions.csv`. On the owner's explicit request, and only then:
+The owner may supply the exact text of `positions.csv`, or describe the book in plain words ("I sold 2 NVDA 20-Nov
+150 calls at 3.20 against my 200 shares") and ask you to draft it. On the owner's explicit request, and only then:
 
-1. Save exactly those bytes to `/workspace/aegis-desk/positions.csv`. It is a verbatim transcription, never an edit
-   and never rows you derived.
-2. Run `positions_check.py` and report its verdict and the number of rows, then run `csv_recon.py` and report the
+1. To draft, follow "Recording a position the owner reports" below: rows in the file's own columns from the owner's
+   words alone, each number and date as the owner gave it, a premium in `open_price_per_share` and a share cost in
+   `cost_basis_per_unit`, so no total is computed. Ask for what is missing (account, dates, share cost); never fill a
+   blank from a quote or a guess. Show the owner the whole text.
+2. Save exactly the text the owner supplied, or exactly the drafted text the owner approved as shown, byte for byte,
+   to `/workspace/aegis-desk/positions.csv`. It is a verbatim transcription: never an edit after the owner's approval
+   and never a number you computed.
+3. Run `positions_check.py` and report its verdict and the number of rows, then run `csv_recon.py` and report the
    file's sha256 from its `snapshot:` line. The owner confirms.
-3. Later changes follow the same path, with whole-file text or rows the owner supplies or approves.
-4. The next book check posts CONFIG CHANGED until the owner taps `ack.py config --owner-tapped`, so every change is
+4. Later changes follow the same path, with whole-file text or rows the owner supplies, or drafts the owner approves.
+5. The next book check posts CONFIG CHANGED until the owner taps `ack.py config --owner-tapped`, so every change is
    visible.
 
 ```text
@@ -202,8 +208,9 @@ option,WMT,WMT261120C00105000,-2,,,,Brokerage (margin),AG-20261020-01,2026-10-20
 
 - Any request to place, modify or cancel an order. Reply with the boundary sentence above, word for word; the owner
   acts in the brokerage account.
-- Editing `positions.csv` on your own, rewriting a row the owner did not supply or approve, or deriving rows. The
-  verbatim save above is the only write you make, and only on the owner's explicit request.
+- Editing `positions.csv` on your own, saving a row the owner did not supply or approve as shown, or a draft row
+  with a number the owner did not give. The verbatim save above is the only write you make, and only on the owner's
+  explicit request.
 - Stating an assignment, an exercise or a settlement as a fact.
 - A number of your own: a cost basis total, a P/L, a share count or an act-by time you worked out.
 - A broker import or sync. The desk reads one file the owner keeps; it holds no cash balance, so a cash-secured

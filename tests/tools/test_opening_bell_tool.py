@@ -2,7 +2,9 @@
 calendar days out, the ATM implied volatility from that chain's call and put mids (``aegis_desk.iv``) and the expected
 move stated both ways, from exactly three read-only requests (PR 2d decision D2-14). Offline runs read the copied
 fixture root's recorded set and write nothing; a live run reads no desk file and needs a token; the goldens are the
-regular set's, recomputed with the landed engine."""
+regular set's, recomputed with the landed engine. ``--demo`` (the README's three-command try-it) is the same offline run
+on the checkout's own fixture desk at the regular instant, opened by a plain line saying the data is synthetic; it
+refuses a desk root, an instant, a fixture set and a token file."""
 
 from __future__ import annotations
 
@@ -210,6 +212,94 @@ class OfflineTest(DeskCopy):
                          "the 2027-01-15 chain is not in the recorded set: a failed request")
         code, out = self.offline("--fixture-set", "nope")
         self.assertEqual((1, "fixtures_missing"), (code, json.loads(out)["error"]["code"]))
+
+
+DEMO_LINE = "Demo: synthetic sample data from the desk's test fixtures, not real market prices; nothing is written"
+
+
+class DemoTest(DeskCopy):
+    """``--demo``: the README's three-command try-it. It names the checkout's own fixture desk, so the owner types no
+    path and no instant; the runs below point the tool's demo root at this test's copy, so nothing here reads or could
+    write the repository's fixture root."""
+
+    def demo(self, *extra: str, json_mode: bool = False) -> Tuple[int, str]:
+        with mock.patch.object(tool, "DEMO_DESK_ROOT", self.root):
+            code, out = run_tool(["--demo"] + list(extra) + (["--json"] if json_mode else []))
+        self.assertEqual([], order_shaped(out))
+        return code, out
+
+    def test_the_demo_names_the_checkouts_fixture_desk_and_the_regular_instant(self) -> None:
+        self.assertEqual(os.path.realpath(FIXTURE_DESK), os.path.realpath(tool.DEMO_DESK_ROOT))
+        self.assertEqual(contract.parse_utc_instant(REGULAR_NOW), contract.parse_utc_instant(tool.DEMO_NOW))
+        self.assertEqual(DEMO_LINE, tool.DEMO_LINE)
+
+    def test_the_demo_line_then_the_regular_goldens_and_nothing_written(self) -> None:
+        before = self.tree()
+        code, out = self.demo()
+        self.assertEqual(0, code, out)
+        self.assertEqual([DEMO_LINE] + TEXT, out.rstrip("\n").split("\n"))
+        self.assertEqual(before, self.tree(), "no quote cache, no runtime directory, no ledger")
+        # the whole printed text, the plain first line included, passes the strict lint with the snapshot footer
+        self.assertEqual([], [token.text for token in alert_lint.numeric_tokens(DEMO_LINE)], "the line prints no number")
+        code, out = self.demo(json_mode=True)
+        self.assertEqual(0, code, out)
+        body = json.loads(out)
+        payload = body["payload"]
+        self.assertEqual(("ok", "tradier:sandbox"), (body["status"], body["source"]))
+        self.assertEqual((True, "regular", "SPY", "648.12"), (payload["demo"], payload["fixture_set"], payload["symbol"],
+                                                              payload["quote"]["mid"]))
+        self.assertEqual("\n".join([DEMO_LINE] + TEXT), payload["message"])
+        self.assertEqual("snapshot", payload["emitted"]["footer"])
+        relayed = alert_lint.load_emitted(payload["emitted"]).check(payload["message"])
+        self.assertTrue(relayed.ok, relayed.problems)
+        self.assertEqual("2026-11-03T19:50:00+00:00", body["generated_at"], "the fixture instant, not the clock")
+        self.assertEqual(before, self.tree())
+
+    def test_a_regular_run_carries_demo_false_and_no_demo_line(self) -> None:
+        code, out = self.offline()
+        self.assertEqual(0, code, out)
+        payload = json.loads(out)["payload"]
+        self.assertIs(False, payload["demo"])
+        self.assertNotIn(DEMO_LINE, payload["message"])
+
+    def test_the_demo_loads_no_credential_and_opens_no_connection(self) -> None:
+        with mock.patch.dict(os.environ, {"TRADIER_API_TOKEN": SECRET}), \
+                mock.patch.object(tradier_client, "UrllibTransport", side_effect=AssertionError("no transport")), \
+                mock.patch.object(tradier_client, "load_token", side_effect=AssertionError("no credential")):
+            code, out = self.demo(json_mode=True)
+        self.assertEqual(0, code, out)
+        self.assertNotIn(SECRET, out)
+        self.assertEqual(3, json.loads(out)["payload"]["requests_made"])
+
+    def test_the_demo_takes_another_symbol_and_a_redundant_offline_flag(self) -> None:
+        code, out = self.demo("--offline", json_mode=True)
+        self.assertEqual(0, code, out)
+        self.assertTrue(json.loads(out)["payload"]["demo"])
+        code, out = self.demo("--symbol", "spy", json_mode=True)
+        self.assertEqual((0, "SPY"), (code, json.loads(out)["payload"]["symbol"]))
+
+    def test_the_demo_refuses_a_desk_root_an_instant_and_the_live_options(self) -> None:
+        token_file = os.path.join(self.root, "sandbox.token")
+        for extra in (["--desk-root", self.root], ["--now", REGULAR_NOW], ["--token-file", token_file],
+                      ["--fixture-set", "stale"], ["--offline", "--desk-root", self.root]):
+            with self.subTest(extra=extra):
+                code, out = self.demo(*extra, json_mode=True)
+                self.assertEqual(2, code, out)
+                error = json.loads(out)["error"]
+                self.assertEqual("invalid_arguments", error["code"])
+                self.assertIn("--demo", error["message"])
+        err = io.StringIO()
+        with mock.patch.object(tool, "DEMO_DESK_ROOT", self.root), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as raised:
+                tool.main(["--demo", "--now", REGULAR_NOW])
+        self.assertEqual(2, raised.exception.code)
+        self.assertIn("--demo", err.getvalue())
+
+    def test_a_missing_demo_desk_is_a_desk_root_error(self) -> None:
+        with mock.patch.object(tool, "DEMO_DESK_ROOT", os.path.join(self.root, "not-there")):
+            code, out = run_tool(["--demo", "--json"])
+        self.assertEqual((1, "desk_root"), (code, json.loads(out)["error"]["code"]))
 
 
 class LiveTest(DeskCopy):

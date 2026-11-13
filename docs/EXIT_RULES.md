@@ -9,9 +9,10 @@ flags and outputs are in [TOOLS.md](TOOLS.md).
 
 - [rules/examples/exit_rules-1.0.0.toml](../rules/examples/exit_rules-1.0.0.toml) holds example rules. Nothing in it
   is active. [rules/examples/README.md](../rules/examples/README.md) explains each family and why every rule is yours.
-- At setup the Aegis Desk Lead copies the file to a candidate in your desk root and walks you through it, rule by rule.
-  You keep a rule as written (`origin = "example-accepted"`), change its threshold (`origin = "owner-entered"`), or
-  leave it out. A rule still marked `origin = "example"` is refused.
+- When you say "adopt my exit rules" ([SETUP step 9](../SETUP.md#92-adopt-my-exit-rules)), the Aegis Desk Lead
+  copies the file to a candidate in your desk root. One answer is enough: keep the examples as written, or name the
+  rules to change or drop. You keep a rule as written (`origin = "example-accepted"`), change its threshold
+  (`origin = "owner-entered"`), or leave it out. A rule still marked `origin = "example"` is refused.
 - `DAILY` and `CONC` depend on your account. They are refused until you enter a value or write
   `owner_must_set = false` to keep the documented default.
 - `rules_adopt.py` adopts the file under a version number, with the phrase you type:

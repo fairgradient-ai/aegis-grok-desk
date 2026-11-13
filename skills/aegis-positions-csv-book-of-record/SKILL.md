@@ -1,6 +1,6 @@
 ---
 name: aegis-positions-csv-book-of-record
-description: The owner's positions.csv, the desk's book of record, for Aegis Position Control. Who writes it (the owner; the one verbatim-save exception), the columns and the required ones, the money conventions, trade ids and note tags, file errors, quarantined groups and the plausibility check, how rows become structures, and the recipes for opening, closing, partial closes, rolls, expiry, assignment and exercise, always as exact lines the owner applies, then positions_check and the configuration acknowledgement.
+description: The owner's positions.csv, the desk's book of record, for Aegis Position Control. Who writes it (the owner; the one verbatim-save exception, for text the owner supplies or a draft the owner approves), the columns and the required ones, the money conventions, trade ids and note tags, file errors, quarantined groups and the plausibility check, how rows become structures, and the recipes for opening, closing, partial closes, rolls, expiry, assignment and exercise, always as exact lines the owner applies, then positions_check and the configuration acknowledgement.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -21,8 +21,11 @@ sync: the file is the whole book.
 
 There is one exception, and Position Control states it in these terms:
 
-- On the owner's explicit request, Position Control saves the exact text the owner supplies to
-  `/workspace/aegis-desk/positions.csv`. It is a verbatim transcription, never an edit and never derived rows.
+- On the owner's explicit request, Position Control saves to `/workspace/aegis-desk/positions.csv` either the exact
+  text the owner supplies, or the rows it drafted from the owner's plain description once the owner approves the
+  exact text shown. A draft uses only the owner's own numbers and dates (a premium in `open_price_per_share`, a share
+  cost in `cost_basis_per_unit`), so no total is computed. The save is a verbatim transcription, byte for byte, never
+  an edit after approval.
 - It then runs `python3 scripts/positions_check.py --desk-root /workspace/aegis-desk` and reports the verdict, the
   number of rows and the file's sha256 (from the snapshot line of `csv_recon.py`), and the owner confirms them.
 - Later changes follow the same path, with rows the owner supplies or approves.

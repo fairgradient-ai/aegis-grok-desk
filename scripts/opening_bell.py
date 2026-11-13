@@ -5,8 +5,10 @@ Usage::
 
     python3 scripts/opening_bell.py --symbol SPY [--rate 0.04] [--token-file PATH] [--fixture-set NAME] [--json]
         [--schema] [--timeout S] [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
+    python3 scripts/opening_bell.py --demo [--symbol SPY] [--rate 0.04] [--json]
 
     python3 scripts/opening_bell.py --symbol SPY --offline --desk-root tests/fixtures/desk --now 2026-11-03T19:50:00Z
+    python3 scripts/opening_bell.py --demo
 
 The README's "try it now" (PR 2d decision D2-14): a public market snapshot, not a signal; it touches no position and
 no desk record. Exactly three read-only requests through ``aegis_desk.tradier_client``: ``quotes([SYMBOL])``,
@@ -17,6 +19,13 @@ no desk record. Exactly three read-only requests through ``aegis_desk.tradier_cl
   ``no_token``) and the client is the sandbox host's.
 * ``--offline`` (which needs ``--desk-root``) replays ``<desk root>/fixtures/tradier/<--fixture-set, default
   regular>/`` with ``--now`` as the receipt instant, and writes nothing: no quote cache, no runtime directory.
+* ``--demo`` is the README's three-command try-it: ``--offline --desk-root <this checkout>/tests/fixtures/desk --now
+  2026-11-03T19:50:00Z`` (:data:`DEMO_DESK_ROOT`, :data:`DEMO_NOW`) on the regular fixture set, ``--symbol`` SPY unless
+  given. The desk root is found from this script's own location, so the command works from any directory. It writes
+  nothing and loads no credential, and the text opens with :data:`DEMO_LINE`, a plain line that says the data is
+  synthetic sample data (it prints no number and passes the same strict lint). ``--demo`` with ``--desk-root``,
+  ``--now``, ``--fixture-set`` or ``--token-file`` (a live run's credential) is a usage error; a redundant ``--offline``
+  is accepted.
 
 The arithmetic: the mid ``S = (bid + ask) / 2`` (Decimal); the expiration is the first listed date at least 20
 calendar days after the ET date of ``--now`` that is the settlement day of its month's third Friday
@@ -27,8 +36,9 @@ call and a put that minimises ``(|K - S|, K)``; the call and put mids are invert
 expected move is stated both ways and labelled: straddle-based ``(call mid + put mid) x 0.80`` (Decimal, to the cent,
 half-even) and one-sigma ``S x IV x sqrt(tau)`` (to the cent).
 
-The text (D2-14's five lines, then the market-snapshot footer ``alert_lint.snapshot_footer_line``: a public quote
-shown before any rule exists, so the rules footer's "deterministic rules you adopted" would not be true) is relayed
+The text (on a ``--demo`` run, :data:`DEMO_LINE` first; D2-14's five lines, then the market-snapshot footer
+``alert_lint.snapshot_footer_line``: a public quote shown before any rule exists, so the rules footer's "deterministic
+rules you adopted" would not be true) is relayed
 verbatim, so it is held to every post's rule: each
 number in it is printed by a formatter that emits it (a price with at least two decimals and every decimal kept,
 ``alerts.fmt_pct``, ``fmt_days``, ``fmt_strike``, ``fmt_minutes``), the expiration date and the clock are recorded
@@ -53,6 +63,7 @@ contract.python_floor_check(tool="opening_bell")
 
 import datetime  # noqa: E402
 import math  # noqa: E402
+import os  # noqa: E402
 import re  # noqa: E402
 import sys  # noqa: E402
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation  # noqa: E402
@@ -73,6 +84,13 @@ SOURCE = "%s:%s" % (desk_config.VENDOR, HOST)
 FEED_DELAY_MIN = desk_config.SANDBOX_MIN_FEED_DELAY_MIN
 DEFAULT_RATE = "0.04"
 DEFAULT_FIXTURE_SET = "regular"
+DEMO_DESK_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "fixtures", "desk")
+"""``--demo``'s desk root: this checkout's main fixture desk, found from this script's location."""
+DEMO_NOW = "2026-11-03T19:50:00Z"
+"""``--demo``'s instant: the regular fixture set's (14:50 ET on Tuesday 2026-11-03)."""
+DEMO_SYMBOL = "SPY"
+DEMO_LINE = "Demo: synthetic sample data from the desk's test fixtures, not real market prices; nothing is written"
+"""The first line of a ``--demo`` text: it prints no number, so the strict snapshot lint passes it unchanged."""
 MIN_DAYS_OUT = 20
 STRADDLE_FACTOR = Decimal("0.80")
 ALIGNMENT_S = expiry.SPOT_ALIGNMENT_S
@@ -87,8 +105,8 @@ IV_LINE = "ATM implied volatility at the %s strike: %s (call %s, put %s; mids %s
 MOVE_LINE = ("expected move to %s: straddle-based (call mid + put mid) x %s = %s; one-sigma S x IV x sqrt(tau) = %s")
 SNAPSHOT_LINE = "Tradier %s, delayed %s, as of %s; a public market snapshot, not a signal"
 PAYLOAD_KEYS: Tuple[str, ...] = ("symbol", "quote", "expiration", "dte_calendar", "strike", "call", "put", "atm_iv",
-                                 "tau_years", "rate", "q", "expected_move", "requests_made", "fixture_set", "message",
-                                 "emitted", "lint")
+                                 "tau_years", "rate", "q", "expected_move", "requests_made", "fixture_set", "demo",
+                                 "message", "emitted", "lint")
 OUTPUT: Dict[str, Any] = {
     "symbol": "string",
     "quote": {"bid": "decimal string (at least two decimals, as printed)", "ask": "decimal string (as printed)",
@@ -106,7 +124,9 @@ OUTPUT: Dict[str, Any] = {
                       "one_sigma": "decimal string (S x IV x sqrt(tau), to the cent)"},
     "requests_made": "integer (3)",
     "fixture_set": "string | null (offline runs)",
-    "message": "string: the text exactly as printed (five lines, then the market-snapshot footer)",
+    "demo": "boolean (true: --demo, the checkout's synthetic fixture desk; the text opens with the demo line)",
+    "message": "string: the text exactly as printed (five lines, then the market-snapshot footer; a --demo run opens "
+               "with the demo line)",
     "emitted": {"emitted_numbers": ["string"], "rule_ids": ["string (none)"], "identifiers": ["YYYY-MM-DD"],
                 "clocks": ["HH:MM UTC"], "as_of": "ISO-8601 UTC (the footer's instant: the oldest quote stamp)",
                 "footer": "snapshot (the market-snapshot footer; alert_lint re-lints the text with it)"},
@@ -132,9 +152,25 @@ def user_agent(version: str) -> str:
     return "aegis-desk/%s %s (read-only market data)" % (version, TOOL)
 
 
+class Parser(contract.ReadOnlyParser):
+    """The shared parser; under ``--demo`` a redundant ``--offline`` is dropped before the shared checks (which would
+    otherwise ask for a ``--desk-root`` the demo names itself)."""
+
+    def parse_args(self, args: Optional[Sequence[str]] = None, namespace: Any = None) -> Any:
+        argv = list(sys.argv[1:] if args is None else args)
+        if "--demo" in argv:
+            argv = [arg for arg in argv if arg != "--offline"]
+        return super().parse_args(argv, namespace)
+
+
 def build_parser(version: str) -> contract.ReadOnlyParser:
-    parser = contract.ReadOnlyParser(tool=TOOL, tool_version=version, description=DESCRIPTION)
-    parser.add_argument("--symbol", metavar="SYMBOL", default=None, help="the underlying, for example SPY (required)")
+    parser = Parser(tool=TOOL, tool_version=version, description=DESCRIPTION)
+    parser.add_argument("--symbol", metavar="SYMBOL", default=None,
+                        help="the underlying, for example SPY (required, except with --demo: SPY)")
+    parser.add_argument("--demo", action="store_true",
+                        help="synthetic sample data: --offline on this checkout's tests/fixtures/desk at %s (the regular "
+                             "fixture set); writes nothing; not with --desk-root, --now, --fixture-set or --token-file"
+                             % DEMO_NOW)
     parser.add_argument("--rate", metavar="R", default=DEFAULT_RATE,
                         help="the risk-free rate the IV is solved at, a decimal in [0, 1) (default %s)" % DEFAULT_RATE)
     parser.add_argument("--token-file", metavar="PATH", default=None,
@@ -145,6 +181,18 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
 
 
 def validate(parser: contract.ReadOnlyParser, args: Any) -> None:
+    if args.demo:
+        given = [flag for flag, present in (("--desk-root", args.desk_root_explicit), ("--now", args.now is not None),
+                                            ("--fixture-set", args.fixture_set is not None),
+                                            ("--token-file", args.token_file is not None)) if present]
+        if given:
+            parser.error("--demo names its own fixture desk, instant and fixture set and loads no credential; it cannot "
+                         "be combined with %s" % ", ".join(given))
+        args.offline = True
+        args.desk_root = DEMO_DESK_ROOT
+        args.now = contract.parse_utc_instant(DEMO_NOW, "--now")
+        if args.symbol is None:
+            args.symbol = DEMO_SYMBOL
     if args.symbol is None:
         parser.error("--symbol SYMBOL is required")
     args.symbol = args.symbol.strip().upper()
@@ -363,6 +411,8 @@ def snapshot(args: Any, now: datetime.datetime, version: str) -> Tuple[Dict[str,
         SNAPSHOT_LINE % (HOST, alerts.fmt_minutes(FEED_DELAY_MIN, w.emitted), w.clock(as_of)),
         alerts.fmt_footer(as_of, FEED_DELAY_MIN, w.emitted, w.clocks, kind=alert_lint.FOOTER_SNAPSHOT),
     ]
+    if args.demo:
+        lines.insert(0, DEMO_LINE)
     message = "\n".join(lines)
     result = alert_lint.check(message, w.emitted, rule_ids=[], identifiers=w.identifiers, clocks=w.clocks, as_of=as_of,
                               footer=alert_lint.FOOTER_SNAPSHOT)
@@ -378,7 +428,7 @@ def snapshot(args: Any, now: datetime.datetime, version: str) -> Tuple[Dict[str,
         "atm_iv": atm, "tau_years": tau, "rate": args.rate_decimal, "q": Decimal("0"),
         "expected_move": {"straddle": printed(straddle), "one_sigma": printed(one_sigma)},
         "requests_made": len(receipts), "fixture_set": (args.fixture_set or DEFAULT_FIXTURE_SET) if args.offline else None,
-        "message": message, "emitted": w.document(as_of),
+        "demo": bool(args.demo), "message": message, "emitted": w.document(as_of),
         "lint": {"ok": result.ok, "problems": list(result.problems), "numbers_checked": result.numbers_checked},
     }
     return payload, lines
