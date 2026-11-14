@@ -268,6 +268,7 @@ candidates.
 | call strike | 680 | at or above your cost 632.40 | 🟢 |
 | calendar days | 136 | 120 to 210 | 🟢 |
 | spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
+| spread cost | 0.20 per share (20.00 in all) |  |  |
 | ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
 | ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
 

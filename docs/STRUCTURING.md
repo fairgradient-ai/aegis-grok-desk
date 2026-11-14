@@ -317,7 +317,9 @@ Each section declares one of the objectives it accepts, so the file's sha names 
 | `net_extrinsic_per_added_day` | higher first | the new call's time value at its bid less the held call's time value at its ask, in percent of the share price per calendar day added when the roll adds time value, and the whole amount, not divided by days, when it gives some up | E_new = bid - max(0, S - K_new); E_held = ask_held - max(0, S - K_held); N = E_new - E_held; score = N / S / (T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even |
 | `band_centre` | lower first | the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote spread counted in your max_spread_pct, all summed with equal weight (a desk convention: one half-width of days counts as much as one half-width of delta, floor or cap, and as one leg quoted at your spread limit) | c = (lo + hi) / 2 and w = (hi - lo) / 2 for each band of the section (dte with abs_delta, dte with floor_pct, or dte with floor_pct and cap_pct); score = sum of abs(x - c) / w + sum over the legs of spread_pct / max_spread_pct, quantized 0.01 half-even |
 
-S is the underlying's mid, K the strike, Kc the call strike, and T_c the calendar days to expiry. The objectives each
+S is the underlying's mid, K the strike, Kc the call strike, and T_c the whole calendar days to the last trading day
+(the pricing model's time to expiry counts seconds to the exercise cutoff instead; the two differ by less than a day,
+and each objective's JSON formula says which it reads). The objectives each
 section accepts, its default first: `covered_call` takes `extrinsic_per_day` or `band_centre`; `roll` takes
 `extrinsic_per_day` or `net_extrinsic_per_added_day`; `protective_put` takes `stress_cost_per_day` or `band_centre`;
 `collar` takes `cap_within_budget` or `band_centre`. A file that names the default ranks exactly as before. `roll` does
@@ -563,6 +565,11 @@ are never counted as failing your criteria.
 
 ### A ticket
 
+A ticket of two legs or more ends its cash table with `spread cost against the mids`, the mids' net cash less the
+conservative one (half of each leg's spread), and a collar proposal's checks table with `spread cost`, half of both
+legs' spreads per share: two narrow spreads can still be large against a collar's small net, which a per-leg
+`max_spread_pct` does not bound.
+
 A ROLL of a protective put's long put adds one row to its checks table, `net cost per day added`: the new put's ask
 less the held put's bid, per share, over the calendar days the replacement adds, in percent of the share price
 ((ask_new - bid_held) / S / (T_new - T_held) x 100, quantized 0.0001). On the fixture, the March 610 put in place of
@@ -587,6 +594,7 @@ named by the roll analysis above:
 | net cash | +10.00 | +35.00 |
 | realized on the closing leg | -16.00 | -1.00 |
 | the most the steps need at once | 700.00 |  |
+| spread cost against the mids | 25.00 |  |
 
 | check | the new call | your criteria |  |
 |---|---|---|:-:|
@@ -758,6 +766,7 @@ On the same copy, `--structure collar`:
 | call strike | 680 | at or above your cost 632.40 | 🟢 |
 | calendar days | 136 | 120 to 210 | 🟢 |
 | spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
+| spread cost | 0.20 per share (20.00 in all) |  |  |
 | ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
 | ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
 

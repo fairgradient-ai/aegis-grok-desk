@@ -198,13 +198,18 @@ class ConstantsTest(unittest.TestCase):
         extrinsic = sc.OBJECTIVE_DEFS["extrinsic_per_day"]
         self.assertEqual("the bid's time value per calendar day, in percent of the share price", extrinsic.words)
         self.assertEqual(sc.DIRECTION_HIGHER, extrinsic.direction)
-        self.assertEqual("E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even",
-                         extrinsic.formula)
+        self.assertEqual("E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even; T_c = "
+                         "calendar days to the last trading day", extrinsic.formula)
         stress = sc.OBJECTIVE_DEFS["stress_cost_per_day"]
         self.assertEqual("the put's ask per calendar day per 100 of loss it offsets at your stress drop", stress.words)
         self.assertEqual(sc.DIRECTION_LOWER, stress.direction)
         self.assertIn("S_x = S x (1 - x / 100)", stress.formula)
         self.assertIn("score = ask / T_c / (K - S_x) x 100", stress.formula)
+        for objective in (extrinsic, stress, sc.OBJECTIVE_DEFS["net_extrinsic_per_added_day"]):
+            # step 3f (finding F8): the per-day objectives count whole calendar days to the last trading day, while
+            # the pricing model's tau counts seconds to the exercise cutoff; the formula says which
+            self.assertTrue(objective.formula.endswith("T_c = calendar days to the last trading day"),
+                            objective.formula)
         cap = sc.OBJECTIVE_DEFS["cap_within_budget"]
         self.assertEqual("the cap's distance above the share price, in percent, among pairs within your net-debit "
                          "budget", cap.words)

@@ -15,14 +15,14 @@
     "aegis-exit-watch-and-signal-protocol": "4206dd4b584102c8d31513a559cdd517b2d5f8615de98cc25f109ace78e20743",
     "aegis-expiry-and-assignment-protocol": "02bdad94825f96c47b36f19cb3d01c48df9b1465817995fa92c6e7a5d18b16c6",
     "aegis-market-data-budget-and-quality": "c62ae8c7b44063366c8fa31aceb63eac89abf99b93529895940d432fc333d9cd",
-    "aegis-overlay-proposals": "b5dbfcd8d021f4fb675bf48a4c6f37b4e664c146a349f18bf9af983fe882a417",
+    "aegis-overlay-proposals": "b2ccb20c0a44ec2f8bca3e18b1a989fbba133eb29ae59263d730344a21a548af",
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "4e546f84c226cba2197b3fac4396fb4f86bb100e09d00f7a19c60aacc0336a06",
     "aegis-roll-decision-framework": "e4841261dc49563a1456df8c6f6e08276efcc64299890e3df65ae5907f78964f",
     "aegis-routines-and-quiet-rules": "737be8fd1c39bb084b450fa12530b77459988845fdff2d0e64ab5bd5d12c60b3",
     "aegis-rules-dsl-and-change-control": "9a9b7524ae04db7a1d9bcf3d558c4774e7733a8920ff4610e6b12b283e19d92e",
     "aegis-threshold-levels": "0fd181ec7f695f0bda6b8b28c79a51fb24dea011e0ba38e33eb6cf2e5912669f",
-    "aegis-ticket-and-unwind-order": "e2c628b27d60e836cf69a234dcc51fd7e8b2813255d95483bd25bc7fa624ae9e",
+    "aegis-ticket-and-unwind-order": "bda197ad54666bb13249c21cc22f9210cd0e35c0e4005ae14b89b913f72a9f20",
     "aegis-vertical-spread-management": "b7884f66476f8299a5be34845d042470c62cf5820f44e5959b51f704217ac4e8"
   },
   "roleSkills": {

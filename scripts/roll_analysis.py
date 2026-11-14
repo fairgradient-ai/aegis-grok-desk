@@ -124,6 +124,8 @@ _LEG_SHAPE: Dict[str, Any] = {
     "delta": "float | null (greeks.european_greeks)", "abs_delta": "decimal string | null (2 dp, half-even)",
     "greeks": "{delta, gamma, theta, vega, rho: float} | null",
     "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)",
+    "spot_bar_utc": "ISO-8601 UTC | null (the one-minute bar the volatility was solved against)",
+    "spot_used": "decimal string | null (the stock price the volatility and a call's time value read)",
 }
 _AFTER_SHAPE: Dict[str, Any] = {
     "group_delta": "float | null (share-equivalents)", "delta_change": "float | null",

@@ -760,6 +760,10 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
         rows.append(days)
         rows.append(["spreads", "%s and %s" % (_pct_or_none(w, put.spread_pct), _pct_or_none(w, call.spread_pct)),
                      spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
+        if None not in (put.bid, put.ask, call.bid, call.ask):
+            half = ((put.ask - put.bid) + (call.ask - call.bid)) / 2
+            rows.append(["spread cost", "%s per share (%s in all)" % (w.price(half), w.amount(
+                half * structuring.CONTRACT_SIZE * candidate.contracts)), "", ""])
     else:
         raise ValueError("unknown candidate kind %r" % (kind,))
     rows.extend(_event_rows(w, candidate, kind == structuring.KIND_REPLACEMENT_CALL))
@@ -948,10 +952,12 @@ def american_line(w: Writer, candidate: "structuring.Candidate",
 
 
 def cash_table(w: Writer, net_conservative: Decimal, net_mid: Optional[Decimal], realized_conservative: Decimal,
-               realized_mid: Optional[Decimal], closing_legs: int, peak_needed: Decimal) -> List[str]:
+               realized_mid: Optional[Decimal], closing_legs: int, peak_needed: Decimal, legs: int = 1) -> List[str]:
     """Designer Q's cash and realized figures (S11) as a desk table: the net cash and the realized amount at the
     conservative prices and at the mids (:data:`NO_MID_WORDS` when a leg has no mid), and the most cash the steps
-    need at once; :data:`CASH_BALANCE_LINE` follows it."""
+    need at once; :data:`CASH_BALANCE_LINE` follows it. With two legs or more and every mid, a last row gives what
+    the quotes' spreads cost (the mids' net cash less the conservative one: half of each leg's spread), which a
+    per-leg ``max_spread_pct`` does not bound against a small net."""
     head = "realized on the closing leg" if closing_legs == 1 else "realized on the closing legs"
 
     def mid(value: Optional[Decimal]) -> str:
@@ -960,6 +966,8 @@ def cash_table(w: Writer, net_conservative: Decimal, net_mid: Optional[Decimal],
     rows = [["net cash", w.amount(net_conservative, signed=True), mid(net_mid)],
             [head, w.amount(realized_conservative, signed=True), mid(realized_mid)],
             ["the most the steps need at once", w.amount(peak_needed), ""]]
+    if legs >= 2 and net_mid is not None:
+        rows.append(["spread cost against the mids", w.amount(net_mid - net_conservative), ""])
     return table(["cash", "at the conservative prices", "at the mids"], "lrr", rows)
 
 

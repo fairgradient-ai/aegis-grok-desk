@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Multi-leg answers show what the quotes' spreads cost: a ticket of two legs or more adds `spread cost against the
+  mids` to its cash table, and a collar proposal adds `spread cost` (half of both legs' spreads per share) to its
+  checks table. Each leg's JSON carries `spot_used`, the stock price its volatility was solved against, and a call's
+  time value is now measured against that same price. The per-day objectives' JSON formulas say that T_c counts
+  calendar days to the last trading day.
 - Threshold levels: the `N sigma` distance of a model level is now the lognormal measure |ln(level / S)| / (sigma x
   sqrt(tau)) instead of the arithmetic |level - S| / (sigma x sqrt(tau) x S), so a rise and a fall of the same ratio
   read the same. The fixture's SPY MONETIZE level reads 1.42 sigma (was 1.34); the NVDA DELTA_SIGNAL level is unchanged.

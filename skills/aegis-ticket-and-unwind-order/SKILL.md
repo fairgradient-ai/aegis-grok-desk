@@ -70,6 +70,7 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 | net cash | +10.00 | +35.00 |
 | realized on the closing leg | -16.00 | -1.00 |
 | the most the steps need at once | 700.00 |  |
+| spread cost against the mids | 25.00 |  |
 
 | check | the new call | your criteria |  |
 |---|---|---|:-:|
@@ -114,8 +115,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
    quotes' as-of and delay.
 2. The legs as list items, in the canonical order, each with its bid, ask, mid and quote grade. A quote of grade E
    adds `quote grade E: the conservative side stands`.
-3. The cash table: the net cash and the realized estimate at the conservative prices and at the mids, and the most
-   the steps need at once.
+3. The cash table: net cash and realized estimate at the conservative prices and the mids, and the peak need.
 4. On a ROLL ticket: the replacement's checks table (a green status circle for a criterion it passes, a yellow one
    for a label the owner accepted, a red one for a criterion it fails) and the group table, now and after both legs.
 5. The approval block: the highest step's level against the owner's, what the owner holds after each step, the
@@ -196,10 +196,10 @@ combination`), each ending `which can need a higher level`. The roll ticket's li
 
 ## Cash and the realized estimate
 
-- The cash table totals the steps at the conservative prices: a held short closes at the ask, a held long and the
-  shares close at the bid, a new short opens at the bid, a new long opens at the ask. Then the same at the mids.
-- `the most the steps need at once` is the largest cash need along the steps in their order. The desk does not see
-  the owner's cash balance, and no tool checks it.
+- The cash table totals the steps at the conservative prices (a held short closes at the ask, a held long and the
+  shares at the bid, a new short opens at the bid, a new long at the ask), then at the mids; with two legs or more,
+  `spread cost against the mids` is the difference. `the most the steps need at once` is the largest cash need along
+  the steps in their order. The desk does not see the owner's cash balance, and no tool checks it.
 - `realized on the closing leg` (or `legs`) estimates the realized result of the closed rows at the conservative
   side and at the mid. The realized figure itself comes from `positions.csv` once the owner records the fill.
 
@@ -211,6 +211,7 @@ From the WMT UNWIND_STOCK ticket of the same run:
 | net cash | +20,140.00 | +20,161.00 |
 | realized on the closing legs | +1,124.00 | +1,145.00 |
 | the most the steps need at once | 700.00 |  |
+| spread cost against the mids | 21.00 |  |
 ```
 
 ## The 30-minute validity
@@ -321,8 +322,7 @@ checks read `[protective_put]`.
 
 ## What a ticket never does
 
-- It never prints a limit, a side, an order type, a duration or an OCC symbol, and it never prints a cell the owner
-  typed.
+- It never prints a limit, a side, an order type, a duration, an OCC symbol or a cell the owner typed.
 - It never fires an alert and never runs in a routine. It never exits 10.
 - It never claims the owner's broker approves the order, and never sees the owner's cash.
 

@@ -1827,6 +1827,23 @@ class SpotBarTest(unittest.TestCase):
         self.assertGreater(S.spot_bar_count(answer), 0)
         self.assertEqual(0, S.spot_bar_count(reference))
 
+    def test_each_leg_records_the_spot_its_volatility_was_solved_against(self) -> None:
+        # step 3f (finding F9): the leg keeps the bar close it was priced against, and the time value of a call is
+        # measured against that same price (S.leg_spot), not the current stock quote
+        answer = S.run_proposal(self.desk("640.00").market(), "AG-20261028-03", "collar", CRITERIA)
+        legs = [leg for candidate in answer.ranking.candidates for leg in candidate.legs if leg.unpriced is None]
+        self.assertTrue(legs)
+        self.assertEqual({D("640.00")}, {leg.spot_used for leg in legs})
+        self.assertEqual(D("640.00"), legs[0].as_dict()["spot_used"])
+        reference = S.run_proposal(Desk(self, drop_row=8, replace=SPY_TAG).market(), "AG-20261028-03", "collar",
+                                   CRITERIA)
+        self.assertEqual({D("648.12")}, {leg.spot_used for candidate in reference.ranking.candidates
+                                         for leg in candidate.legs if leg.unpriced is None})
+        call = dataclasses.replace(leg_of("100"), bid=D("6.00"), spot_used=D("104.00"))
+        self.assertEqual(D("104.00"), S.leg_spot(call, D("104.23")))
+        self.assertEqual(D("104.23"), S.leg_spot(dataclasses.replace(call, spot_used=None), D("104.23")))
+        self.assertEqual(D("2.00"), S.extrinsic(call.bid, S.leg_spot(call, D("104.23")), call.strike))
+
     def test_the_volatility_reads_the_bar_and_the_delta_the_current_spot(self) -> None:
         answer = S.run_proposal(self.desk("640.00").market(), "AG-20261028-03", "collar", CRITERIA)
         leg = next(leg for candidate in answer.ranking.candidates for leg in candidate.legs if leg.unpriced is None)

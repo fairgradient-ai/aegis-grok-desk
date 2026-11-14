@@ -424,7 +424,7 @@ class Accepted:
 LEG_KEYS: Tuple[str, ...] = ("occ", "root", "right", "strike", "expiration", "last_trading_day", "dte_calendar",
                              "dte_trading", "bid", "ask", "mid", "spread_pct", "grade", "quote_status", "quote_age_min",
                              "as_of", "tau_years", "iv", "delta", "abs_delta", "greeks", "unpriced",
-                             "spot_bar_utc")
+                             "spot_bar_utc", "spot_used")
 
 
 @dataclass(frozen=True)
@@ -455,6 +455,9 @@ class PricedLeg:
     greeks: Optional[Dict[str, float]] = None
     unpriced: Optional[Reason] = None
     spot_bar_utc: Optional[datetime.datetime] = None
+    spot_used: Optional[Decimal] = None
+    """The stock price the leg's volatility was solved against: the current mid, or the one-minute bar close of the
+    option's own minute (``spot_bar_utc``). A call's time value is measured against it too (:func:`leg_spot`)."""
     """The start of the one-minute bar whose close was the spot the implied volatility was solved against, when the
     stock quote was stamped too far from this option's; ``None`` when the stock quote itself was used."""
 
@@ -660,6 +663,12 @@ def price_value(value: Optional[Decimal]) -> Optional[Decimal]:
 def abs_delta_2dp(delta: float) -> Decimal:
     """``|delta|`` through its ``repr`` at 2 dp half-even: the reading the exit rules compare."""
     return abs(Decimal(repr(delta))).quantize(PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
+
+
+def leg_spot(leg: "PricedLeg", fallback: Decimal) -> Decimal:
+    """The stock price a leg's time value is measured against: the one its volatility was solved against
+    (``spot_used``), else ``fallback`` (the current mid), so the volatility and the time value read one instant."""
+    return fallback if leg.spot_used is None else leg.spot_used
 
 
 def extrinsic(bid: Decimal, spot: Decimal, strike: Decimal) -> Decimal:
@@ -948,6 +957,7 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     if unpriced is not None:
         return replace(leg, unpriced=unpriced)
     assert spot is not None and qc.mark_mid is not None and leg.tau_years is not None
+    leg = replace(leg, spot_used=spot)
     q = ctx.q_for(expiration)
     result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
     if not result.ok or result.sigma is None:
@@ -1307,6 +1317,7 @@ def covered_call_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupCont
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST, leg.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(leg, group, section, events, None)
     after = after_state(group, contracts, [(leg, -contracts, leg.bid)], None)
+    spot = leg_spot(leg, spot)
     epd = extrinsic_per_day(leg.bid, spot, leg.strike, leg.dte_calendar)
     scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, _at_mid(extrinsic_per_day, leg, spot, leg.strike, leg.dte_calendar)),
               _OBJ.OBJECTIVE_BAND_CENTRE: (_call_fit(leg, section, ctx), None)}
@@ -1338,18 +1349,20 @@ def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: Group
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_ROLL_DOWN_BELOW_COST, leg.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(leg, group, section, events, held)
     after = after_state(group, contracts, [(leg, -contracts, leg.bid)], held)
-    epd = extrinsic_per_day(leg.bid, spot, leg.strike, leg.dte_calendar)
+    own_spot = leg_spot(leg, spot)  # the new call alone: its time value at the price its volatility was solved at
+    epd = extrinsic_per_day(leg.bid, own_spot, leg.strike, leg.dte_calendar)
     held_days = market_clock.dte(held.expiration, ctx.today, market_clock.UNIT_CALENDAR, False, ctx.extra_holidays)
     net_e = net_extrinsic_per_added_day(leg.bid, held.close_price, spot, leg.strike, held.strike, leg.dte_calendar,
                                         held_days)
     net_e_mid = (None if leg.mid is None or held.mid is None else
                  net_extrinsic_per_added_day(leg.mid, held.mid, spot, leg.strike, held.strike, leg.dte_calendar,
                                              held_days))
-    scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, _at_mid(extrinsic_per_day, leg, spot, leg.strike, leg.dte_calendar)),
+    scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, _at_mid(extrinsic_per_day, leg, own_spot, leg.strike,
+                                                              leg.dte_calendar)),
               _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: (net_e, net_e_mid)}
     return _finish(KIND_REPLACEMENT_CALL, [leg], contracts, epd,
-                   reasons + kept, accepted, _short_call_caveat(leg, spot, events), after,
-                   extrinsic_bid=extrinsic(leg.bid, spot, leg.strike), net_credit=net,
+                   reasons + kept, accepted, _short_call_caveat(leg, own_spot, events), after,
+                   extrinsic_bid=extrinsic(leg.bid, own_spot, leg.strike), net_credit=net,
                    net_credit_total=_money(net * _MULTIPLIER * contracts), net_time_value=net_tv,
                    objective_scores=scores)
 
@@ -1494,6 +1507,7 @@ def price_listed(quote: Quote, quotes_listed: int, ctx: PricingContext) -> Price
         return leg
     return replace(leg, bid=None, ask=None, mid=None, spread_pct=None, grade=None, quote_status=None,
                    quote_age_min=None, as_of=None, tau_years=None, iv=None, delta=None, abs_delta=None, greeks=None,
+                   spot_used=None,
                    unpriced=Reason(KEY_UNPRICED, CODE_QUOTE_CONFLICT, quotes_listed, None))
 
 

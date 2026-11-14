@@ -847,7 +847,7 @@ def quiet_reason(ticket: Ticket) -> str:
     return ticket.reason or ""
 
 
-def cash_lines(w: structuring_text.Writer, cash: Cash, realized: Sequence[RealizedLeg]) -> List[str]:
+def cash_lines(w: structuring_text.Writer, cash: Cash, realized: Sequence[RealizedLeg], legs: int = 1) -> List[str]:
     """The cash table (``structuring_text.cash_table``): the steps' net cash and the closing legs' realized estimate at
     the conservative prices and at the mids (the mid column says :data:`NO_MID_WORDS` when a leg has none), and the
     most cash the steps need at once."""
@@ -857,7 +857,7 @@ def cash_lines(w: structuring_text.Writer, cash: Cash, realized: Sequence[Realiz
         mid = sum((value for value in mids if value is not None), _ZERO) if all(value is not None for value in mids) \
             else None
     return structuring_text.cash_table(w, cash.net_conservative, cash.net_mid, conservative, mid, len(realized),
-                                       cash.peak_needed)
+                                       cash.peak_needed, legs)
 
 
 def _relation(w: structuring_text.Writer, right: str, spot: Decimal, strike: Decimal, itm: bool) -> str:
@@ -1013,7 +1013,7 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     lines.append(structuring_text.LEGS_CAPTION)
     lines.extend(structuring_text.ITEM + leg for leg in _leg_lines(w, ticket))
     lines.append("")
-    lines.extend(cash_lines(w, ticket.cash, ticket.realized))
+    lines.extend(cash_lines(w, ticket.cash, ticket.realized, len(ticket.legs)))
     lines.append("")
     replacement = ticket.replacement if ticket.action == structuring.ACTION_ROLL else None
     if replacement is not None:

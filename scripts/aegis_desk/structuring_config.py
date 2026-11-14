@@ -210,13 +210,14 @@ OBJECTIVE_DEFS: Dict[str, Objective] = {
     OBJECTIVE_EXTRINSIC_PER_DAY: Objective(
         OBJECTIVE_EXTRINSIC_PER_DAY,
         "the bid's time value per calendar day, in percent of the share price",
-        "E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even",
+        "E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even; T_c = calendar days to the "
+        "last trading day",
         "percent of the share price per calendar day", DIRECTION_HIGHER),
     OBJECTIVE_STRESS_COST_PER_DAY: Objective(
         OBJECTIVE_STRESS_COST_PER_DAY,
         "the put's ask per calendar day per 100 of loss it offsets at your stress drop",
         "S_x = S x (1 - x / 100) with x = stress_drop_pct; score = ask / T_c / (K - S_x) x 100, quantized 0.0001 "
-        "half-even (no cover at the stress when K <= S_x)",
+        "half-even (no cover at the stress when K <= S_x); T_c = calendar days to the last trading day",
         "premium per calendar day per 100 of loss offset at your stress drop", DIRECTION_LOWER),
     OBJECTIVE_CAP_WITHIN_BUDGET: Objective(
         OBJECTIVE_CAP_WITHIN_BUDGET,
@@ -230,7 +231,8 @@ OBJECTIVE_DEFS: Dict[str, Objective] = {
         "price per calendar day added when the roll adds time value, and the whole amount, not divided by days, when "
         "it gives some up",
         "E_new = bid - max(0, S - K_new); E_held = ask_held - max(0, S - K_held); N = E_new - E_held; score = N / S / "
-        "(T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even",
+        "(T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even; T_c = calendar days "
+        "to the last trading day",
         "percent of the share price per calendar day added (N >= 0), percent of the share price (N < 0)",
         DIRECTION_HIGHER),
     OBJECTIVE_BAND_CENTRE: Objective(

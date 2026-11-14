@@ -183,6 +183,27 @@ class NetTimeValueCriterionTest(unittest.TestCase):
         self.assertIn(["net per share", "credit 0.05 (10.00 in all)", "", ""], rows)
 
 
+class SpreadCostTest(unittest.TestCase):
+    """Step 3f (finding F11): a multi-leg answer shows what the quotes' spreads cost, which a per-leg max_spread_pct
+    does not bound against a near-zero net."""
+
+    def test_the_collar_checks_row(self) -> None:
+        collar = S.run_proposal(Desk(self.__class__, drop_row=8, replace=SPY_TAG).market(), "AG-20261028-03", "collar",
+                                CRITERIA)
+        rows = T.check_rows(T.Writer(), collar.ranking.best, collar.section, D("25"), collar.group_context.s0)
+        # put 25.45 / 25.65 and call 26.40 / 26.60: half of each spread, 0.10 + 0.10 per share, 20.00 for 1 contract
+        self.assertIn(["spread cost", "0.20 per share (20.00 in all)", "", ""], rows)
+
+    def test_the_ticket_cash_row_needs_two_legs_and_mids(self) -> None:
+        lines = T.cash_table(T.Writer(), D("-1330.00"), D("-1305.00"), D("-150.00"), D("-135.00"), 1, D("2310.00"),
+                             legs=2)
+        self.assertIn("| spread cost against the mids | 25.00 |  |", lines)
+        one = T.cash_table(T.Writer(), D("980.00"), D("995.00"), D("-150.00"), D("-135.00"), 1, D("0.00"), legs=1)
+        self.assertFalse(any("spread cost" in line for line in one))
+        no_mid = T.cash_table(T.Writer(), D("-1330.00"), None, D("-150.00"), None, 1, D("2310.00"), legs=2)
+        self.assertFalse(any("spread cost" in line for line in no_mid))
+
+
 class ObjectiveConfigTest(unittest.TestCase):
     def test_each_section_accepts_its_release_one_objective_first(self) -> None:
         self.assertEqual(("extrinsic_per_day", "band_centre"), structuring_config.OBJECTIVES["covered_call"])
