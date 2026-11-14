@@ -90,8 +90,8 @@ unavailable)`.
 ## Greeks: European, in desk units
 
 - The model is the European closed form. A deep in-the-money American option quoted at intrinsic can come back
-  `below_intrinsic` under it; that is a known limit, not a data error. An early-exercise model for American options
-  is planned for Stage 2 (not in this release).
+  `below_intrinsic` under it; that is a known limit, not a data error. American Greeks are planned for Stage 2
+  (not in this release).
 - Units: delta per share, theta per calendar day, vega per volatility point, rho per 1 % of rate.
 - `position_greeks` scale a leg's Greeks by its open signed quantity times the multiplier.
 - A group's `net_greeks` adds one delta per share of stock to its option legs, and is empty when any open option leg

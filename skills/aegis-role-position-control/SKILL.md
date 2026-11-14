@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/position-control.md
-  source_sha256: fed13ba6009bdd64df6791a2fa3ded06ab4c1cd71576377c61710e6fa8cb8e41
+  source_sha256: 20d2fa122348e78fb5974a075e0548cbe56b622b5ac41b415c7100cc7399ccbd
 ---
 
 # Aegis Position Control: role skill
@@ -187,7 +187,7 @@ owner's own fill, with every fill the conversation already holds (never ask agai
 - The outcomes `csv_recon.py` infers: EXPIRED_OTM, PROBABLE_ASSIGNED, PROBABLE_EXERCISED, PIN_UNCERTAIN, CASH_SETTLED,
   SETTLEMENT_UNKNOWN, SETTLEMENT_PENDING and EXPIRED_UNRECORDED. PIN_UNCERTAIN proposes no edit: the owner confirms
   with the broker.
-- The tiers are European-only in Stage 1. An early-exercise model is planned for Stage 2 (not in this release).
+- The tiers are European-only in Stage 1. Early-exercise analysis is planned for Stage 2 (not in this release).
 
 ### Interactive commands
 

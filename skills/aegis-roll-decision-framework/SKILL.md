@@ -41,8 +41,8 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
 - The open short call of a `covered_call` group, on a symbol held in `positions.csv`. Chains are fetched only for
   that group's underlying.
 - Any other structure is NOT_APPLICABLE with its reason. A protective put's long put is replaced by a ROLL ticket
-  the owner names. The roll analysis of long puts, short puts and collars, weekly expirations and an American
-  early-exercise model are planned for Stage 2 (not in this release).
+  the owner names. The roll analysis of long puts, short puts and collars, weekly expirations and American
+  pricing are planned for Stage 2 (not in this release).
 - An index underlying (the data source cannot quote index options) and the setting `[roll] enabled = false` are
   NOT_APPLICABLE too.
 

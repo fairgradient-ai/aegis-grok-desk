@@ -183,6 +183,7 @@ docs/       the pages below
 | [Positions file](docs/POSITIONS_CSV.md) | the format of your positions |
 | [Structuring Desk](docs/STRUCTURING.md) | criteria, answers and limits |
 | [How it fits together](docs/ARCHITECTURE.md) | files, roles, trust boundaries |
+| [Roadmap](docs/ROADMAP.md) | what is planned after Stage 1, in order, and what each step must prove |
 | [Tool reference](docs/TOOLS.md) | every tool's flags and output, generated from the tools |
 | [Skills index](skills/README.md) | every skill and who loads it |
 | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) | |
