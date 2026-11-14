@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 300e20da240d621d7817edc02bf2138bd2a5dc2aba725959e9a1445aa9a756c0
+  source_sha256: 351ab1626019fce47a7354875d209c31ef68f4b69e1eb1906824d99e441580c4
 ---
 
 # Aegis Desk Lead: role skill
@@ -68,35 +68,39 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod-brief --slot 17:10
 ```
 
 - Post the output verbatim: every line, in order, the footer included. Never shorten, reword, reorder or add to it.
+- The sheet and the brief are markdown (a `###` title, bold section titles, items with details nested under them, a
+  green, red or yellow circle for a gain, a loss or an unavailable figure, no table): post them as one message, as
+  they are, never inside a code block and never split. The tool computes every total and percentage; you add none.
 - The written quiet rules (from `routines/manifest.toml`):
   - preopen: "Always one message: the doctor line, the recon verdict, standing signals, the docket and last night's
     levels; a missing or late upstream artifact is UNAVAILABLE."
   - eod-brief: "Always one message: P/L today, MTD and YTD, signals, the docket, N of N routines ran with late and
     missed runs named, the owner's to-do list."
-- The brief's `routines:` line counts the day's slots up to the brief; the brief's own run is not counted.
+- The brief's `**Routines**` item counts the day's slots up to the brief; the brief's own run is not counted.
 - On a closed day (weekend, NYSE holiday or a full closure the owner entered) a routine prints the single word
   `quiet`. Post it as printed.
 
 A synthetic example: a copy of the fixture desk `tests/fixtures/desk`, after its 2026-11-02 snapshot and levels,
-preopen at 2026-11-03 12:35 UTC. A pinned release checkout prints these lines:
+preopen at 2026-11-03 12:35 UTC. A pinned release checkout prints, among its blocks:
 
 ```text
-MORNING DESK SHEET 2026-11-03
-doctor (state/doctor.json, quick check at 12:35 UTC): PASS, 1 warning: key_source
-positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits (csv_recon.py --diff lists them)
-open signals: 0
-expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due
-last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels
+### MORNING DESK SHEET 2026-11-03
+
+**Desk status**
+- **Doctor** PASS, 1 warning: key_source (quick check at 12:35 UTC)
+
 deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data delayed 15 min, as of 20:59 UTC
 ```
 
-The same synthetic copy at the 17:10 slot of 2026-11-03 (after the 16:35 eod run) prints, among its lines:
+The same synthetic copy at the 17:10 slot of 2026-11-03 (after the 16:35 eod run) prints, among its blocks:
 
 ```text
-EOD DESK BRIEF 2026-11-03
-P/L (data/book/2026-11-03.json): realized today $0.00, month to date $0.00, year to date $425.00 | unrealized $4,034.00 (liquidation), $4,097.00 (mid) | day $400.00
-routines: 1 of 7 ran today; late: none; missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET
-to do: CONFIG CHANGED pending: desk.toml, positions.csv, adopted rulebook (acknowledge with ack.py config --owner-tapped)
+### EOD DESK BRIEF 2026-11-03
+
+**P/L**
+- 🟢 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation
+  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the open positions' cost $111,016.00*
+- 🟢 **Today** +$400.00 (+0.35 %)
 ```
 
 The morning sheet's footer carries the oldest data instant among the records it read, so it never claims fresher
@@ -141,7 +145,7 @@ places the owner has to go.
 | --- | --- |
 | a rule firing, a signal, the threshold levels, a plan card | `book_check.py` (dry run), `trigger_levels.py`, `ack.py list`, `ack.py ack`, `snooze` or `acted` on the owner's word (Exit Sentinel) |
 | a new or changed position, a fill, positions.csv, expiry, assignment | the draft and the verbatim save of `agents/position-control.md`, then `positions_check.py`, `csv_recon.py`, `expiry_checklist.py`, `assignment_watch.py` (Position Control) |
-| "how's my book?" | the P/L lines of the latest EOD DESK BRIEF, quoted as posted, with its date |
+| "how's my book?", "analyze my positions" | `book.py --view` (the book view, posted as it is; below); after the close, the latest EOD DESK BRIEF, quoted as posted, with its date, serves too |
 | whether the desk ran, the doctor, the configuration, a rule change | `routine_audit.py`, `desk_doctor.py`, `desk_init.py`, `rules_diff.py`, `rules_adopt.py` |
 | updating the desk to a newer release | `docs/UPDATING.md`, step by step, ending with the update receipt |
 | choices for a position the owner holds (a closing, unwind, let-assign or roll ticket, a roll analysis, a covered call, protective put or collar on shares they hold), and the criteria interview | `exit_ticket.py`, `roll_analysis.py`, `propose.py`, each only on the owner's request, and the interview of `docs/STRUCTURING.md` (Structuring Desk) |
@@ -176,6 +180,7 @@ python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root
 python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --rules-text --desk-root /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/eod_summary.py --desk-root /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/eod_summary.py --brief --desk-root /workspace/aegis-desk
+python3 /workspace/aegis-grok-desk/scripts/book.py --view --desk-root /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-root /workspace/aegis-desk
 ```
 
@@ -187,6 +192,9 @@ python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-r
   Auto-review texts to paste exactly as printed.
 - `eod_summary.py` prints the Morning Desk Sheet or, with `--brief`, the EOD Desk Brief from the records on disk. It
   never fetches and writes nothing.
+- `book.py --view` prints the book view: the book marked from the desk's delayed quotes as one linted markdown message
+  (the whole book, then a block per open group with its P/L, payoff, the shares its calls leave uncovered and its legs
+  in words). It writes nothing. A view that fails its lint prints only `WITHHELD: ...` (exit 1); post that and stop.
 - `opening_bell.py` prints a public market snapshot of one symbol under its own footer. Live, it needs the Alpaca
   paper key pair (`APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`, or `--credentials-file`); without one it exits 20 with
   `no_credential`. Its contract listing is read on Alpaca's paper trading host, which refuses a live key: that
@@ -195,7 +203,8 @@ python3 /workspace/aegis-grok-desk/scripts/opening_bell.py --symbol SPY --desk-r
 
 What you may post outside a routine:
 
-- the full text of `eod_summary.py` and `opening_bell.py`, which lint their own message;
+- the full text of `eod_summary.py`, `book.py --view` and `opening_bell.py`, which lint their own message, as one
+  message, never in a code block; one plain sentence may name it before, never a number or a reading of its numbers;
 - any other tool's output only when the owner asks, unchanged, in a fenced block headed by the exact command. That
   output is diagnostic: never paraphrase it and never add a number to it.
 

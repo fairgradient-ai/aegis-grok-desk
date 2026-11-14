@@ -195,12 +195,12 @@ class SpreadCostTest(unittest.TestCase):
         self.assertIn(["spread cost", "0.20 per share (20.00 in all)", "", ""], rows)
 
     def test_the_ticket_cash_row_needs_two_legs_and_mids(self) -> None:
-        lines = T.cash_table(T.Writer(), D("-1330.00"), D("-1305.00"), D("-150.00"), D("-135.00"), 1, D("2310.00"),
+        lines = T.cash_block(T.Writer(), D("-1330.00"), D("-1305.00"), D("-150.00"), D("-135.00"), 1, D("2310.00"),
                              legs=2)
-        self.assertIn("| spread cost against the mids | 25.00 |  |", lines)
-        one = T.cash_table(T.Writer(), D("980.00"), D("995.00"), D("-150.00"), D("-135.00"), 1, D("0.00"), legs=1)
+        self.assertEqual("- **spread cost against the mids** 25.00", lines[-1])
+        one = T.cash_block(T.Writer(), D("980.00"), D("995.00"), D("-150.00"), D("-135.00"), 1, D("0.00"), legs=1)
         self.assertFalse(any("spread cost" in line for line in one))
-        no_mid = T.cash_table(T.Writer(), D("-1330.00"), None, D("-150.00"), None, 1, D("2310.00"), legs=2)
+        no_mid = T.cash_block(T.Writer(), D("-1330.00"), None, D("-150.00"), None, 1, D("2310.00"), legs=2)
         self.assertFalse(any("spread cost" in line for line in no_mid))
 
 

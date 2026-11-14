@@ -1,8 +1,5 @@
 ### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you hold
-
-| account | SPY mid | your cost | quotes |
-|---|--:|--:|---|
-| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 10** by your objective cap_within_budget: **4.92**, the highest among the 4 candidates that passed every criterion
 - leg 1 of 2: opens a new long 1 x SPY 2027-03-19 620 put | bid 25.45, ask 25.65, mid 25.55 | quote grade A
@@ -10,42 +7,33 @@
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| floor | 4.34 % below | 3 to 10 % | 🟢 |
-| cap | 4.92 % above | 2 to 10 % | 🟢 |
-| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | 🟢 |
-| call strike | 680 | at or above your cost 632.40 | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
-| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
+**Checks for this candidate**
+- 🟢 **floor** 4.34 % below | your criteria: 3 to 10 %
+- 🟢 **cap** 4.92 % above | your criteria: 2 to 10 %
+- 🟢 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00
+- 🟢 **call strike** 680 | your criteria: at or above your cost 632.40
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spreads** 0.78 % and 0.75 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok
+- 🟡 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 63,240.00 | 1,165.00 |
-| max profit | unbounded | 4,835.00 |
-| breakeven | 632.40 | 631.65 |
-| group delta | 100.00 | 23.75 |
+**The group, now and after both legs**
+- **max loss** 63,240.00 now, 1,165.00 after
+- **max profit** unbounded now, 4,835.00 after
+- **breakeven** 632.40 now, 631.65 after
+- **group delta** 100.00 now, 24.14 after
 
-**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-
-| after | you hold | level |
-|---|---|:-:|
-| leg 1 | 100 SPY shares, 1 long put | 2 |
-| leg 2 | 100 SPY shares, 1 short call, 1 long put | 1 |
-
+**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+- after leg 1: you hold 100 SPY shares, 1 long put | level 2
+- after leg 2: you hold 100 SPY shares, 1 short call, 1 long put | level 1
 - entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
 
-**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+**Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+- 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75
+- 🟢 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30
+- 🟢 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60
 
-| # | expiry | put / call | floor | cap | net per share |  |
-|--:|---|---|--:|--:|---|---|
-| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | 🟢 |
-| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | 🟢 |
-| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | 🟢 |
-
-- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
 
 > - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
 > - tie on cap_within_budget broken by the put strike (higher first)

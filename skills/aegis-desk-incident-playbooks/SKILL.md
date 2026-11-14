@@ -89,9 +89,11 @@ A typo in the header stops the whole file. A synthetic pre-open run on a fixture
 ```text
 INCIDENT | preopen 07:30 ET | csv_recon failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-csv_recon.md
 INCIDENT | preopen 07:30 ET | expiry_checklist failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-expiry_checklist-week.md
-MORNING DESK SHEET 2026-11-03
-doctor (state/doctor.json, quick check at 12:35 UTC): FAIL, 1 warning: key_source; 1 failure: desk_files
-positions.csv reconciliation (data/positions/2026-11-03.recon.json): ERRORS, 0 proposed edits (csv_recon.py --diff lists them)
+### MORNING DESK SHEET 2026-11-03
+
+**Desk status**
+- **Doctor** FAIL, 1 warning: key_source; 1 failure: desk_files (quick check at 12:35 UTC)
+- **positions.csv** ERRORS, 0 proposed edits (`csv_recon.py --diff` lists them)
 ```
 
 The response:
@@ -177,7 +179,9 @@ Missed runs are never replayed and never backfilled; the next run evaluates the 
 the audit name the gaps. From a synthetic fixture copy where no routine ran on 2026-11-03 (the brief at 17:10 ET):
 
 ```text
-routines: 0 of 7 ran today; late: none; missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET; pending: eod 16:35 ET
+- **Routines** 0 of 7 ran today
+  - missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET
+  - pending: eod 16:35 ET
 ```
 
 The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading day

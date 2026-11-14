@@ -86,38 +86,35 @@ HOLIDAY_TEXT = [
 ]
 NVDA_TEXT = [
     "### STRUCTURING AG-20261022-02 | NVDA covered call: the roll analysis of the short 2026-11-20 150 call",
-    "",
-    "| account | NVDA mid | your cost | quotes |",
-    "|---|--:|--:|---|",
-    "| 1 of desk.toml (margin) | 148.925 | 141.20 | 19:31 UTC, 15-min delayed |",
+    "*account 1 of desk.toml (margin) | NVDA mid 148.925 | your cost 141.20 | quotes 19:31 UTC, 15-min delayed*",
     "",
     "**no candidate passed every criterion: the desk names no best candidate**",
     "- the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
     "",
-    "**replacement candidates by rank:** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit "
-    "1, credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced",
+    "**Replacement candidates by rank** 0 of 20 passed your criteria; 18 failed (abs_delta 14, min_credit 1, "
+    "credit_only 6, strike_floor 6, ex_dividend 18); 2 not priced",
+    "- \U0001F534 **1** 2027-01-15 | new call 160 | debit 0.05 | extrinsic_per_day 0.0299 | fails credit_only, "
+    "ex_dividend",
+    "- \U0001F534 **2** 2026-12-18 | new call 160 | debit 1.45 | extrinsic_per_day 0.0276 | fails credit_only, "
+    "ex_dividend",
+    "- \U0001F534 **3** 2027-01-15 | new call 165 | debit 1.35 | extrinsic_per_day 0.0179 | fails credit_only, "
+    "ex_dividend",
     "",
-    "| # | expiry | new call | net per share | extrinsic_per_day |  |",
-    "|--:|---|---|--:|--:|---|",
-    "| 1 | 2027-01-15 | 160 | debit 0.05 | 0.0299 | \U0001F534 credit_only, ex_dividend |",
-    "| 2 | 2026-12-18 | 160 | debit 1.45 | 0.0276 | \U0001F534 credit_only, ex_dividend |",
-    "| 3 | 2027-01-15 | 165 | debit 1.35 | 0.0179 | \U0001F534 credit_only, ex_dividend |",
-    "",
+    "**Why each one fails**",
     "- 1 fails credit_only: a net debit of 0.05",
-    "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
-    "call's life",
+    "- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new call's life",
     "- 2 fails credit_only: a net debit of 1.45",
     "- 3 fails credit_only: a net debit of 1.35",
-    "- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and "
-    "strike",
+    "",
+    "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike",
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-    "options is not modelled",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
+    "is not modelled",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "",
-    FOOTER_1931,
+    footer("19:31"),
 ]
 REFUSED_TEXT = [
     "REFUSED AG-20261020-01 | WMT covered call | opening 2 new short calls, covered by 200 free shares needs "
@@ -133,54 +130,45 @@ STALE_TEXT = [
 ]
 WMT_TEXT = [
     "### STRUCTURING AG-20261020-01 | WMT covered call: the roll analysis of the short 2026-11-20 105 call",
+    "*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 98.50 | quotes 19:31 UTC, 15-min delayed*",
     "",
-    "| account | WMT mid | your cost | quotes |",
-    "|---|--:|--:|---|",
-    "| 1 of desk.toml (margin) | 104.23 | 98.50 | 19:31 UTC, 15-min delayed |",
-    "",
-    "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 "
-    "candidate that passed every criterion",
+    "**BEST CANDIDATE 1 of 20** by your objective extrinsic_per_day: **0.0467**, the highest among the 1 candidate "
+    "that passed every criterion",
     "- leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old",
     "- leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55 | quote grade B, 18 min old",
     "",
     "> the score ranks the candidates only on the objective you chose; it is not a forecast",
     "",
-    "| check | this candidate | your criteria |  |",
-    "|---|---|---|:-:|",
-    "| net per share | credit 0.05 (10.00 in all) | credit only | \U0001F7E2 |",
-    "| strike | 115 | at or above your cost 98.50 or the held strike 105 | \U0001F7E2 |",
-    "| absolute delta | 0.33 | 0.15 to 0.35 | \U0001F7E2 |",
-    "| bid | 3.55 | at least 0.50 | \U0001F7E2 |",
-    "| calendar days | 73 | 40 to 75 | \U0001F7E2 |",
-    "| spread | 2.78 % | at most 25 % | \U0001F7E2 |",
-    "| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | \U0001F7E1 |",
+    "**Checks for this candidate**",
+    "- \U0001F7E2 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only",
+    "- \U0001F7E2 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105",
+    "- \U0001F7E2 **absolute delta** 0.33 | your criteria: 0.15 to 0.35",
+    "- \U0001F7E2 **bid** 3.55 | your criteria: at least 0.50",
+    "- \U0001F7E2 **calendar days** 73 | your criteria: 40 to 75",
+    "- \U0001F7E2 **spread** 2.78 % | your criteria: at most 25 %",
+    "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok",
     "",
-    "| the group | now | after both legs |",
-    "|---|--:|--:|",
-    "| max loss | 19,016.00 | 19,006.00 |",
-    "| max profit | 1,984.00 | 3,994.00 |",
-    "| breakeven | 95.08 | 95.03 |",
-    "| group delta | 101.71 | 134.07 |",
+    "**The group, now and after both legs**",
+    "- **max loss** 19,016.00 now, 19,006.00 after",
+    "- **max profit** 1,984.00 now, 3,994.00 after",
+    "- **breakeven** 95.08 now, 95.03 after",
+    "- **group delta** 101.71 now, 134.07 after",
     "",
-    "**replacement candidates by rank:** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only "
-    "4, strike_floor 4)",
+    "**Replacement candidates by rank** 1 of 20 passed your criteria; 19 failed (abs_delta 15, credit_only 4, "
+    "strike_floor 4)",
+    "- \U0001F7E2 **1** 2027-01-15 | new call 115 | credit 0.05 | extrinsic_per_day 0.0467",
+    "- \U0001F534 **2** 2026-12-18 | new call 112.5 | debit 0.70 | extrinsic_per_day 0.0597 | fails credit_only",
+    "- \U0001F534 **3** 2026-12-18 | new call 115 | debit 1.40 | extrinsic_per_day 0.0448 | fails credit_only",
     "",
-    "| # | expiry | new call | net per share | extrinsic_per_day |  |",
-    "|--:|---|---|--:|--:|---|",
-    "| 1 | 2027-01-15 | 115 | credit 0.05 | 0.0467 | \U0001F7E2 |",
-    "| 2 | 2026-12-18 | 112.5 | debit 0.70 | 0.0597 | \U0001F534 credit_only |",
-    "| 3 | 2026-12-18 | 115 | debit 1.40 | 0.0448 | \U0001F534 credit_only |",
-    "",
-    "- a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and "
-    "strike",
+    "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike",
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-    "options is not modelled",
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
+    "is not modelled",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "",
-    FOOTER_1931,
+    footer("19:31"),
 ]
 SPY_NOT_APPLICABLE = [
     "NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the "
@@ -841,8 +829,10 @@ class FixerTest(DeskCopy):
         self.edit("positions.csv", "AG-20261020-01,2026-10-20,,98.50,", "AG-20261020-01,2026-10-20,,120.00,")
         self.ack()
         lines = self.run_text()
-        self.assertIn("| strike | 115 | at or above your cost 120.00 or the held strike 105 | \U0001F7E2 |", lines)
-        self.assertIn("| 1 of desk.toml (margin) | 104.23 | 120.00 | 19:31 UTC, 15-min delayed |", lines)
+        self.assertIn("- \U0001F7E2 **strike** 115 | your criteria: at or above your cost 120.00 or the held strike "
+                      "105", lines)
+        self.assertIn("*account 1 of desk.toml (margin) | WMT mid 104.23 | your cost 120.00 | quotes 19:31 UTC, "
+                      "15-min delayed*", lines)
 
     def test_fractional_shares_are_analysed(self) -> None:
         self.edit("positions.csv", "equity,WMT,,200,", "equity,WMT,,200.5,")

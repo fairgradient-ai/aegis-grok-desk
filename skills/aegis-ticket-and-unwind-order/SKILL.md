@@ -32,7 +32,7 @@ The examples are synthetic: runs on copies of `tests/fixtures/desk` with the fix
 - A ROLL ticket needs `--new-expiration YYYY-MM-DD` and `--new-strike K`. The replacement keeps the held leg's root
   and right, and its expiration must be later than the held leg's, or the command is a usage error (exit 2).
 - A covered call's replacement is labelled against `[roll]` of `structuring.toml`; a protective put's, against
-  `[protective_put]`. A replacement that fails a criterion is still a TICKET (exit 0): its checks table prints the
+  `[protective_put]`. A replacement that fails a criterion is still a TICKET (exit 0): its checks prints the
   failing criteria with a red status circle, because the owner named the contract.
 - A contract the chain does not list is UNAVAILABLE: `the chain does not list that contract`.
 - A listed replacement the desk cannot price is UNAVAILABLE too (exit 20, `replacement_unpriced`), with its reason.
@@ -56,46 +56,36 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 
 ```text
 ### TICKET AG-20261020-01 | WMT covered call: a roll of the short call (action ROLL)
+*account 1 of desk.toml (margin) | computed 19:50 UTC | valid until 20:20 UTC (30 min) | quotes 19:31 UTC, 15-min delayed*
 
-| account | computed | valid until | quotes |
-|---|---|---|---|
-| 1 of desk.toml (margin) | 19:50 UTC | 20:20 UTC (30 min) | 19:31 UTC, 15-min delayed |
-
-**the legs:**
+**The legs**
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 - leg 2 of 2: opens a new short 2 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | quote grade B
 
-| cash | at the conservative prices | at the mids |
-|---|--:|--:|
-| net cash | +10.00 | +35.00 |
-| realized on the closing leg | -16.00 | -1.00 |
-| the most the steps need at once | 700.00 |  |
-| spread cost against the mids | 25.00 |  |
+**The cash**
+- **net cash** +10.00 at the conservative prices, +35.00 at the mids
+- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids
+- **the most the steps need at once** 700.00
+- **spread cost against the mids** 25.00
 
-| check | the new call | your criteria |  |
-|---|---|---|:-:|
-| net per share | credit 0.05 (10.00 in all) | credit only | 🟢 |
-| strike | 115 | at or above your cost 98.50 or the held strike 105 | 🟢 |
-| absolute delta | 0.33 | 0.15 to 0.35 | 🟢 |
-| bid | 3.55 | at least 0.50 | 🟢 |
-| calendar days | 73 | 40 to 75 | 🟢 |
-| spread | 2.78 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok | 🟡 |
+**Checks for the new call**
+- 🟢 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only
+- 🟢 **strike** 115 | your criteria: at or above your cost 98.50 or the held strike 105
+- 🟢 **absolute delta** 0.33 | your criteria: 0.15 to 0.35
+- 🟢 **bid** 3.55 | your criteria: at least 0.50
+- 🟢 **calendar days** 73 | your criteria: 40 to 75
+- 🟢 **spread** 2.78 % | your criteria: at most 25 %
+- 🟡 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 19,016.00 | 19,006.00 |
-| max profit | 1,984.00 | 3,994.00 |
-| breakeven | 95.08 | 95.03 |
-| group delta | 101.71 | 134.07 |
+**The group, now and after both legs**
+- **max loss** 19,016.00 now, 19,006.00 after
+- **max profit** 1,984.00 now, 3,994.00 after
+- **breakeven** 95.08 now, 95.03 after
+- **group delta** 101.71 now, 134.07 after
 
-**approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
-
-| after | you hold | level |
-|---|---|:-:|
-| leg 1 | 200 WMT shares, no option | 0 |
-| leg 2 | 200 WMT shares, 2 short calls | 1 |
-
+**Approval-level check (leg 1 first):** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+- after leg 1: you hold 200 WMT shares, no option | level 0
+- after leg 2: you hold 200 WMT shares, 2 short calls | level 1
 - in the other order, after leg 2 you would hold 2 uncovered calls (level 4)
 - entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher level
 
@@ -115,9 +105,10 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
    quotes' as-of and delay.
 2. The legs as list items, in the canonical order, each with its bid, ask, mid and quote grade. A quote of grade E
    adds `quote grade E: the conservative side stands`.
-3. The cash table: net cash and realized estimate at the conservative prices and the mids, and the peak need.
-4. On a ROLL ticket: the replacement's checks table (a green status circle for a criterion it passes, a yellow one
-   for a label the owner accepted, a red one for a criterion it fails) and the group table, now and after both legs.
+3. The cash block: the net cash and the realized estimate at the conservative prices and at the mids, and the most
+   the steps need at once.
+4. On a ROLL ticket: the replacement's checks (a green status circle for a criterion it passes, a yellow one
+   for a label the owner accepted, a red one for a criterion it fails) and the group block, now and after both legs.
 5. The approval block: the highest step's level against the owner's, what the owner holds after each step, the
    other-order line and the multi-leg note (worded by what the order is) when they apply.
 6. The notes: the validity, the quote source, a ROLL's model line, what follows a fill, the limit and the owner's act.
@@ -196,22 +187,22 @@ combination`), each ending `which can need a higher level`. The roll ticket's li
 
 ## Cash and the realized estimate
 
-- The cash table totals the steps at the conservative prices (a held short closes at the ask, a held long and the
-  shares at the bid, a new short opens at the bid, a new long at the ask), then at the mids; with two legs or more,
-  `spread cost against the mids` is the difference. `the most the steps need at once` is the largest cash need along
-  the steps in their order. The desk does not see the owner's cash balance, and no tool checks it.
+- The cash block totals the steps at the conservative prices: a held short closes at the ask, a held long and the
+  shares close at the bid, a new short opens at the bid, a new long opens at the ask. Then the same at the mids;
+  with two legs or more, `spread cost against the mids` is the difference.
+- `the most the steps need at once` is the largest cash need along the steps in their order. The desk does not see
+  the owner's cash balance, and no tool checks it.
 - `realized on the closing leg` (or `legs`) estimates the realized result of the closed rows at the conservative
   side and at the mid. The realized figure itself comes from `positions.csv` once the owner records the fill.
 
 From the WMT UNWIND_STOCK ticket of the same run:
 
 ```text
-| cash | at the conservative prices | at the mids |
-|---|--:|--:|
-| net cash | +20,140.00 | +20,161.00 |
-| realized on the closing legs | +1,124.00 | +1,145.00 |
-| the most the steps need at once | 700.00 |  |
-| spread cost against the mids | 21.00 |  |
+**The cash**
+- **net cash** +20,140.00 at the conservative prices, +20,161.00 at the mids
+- **realized on the closing legs** +1,124.00 at the conservative prices, +1,145.00 at the mids
+- **the most the steps need at once** 700.00
+- **spread cost against the mids** 21.00
 ```
 
 ## The 30-minute validity
@@ -229,10 +220,10 @@ UNAVAILABLE | AG-20261020-01 CLOSE ticket | a ticket needs quotes live enough to
 
 ## UNWIND_STOCK: the short call before the shares
 
-Its legs and the two notes under its approval table:
+Its legs and the two notes under its approval block:
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 2: closes your short 2 x WMT 2026-11-20 105 call | bid 3.35, ask 3.50, mid 3.425 | quote grade B
 - leg 2 of 2: closes 200 of your long WMT shares | bid 104.20, ask 104.26, mid 104.23 | quote grade A
 
@@ -250,12 +241,11 @@ to expiry; its notes end with the post-expiry check of Aegis Position Control:
 ```text
 no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your broker's cutoff is 16:30 ET (desk.toml)
 
-| the 2026-11-20 105 call |  |
-|---|---|
-| now | out of the money: the spot mid 104.23 is below its strike |
-| if you decide otherwise | you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades |
-| if assigned | 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00 |
-| ex-dividend | the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20 |
+**The 2026-11-20 105 call**
+- **now** out of the money: the spot mid 104.23 is below its strike
+- **if you decide otherwise** you act by Fri 2026-11-20 16:00 ET (21:00 UTC): a short option left to expiry can be closed only while the session trades
+- **if assigned** 200 WMT shares are called away at the strike, cash +21,000.00; realized on the call and the shares +1,984.00
+- **ex-dividend** the ex-dividend date 2026-11-24 falls after the call's last trading day 2026-11-20
 ```
 
 - OCC exercises an option at least 0.01 in the money at expiry by exception. The broker's cutoff in that line,
@@ -269,16 +259,15 @@ no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC ex
 
 ## MONETIZE_PUT: the put closed for its value
 
-From the SPY protective put (AG-20261028-03), its legs and the put table that follows its cash table:
+From the SPY protective put (AG-20261028-03), its legs and the put block that follows its cash block:
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 1: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B
 
-| the put |  |
-|---|---|
-| the 2026-12-18 620 put | out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 is all time value |
-| after the leg | your 100 SPY shares carry no put: their downside is unhedged |
+**The put**
+- **the 2026-12-18 620 put** out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 is all time value
+- **after the leg** your 100 SPY shares carry no put: their downside is unhedged
 ```
 
 ## A long put's ROLL
@@ -287,18 +276,17 @@ The same group with `--action ROLL --new-expiration 2027-03-19 --new-strike 610`
 checks read `[protective_put]`.
 
 ```text
-**the legs:**
+**The legs**
 - leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 - leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | quote grade B
 
-| check | the new put | your criteria |  |
-|---|---|---|:-:|
-| floor | 5.88 % below | 3 to 10 % | 🟢 |
-| cost | ask 23.10 (2,310.00 in all) |  |  |
-| net cost per day added | 0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 days added) |  |  |
-| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spread | 0.87 % | at most 25 % | 🟢 |
+**Checks for the new put**
+- 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
+- **cost** ask 23.10 (2,310.00 in all)
+- **net cost per day added** 0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 days added)
+- 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spread** 0.87 % | your criteria: at most 25 %
 ```
 
 ## After a fill
