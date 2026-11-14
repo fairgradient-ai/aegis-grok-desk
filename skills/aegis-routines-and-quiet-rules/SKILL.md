@@ -56,7 +56,7 @@ The Allow-automatically rule covers exactly that command and nothing else: no pi
 command. The Ask-first owner-authority rule names `desk_init.py` and the Structuring Desk's three tools, so each
 interactive run of them raises a card for the owner's tap. What `routine.py` does in one run:
 
-1. It checks the release pin: the checkout must be the clean commit of tag v0.2.2. Otherwise no step runs.
+1. It checks the release pin: the checkout must be the clean commit of tag v0.3.0. Otherwise no step runs.
 2. It picks the slot (`--slot`, else the latest slot at or before now) and the slot's chain.
 3. On a closed day it runs no step and prints `quiet`: a weekend, an NYSE holiday, or a full closure the owner entered
    in `research/calendar.toml`. The final-call routine also prints `quiet` on an early-close day.
@@ -77,13 +77,13 @@ Lines a routine prints in place of a part, each ending with the fixed footer (sh
 INCIDENT | <id> <slot> ET | <tool> failed (<error code>); the other steps ran; details in incidents/<file>
 WITHHELD | <tool>: the text failed the alert lint (<codes>) and is withheld; <tool>.py shows it
 INCIDENT | <id> | another run of this routine holds its lock; this run did nothing
-INCIDENT | <id> | the desk checkout is not the pinned release v0.2.2: <reason>; no step ran | details in incidents/<stamp>-dirty-checkout.md
+INCIDENT | <id> | the desk checkout is not the pinned release v0.3.0: <reason>; no step ran | details in incidents/<stamp>-dirty-checkout.md
 ```
 
 A synthetic example of the last one, from a development checkout with no tag (a fixture copy, 2026-11-03 19:50 UTC):
 
 ```text
-INCIDENT | book-check | the desk checkout is not the pinned release v0.2.2: development checkout (no tag); no step ran | details in incidents/20261103T195000.000000Z-dirty-checkout.md
+INCIDENT | book-check | the desk checkout is not the pinned release v0.3.0: development checkout (no tag); no step ran | details in incidents/20261103T195000.000000Z-dirty-checkout.md
 ```
 
 ## The Stage-1 routines per Bot

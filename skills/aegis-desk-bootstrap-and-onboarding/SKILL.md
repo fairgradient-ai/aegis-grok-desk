@@ -42,14 +42,14 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 ## 1. Get the pinned release
 
 ```text
-git clone --depth 1 --branch v0.2.2 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.3.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 ```
 
 - If the tag does not exist, stop and tell the owner. An existing `/workspace/aegis-grok-desk` is kept as it is: no
   overwrite, reset or switch; report what the doctor's check 1 says about it.
-- Check 1 (`release_pin`) passes with `release v0.2.2 at <commit>, clean`. Until `desk.toml` exists (SETUP section
+- Check 1 (`release_pin`) passes with `release v0.3.0 at <commit>, clean`. Until `desk.toml` exists (SETUP section
   9.1), checks 4, 5, 10 and 11 warn and check 8 fails; that is expected.
 - If check 1 says `git refuses this checkout: it is owned by another user (see SETUP)`, record it as pending. Its fix,
   one owner-approved `safe.directory` command, belongs to SETUP section 9.3 step 4. Nothing in the first run needs it:
@@ -147,7 +147,7 @@ UNAVAILABLE: not a paper key: Alpaca's paper trading host refused the key pair (
 
 ## 8. The receipt
 
-One message. It opens with three plain lines: the desk is built (four Bots, the Floor, the skills, release v0.2.2);
+One message. It opens with three plain lines: the desk is built (four Bots, the Floor, the skills, release v0.3.0);
 whether live market data works; and that nothing else is needed now, that the owner talks to the Desk Lead here for
 everything, with "say 'add my positions'" when the owner wants the desk to watch the book. Then the evidence:
 

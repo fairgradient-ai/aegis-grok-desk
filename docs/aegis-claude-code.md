@@ -21,7 +21,7 @@ Then load the charter first:
 /aegis-desk:aegis-desk-charter
 ```
 
-The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.2.2`. Whether Claude
+The marketplace entry in `.claude-plugin/marketplace.json` pins its GitHub source to the tag `v0.3.0`. Whether Claude
 Code honours that pin is checked at release. If it does not, the marketplace follows the default branch, and the
 pinned clone below is the reviewed way in.
 
@@ -90,7 +90,7 @@ recorded in [docs/RELEASE.md](RELEASE.md), step 2. The marketplace install is ch
 The reviewed release, without the marketplace:
 
 ```text
-git clone --depth 1 --branch v0.2.2 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.3.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
 cd aegis-grok-desk
 bash scripts/check.sh
 ```

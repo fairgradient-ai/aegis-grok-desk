@@ -22,7 +22,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 ## Try it now
 
 ```bash
-git clone --depth 1 --branch v0.2.2 https://github.com/fairgradient-ai/aegis-grok-desk.git
+git clone --depth 1 --branch v0.3.0 https://github.com/fairgradient-ai/aegis-grok-desk.git
 cd aegis-grok-desk
 python3 scripts/opening_bell.py --demo
 ```
@@ -36,7 +36,7 @@ none of it is market data, and the command writes nothing.
 
 Open Grok Bot, create a new Bot (it becomes your Aegis Desk Lead), and paste:
 
-> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.2/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.2/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
+> Set up the Aegis options desk from https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.3.0/skills/aegis-desk-bootstrap-and-onboarding/SKILL.md. Follow that bootstrap skill and the runbook at https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.3.0/SETUP.md step by step, keep the desk read-only, and finish with the setup receipt.
 
 It builds the desk, shows you a demo on a sample portfolio, and asks you for one thing: a free Alpaca paper key (a
 key ID and its secret), added through the secure secret card, never pasted in chat. Alpaca's paper account is a
@@ -57,7 +57,7 @@ Then, when you want more, say these, starting with the first:
 
 Open your Aegis Desk Lead's chat and paste:
 
-> Update my Aegis desk to v0.2.2 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.2/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
+> Update my Aegis desk to v0.3.0 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.3.0/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
 
 It tells you what changes for you, moves the desk to the new release after your tap, refreshes each Bot's skills,
 shows you any Auto-review text to re-paste, and ends with an update receipt. Your positions, rules and settings stay
@@ -152,7 +152,7 @@ How each control is enforced, and what it does not cover, is in [SECURITY.md](SE
 | --- | --- |
 | Grok Bot | the [Start](#start) prompt above; [docs/aegis-grok-bot.md](docs/aegis-grok-bot.md) |
 | Claude Code | `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`; [docs/aegis-claude-code.md](docs/aegis-claude-code.md) |
-| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.2.2 --trust`; [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
+| Grok Build | `grok plugin install fairgradient-ai/aegis-grok-desk@v0.3.0 --trust`; [docs/aegis-grok-build.md](docs/aegis-grok-build.md) |
 | Cursor | open the pinned clone and enable the plugin; [docs/aegis-cursor.md](docs/aegis-cursor.md) |
 | Codex | the marketplace entry; [docs/aegis-codex.md](docs/aegis-codex.md) |
 | Gemini CLI | the extension; [docs/aegis-gemini-cli.md](docs/aegis-gemini-cli.md) |

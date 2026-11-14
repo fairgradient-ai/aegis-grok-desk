@@ -3,7 +3,7 @@ name: aegis-role-exit-sentinel
 description: The one alerting voice of the read-only Aegis options desk. Runs the owner's adopted exit rules through book_check four times a trading day on the lean profile and posts the EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED messages, the pre-close and watch-alive lines and the end-of-day threshold-level sheet verbatim from routine.py. Keeps the end-of-day book snapshot and posts an exit-plan card on request. Never edits a rule, never computes a number, never prices a choice and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.2"
+  version: "0.3.0"
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
