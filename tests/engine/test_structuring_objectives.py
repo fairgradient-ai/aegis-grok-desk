@@ -92,6 +92,50 @@ class BandFitTest(unittest.TestCase):
         self.assertIsNone(S.quote_term([leg_of("115")], D("25")))       # no spread read: no score
 
 
+class OwnerCentresTest(unittest.TestCase):
+    """Step 3b: under schema_version = 2 the owner may set a band's centre and each band's (and the quote's) weight."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        def run(**changes: object) -> "S.Answer":
+            return S.run_proposal(Desk(cls, drop_row=4, replace=WMT_TAGS).market(), "AG-20261020-01", "covered_call",
+                                  criteria("covered_call", objective="band_centre", **changes))
+        cls.half_days = run(band_weights=(("dte", D("0.5")),))
+        cls.seven_tenths = run(band_weights=(("dte", D("0.7")),))
+        cls.centre_30 = run(centres=(("abs_delta", D("0.30")),))
+
+    def test_band_fit_takes_a_centre_and_a_weight(self) -> None:
+        self.assertEqual(D("0.14"), S.band_fit([(45, (40, 75), D("50"), D("0.5"))]))   # 0.5 x 5 / 17.5
+        self.assertEqual(D("0.91"), S.band_fit([(45, (40, 75), None, D("1")), (D("0.27"), (D("0.15"), D("0.35")))]))
+        self.assertEqual(S.band_fit([(45, (40, 75))]), S.band_fit([(45, (40, 75), D("57.5"), D("1"))]))
+
+    def test_the_days_weight_flip_point_on_wmt(self) -> None:
+        # the report's sensitivity: at a days weight of 0.5, Jan 120 (0.443 + 0.10 + 0.174) beats Dec 115
+        # (0.357 + 0.20 + 0.186); at 0.7 Dec 115 is still best (the flip is near 0.65)
+        self.assertEqual(["WMT270115C00120000", "WMT261218C00115000"],
+                         [c.id for c in self.half_days.ranking.candidates[:2]])
+        self.assertEqual([D("0.72"), D("0.74")], [c.score for c in self.half_days.ranking.candidates[:2]])
+        self.assertEqual("WMT261218C00115000", self.seven_tenths.ranking.best.id)
+
+    def test_an_owner_centre_moves_the_answer(self) -> None:
+        # abs_delta centre 0.30: Dec 112.5 (0.71 + 0.20 + 0.14) is now nearest
+        self.assertEqual(("WMT261218C00112500", D("1.05")), (self.centre_30.ranking.best.id,
+                                                             self.centre_30.ranking.best.score))
+
+    def test_the_text_names_the_owner_settings(self) -> None:
+        w = T.Writer()
+        self.assertEqual("band_centre with your own settings in structuring.toml: weight dte 0.5",
+                         T.centre_settings_line(w, self.half_days.section))
+        self.assertEqual("band_centre with your own settings in structuring.toml: centre abs_delta 0.30",
+                         T.centre_settings_line(T.Writer(), self.centre_30.section))
+        self.assertIsNone(T.centre_settings_line(T.Writer(), CRITERIA.covered_call))
+        w = T.Writer()
+        rendered = T.finish(w, T.proposal_lines(w, self.half_days, owner_level=2), T.data_as_of(self.half_days),
+                            self.half_days.tool)
+        self.assertTrue(rendered.ok, rendered.lint.problems)
+        self.assertIn("> - band_centre with your own settings in structuring.toml: weight dte 0.5", rendered.text)
+
+
 class ObjectiveConfigTest(unittest.TestCase):
     def test_each_section_accepts_its_release_one_objective_first(self) -> None:
         self.assertEqual(("extrinsic_per_day", "band_centre"), structuring_config.OBJECTIVES["covered_call"])

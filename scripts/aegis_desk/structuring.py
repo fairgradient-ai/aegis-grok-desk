@@ -730,18 +730,24 @@ def quote_term(legs: Sequence["PricedLeg"], max_spread_pct: Decimal) -> Optional
         return total
 
 
-def band_fit(values: Sequence[Tuple[Any, Tuple[Any, Any]]], extra: Decimal = Decimal(0)) -> Decimal:
-    """``band_centre``: the sum over the section's bands of ``|x - c| / w`` with ``c = (lo + hi) / 2`` and
-    ``w = (hi - lo) / 2``, plus ``extra`` (the :func:`quote_term`), quantized 0.01 half-even (0 at the centre of every
-    band with zero spreads, 1 per band at its edge and 1 per leg whose spread is at your limit)."""
+def band_fit(values: Sequence[Tuple[Any, ...]], extra: Decimal = Decimal(0)) -> Decimal:
+    """``band_centre``: the sum over the section's bands of ``weight x |x - c| / w`` with ``w = (hi - lo) / 2`` and
+    ``c`` the band's centre, plus ``extra`` (the weighted :func:`quote_term`), quantized 0.01 half-even. Each entry is
+    ``(x, (lo, hi))`` (centre ``(lo + hi) / 2``, weight 1) or ``(x, (lo, hi), centre, weight)`` with the owner's
+    ``schema_version = 2`` settings (``centre`` ``None`` for the midpoint). With the defaults: 0 at the centre of every
+    band with zero spreads, 1 per band at its edge and 1 per leg whose spread is at your limit."""
     with localcontext(_DECIMAL_CONTEXT):
         total = Decimal(extra)
-        for value, (low, high) in values:
+        for entry in values:
+            value, (low, high) = entry[0], entry[1]
+            centre = entry[2] if len(entry) > 2 else None
+            weight = Decimal(entry[3]) if len(entry) > 3 else Decimal(1)
             low_d, high_d, value_d = Decimal(low), Decimal(high), Decimal(value)
             half = (high_d - low_d) / 2
             if half <= 0:
                 raise ValueError("a band needs lo < hi, got [%s, %s]" % (low, high))
-            total += abs(value_d - (low_d + high_d) / 2) / half
+            middle = (low_d + high_d) / 2 if centre is None else Decimal(centre)
+            total += weight * abs(value_d - middle) / half
         return total.quantize(PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
@@ -1234,18 +1240,26 @@ def _at_mid(score: Any, leg: PricedLeg, *args: Any) -> Optional[Decimal]:
     return None if leg.mid is None else score(leg.mid, *args)
 
 
-def _centre_score(bands: Sequence[Tuple[Any, Tuple[Any, Any]]], legs: Sequence[PricedLeg],
-                  ctx: "PricingContext") -> Optional[Decimal]:
-    """``band_centre`` of a candidate: its band distances plus its legs' :func:`quote_term`; ``None`` when a reading is
-    missing."""
+def _centre_score(bands: Sequence[Tuple[str, Any, Tuple[Any, Any]]], legs: Sequence[PricedLeg],
+                  ctx: "PricingContext", section: Any) -> Optional[Decimal]:
+    """``band_centre`` of a candidate: its ``(band name, reading, band)`` distances plus its legs' :func:`quote_term`,
+    at the section's centres and weights (:meth:`band_centre_of`, :meth:`band_weight`: the midpoint and 1 unless the
+    owner set them); ``None`` when a reading is missing."""
     quotes = quote_term(legs, ctx.max_spread_pct)
-    if quotes is None or any(value is None for value, _ in bands):
+    if quotes is None or any(value is None for _name, value, _band in bands):
         return None
-    return band_fit(bands, quotes)
+    centre_of = getattr(section, "band_centre_of", None)
+    weight_of = getattr(section, "band_weight", None)
+    entries = [(value, band, None if centre_of is None else centre_of(name),
+                Decimal(1) if weight_of is None else weight_of(name)) for name, value, band in bands]
+    with localcontext(_DECIMAL_CONTEXT):
+        weighted = quotes * (Decimal(1) if weight_of is None else weight_of(structuring_config.QUOTE_WEIGHT))
+    return band_fit(entries, weighted)
 
 
 def _call_fit(leg: PricedLeg, section: Any, ctx: "PricingContext") -> Optional[Decimal]:
-    return _centre_score([(leg.dte_calendar, section.dte), (leg.abs_delta, section.abs_delta)], [leg], ctx)
+    return _centre_score([("dte", leg.dte_calendar, section.dte), ("abs_delta", leg.abs_delta, section.abs_delta)],
+                         [leg], ctx, section)
 
 
 def covered_call_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any,
@@ -1320,8 +1334,9 @@ def _put_parts(leg: PricedLeg, ctx: PricingContext, section: Any, contracts: int
     mid_score = (None if leg.mid is None or leg.dte_calendar <= 0 else
                  stress_cost_per_day(leg.mid, leg.strike, stressed, leg.dte_calendar))
     scores = {_OBJ.OBJECTIVE_STRESS_COST_PER_DAY: (score, mid_score),
-              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([(leg.dte_calendar, section.dte), (floor, section.floor_pct)],
-                                                         [leg], ctx), None)}
+              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([("dte", leg.dte_calendar, section.dte),
+                                                          ("floor_pct", floor, section.floor_pct)], [leg], ctx, section),
+                                           None)}
     return score, {"floor_pct": floor, "covered_per_share": cover, "covered_total": _money(cover * _MULTIPLIER * contracts),
                    "cost_total": _money(leg.ask * _MULTIPLIER * contracts), "objective_scores": scores}
 
@@ -1379,8 +1394,10 @@ def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group
     after = after_state(group, contracts, [(put, contracts, put.ask), (call, -contracts, call.bid)], None)
     caveat = _put_caveat(put, ctx) or _short_call_caveat(call, spot, events)
     scores = {_OBJ.OBJECTIVE_CAP_WITHIN_BUDGET: (cap, None),
-              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([(put.dte_calendar, section.dte), (floor, section.floor_pct),
-                                                         (cap, section.cap_pct)], [put, call], ctx), None)}
+              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([("dte", put.dte_calendar, section.dte),
+                                                          ("floor_pct", floor, section.floor_pct),
+                                                          ("cap_pct", cap, section.cap_pct)], [put, call], ctx, section),
+                                           None)}
     return _finish(KIND_COLLAR, [put, call], contracts, cap, reasons + kept, accepted, caveat, after, floor_pct=floor,
                    cap_pct=cap, net_debit=debit, net_debit_total=_money(debit * _MULTIPLIER * contracts),
                    objective_scores=scores)
@@ -1630,21 +1647,22 @@ def _fit_at(candidate: Candidate, section: Any, spot: Decimal, ctx: "PricingCont
     ``None`` when a band that moves with the share price would no longer hold it."""
     call = next((leg for leg in candidate.legs if leg.right == "CALL"), None)
     put = next((leg for leg in candidate.legs if leg.right == "PUT"), None)
-    values: List[Tuple[Any, Tuple[Any, Any]]] = [(candidate.legs[0].dte_calendar, section.dte)]
-    moving: List[Tuple[Decimal, Tuple[Any, Any]]] = []
+    values: List[Tuple[str, Any, Tuple[Any, Any]]] = [("dte", candidate.legs[0].dte_calendar, section.dte)]
+    moving: List[Tuple[str, Decimal, Tuple[Any, Any]]] = []
     if candidate.kind in (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL):
         assert call is not None and call.iv is not None and call.tau_years is not None
-        moving.append((abs_delta_2dp(bsm.delta("CALL", float(spot), float(call.strike), call.tau_years, ctx.rate,
-                                               ctx.q_for(call.expiration), call.iv)), section.abs_delta))
+        moving.append(("abs_delta", abs_delta_2dp(bsm.delta("CALL", float(spot), float(call.strike), call.tau_years,
+                                                            ctx.rate, ctx.q_for(call.expiration), call.iv)),
+                       section.abs_delta))
     else:
         assert put is not None
-        moving.append((floor_pct(spot, put.strike), section.floor_pct))
+        moving.append(("floor_pct", floor_pct(spot, put.strike), section.floor_pct))
         if call is not None:
-            moving.append((cap_pct(spot, call.strike), section.cap_pct))
-    for value, (low, high) in moving:
+            moving.append(("cap_pct", cap_pct(spot, call.strike), section.cap_pct))
+    for _name, value, (low, high) in moving:
         if not Decimal(low) <= value <= Decimal(high):
             return None
-    return _centre_score(values + moving, candidate.legs, ctx)
+    return _centre_score(values + moving, candidate.legs, ctx, section)
 
 
 def _best_at(pool: Sequence[Candidate], section: Any, spot: Decimal, ctx: "PricingContext") -> Optional[str]:

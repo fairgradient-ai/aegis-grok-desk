@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 29c3dfede27dcc4056806d12452fdf137c13ad8d88c59ab5f61cc3d53b7c01f7
+  source_sha256: 6e208db6b3f077bf162e48c3c976f287eb819437770ce23addf4e24d2e9dfc89
 ---
 
 # Aegis Structuring Desk: role skill
@@ -244,10 +244,10 @@ then, hand the request to the Lead, which starts with those settings:
 
 1. Show each section with its documented defaults (`aegis-overlay-proposals` lists every key and bound, and when an
    `exclude` can never pass). Change only what the owner states.
-2. For each enabled section, ask which objective ranks its candidates. Show every objective the section accepts with
-   its words from `aegis-overlay-proposals`, the documented default first, and record the owner's choice as that
-   section's `objective`. Say that `band_centre` weighs days, delta (or floor, or cap) and quote spread equally, a desk
-   convention, and that `[roll]` does not take it. Never choose for the owner; with no choice, the default stays.
+2. For each enabled section, ask which objective ranks its candidates: show each one it accepts with its words from
+   `aegis-overlay-proposals`, the default first, and that `[roll]` does not take `band_centre`. Never choose for the
+   owner; with no choice, the default stays. Where they choose `band_centre`, ask whether they want their own centres
+   or `band_weights` (equal weights are a desk convention otherwise), and record only what they state.
 3. Last, show the disclosure below, verbatim. Only after the owner says they acknowledge it does
    `disclosure_acknowledged` go into the answers.
 4. Write the answers as JSON (the `structuring` shape of `desk_init` in docs/TOOLS.md) to

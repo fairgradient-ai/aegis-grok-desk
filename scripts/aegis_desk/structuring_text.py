@@ -1122,6 +1122,22 @@ def spot_bar_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
                              "was" if one else "were", "it was" if one else "each was")]
 
 
+CENTRE_SETTINGS_LINE: str = "band_centre with your own settings in structuring.toml: %s"
+"""The note after ``band_centre``'s words when the owner set a centre or a weight (``schema_version = 2``); it replaces
+the equal-weight convention the words name with the owner's own numbers."""
+
+
+def centre_settings_line(w: Writer, section: Any) -> Optional[str]:
+    """:data:`CENTRE_SETTINGS_LINE` naming each centre (``centre dte 50``) then each weight (``weight dte 0.5``) the
+    owner set, else ``None``."""
+    owner_set = getattr(section, "owner_set", None)
+    if owner_set is None or not owner_set():
+        return None
+    parts = ["centre %s %s" % (name, w.plain(value)) for name, value in section.centres]
+    parts += ["weight %s %s" % (name, w.plain(value)) for name, value in section.band_weights]
+    return CENTRE_SETTINGS_LINE % ", ".join(parts)
+
+
 def carry_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     """:data:`CARRY_LINE` for each expiration priced at its parity carry, in date order, else nothing."""
     hundred = Decimal(100)
@@ -1173,6 +1189,10 @@ def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.dat
     ranking = answer.ranking
     assert ranking is not None
     items = [objective_line(w, ranking.objective)]
+    if ranking.objective.id == structuring.structuring_config.OBJECTIVE_BAND_CENTRE:
+        settings = centre_settings_line(w, answer.section)
+        if settings is not None:
+            items.append(settings)
     if best is not None and ranking.tie_break is not None:
         items.append(tie_line(w, ranking.objective.id, ranking.tie_break, best.kind))
     if best is not None and len(ranking.near_best) > 1:
@@ -1360,7 +1380,7 @@ def _words_of(*texts: str) -> List[str]:
 
 
 _LEXICON_SOURCES: Tuple[str, ...] = (
-    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, *alerts.STRUCTURE_WORDS.values(),
+    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, CENTRE_SETTINGS_LINE, *alerts.STRUCTURE_WORDS.values(),
     *ACTION_WORDS.values(), ROLL_PUT_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
     *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
     *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),

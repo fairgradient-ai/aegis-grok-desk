@@ -336,7 +336,7 @@ class LoadsValidDocumentsTest(StructuringConfigTestCase):
         assert cfg is not None
         self.assertEqual(3, cfg.general.max_candidates_shown)
         with self.assertRaises(sc.StructuringConfigError):
-            sc.load_structuring_config_if_present(self.write(BASE.replace("schema_version = 1", "schema_version = 2")))
+            sc.load_structuring_config_if_present(self.write(BASE.replace("schema_version = 1", "schema_version = 3")))
 
     def test_frozen(self) -> None:
         cfg = self.load_text(BASE)
@@ -375,10 +375,10 @@ class FileErrorsTest(StructuringConfigTestCase):
 
 
 class StructureRulesTest(StructuringConfigTestCase):
-    def test_schema_version_must_be_the_integer_one(self) -> None:
-        for value in ("2", "0", '"1"', "true", "1.0"):
+    def test_schema_version_must_be_the_integer_one_or_two(self) -> None:
+        for value in ("3", "0", '"1"', '"2"', "true", "1.0"):
             self.assert_rejected(BASE.replace("schema_version = 1", "schema_version = %s" % value),
-                                 "schema_version must be the integer 1")
+                                 "schema_version must be the integer 1 or 2")
         self.assert_rejected(BASE.replace("schema_version = 1\n", ""), "missing key 'schema_version'")
 
     def test_every_section_is_required(self) -> None:
@@ -612,6 +612,101 @@ class ProtectionBandsTest(StructuringConfigTestCase):
         for bad, needle in (("-0.01", ">= 0"), ("-5", ">= 0"), ("0.005", "at most 2 decimal places")):
             self.assert_rejected(in_section("collar", "max_net_debit = 0.00", "max_net_debit = %s" % bad),
                                  "[collar] max_net_debit", needle)
+
+
+
+
+V2 = BASE.replace("schema_version = 1", "schema_version = 2")
+
+
+def v2(section: str, objective_from: str, *lines: str, base: str = V2) -> str:
+    """``base`` with ``[section]``'s objective switched to ``band_centre`` and ``lines`` added after it."""
+    text = in_section(section, 'objective = "%s"' % objective_from, 'objective = "band_centre"', base)
+    return in_section(section, 'objective = "band_centre"', "\n".join(['objective = "band_centre"'] + list(lines)),
+                      text)
+
+
+class SchemaTwoTest(StructuringConfigTestCase):
+    """Step 3b: under schema_version = 2 a band_centre section may set its own centres and weights."""
+
+    def test_a_version_two_file_without_new_keys_loads_like_version_one(self) -> None:
+        one, two = self.assert_loads(BASE), self.assert_loads(V2)
+        self.assertEqual((1, 2), (one.schema_version, two.schema_version))
+        self.assertEqual(one.covered_call, two.covered_call)
+
+    def test_centres_and_weights(self) -> None:
+        cfg = self.assert_loads(v2("covered_call", "extrinsic_per_day", "dte_centre = 50", "abs_delta_centre = 0.30",
+                                   "band_weights = { dte = 0.5, quote = 2 }"))
+        section = cfg.covered_call
+        self.assertEqual((Decimal("50"), Decimal("0.30")), (section.band_centre_of("dte"),
+                                                            section.band_centre_of("abs_delta")))
+        self.assertEqual((Decimal("0.5"), Decimal("1"), Decimal("2")),
+                         (section.band_weight("dte"), section.band_weight("abs_delta"), section.band_weight("quote")))
+        echo = cfg.as_dict()["covered_call"]
+        self.assertEqual((Decimal("50"), Decimal("0.30"), {"dte": Decimal("0.5"), "quote": Decimal("2")}),
+                         (echo["dte_centre"], echo["abs_delta_centre"], echo["band_weights"]))
+
+    def test_defaults_are_the_midpoint_and_weight_one(self) -> None:
+        cfg = self.assert_loads(BASE)
+        self.assertEqual((Decimal("57.5"), Decimal("0.25"), Decimal("1"), Decimal("1")),
+                         (cfg.covered_call.band_centre_of("dte"), cfg.covered_call.band_centre_of("abs_delta"),
+                          cfg.covered_call.band_weight("dte"), cfg.covered_call.band_weight("quote")))
+        self.assertEqual((Decimal("6.5"), Decimal("6")), (cfg.collar.band_centre_of("floor_pct"),
+                                                          cfg.collar.band_centre_of("cap_pct")))
+        for name in ("covered_call", "protective_put", "collar"):
+            self.assertNotIn("band_weights", cfg.as_dict()[name])
+            self.assertNotIn("dte_centre", cfg.as_dict()[name])
+
+    def test_put_and_collar_keys(self) -> None:
+        cfg = self.assert_loads(v2("protective_put", "stress_cost_per_day", "floor_pct_centre = 5",
+                                   "band_weights = { floor_pct = 2 }"))
+        self.assertEqual((Decimal("5"), Decimal("2")), (cfg.protective_put.band_centre_of("floor_pct"),
+                                                         cfg.protective_put.band_weight("floor_pct")))
+        cfg = self.assert_loads(v2("collar", "cap_within_budget", "cap_pct_centre = 4", "dte_centre = 150",
+                                   "band_weights = { dte = 0.25, floor_pct = 1, cap_pct = 1.5, quote = 1 }"))
+        self.assertEqual((Decimal("4"), Decimal("150"), Decimal("1.5")),
+                         (cfg.collar.band_centre_of("cap_pct"), cfg.collar.band_centre_of("dte"),
+                          cfg.collar.band_weight("cap_pct")))
+
+    def test_version_one_refuses_the_new_keys(self) -> None:
+        text = v2("covered_call", "extrinsic_per_day", "dte_centre = 50", base=BASE)
+        self.assert_rejected(text, "unknown key 'dte_centre' in section [covered_call]")
+
+    def test_a_centre_lies_inside_its_band(self) -> None:
+        self.assert_rejected(v2("covered_call", "extrinsic_per_day", "dte_centre = 80"),
+                             "[covered_call] dte_centre must lie inside dte [40, 75] (got 80)")
+        self.assert_rejected(v2("collar", "cap_within_budget", "floor_pct_centre = 2.5"),
+                             "[collar] floor_pct_centre must lie inside floor_pct [3, 10] (got 2.5)")
+        self.assert_rejected(v2("covered_call", "extrinsic_per_day", "abs_delta_centre = 0.255"),
+                             "[covered_call] abs_delta_centre must have at most 2 decimal places")
+        self.assert_rejected(v2("covered_call", "extrinsic_per_day", 'dte_centre = "50"'),
+                             "[covered_call] dte_centre must be a number")
+
+    def test_centres_and_weights_need_band_centre(self) -> None:
+        text = in_section("covered_call", 'objective = "extrinsic_per_day"',
+                          'objective = "extrinsic_per_day"\ndte_centre = 50', V2)
+        self.assert_rejected(text, '[covered_call] dte_centre applies only with objective = "band_centre"')
+        text = in_section("collar", 'objective = "cap_within_budget"',
+                          'objective = "cap_within_budget"\nband_weights = { dte = 2 }', V2)
+        self.assert_rejected(text, '[collar] band_weights applies only with objective = "band_centre"')
+
+    def test_band_weights_are_positive_numbers_per_band(self) -> None:
+        for table, needle in (("{ delta = 1 }", "unknown band 'delta' in [covered_call] band_weights (allowed: dte, "
+                                                "abs_delta, quote)"),
+                              ("{ dte = 0 }", "[covered_call] band_weights.dte must be above 0 and at most 10 (got 0)"),
+                              ("{ dte = 11 }", "[covered_call] band_weights.dte must be above 0 and at most 10 (got 11)"),
+                              ("{ dte = -1 }", "[covered_call] band_weights.dte must be above 0 and at most 10"),
+                              ("{ dte = 0.125 }", "[covered_call] band_weights.dte must have at most 2 decimal places"),
+                              ("{ dte = true }", "[covered_call] band_weights.dte must be a number"),
+                              ("{}", "[covered_call] band_weights must name at least one band"),
+                              ("[1, 2]", "[covered_call] band_weights must be a table")):
+            with self.subTest(table=table):
+                self.assert_rejected(v2("covered_call", "extrinsic_per_day", "band_weights = %s" % table), needle)
+
+    def test_a_roll_takes_no_centre(self) -> None:
+        text = in_section("roll", 'objective = "extrinsic_per_day"', 'objective = "extrinsic_per_day"\ndte_centre = 50',
+                          V2)
+        self.assert_rejected(text, "unknown key 'dte_centre' in section [roll]")
 
 
 if __name__ == "__main__":

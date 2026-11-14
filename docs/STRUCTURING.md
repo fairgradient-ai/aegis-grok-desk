@@ -82,7 +82,9 @@ and the connected-apps check), because the interview ends in an owner-tapped com
    switch a structure off with `enabled = false`.
 2. For each structure you keep on, it asks which objective ranks the candidates. It shows every objective that
    section accepts ([The objectives](#the-objectives) below), with its words and the documented default first. You
-   choose one; if you don't, the default stays, and a file that keeps the defaults ranks exactly as before.
+   choose one; if you don't, the default stays, and a file that keeps the defaults ranks exactly as before. Where you
+   choose `band_centre`, it also asks whether you want your own centres or weights (below); without them the centre
+   of each band and equal weights stand.
 3. Last, it shows the disclosure (below) word for word. It records `disclosure_acknowledged` only after you say that
    you acknowledge it.
 4. It writes your answers as JSON to `/workspace/aegis-desk/setup/structuring-answers.json`, in the shape of
@@ -133,7 +135,20 @@ examples on this page assume.
 | every structure | `objective` | the section's first objective (below) | one of the section's objectives (below) | the score the candidates are ranked by, echoed with the file's sha |
 
 Every decimal carries at most 2 decimal places. The reader is strict: every section and key is required, an unknown
-key is an error, and a boolean is never a number. One rule is fixed, not a key: an earnings or ex-dividend date that
+key is an error, and a boolean is never a number.
+
+**Your own centres and weights (`schema_version = 2`).** A section that ranks by `band_centre` (`[covered_call]`,
+`[protective_put]`, `[collar]`) may also set, after its `objective`:
+
+| Key | Allowed | What it does |
+| --- | --- | --- |
+| `dte_centre`, `abs_delta_centre`, `floor_pct_centre`, `cap_pct_centre` | a number inside that band | the point in the band you prefer; without it, the band's midpoint |
+| `band_weights` | an inline table, for example `{ dte = 0.5, quote = 2 }`, of numbers above 0 and at most 10 for the section's bands and `quote` | how much one half-width of that band (or one leg quoted at your spread limit) counts; each band you leave out counts 1 |
+
+The interview asks for them only for a section where you chose `band_centre`, and `desk_init.py` then writes
+`schema_version = 2`; a file without them stays `schema_version = 1`, byte for byte. Under `schema_version = 1`
+either key is unknown, and either key with another objective is refused. Answers that set them print `band_centre
+with your own settings in structuring.toml: ...` under the objective's words, naming each centre and weight. One rule is fixed, not a key: an earnings or ex-dividend date that
 `research/calendar.toml` lists as unknown, or does not list at all, counts as inside the window; it is never treated
 as none. A listed date that has already passed counts the same way, because the next one is not known.
 

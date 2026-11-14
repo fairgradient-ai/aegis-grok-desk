@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import desk_init as tool  # the tool scripts/desk_init.py
@@ -141,10 +142,13 @@ class SchemaAndUsageTest(TempRoot):
         self.assertEqual(("disclosure_acknowledged", "general", "covered_call", "roll", "protective_put", "collar"),
                          tool.STRUCTURING_KEYS)
         for section in structuring_config.SECTIONS[1:]:
-            self.assertEqual(sorted(structuring_config.SECTION_KEYS[section]), sorted(shape[section]), section)
-            self.assertEqual(list(structuring_config.SECTION_KEYS[section]), list(tool.STRUCTURING_SHAPE[section]))
+            self.assertEqual(sorted(structuring_config.SECTION_KEYS[section] + structuring_config.V2_KEYS.get(section, ())),
+                             sorted(shape[section]), section)
+            self.assertEqual(list(structuring_config.SECTION_KEYS[section]) + list(structuring_config.V2_KEYS.get(section, ())),
+                             list(tool.STRUCTURING_SHAPE[section]))
         self.assertEqual(set(tool.STRUCTURING_KINDS),
-                         {key for keys in structuring_config.SECTION_KEYS.values() for key in keys})
+                         {key for keys in structuring_config.SECTION_KEYS.values() for key in keys}
+                         | {key for keys in structuring_config.V2_KEYS.values() for key in keys})
         self.assertEqual(sorted(tool.PAYLOAD_KEYS), sorted(body["envelope"]["payload"]))
         self.assertEqual([], order_shaped(out))
 
@@ -659,9 +663,64 @@ class ObjectiveChoiceTest(TempRoot):
         agent = read_text(INTERVIEW_AGENT)
         self.assertIn("ask which objective ranks its candidates", agent)
         self.assertIn("with no choice, the default stays", agent)
+        self.assertIn("Where they choose `band_centre`, ask whether they want their own centres", agent)
         updating = read_text(UPDATING_DOC)
         self.assertIn("When the changelog names a new objective for `structuring.toml`", updating)
         self.assertIn("Keeping\nis the default and changes nothing.", updating)
+
+
+
+class SchemaTwoAnswersTest(TempRoot):
+    """Step 3b: desk_init writes schema_version = 2, with the owner's centres and weights, only when an answer uses a
+    version-2 key; every other file stays byte for byte as before."""
+
+    def answers(self, **covered_call: Any) -> Dict[str, Any]:
+        values = copy.deepcopy(S3_VALUES)
+        values["covered_call"]["objective"] = "band_centre"
+        values["covered_call"].update(covered_call)
+        return {"schema_version": 1, "structuring": values}
+
+    def test_without_version_two_keys_the_file_stays_version_one(self) -> None:
+        text = tool.render_structuring_toml(self.answers()["structuring"])
+        self.assertIn("\nschema_version = 1\n", text)
+        self.assertNotIn("band_weights", text)
+
+    def test_centres_and_weights_are_written_after_the_objective(self) -> None:
+        code, body = self.run_json(self.answers(dte_centre="50", abs_delta_centre="0.30",
+                                                band_weights={"quote": "2", "dte": "0.5"}))
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        text = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8")
+        self.assertIn("\nschema_version = 2\n", text)
+        block = text[text.index("[covered_call]"):text.index("[roll]")]
+        self.assertTrue(block.rstrip("\n").endswith('objective = "band_centre"\ndte_centre = 50\n'
+                                                     'abs_delta_centre = 0.30\nband_weights = { dte = 0.5, quote = 2 }'),
+                        block)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual((2, Decimal("50"), Decimal("0.5"), Decimal("2")),
+                         (cfg.schema_version, cfg.covered_call.band_centre_of("dte"),
+                          cfg.covered_call.band_weight("dte"), cfg.covered_call.band_weight("quote")))
+
+    def test_shapes_desk_init_refuses(self) -> None:
+        for change in ({"band_weights": ["0.5"]}, {"band_weights": {"dte": 0.5}}, {"band_weights": {"d te": "1"}},
+                       {"dte_centre": 50}, {"roll_centre": "1"}):
+            with self.subTest(change=change):
+                code, body = self.run_json(self.answers(**change))
+                self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]), body)
+        self.assertEqual([], self.files())
+
+    def test_values_the_reader_refuses(self) -> None:
+        for change, needle in (({"dte_centre": "80"}, "[covered_call] dte_centre must lie inside dte"),
+                               ({"band_weights": {"dte": "0"}}, "band_weights.dte must be above 0"),
+                               ({"band_weights": {"gamma": "1"}}, "unknown band 'gamma'")):
+            with self.subTest(change=change):
+                code, body = self.run_json(self.answers(**change))
+                self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]), body)
+                self.assertIn(needle, body["error"]["message"])
+        answers = self.answers(dte_centre="50")
+        answers["structuring"]["covered_call"]["objective"] = "extrinsic_per_day"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn('applies only with objective = "band_centre"', body["error"]["message"])
 
 
 if __name__ == "__main__":

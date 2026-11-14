@@ -111,6 +111,7 @@ owner's first request:
    `note:` lines, which are posted with its output.
 2. For each enabled section, it asks which objective ranks the candidates, shows each objective the section accepts
    with its words (below), the default first, and records the owner's choice; with no choice the default stays.
+   Under `band_centre` it may record the owner's own `<band>_centre` and `band_weights` (`schema_version = 2`).
 3. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
    they acknowledge it.
 4. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to

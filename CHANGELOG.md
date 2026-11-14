@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `structuring.toml` `schema_version = 2`: a section that ranks by `band_centre` may set its own centre in any band
+  (`dte_centre`, `abs_delta_centre`, `floor_pct_centre`, `cap_pct_centre`, each inside its band) and `band_weights`
+  (an inline table of numbers above 0 and at most 10 per band and for `quote`). The interview asks only where the
+  owner chose `band_centre`; `desk_init.py` writes version 2 only when an answer uses these keys, so every version-1
+  file and its sha are unchanged. The answer names the owner's settings under the objective's words.
 - Structuring Desk: each expiration is priced at the carry its own put-call parity implies when those quotes rule out
   the calendar's dividend rate (with a quote-width bound and a one-sided early-exercise bound from a binomial tree);
   otherwise the calendar stands, with the reason in the JSON's new `carry` list. The text adds one `carry:` line per

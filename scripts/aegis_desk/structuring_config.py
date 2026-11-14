@@ -67,6 +67,10 @@ from .toml_compat import TomlError
 
 FILE_NAME: str = "structuring.toml"
 SCHEMA_VERSION: int = 1
+"""The version ``desk_init`` writes unless an answer uses a version-2 key (:data:`SCHEMA_VERSION_2`)."""
+SCHEMA_VERSION_2: int = 2
+SCHEMA_VERSIONS: Tuple[int, ...] = (SCHEMA_VERSION, SCHEMA_VERSION_2)
+"""The versions the reader accepts. Version 2 adds the optional keys of :data:`V2_KEYS`; everything else is as in 1."""
 DISCLOSURE_ID: str = "structuring-suggestions-1"
 DISCLOSURE_TEXT: str = (
     "The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list "
@@ -110,6 +114,23 @@ SECTION_KEYS: Dict[str, Tuple[str, ...]] = {
                      "ex_dividend", "objective"),
 }
 """Every section's keys, in the order ``desk_init.render_structuring_toml`` writes them; all are required."""
+
+BAND_WEIGHTS_KEY: str = "band_weights"
+QUOTE_WEIGHT: str = "quote"
+CENTRE_BANDS: Dict[str, Tuple[str, ...]] = {
+    SECTION_COVERED_CALL: ("dte", "abs_delta"),
+    SECTION_PROTECTIVE_PUT: ("dte", "floor_pct"),
+    SECTION_COLLAR: ("dte", "floor_pct", "cap_pct"),
+}
+"""The bands ``band_centre`` measures in each section that can take it (``[roll]`` cannot)."""
+V2_KEYS: Dict[str, Tuple[str, ...]] = {
+    section: tuple("%s_centre" % band for band in bands) + (BAND_WEIGHTS_KEY,)
+    for section, bands in CENTRE_BANDS.items()
+}
+"""The optional keys of ``schema_version = 2``, in the order ``desk_init`` writes them after ``objective``: each band's
+centre (a number inside the band; the midpoint when absent) and ``band_weights``, an inline table of positive numbers
+per band and for ``quote`` (1 when absent). They apply only with ``objective = "band_centre"``."""
+BAND_WEIGHT_MAX: Decimal = Decimal("10")
 
 EVENT_EXCLUDE: str = "exclude"
 EVENT_ALLOW: str = "allow"
@@ -245,8 +266,41 @@ class GeneralSection:
     max_candidates_shown: int
 
 
+class _CentreMixin:
+    """``band_centre``'s owner-set centres and weights (``schema_version = 2``) with their defaults."""
+
+    centres: Tuple[Tuple[str, Decimal], ...]
+    band_weights: Tuple[Tuple[str, Decimal], ...]
+
+    def band_centre_of(self, band: str) -> Decimal:
+        """The centre of ``band``: the owner's ``<band>_centre``, else the band's midpoint."""
+        for name, value in self.centres:
+            if name == band:
+                return value
+        low, high = getattr(self, band)
+        return (Decimal(low) + Decimal(high)) / 2
+
+    def band_weight(self, band: str) -> Decimal:
+        """The weight of ``band`` (or of ``quote``): the owner's ``band_weights`` entry, else 1."""
+        for name, value in self.band_weights:
+            if name == band:
+                return value
+        return Decimal(1)
+
+    def owner_set(self) -> bool:
+        """Whether the owner set any centre or weight."""
+        return bool(self.centres or self.band_weights)
+
+    def v2_echo(self) -> Dict[str, Any]:
+        """The version-2 keys the owner set, as the payload echoes them."""
+        echo: Dict[str, Any] = {"%s_centre" % name: value for name, value in self.centres}
+        if self.band_weights:
+            echo[BAND_WEIGHTS_KEY] = dict(self.band_weights)
+        return echo
+
+
 @dataclass(frozen=True)
-class CoveredCallSection:
+class CoveredCallSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     abs_delta: Tuple[Decimal, Decimal]
@@ -255,6 +309,8 @@ class CoveredCallSection:
     earnings: str
     ex_dividend: str
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -271,16 +327,18 @@ class RollSection:
 
 
 @dataclass(frozen=True)
-class ProtectivePutSection:
+class ProtectivePutSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     floor_pct: Tuple[Decimal, Decimal]
     stress_drop_pct: Decimal
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
-class CollarSection:
+class CollarSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     floor_pct: Tuple[Decimal, Decimal]
@@ -290,6 +348,8 @@ class CollarSection:
     earnings: str
     ex_dividend: str
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -330,6 +390,8 @@ class StructuringConfig:
             section = self.section(name)
             echo[name] = {key: (list(getattr(section, key)) if isinstance(getattr(section, key), tuple)
                                 else getattr(section, key)) for key in SECTION_KEYS[name]}
+            if isinstance(section, _CentreMixin):
+                echo[name].update(section.v2_echo())
         echo["sha256"] = self.sha256
         return echo
 
@@ -356,6 +418,7 @@ class _Reader:
 
     def __init__(self, path: str) -> None:
         self.path = path
+        self.version = SCHEMA_VERSION
 
     def fail(self, reason: str) -> StructuringConfigError:
         return StructuringConfigError(self.path, reason)
@@ -367,14 +430,58 @@ class _Reader:
         table = document[name]
         if not isinstance(table, dict):
             raise self.fail("section [%s] must be a table, not a %s value" % (name, type(table).__name__))
-        allowed = SECTION_KEYS[name]
+        required = SECTION_KEYS[name]
+        allowed = required + (V2_KEYS.get(name, ()) if self.version >= SCHEMA_VERSION_2 else ())
         for key in table:
             if key not in allowed:
                 raise self.fail("unknown key '%s' in section [%s] (allowed: %s)" % (key, name, ", ".join(allowed)))
-        for key in allowed:
+        for key in required:
             if key not in table:
                 raise self.fail("missing key '%s' in section [%s]" % (key, name))
         return table
+
+    def centres_and_weights(self, table: Dict[str, Any], where: str, bands: Dict[str, Tuple[Any, Any]], objective: str
+                            ) -> Tuple[Tuple[Tuple[str, Decimal], ...], Tuple[Tuple[str, Decimal], ...]]:
+        """The version-2 centres and ``band_weights`` of a section that can take ``band_centre`` (:data:`V2_KEYS`)."""
+        present = [key for key in V2_KEYS[where] if key in table]
+        if present and objective != OBJECTIVE_BAND_CENTRE:
+            raise self.fail('[%s] %s applies only with objective = "%s" (got %r)'
+                            % (where, present[0], OBJECTIVE_BAND_CENTRE, objective))
+        centres: List[Tuple[str, Decimal]] = []
+        for band in CENTRE_BANDS[where]:
+            key = "%s_centre" % band
+            if key not in table:
+                continue
+            value = self.number(table, key, where)
+            low, high = bands[band]
+            if not Decimal(low) <= value <= Decimal(high):
+                raise self.fail("[%s] %s must lie inside %s [%s, %s] (got %s)"
+                                % (where, key, band, _text(Decimal(low)), _text(Decimal(high)), _text(value)))
+            centres.append((band, value))
+        weights: List[Tuple[str, Decimal]] = []
+        if BAND_WEIGHTS_KEY in table:
+            value = table[BAND_WEIGHTS_KEY]
+            names = CENTRE_BANDS[where] + (QUOTE_WEIGHT,)
+            if not isinstance(value, dict):
+                raise self.fail("[%s] %s must be a table of numbers, for example { dte = 0.5 } (got %r)"
+                                % (where, BAND_WEIGHTS_KEY, value))
+            if not value:
+                raise self.fail("[%s] %s must name at least one band (allowed: %s)"
+                                % (where, BAND_WEIGHTS_KEY, ", ".join(names)))
+            for name in value:
+                if name not in names:
+                    raise self.fail("unknown band '%s' in [%s] %s (allowed: %s)"
+                                    % (name, where, BAND_WEIGHTS_KEY, ", ".join(names)))
+            for name in names:
+                if name not in value:
+                    continue
+                label = "%s.%s" % (BAND_WEIGHTS_KEY, name)
+                weight = self.decimal(value[name], label, where)
+                if not Decimal(0) < weight <= BAND_WEIGHT_MAX:
+                    raise self.fail("[%s] %s must be above 0 and at most %s (got %s)"
+                                    % (where, label, BAND_WEIGHT_MAX, _text(weight)))
+                weights.append((name, weight))
+        return tuple(centres), tuple(weights)
 
     # -- typed values --------------------------------------------------------------------------
     def boolean(self, table: Dict[str, Any], key: str, where: str) -> bool:
@@ -489,13 +596,16 @@ class _Reader:
     def covered_call(self, document: Dict[str, Any]) -> CoveredCallSection:
         where = SECTION_COVERED_CALL
         table = self.section(document, where)
+        dte, abs_delta = self.dte(table, where), self.abs_delta(table, where)
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "abs_delta": abs_delta}, objective)
         return CoveredCallSection(
-            enabled=self.boolean(table, "enabled", where), dte=self.dte(table, where),
-            abs_delta=self.abs_delta(table, where), min_credit=self.min_credit(table, where),
+            enabled=self.boolean(table, "enabled", where), dte=dte,
+            abs_delta=abs_delta, min_credit=self.min_credit(table, where),
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=self.objective(table, where))
+            objective=objective, centres=centres, band_weights=weights)
 
     def roll(self, document: Dict[str, Any]) -> RollSection:
         where = SECTION_ROLL
@@ -519,8 +629,10 @@ class _Reader:
         if not floor[1] < stress <= STRESS_DROP_PCT_MAX:
             raise self.fail("[%s] stress_drop_pct must lie above the floor band's hi and at most %s: %s < x <= %s "
                             "(got %s)" % (where, STRESS_DROP_PCT_MAX, _text(floor[1]), STRESS_DROP_PCT_MAX, _text(stress)))
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "floor_pct": floor}, objective)
         return ProtectivePutSection(enabled=enabled, dte=dte, floor_pct=floor, stress_drop_pct=stress,
-                                    objective=self.objective(table, where))
+                                    objective=objective, centres=centres, band_weights=weights)
 
     def collar(self, document: Dict[str, Any]) -> CollarSection:
         where = SECTION_COLLAR
@@ -537,12 +649,15 @@ class _Reader:
         if debit < MAX_NET_DEBIT_MIN:
             raise self.fail("[%s] max_net_debit must be a number >= %s per share (0.00 is a zero cost or a credit; "
                             "got %s)" % (where, MAX_NET_DEBIT_MIN, _text(debit)))
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "floor_pct": floor, "cap_pct": (lo, hi)},
+                                                    objective)
         return CollarSection(
             enabled=enabled, dte=dte, floor_pct=floor, cap_pct=(lo, hi), max_net_debit=debit,
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=self.objective(table, where))
+            objective=objective, centres=centres, band_weights=weights)
 
     def parse(self, document: Dict[str, Any], sha256: str) -> StructuringConfig:
         sections = ", ".join("[%s]" % name for name in SECTIONS)
@@ -553,10 +668,11 @@ class _Reader:
                 raise self.fail("unknown section [%s] (expected only %s)" % (key, sections))
             raise self.fail("unknown top-level key '%s' (expected schema_version and the sections %s)" % (key, sections))
         if "schema_version" not in document:
-            raise self.fail("missing key 'schema_version' (it must be the integer %d)" % SCHEMA_VERSION)
+            raise self.fail("missing key 'schema_version' (it must be the integer %d or %d)" % SCHEMA_VERSIONS)
         version = document["schema_version"]
-        if not _is_int(version) or version != SCHEMA_VERSION:
-            raise self.fail("schema_version must be the integer %d (got %r)" % (SCHEMA_VERSION, version))
+        if not _is_int(version) or version not in SCHEMA_VERSIONS:
+            raise self.fail("schema_version must be the integer %d or %d (got %r)" % (SCHEMA_VERSIONS + (version,)))
+        self.version = version
         return StructuringConfig(
             schema_version=version,
             disclosure=self.disclosure(document),
