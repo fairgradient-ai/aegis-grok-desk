@@ -149,6 +149,7 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "covered_total": "decimal string | null", "net_debit": "decimal string | null (collar: put ask - call bid)",
     "net_debit_total": "decimal string | null", "cost_total": "decimal string | null (protective put: ask x 100 x "
                                                              "contracts)",
+    "net_time_value": "null (a proposal holds no call to roll)",
     "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {

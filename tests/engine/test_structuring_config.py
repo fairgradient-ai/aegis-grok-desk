@@ -709,5 +709,34 @@ class SchemaTwoTest(StructuringConfigTestCase):
         self.assert_rejected(text, "unknown key 'dte_centre' in section [roll]")
 
 
+class RollTestKeyTest(StructuringConfigTestCase):
+    """Step 3c: under schema_version = 2, [roll] states its roll test as roll_test in place of credit_only."""
+
+    def test_version_one_maps_credit_only(self) -> None:
+        self.assertEqual("credit", self.assert_loads(BASE).roll.roll_rule())
+        self.assertEqual("none", self.assert_loads(in_section("roll", "credit_only = true", "credit_only = false"))
+                         .roll.roll_rule())
+
+    def test_version_two_roll_test(self) -> None:
+        for value in ("credit", "net_time_value", "none"):
+            with self.subTest(value=value):
+                cfg = self.assert_loads(in_section("roll", "credit_only = true", 'roll_test = "%s"' % value, V2))
+                self.assertEqual(value, cfg.roll.roll_rule())
+                self.assertEqual(value == "credit", cfg.roll.credit_only)
+                self.assertEqual(value, cfg.as_dict()["roll"]["roll_test"])
+                self.assertNotIn("credit_only", cfg.as_dict()["roll"])
+        self.assertNotIn("roll_test", self.assert_loads(V2).as_dict()["roll"])
+
+    def test_refusals(self) -> None:
+        self.assert_rejected(in_section("roll", "credit_only = true", 'roll_test = "credit"'),
+                             "unknown key 'roll_test' in section [roll]")
+        self.assert_rejected(in_section("roll", "credit_only = true", 'credit_only = true\nroll_test = "credit"', V2),
+                             "[roll] give roll_test or credit_only, not both")
+        self.assert_rejected(in_section("roll", "credit_only = true", 'roll_test = "debit"', V2),
+                             "[roll] roll_test must be one of credit, net_time_value, none")
+        self.assert_rejected(in_section("roll", "credit_only = true\n", "", V2), "missing key 'credit_only' in section [roll]")
+
+
+
 if __name__ == "__main__":
     unittest.main()

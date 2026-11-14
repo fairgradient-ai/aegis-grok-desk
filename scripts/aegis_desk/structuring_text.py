@@ -556,6 +556,8 @@ def reason_words(w: Writer, reason: "structuring.Reason", candidate: Optional["s
         return "a net debit of %s above your net-debit budget %s" % (w.price(value), w.plain(threshold))
     if code == structuring.CODE_DEBIT_ROLL:
         return "a net debit of %s" % w.price(-value)
+    if code == structuring.CODE_GIVES_UP_TIME_VALUE:
+        return "it gives up %s a share of time value" % w.price(-value)
     if code in (structuring.CODE_ROLL_DOWN_BELOW_COST, structuring.CODE_STRIKE_BELOW_COST):
         head = "call strike" if candidate is not None and candidate.kind == structuring.KIND_COLLAR else "strike"
         return "%s %s below your stock cost %s" % (head, w.strike(value), w.price(threshold))
@@ -680,8 +682,17 @@ def _event_rows(w: Writer, candidate: "structuring.Candidate", replacement: bool
     return rows
 
 
+def net_time_value_words(w: Writer, value: Decimal, held: Optional["structuring.HeldLeg"]) -> str:
+    """``adds 0.05`` or ``gives up 0.70``, with ``(within the held call's own quote spread)`` when the amount is below
+    the held call's half-spread, so the owner sees when the quotes cannot tell it from zero."""
+    words = "adds %s" % w.price(value) if value >= 0 else "gives up %s" % w.price(-value)
+    if held is not None and held.bid is not None and held.ask is not None and abs(value) < (held.ask - held.bid) / 2:
+        words += " (within the held call's own quote spread)"
+    return words
+
+
 def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal, s0: Decimal,
-               held_strike: Optional[Decimal] = None) -> List[List[str]]:
+               held_strike: Optional[Decimal] = None, held: Optional["structuring.HeldLeg"] = None) -> List[List[str]]:
     """The checks table's rows of one priced candidate: each criterion of its section with the candidate's value, the
     owner's band and a status cell (:data:`STATUS_FAIL` when the candidate fails it), then its earnings and
     ex-dividend labels (failed, or accepted). A replacement's strike floor reads the held strike too."""
@@ -699,8 +710,12 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
     if kind in (structuring.KIND_COVERED_CALL, structuring.KIND_REPLACEMENT_CALL):
         if kind == structuring.KIND_REPLACEMENT_CALL:
             net = net_words(w, candidate.net_credit, candidate.net_credit_total)
-            rows.append(["net per share", net, "credit only", status(structuring.KEY_CREDIT_ONLY)] if section.credit_only
-                        else ["net per share", net, "", ""])
+            rule = section.roll_rule()
+            rows.append(["net per share", net, "credit only", status(structuring.KEY_CREDIT_ONLY)]
+                        if rule == structuring.structuring_config.ROLL_TEST_CREDIT else ["net per share", net, "", ""])
+            if rule == structuring.structuring_config.ROLL_TEST_NET_TIME_VALUE and candidate.net_time_value is not None:
+                rows.append(["net time value per share", net_time_value_words(w, candidate.net_time_value, held),
+                             "at least 0", status(structuring.KEY_ROLL_TEST)])
         if section.strike_floor == "cost_basis":
             floor = "at or above your cost %s" % cost
             if kind == structuring.KIND_REPLACEMENT_CALL and held_strike is not None:
@@ -747,10 +762,11 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
 
 
 def checks_table(w: Writer, candidate: "structuring.Candidate", section: Any, max_spread_pct: Decimal, s0: Decimal,
-                 held_strike: Optional[Decimal] = None, subject: str = "this candidate") -> List[str]:
+                 held_strike: Optional[Decimal] = None, subject: str = "this candidate",
+                 held: Optional["structuring.HeldLeg"] = None) -> List[str]:
     """``| check | this candidate | your criteria | |`` with :func:`check_rows`."""
     return table(["check", subject, "your criteria", ""], "lllc",
-                 check_rows(w, candidate, section, max_spread_pct, s0, held_strike))
+                 check_rows(w, candidate, section, max_spread_pct, s0, held_strike, held))
 
 
 def _keys(candidate: "structuring.Candidate") -> List[str]:
@@ -1252,7 +1268,8 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     if best is not None:
         lines.extend(_best_block(w, answer, best, _best_legs_roll(w, answer, best)))
         lines.append("")
-        lines.extend(checks_table(w, best, answer.section, answer.pricing.max_spread_pct, group.s0, held.strike))
+        lines.extend(checks_table(w, best, answer.section, answer.pricing.max_spread_pct, group.s0, held.strike,
+                                  held=held))
         lines.append("")
         assert best.after is not None
         lines.extend(group_table(w, best.after, answer.before, 2))
@@ -1326,7 +1343,8 @@ def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
         raise ValueError("the answer priced no named replacement")
     subject = "the new put" if candidate.kind == structuring.KIND_REPLACEMENT_PUT else "the new call"
     held_strike = None if answer.held is None else answer.held.strike
-    lines = checks_table(w, candidate, answer.section, answer.pricing.max_spread_pct, group.s0, held_strike, subject)
+    lines = checks_table(w, candidate, answer.section, answer.pricing.max_spread_pct, group.s0, held_strike, subject,
+                         held=answer.held)
     if candidate.after is not None:
         lines.extend([""] + group_table(w, candidate.after, answer.before, 2))
     return lines

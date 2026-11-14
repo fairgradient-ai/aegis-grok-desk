@@ -145,6 +145,15 @@ key is an error, and a boolean is never a number.
 | `dte_centre`, `abs_delta_centre`, `floor_pct_centre`, `cap_pct_centre` | a number inside that band | the point in the band you prefer; without it, the band's midpoint |
 | `band_weights` | an inline table, for example `{ dte = 0.5, quote = 2 }`, of numbers above 0 and at most 10 for the section's bands and `quote` | how much one half-width of that band (or one leg quoted at your spread limit) counts; each band you leave out counts 1 |
 
+**Your roll test (`schema_version = 2`).** `[roll]` may give `roll_test` in place of `credit_only`: `"credit"` fails a
+net debit (as `credit_only = true`), `"none"` tests neither (as `credit_only = false`), and `"net_time_value"` fails a
+roll whose new call's time value at its bid is below the held call's time value at its ask, N = E_new - E_held < 0.
+It reads time value, not cash: a held call in the money carries your own share gain as intrinsic value, so a roll
+out of it can need a debit yet keep more time value (FAILS_CRITERION `roll_test`: `it gives up 0.70 a share of time
+value`), and a deep in-the-money roll can pay a credit yet give time value up. Its checks row shows N per share, with
+`(within the held call's own quote spread)` when N is smaller than the held call's half-spread. Giving both keys is
+refused.
+
 The interview asks for them only for a section where you chose `band_centre`, and `desk_init.py` then writes
 `schema_version = 2`; a file without them stays `schema_version = 1`, byte for byte. Under `schema_version = 1`
 either key is unknown, and either key with another objective is refused. Answers that set them print `band_centre

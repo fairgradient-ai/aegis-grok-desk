@@ -138,7 +138,7 @@ STRUCTURING_KINDS: Dict[str, str] = {
     "strike_floor": "string", "earnings": "string", "ex_dividend": "string", "objective": "string",
     "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
     "dte_centre": "decimal", "abs_delta_centre": "decimal", "floor_pct_centre": "decimal", "cap_pct_centre": "decimal",
-    "band_weights": "decimal_table",
+    "band_weights": "decimal_table", "roll_test": "string",
 }
 """How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS`` and of
 ``structuring_config.V2_KEYS``)."""
@@ -194,7 +194,10 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
              "min_credit": "decimal string >= 0.01 (per share, the new call's bid)",
              "credit_only": "boolean (a net debit fails it; a zero net passes)",
              "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-             "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll")},
+             "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll"),
+             "roll_test": "%s (optional; given in place of credit_only; net_time_value fails a roll whose new call "
+                          "holds less time value than the held call; writes schema_version 2)"
+                          % " | ".join(structuring_config.ROLL_TESTS)},
     "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                        "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
                        "objective": _objective_words("protective_put"), **_v2_words("protective_put")},
@@ -517,11 +520,15 @@ def render_structuring_toml(intake: Any) -> str:
             written = list(keys)
         else:
             optional = structuring_config.V2_KEYS.get(section, ())
-            values = table(answers[section], "structuring.%s" % section, keys + optional, keys)
+            raw = answers[section]
+            required = keys
+            if isinstance(raw, dict) and structuring_config.ROLL_TEST_KEY in raw and "credit_only" not in raw:
+                required = tuple(key for key in keys if key != "credit_only")  # roll_test in place of credit_only
+            values = table(raw, "structuring.%s" % section, keys + optional, required)
             used = [key for key in optional if key in values]
             if used:
                 version = structuring_config.SCHEMA_VERSION_2
-            written = list(keys) + used
+            written = [key for key in keys if key in values] + used
         places = {key: ("structuring.disclosure_acknowledged" if section == structuring_config.SECTION_DISCLOSURE
                         else "structuring.%s.%s" % (section, key)) for key in written}
         body += ["", "[%s]" % section]

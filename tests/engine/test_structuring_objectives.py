@@ -136,6 +136,53 @@ class OwnerCentresTest(unittest.TestCase):
         self.assertIn("> - band_centre with your own settings in structuring.toml: weight dte 0.5", rendered.text)
 
 
+class NetTimeValueCriterionTest(unittest.TestCase):
+    """Step 3c: roll_test = "net_time_value" fails a roll that gives up time value (N < 0, at the conservative sides),
+    and passes an in-the-money roll that credit_only would fail."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.net = S.run_roll_analysis(Desk(cls).market(), "AG-20261020-01", criteria("roll", roll_test="net_time_value"))
+        cls.credit = S.run_roll_analysis(Desk(cls).market(), "AG-20261020-01", CRITERIA)
+
+    def test_the_net_time_value_per_share(self) -> None:
+        # the report's cases: held 100 call at its ask 6.35 (4.23 intrinsic) to the Jan 115 bid 3.55 sells 1.43 more
+        # time value than it buys back; off the held 105 call at 3.50, Jan 115 adds 0.05 and Dec 112.5 gives up 0.70
+        self.assertEqual(D("1.43"), S.net_time_value(D("3.55"), D("6.35"), D("104.23"), D("115"), D("100")))
+        self.assertEqual(D("0.05"), S.net_time_value(D("3.55"), D("3.50"), D("104.23"), D("115"), D("105")))
+        self.assertEqual(D("-0.70"), S.net_time_value(D("2.80"), D("3.50"), D("104.23"), D("112.5"), D("105")))
+
+    def test_roll_test_net_time_value_on_the_fixture(self) -> None:
+        candidates = by_id(self.net)
+        self.assertEqual(("ELIGIBLE", D("0.05")), (candidates["WMT270115C00115000"].status,
+                                                   candidates["WMT270115C00115000"].net_time_value))
+        dec = candidates["WMT261218C00112500"]
+        self.assertIn(("roll_test", "gives_up_time_value", D("-0.70"), D("0")),
+                      [(r.key, r.code, r.value, r.threshold) for r in dec.reasons])
+        self.assertNotIn("credit_only", self.net.ranking.failure_counts)
+        # the four debit rolls, and two deep in-the-money December calls that pay a credit (8.50 and 6.70) yet buy
+        # back more time value than they sell (0.73 and 0.03): the test reads time value, not cash
+        self.assertEqual(6, self.net.ranking.failure_counts["roll_test"])
+        dec95 = candidates["WMT261218C00095000"]
+        self.assertEqual((D("8.50"), D("-0.73")), (dec95.net_credit, dec95.net_time_value))
+        self.assertIn("roll_test", [r.key for r in dec95.reasons])
+        self.assertNotIn("credit_only", [r.key for r in by_id(self.credit)["WMT261218C00095000"].reasons])
+        self.assertEqual("WMT270115C00115000", self.net.ranking.best.id)
+        self.assertEqual(self.credit.ranking.best.id, self.net.ranking.best.id)
+
+    def test_the_words_and_the_checks_row(self) -> None:
+        dec = by_id(self.net)["WMT261218C00112500"]
+        reason = next(r for r in dec.reasons if r.key == "roll_test")
+        self.assertEqual("it gives up 0.70 a share of time value", T.reason_words(T.Writer(), reason, dec))
+        w = T.Writer()
+        best = self.net.ranking.best
+        rows = T.check_rows(w, best, self.net.section, D("25"), self.net.group_context.s0, self.net.held.strike,
+                            held=self.net.held)
+        self.assertIn(["net time value per share", "adds 0.05 (within the held call's own quote spread)",
+                       "at least 0", T.STATUS_PASS], rows)
+        self.assertIn(["net per share", "credit 0.05 (10.00 in all)", "", ""], rows)
+
+
 class ObjectiveConfigTest(unittest.TestCase):
     def test_each_section_accepts_its_release_one_objective_first(self) -> None:
         self.assertEqual(("extrinsic_per_day", "band_centre"), structuring_config.OBJECTIVES["covered_call"])

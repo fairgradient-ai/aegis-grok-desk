@@ -146,7 +146,9 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "floor_pct": "decimal string | null", "cap_pct": "decimal string | null",
     "covered_per_share": "decimal string | null", "covered_total": "decimal string | null",
     "net_debit": "decimal string | null", "net_debit_total": "decimal string | null",
-    "cost_total": "decimal string | null", "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
+    "cost_total": "decimal string | null",
+    "net_time_value": "decimal string | null (per share: the new bid's time value less the held ask's)",
+    "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {
     "tool": "roll_analysis", "kind": "replacement_call", "trade_id": "AG-YYYYMMDD-NN",

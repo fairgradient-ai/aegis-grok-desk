@@ -183,6 +183,9 @@ KEY_CAP_PCT: str = "cap_pct"
 KEY_STRESS_DROP_PCT: str = "stress_drop_pct"
 KEY_MAX_NET_DEBIT: str = "max_net_debit"
 KEY_CREDIT_ONLY: str = "credit_only"
+KEY_ROLL_TEST: str = "roll_test"
+"""``[roll] roll_test = "net_time_value"`` (schema_version 2): the roll must not buy back more time value than it
+sells."""
 KEY_STRIKE_FLOOR: str = "strike_floor"
 KEY_EARNINGS: str = "earnings"
 KEY_EX_DIVIDEND: str = "ex_dividend"
@@ -190,7 +193,7 @@ KEY_UNPRICED: str = "unpriced"
 BAND_KEYS: Tuple[str, ...] = (KEY_DTE, KEY_ABS_DELTA, KEY_MIN_CREDIT, KEY_MAX_SPREAD_PCT, KEY_FLOOR_PCT, KEY_CAP_PCT,
                               KEY_STRESS_DROP_PCT, KEY_MAX_NET_DEBIT)
 """The OUTSIDE_BANDS keys (the owner's windows, bands, minimums and budgets)."""
-CRITERION_KEYS: Tuple[str, ...] = (KEY_CREDIT_ONLY, KEY_STRIKE_FLOOR, KEY_EARNINGS, KEY_EX_DIVIDEND)
+CRITERION_KEYS: Tuple[str, ...] = (KEY_CREDIT_ONLY, KEY_ROLL_TEST, KEY_STRIKE_FLOOR, KEY_EARNINGS, KEY_EX_DIVIDEND)
 """The FAILS_CRITERION keys (the owner's yes/no criteria)."""
 REASON_KEY_ORDER: Tuple[str, ...] = BAND_KEYS + CRITERION_KEYS + (KEY_UNPRICED,)
 
@@ -203,6 +206,7 @@ CODE_CAP_OUTSIDE_BAND: str = "cap_outside_band"
 CODE_NO_COVER_AT_STRESS: str = "no_cover_at_stress"
 CODE_NET_DEBIT_ABOVE_BUDGET: str = "net_debit_above_budget"
 CODE_DEBIT_ROLL: str = "debit_roll"
+CODE_GIVES_UP_TIME_VALUE: str = "gives_up_time_value"
 CODE_ROLL_DOWN_BELOW_COST: str = "roll_down_below_cost"
 CODE_STRIKE_BELOW_COST: str = "strike_below_cost"
 CODE_CROSSES_EARNINGS: str = "crosses_earnings"
@@ -248,7 +252,7 @@ CODE_KEYS: Dict[str, str] = {
     CODE_DTE_OUTSIDE_WINDOW: KEY_DTE, CODE_DELTA_OUTSIDE_BAND: KEY_ABS_DELTA, CODE_CREDIT_BELOW_MINIMUM: KEY_MIN_CREDIT,
     CODE_SPREAD_ABOVE_MAX: KEY_MAX_SPREAD_PCT, CODE_FLOOR_OUTSIDE_BAND: KEY_FLOOR_PCT, CODE_CAP_OUTSIDE_BAND: KEY_CAP_PCT,
     CODE_NO_COVER_AT_STRESS: KEY_STRESS_DROP_PCT, CODE_NET_DEBIT_ABOVE_BUDGET: KEY_MAX_NET_DEBIT,
-    CODE_DEBIT_ROLL: KEY_CREDIT_ONLY, CODE_ROLL_DOWN_BELOW_COST: KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST: KEY_STRIKE_FLOOR,
+    CODE_DEBIT_ROLL: KEY_CREDIT_ONLY, CODE_GIVES_UP_TIME_VALUE: KEY_ROLL_TEST, CODE_ROLL_DOWN_BELOW_COST: KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST: KEY_STRIKE_FLOOR,
     CODE_CROSSES_EARNINGS: KEY_EARNINGS, CODE_EARNINGS_UNKNOWN: KEY_EARNINGS, CODE_CROSSES_EX_DIVIDEND: KEY_EX_DIVIDEND,
     CODE_DIVIDEND_UNKNOWN: KEY_EX_DIVIDEND,
 }
@@ -547,8 +551,8 @@ class AfterState:
 CANDIDATE_KEYS: Tuple[str, ...] = ("rank", "id", "kind", "expiration", "contracts", "status", "score", "reasons",
                                    "accepted", "lost_because", "american_caveat", "extrinsic_bid", "net_credit",
                                    "net_credit_total", "credit_total", "floor_pct", "cap_pct", "covered_per_share",
-                                   "covered_total", "net_debit", "net_debit_total", "cost_total", "objective_scores",
-                                   "legs", "after")
+                                   "covered_total", "net_debit", "net_debit_total", "cost_total", "net_time_value",
+                                   "objective_scores", "legs", "after")
 
 
 @dataclass(frozen=True)
@@ -579,6 +583,8 @@ class Candidate:
     net_debit: Optional[Decimal] = None
     net_debit_total: Optional[Decimal] = None
     cost_total: Optional[Decimal] = None
+    net_time_value: Optional[Decimal] = None
+    """A replacement call's ``N = E_new - E_held`` per share at the conservative sides (:func:`net_time_value`)."""
     objective_scores: Optional[Dict[str, Tuple[Optional[Decimal], Optional[Decimal]]]] = None
     """Every objective the section accepts: ``{id: (score, score at the mids)}`` (the mid value is ``None`` for an
     objective that reads no price); :func:`rank_candidates` ranks by the one the owner's section names."""
@@ -656,6 +662,15 @@ def extrinsic(bid: Decimal, spot: Decimal, strike: Decimal) -> Decimal:
     """The bid's time value of a call: ``bid - max(0, S - K)`` (negative when the bid is below intrinsic)."""
     with localcontext(_DECIMAL_CONTEXT):
         return bid - max(_ZERO, spot - strike)
+
+
+def net_time_value(new_bid: Decimal, held_ask: Decimal, spot: Decimal, new_strike: Decimal, held_strike: Decimal
+                   ) -> Decimal:
+    """``N = E_new - E_held`` per share: the time value a roll sells (the new call's bid less its intrinsic value) less
+    the time value it buys back (the held call's ask less its intrinsic value). A held call in the money carries the
+    owner's own share gain as intrinsic value, which the roll does not give up."""
+    with localcontext(_DECIMAL_CONTEXT):
+        return extrinsic(new_bid, spot, new_strike) - extrinsic(held_ask, spot, held_strike)
 
 
 def extrinsic_per_day(bid: Decimal, spot: Decimal, strike: Decimal, days: int) -> Decimal:
@@ -1297,8 +1312,12 @@ def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: Group
     reasons: List[Reason] = []
     _call_bands(reasons, leg, section, ctx)
     net = leg.bid - held.close_price
-    if section.credit_only and net < 0:
+    net_tv = net_time_value(leg.bid, held.close_price, spot, leg.strike, held.strike)
+    rule = section.roll_rule() if hasattr(section, "roll_rule") else ("credit" if section.credit_only else "none")
+    if rule == structuring_config.ROLL_TEST_CREDIT and net < 0:
         reasons.append(Reason(KEY_CREDIT_ONLY, CODE_DEBIT_ROLL, net, _ZERO))
+    if rule == structuring_config.ROLL_TEST_NET_TIME_VALUE and net_tv < 0:
+        reasons.append(Reason(KEY_ROLL_TEST, CODE_GIVES_UP_TIME_VALUE, net_tv, _ZERO))
     if section.strike_floor == "cost_basis" and leg.strike < held.strike and leg.strike < group.s0:
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_ROLL_DOWN_BELOW_COST, leg.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(leg, group, section, events, held)
@@ -1315,7 +1334,8 @@ def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: Group
     return _finish(KIND_REPLACEMENT_CALL, [leg], contracts, epd,
                    reasons + kept, accepted, _short_call_caveat(leg, spot, events), after,
                    extrinsic_bid=extrinsic(leg.bid, spot, leg.strike), net_credit=net,
-                   net_credit_total=_money(net * _MULTIPLIER * contracts), objective_scores=scores)
+                   net_credit_total=_money(net * _MULTIPLIER * contracts), net_time_value=net_tv,
+                   objective_scores=scores)
 
 
 def _put_parts(leg: PricedLeg, ctx: PricingContext, section: Any, contracts: int,

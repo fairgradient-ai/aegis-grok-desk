@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `[roll] roll_test` (`schema_version = 2`, in place of `credit_only`): `"credit"`, `"none"` or `"net_time_value"`,
+  which fails a roll whose new call holds less time value than the held call (N = E_new - E_held < 0) and passes an
+  in-the-money roll that `credit_only` would fail. Its checks row shows N per share and says when N lies within the
+  held call's own quote spread. Candidates carry `net_time_value` in the JSON.
 - `structuring.toml` `schema_version = 2`: a section that ranks by `band_centre` may set its own centre in any band
   (`dte_centre`, `abs_delta_centre`, `floor_pct_centre`, `cap_pct_centre`, each inside its band) and `band_weights`
   (an inline table of numbers above 0 and at most 10 per band and for `quote`). The interview asks only where the

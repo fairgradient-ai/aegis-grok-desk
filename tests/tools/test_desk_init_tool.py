@@ -723,5 +723,28 @@ class SchemaTwoAnswersTest(TempRoot):
         self.assertIn('applies only with objective = "band_centre"', body["error"]["message"])
 
 
+    def test_roll_test_replaces_credit_only_and_writes_version_two(self) -> None:
+        values = copy.deepcopy(S3_VALUES)
+        values["roll"].pop("credit_only")
+        values["roll"]["roll_test"] = "net_time_value"
+        code, body = self.run_json({"schema_version": 1, "structuring": values})
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        text = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8")
+        block = text[text.index("[roll]"):text.index("[protective_put]")]
+        self.assertIn("\nschema_version = 2\n", text)
+        self.assertNotIn("credit_only", block)
+        self.assertTrue(block.rstrip("\n").endswith('objective = "extrinsic_per_day"\nroll_test = "net_time_value"'),
+                        block)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual("net_time_value", cfg.roll.roll_rule())
+
+    def test_roll_test_and_credit_only_together_are_refused(self) -> None:
+        values = copy.deepcopy(S3_VALUES)
+        values["roll"]["roll_test"] = "credit"
+        code, body = self.run_json({"schema_version": 1, "structuring": values})
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn("[roll] give roll_test or credit_only, not both", body["error"]["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

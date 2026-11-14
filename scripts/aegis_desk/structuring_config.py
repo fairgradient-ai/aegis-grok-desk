@@ -123,13 +123,23 @@ CENTRE_BANDS: Dict[str, Tuple[str, ...]] = {
     SECTION_COLLAR: ("dte", "floor_pct", "cap_pct"),
 }
 """The bands ``band_centre`` measures in each section that can take it (``[roll]`` cannot)."""
+ROLL_TEST_KEY: str = "roll_test"
+ROLL_TEST_CREDIT: str = "credit"
+ROLL_TEST_NET_TIME_VALUE: str = "net_time_value"
+ROLL_TEST_NONE: str = "none"
+ROLL_TESTS: Tuple[str, ...] = (ROLL_TEST_CREDIT, ROLL_TEST_NET_TIME_VALUE, ROLL_TEST_NONE)
+"""``[roll] roll_test`` (``schema_version = 2``, in place of ``credit_only``): ``credit`` fails a net debit (as
+``credit_only = true``), ``net_time_value`` fails a roll that buys back more time value than it sells, ``none`` tests
+neither (as ``credit_only = false``)."""
 V2_KEYS: Dict[str, Tuple[str, ...]] = {
     section: tuple("%s_centre" % band for band in bands) + (BAND_WEIGHTS_KEY,)
     for section, bands in CENTRE_BANDS.items()
 }
+V2_KEYS[SECTION_ROLL] = (ROLL_TEST_KEY,)
 """The optional keys of ``schema_version = 2``, in the order ``desk_init`` writes them after ``objective``: each band's
 centre (a number inside the band; the midpoint when absent) and ``band_weights``, an inline table of positive numbers
-per band and for ``quote`` (1 when absent). They apply only with ``objective = "band_centre"``."""
+per band and for ``quote`` (1 when absent), which apply only with ``objective = "band_centre"``; and ``[roll]
+roll_test`` (:data:`ROLL_TESTS`), given in place of ``credit_only``."""
 BAND_WEIGHT_MAX: Decimal = Decimal("10")
 
 EVENT_EXCLUDE: str = "exclude"
@@ -324,6 +334,15 @@ class RollSection:
     earnings: str
     ex_dividend: str
     objective: str
+    roll_test: Optional[str] = None
+    """The ``schema_version = 2`` roll test, or ``None`` when the file states ``credit_only`` (:meth:`roll_rule`)."""
+
+    def roll_rule(self) -> str:
+        """The roll test the candidates are judged by: ``roll_test``, else ``credit`` or ``none`` from
+        ``credit_only``."""
+        if self.roll_test is not None:
+            return self.roll_test
+        return ROLL_TEST_CREDIT if self.credit_only else ROLL_TEST_NONE
 
 
 @dataclass(frozen=True)
@@ -392,6 +411,10 @@ class StructuringConfig:
                                 else getattr(section, key)) for key in SECTION_KEYS[name]}
             if isinstance(section, _CentreMixin):
                 echo[name].update(section.v2_echo())
+            if isinstance(section, RollSection) and section.roll_test is not None:
+                echo[name] = {(ROLL_TEST_KEY if key == "credit_only" else key):
+                              (section.roll_test if key == "credit_only" else value)
+                              for key, value in echo[name].items()}
         echo["sha256"] = self.sha256
         return echo
 
@@ -432,6 +455,10 @@ class _Reader:
             raise self.fail("section [%s] must be a table, not a %s value" % (name, type(table).__name__))
         required = SECTION_KEYS[name]
         allowed = required + (V2_KEYS.get(name, ()) if self.version >= SCHEMA_VERSION_2 else ())
+        if name == SECTION_ROLL and self.version >= SCHEMA_VERSION_2 and ROLL_TEST_KEY in table:
+            if "credit_only" in table:
+                raise self.fail("[%s] give %s or credit_only, not both" % (name, ROLL_TEST_KEY))
+            required = tuple(key for key in required if key != "credit_only")
         for key in table:
             if key not in allowed:
                 raise self.fail("unknown key '%s' in section [%s] (allowed: %s)" % (key, name, ", ".join(allowed)))
@@ -610,10 +637,13 @@ class _Reader:
     def roll(self, document: Dict[str, Any]) -> RollSection:
         where = SECTION_ROLL
         table = self.section(document, where)
+        roll_test = (self.choice(table, ROLL_TEST_KEY, where, ROLL_TESTS) if ROLL_TEST_KEY in table else None)
         return RollSection(
             enabled=self.boolean(table, "enabled", where), dte=self.dte(table, where),
             abs_delta=self.abs_delta(table, where), min_credit=self.min_credit(table, where),
-            credit_only=self.boolean(table, "credit_only", where),
+            credit_only=(roll_test == ROLL_TEST_CREDIT if roll_test is not None
+                         else self.boolean(table, "credit_only", where)),
+            roll_test=roll_test,
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
