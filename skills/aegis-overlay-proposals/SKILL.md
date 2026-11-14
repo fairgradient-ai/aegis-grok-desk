@@ -79,19 +79,20 @@ most 2 decimals, and every `dte` window is calendar days with 7 <= lo < hi <= 40
 | | `min_credit` | `0.50` | per share, at the bid; at least 0.01 |
 | | `strike_floor` | `"cost_basis"` | `cost_basis` (no strike below the stock cost) or `none` |
 | | `earnings`, `ex_dividend` | `"exclude"` | `exclude` or `allow` |
-| | `objective` | `"extrinsic_per_day"` | the one objective of the section |
+| | `objective` | `"extrinsic_per_day"` | `extrinsic_per_day` or `band_centre`, the owner's choice |
 | the replacement call's section `[roll]` | the covered call's keys | the same values | for a roll analysis and a covered call's ROLL ticket |
 | | `credit_only` | `true` | a net debit fails it; a zero net passes |
+| | `objective` | `"extrinsic_per_day"` | `extrinsic_per_day` or `net_extrinsic_per_added_day`, never `band_centre` |
 | `[protective_put]` | `enabled` | `true` | a boolean |
 | | `dte` | `[120, 210]` | the window of the put's expiration |
 | | `floor_pct` | `[3, 10]` | (S - K) / S x 100 at 2 decimals; 0 <= lo < hi <= 50 |
 | | `stress_drop_pct` | `20` | above the floor band's hi, at most 90 |
-| | `objective` | `"stress_cost_per_day"` | the one objective of the section |
+| | `objective` | `"stress_cost_per_day"` | `stress_cost_per_day` or `band_centre`, the owner's choice |
 | `[collar]` | `enabled`, `dte` | `true`, `[120, 210]` | as above |
 | | `floor_pct`, `cap_pct` | `[3, 10]`, `[2, 10]` | the cap is (Kc - S) / S x 100 at 2 decimals; 0 < lo < hi <= 100 |
 | | `max_net_debit` | `0.00` | per share, at least 0: 0.00 means a zero cost or a credit |
 | | `strike_floor`, `earnings`, `ex_dividend` | `"cost_basis"`, `"exclude"`, `"exclude"` | as for the covered call |
-| | `objective` | `"cap_within_budget"` | the one objective of the section |
+| | `objective` | `"cap_within_budget"` | `cap_within_budget` or `band_centre`, the owner's choice |
 
 An earnings or ex-dividend date that `research/calendar.toml` lists as unknown, or does not list at all, counts as
 inside the window; it is never treated as none. A listed date that has already passed counts as unknown and inside
@@ -108,16 +109,18 @@ owner's first request:
    `earnings = "exclude"` and `ex_dividend = "exclude"` fail every candidate on a stock that reports earnings or pays a
    quarterly dividend, and asks the owner to choose `exclude` or `allow` for each; `desk_init.py` prints the same as
    `note:` lines, which are posted with its output.
-2. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
+2. For each enabled section, it asks which objective ranks the candidates, shows each objective the section accepts
+   with its words (below), the default first, and records the owner's choice; with no choice the default stays.
+3. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
    they acknowledge it.
-3. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to
+4. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to
    `/workspace/aegis-desk/setup/structuring-answers.json`, then, after the owner's tap, runs:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
 ```
 
-4. Joined with `&&` to that command, `ack.py config --owner-tapped` acknowledges it in the same tap.
+5. Joined with `&&` to that command, `ack.py config --owner-tapped` acknowledges it in the same tap.
 
 When candidates fail only on an earnings or ex-dividend date, give the owner both ways past it, with their effects,
 and let them choose: `allow` in the section (a new interview answer and `desk_init.py --replace --owner-tapped`)
@@ -148,7 +151,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 
 ## The objectives in words
 
-Each section declares one objective, echoed in every answer with the file's sha. The words describe a formula; they
+Each section declares one of the objectives it accepts, echoed in every answer with the file's sha. The words describe a formula; they
 never name a gain of any kind and never forecast.
 
 | Objective | Words in the text | Formula | Order | Ties broken by |
@@ -156,9 +159,11 @@ never name a gain of any kind and never forecast.
 | `extrinsic_per_day` | the bid's time value per calendar day, in percent of the share price | (bid - max(0, S - K)) / S / T x 100 | higher first | the absolute delta (lower first), the expiration (earlier first), the strike (higher first), the contract |
 | `stress_cost_per_day` | the put's ask per calendar day per 100 of loss it offsets at your stress drop | ask / T / (K - S_x) x 100, with S_x = S x (1 - x / 100) | lower first | the strike (higher first), the expiration (later first), the contract |
 | `cap_within_budget` | the cap's distance above the share price, in percent, among pairs within your net-debit budget | (Kc - S) / S x 100 | higher first | the put strike (higher first), the net debit (lower first), the expiration (later first), the contracts |
+| `band_centre` | the distance from the centre of your bands, each band in its own half-width, plus each leg's quote spread in your max_spread_pct, summed with equal weight (a desk convention) | sum of abs(x - c) / w over the bands + sum of spread_pct / max_spread_pct over the legs | lower first | the section's money measure (`extrinsic_per_day`, `stress_cost_per_day` or the net debit), then the keys above |
+| `net_extrinsic_per_added_day` (`[roll]` only) | the new call's time value at its bid less the held call's at its ask, per calendar day added when the roll adds time value, the whole amount when it gives some up | N = E_new - E_held; N / S / (T_new - T_held) x 100 when N >= 0, else N / S x 100 | higher first | the net credit (higher first), then the covered call's keys |
 
 S is the underlying's mid, K the strike, T the calendar days to expiry and x `stress_drop_pct`. Scores are quantized
-to 4 decimals, the cap to 2. A put whose strike is at or below the stressed price covers no loss there and falls
+to 4 decimals, the cap and `band_centre` to 2, `net_extrinsic_per_added_day` to 6. A put whose strike is at or below the stressed price covers no loss there and falls
 outside the bands. A collar pair whose net debit (the put's ask minus the call's bid) is above `max_net_debit` falls
 outside the bands too.
 

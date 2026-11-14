@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Setup asks which objective ranks each structuring section. The interview (SETUP step 9) shows every objective a
+  section accepts, with its words and the documented default first, and records the owner's choice; with no choice
+  the default stays. An update (docs/UPDATING.md step 7) asks the same for an existing `structuring.toml`: keeping is
+  the default and rewrites nothing; a switch is the owner's tap on `desk_init.py --replace --owner-tapped` and the
+  acknowledgement.
 - Structuring Desk: two optional objectives. `band_centre` (`[covered_call]`, `[protective_put]`, `[collar]`) ranks by
   the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote spread
   counted in your `max_spread_pct`, all summed with equal weight; `net_extrinsic_per_added_day`

@@ -35,6 +35,13 @@ STRUCTURING_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuri
 EXPECTED_STRUCTURING = os.path.join(ROOT, "tests", "fixtures", "init", "expected_structuring.toml")
 EXPECTED_STRUCTURING_SHA = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
 EXPECTED_STRUCTURING_BYTES = 1090
+NEW_OBJECTIVES_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuring-answers-new-objectives.json")
+OVERLAY_SKILL = os.path.join(ROOT, "skills", "aegis-overlay-proposals", "SKILL.md")
+STRUCTURING_DOC = os.path.join(ROOT, "docs", "STRUCTURING.md")
+UPDATING_DOC = os.path.join(ROOT, "docs", "UPDATING.md")
+INTERVIEW_AGENT = os.path.join(ROOT, "agents", "structuring-desk.md")
+NEW_OBJECTIVES = {"covered_call": "band_centre", "roll": "net_extrinsic_per_added_day",
+                  "protective_put": "band_centre", "collar": "band_centre"}
 STRUCTURING_HINT = ("acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until "
                     "structuring.toml is acknowledged")
 S3_VALUES = {
@@ -589,6 +596,72 @@ class StructuringIntakeTest(TempRoot):
         self.assertEqual(["research/calendar.toml", "structuring.toml"], body["payload"]["written"])
         self.assertEqual(STRUCTURING_HINT, body["payload"]["acknowledge"])
         self.assertEqual(["research/calendar.toml", "structuring.toml"], self.files())
+
+
+def read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+class ObjectiveChoiceTest(TempRoot):
+    """The interview and the update ask the owner which objective ranks each section; desk_init writes the choice."""
+
+    def test_the_new_objectives_fixture_differs_from_the_defaults_only_in_the_objectives(self) -> None:
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        expected = copy.deepcopy(S3_VALUES)
+        for section, objective in NEW_OBJECTIVES.items():
+            expected[section]["objective"] = objective
+        self.assertEqual({"schema_version": 1, "structuring": expected}, chosen)
+
+    def test_a_first_setup_writes_the_chosen_objectives(self) -> None:
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        code, body = self.run_json(chosen)
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual(NEW_OBJECTIVES, {name: getattr(cfg, name).objective for name in NEW_OBJECTIVES})
+        self.assertNotEqual(EXPECTED_STRUCTURING_SHA, cfg.sha256)
+
+    def test_an_update_switch_rewrites_only_the_objective_lines(self) -> None:
+        self.assertEqual(0, self.invoke(structuring_answers())[0])
+        before = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8").split("\n")
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        code, body = self.run_json(chosen)
+        self.assertEqual((1, "structuring_exists"), (code, body["error"]["code"]), "keeping is the default")
+        code, body = self.run_json(chosen, "--replace", "--owner-tapped")
+        self.assertEqual(0, code, body)
+        after = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8").split("\n")
+        changed = [(old, new) for old, new in zip(before, after) if old != new]
+        self.assertEqual(len(before), len(after))
+        self.assertEqual([('objective = "%s"' % structuring_config.OBJECTIVES[name][0], 'objective = "%s"' % chosen_id)
+                          for name, chosen_id in NEW_OBJECTIVES.items()], changed)
+
+    def test_a_roll_cannot_choose_band_centre(self) -> None:
+        answers = structuring_answers()
+        answers["structuring"]["roll"]["objective"] = "band_centre"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn("[roll] objective", body["error"]["message"])
+        self.assertEqual([], self.files())
+
+    def test_the_schema_lists_every_accepted_objective_default_first(self) -> None:
+        for section, ids in structuring_config.OBJECTIVES.items():
+            self.assertEqual(" | ".join(ids), tool.STRUCTURING_SHAPE[section]["objective"], section)
+
+    def test_every_accepted_objective_is_documented_where_the_interview_reads_it(self) -> None:
+        skill, doc = read_text(OVERLAY_SKILL), read_text(STRUCTURING_DOC)
+        for ids in structuring_config.OBJECTIVES.values():
+            for objective in ids:
+                self.assertIn("| `%s`" % objective, skill, objective)
+                self.assertIn("| `%s` |" % objective, doc, objective)
+        agent = read_text(INTERVIEW_AGENT)
+        self.assertIn("ask which objective ranks its candidates", agent)
+        self.assertIn("with no choice, the default stays", agent)
+        updating = read_text(UPDATING_DOC)
+        self.assertIn("When the changelog names a new objective for `structuring.toml`", updating)
+        self.assertIn("Keeping\nis the default and changes nothing.", updating)
 
 
 if __name__ == "__main__":

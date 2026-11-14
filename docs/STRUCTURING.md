@@ -80,9 +80,12 @@ and the connected-apps check), because the interview ends in an owner-tapped com
 
 1. It shows each section with its documented defaults (below). You keep each value, change it within its bounds, or
    switch a structure off with `enabled = false`.
-2. Last, it shows the disclosure (below) word for word. It records `disclosure_acknowledged` only after you say that
+2. For each structure you keep on, it asks which objective ranks the candidates. It shows every objective that
+   section accepts ([The objectives](#the-objectives) below), with its words and the documented default first. You
+   choose one; if you don't, the default stays, and a file that keeps the defaults ranks exactly as before.
+3. Last, it shows the disclosure (below) word for word. It records `disclosure_acknowledged` only after you say that
    you acknowledge it.
-3. It writes your answers as JSON to `/workspace/aegis-desk/setup/structuring-answers.json`, in the shape of
+4. It writes your answers as JSON to `/workspace/aegis-desk/setup/structuring-answers.json`, in the shape of
    `desk_init` "Input" in [TOOLS.md](TOOLS.md), and after your tap runs the **owner-authority** command:
 
    ```text
@@ -96,7 +99,7 @@ and the connected-apps check), because the interview ends in an owner-tapped com
    acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until structuring.toml is acknowledged
    ```
 
-4. The Aegis Desk Lead then runs `ack.py config --owner-tapped` after your tap. Synthetic, the same copy:
+5. The Aegis Desk Lead then runs `ack.py config --owner-tapped` after your tap. Synthetic, the same copy:
 
    ```text
    configuration acknowledged at 2026-11-03 19:49 UTC: desk.toml sha f08a18dc, positions.csv sha 9483c8f3, adopted rulebook 1.0.0 sha cc09859c, structuring.toml sha 5155427c

@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: a6b90a5f9eda62e44b25e0e4c1263c4b3ff5b2c99a941d2fc2152e736cdf9c82
+  source_sha256: 29c3dfede27dcc4056806d12452fdf137c13ad8d88c59ab5f61cc3d53b7c01f7
 ---
 
 # Aegis Structuring Desk: role skill
@@ -244,11 +244,15 @@ then, hand the request to the Lead, which starts with those settings:
 
 1. Show each section with its documented defaults (`aegis-overlay-proposals` lists every key and bound, and when an
    `exclude` can never pass). Change only what the owner states.
-2. Last, show the disclosure below, verbatim. Only after the owner says they acknowledge it does
+2. For each enabled section, ask which objective ranks its candidates. Show every objective the section accepts with
+   its words from `aegis-overlay-proposals`, the documented default first, and record the owner's choice as that
+   section's `objective`. Say that `band_centre` weighs days, delta (or floor, or cap) and quote spread equally, a desk
+   convention, and that `[roll]` does not take it. Never choose for the owner; with no choice, the default stays.
+3. Last, show the disclosure below, verbatim. Only after the owner says they acknowledge it does
    `disclosure_acknowledged` go into the answers.
-3. Write the answers as JSON (the `structuring` shape of `desk_init` in docs/TOOLS.md) to
+4. Write the answers as JSON (the `structuring` shape of `desk_init` in docs/TOOLS.md) to
    `/workspace/aegis-desk/setup/structuring-answers.json`.
-4. After the owner taps approve, run:
+5. After the owner taps approve, run:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
@@ -261,7 +265,7 @@ wrote structuring.toml (1090 bytes, sha256 5155427cbe37f8ff252db1181ff766c3d4be0
 acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until structuring.toml is acknowledged
 ```
 
-5. Join the `desk_init.py` run and `ack.py config --owner-tapped` in one command line with `&&`, so one tap writes
+6. Join the `desk_init.py` run and `ack.py config --owner-tapped` in one command line with `&&`, so one tap writes
    and acknowledges the file. Until it is acknowledged every structuring tool prints only its CONFIG CHANGED line.
 
 A second run is refused (exit 1) while the file exists; a change is the owner's tap on

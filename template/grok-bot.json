@@ -15,7 +15,7 @@
     "aegis-exit-watch-and-signal-protocol": "4206dd4b584102c8d31513a559cdd517b2d5f8615de98cc25f109ace78e20743",
     "aegis-expiry-and-assignment-protocol": "02bdad94825f96c47b36f19cb3d01c48df9b1465817995fa92c6e7a5d18b16c6",
     "aegis-market-data-budget-and-quality": "c62ae8c7b44063366c8fa31aceb63eac89abf99b93529895940d432fc333d9cd",
-    "aegis-overlay-proposals": "ee8d5f449ed8fb4800345ae0ffb6d0056863c7954c1315ec7f48265c6b3c345c",
+    "aegis-overlay-proposals": "302183bc15ef38590a1e1c8ecc954bf4a38828170258ff1beeee202908faad32",
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "6dba49db669c1cf49d091e3587dd0dce6880f1273e45015ba454ad8d344fa112",
     "aegis-roll-decision-framework": "e4841261dc49563a1456df8c6f6e08276efcc64299890e3df65ae5907f78964f",
@@ -29,6 +29,6 @@
     "aegis-role-desk-lead": "d99c10dda9c99d85e58e81299ec22eb0064e2aea8892d610553c888e63fb54dc",
     "aegis-role-exit-sentinel": "194be4f71d2022a39e999f25561ed280957e48511f7e3906c4144d459308d6f2",
     "aegis-role-position-control": "6ecc995c76fe57e9ebb93316e4a4e7a9e73e7b72dc7c7cad86d3f8f1e2610929",
-    "aegis-role-structuring-desk": "cb6d358badca32b6d90984a24e34a723a3d886cec38de283ee0bacbea6b6df2f"
+    "aegis-role-structuring-desk": "ce7bd36a894dfd7ffe5497f08d5fec89425f057af09bf9d51f226a7d3bbef9d4"
   }
 }

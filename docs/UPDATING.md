@@ -96,6 +96,13 @@ An update never rewrites your files. When the changelog names a new or changed k
 adds it ("update the calendar", "set up the structuring desk") and do it only when the owner says so. A file the
 owner changes this way is re-acknowledged in the same card (`ack.py config --owner-tapped`).
 
+When the changelog names a new objective for `structuring.toml`, ask the owner about it as part of this step. For each
+section of their file, show the objective it uses now next to every objective that section accepts in the new
+release, each with its words from `docs/STRUCTURING.md` ("The objectives"), and ask whether to keep or switch. Keeping
+is the default and changes nothing. Only on a switch, write full answers with the chosen objectives and run, after the
+owner's tap, `desk_init.py --answers ... --replace --owner-tapped && ack.py config --owner-tapped`. The receipt names
+each section's objective and whether it changed.
+
 ### 8. The update receipt
 
 One message, opening with two plain lines, for example:
@@ -117,6 +124,17 @@ Update stayed read-only: no credential was added; no order was created or sent.
 
 The previous release is still a tag: the same two commands with its tag move the checkout back, and the skills and
 Auto-review texts of that release are restored the same way (steps 4 and 5). Your desk files need nothing.
+
+## The next release, for a desk set up from release 0.2.1
+
+- **New objectives for your structuring criteria.** A covered call, a protective put and a collar can be ranked by
+  `band_centre` (closeness to the centre of your own bands, with each leg's quote spread counted), and a roll by
+  `net_extrinsic_per_added_day` (the time value the roll adds or gives up). The update asks you, section by section,
+  whether to keep your current objective or switch (step 7). Keeping changes nothing.
+- **Two information notes** can appear in structuring answers: when the runner-up lies within the best's own quote
+  spread, and, under `band_centre`, the share prices at which another candidate would be best. Neither changes the
+  ranking.
+- Routines, alerts and your other desk files do not change.
 
 ## Release 0.2.1, for a desk set up from an earlier release
 
