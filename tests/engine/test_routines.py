@@ -31,7 +31,7 @@ AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
 MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
 AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
-# PR 3b decision S14: the plan's Stage-2 roll-window routine is dropped (the Structuring Desk never posts alerts).
+# PR 3b decision S14: the planned roll-window routine is dropped (the Structuring Desk never posts alerts).
 PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1-call", "pre-event-stress",
                             "weekend-stress", "calendar-build", "journal-close", "weekly-review",
                             "rules-sanity", "rulebook-memo"]

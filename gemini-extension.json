@@ -1,6 +1,6 @@
 {
   "name": "aegis-desk",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Read-only options position-monitoring and exit-alert desk, Stage 1: the desk rule in GEMINI.md, plus the repository's skills and role profiles to read. The desk never places, modifies or cancels an order; the owner acts in their own brokerage account.",
   "contextFileName": "GEMINI.md"
 }

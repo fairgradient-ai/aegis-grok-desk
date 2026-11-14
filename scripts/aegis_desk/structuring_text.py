@@ -1422,7 +1422,7 @@ _TEMPLATE_WORDS: str = (
     "forecast "
     "formula found free fresh from gamma give grade grades grammar greeks group grouping groups held higher "
     "highest hold holds identifiers implied index inside instrument integer intent into intrinsic json kind known "
-    "last later lattice least leaves left legs less level levels lies life limit line lines lint list listed "
+    "last later least leaves left legs less level levels lies life limit line lines lint list listed "
     "lists live loaded long loss lower lowest made margin market maximum mids minimum missing model modelled "
     "money monthly more most multi multiplier must name named names need needed needs negative never next none "
     "note nothing number objective once only open opening opens option options order other otherwise outside "

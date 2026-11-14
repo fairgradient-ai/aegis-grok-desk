@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 1.0.0 (unreleased)
 
+- **Release 1.0.0** (owner's decision): `release_bump.py 1.0.0` moves the manifests, pins and template hashes from
+  0.3.0, which was never tagged. It is the first major release: the Stage 1 desk with the Stage 2 and Stage 3
+  roadmap and the roadmap's first engine step (below). No answer of the desk changes from 0.3.0.
 - Version bump to 0.3.0 (`release_bump.py 0.3.0`): v0.2.1 is tagged, so the skills this release changes are
   claimed at 0.3.0 (`docs/RELEASE.md`, step 8). It merges the desk-view work of the 0.2.2 branch (one message per
   answer, the book view, the brief's totals) with the structuring quant review.
@@ -106,6 +109,28 @@
   exclude it.
 - Candidates carry `objective_scores` (every objective the section accepts, at the conservative side and at the mid)
   and a ranking carries `near_best` in JSON.
+- **The roadmap** (`docs/ROADMAP.md`, linked from the README's table of docs and from `docs/ARCHITECTURE.md`): every
+  item the tree marks "planned for Stage 2" or "planned for Stage 3", ordered into steps with their prerequisites, the
+  gates each must pass, the open owner questions and a ledger of the files each step rewrites when it lands. Work the
+  roadmap adds on its own judgement is marked "proposed here". The ledger counts, per file, how many times each file
+  names Stage 2 and Stage 3 (spaced, hyphenated or joined, even across a line break), and
+  `tests/gates/test_roadmap_ledger.py` fails when the counts differ from the tree, when a counted file is in no item
+  row, or when a listed path does not exist; a stage is complete when its column is empty. The comment in
+  `tests/engine/test_routines.py` about the dropped roll-window routine no longer names a stage.
+- `aegis_desk.lattice` (not yet wired; step 2.1 of the roadmap): the American early-exercise lattice, a
+  Cox-Ross-Rubinstein tree with a continuous dividend yield. It reports the American value with the closed form as a
+  control variate, the early-exercise premium, delta, gamma and theta, `exercise_now` (only when the root and every
+  node of the first two steps exercise, so a spot just inside the tree's exercise boundary, where a finer tree holds,
+  is never an exercise signal) and `near_boundary` (the band where the tree cannot tell, and its Greeks are coarse).
+  Tested against Hull's printed American put, the exact tree properties, `carry.early_exercise_gap` and the band; the
+  QuantLib oracle compares it with QuantLib's finite-difference American engine on a grid and across the exercise
+  boundary. No answer of the desk changes. The lines that said the lattice or an early-exercise model was planned now
+  say what is still planned (American pricing, American Greeks, or early-exercise analysis beside the expiry tiers),
+  and those that name the lattice say its engine is in the tree: `docs/FAQ.md`, `docs/PROVENANCE.md`,
+  `docs/STRUCTURING.md`, `docs/ARCHITECTURE.md` (which also lists the lattice among the engine's modules),
+  `agents/position-control.md` and its generated role skill, the covered-call, expiry-and-assignment,
+  book-marking and roll-decision skills (their template hashes move with them) and the structuring `model_note`,
+  whose new wording counsel signs before the tag; "lattice" leaves the structuring text's template word list with it.
 
 ## 0.2.1 (2026-11-13)
 

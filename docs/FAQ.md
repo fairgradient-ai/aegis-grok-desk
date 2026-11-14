@@ -158,7 +158,8 @@ The desk computes them itself and never takes them from the feed (Alpaca's optio
 volatility computed from indicative quotes; the desk ignores them): implied volatility from the quote's mid
 with the generalised Black-Scholes-Merton model, and European Greeks in desk units (theta per calendar day, vega per
 volatility point). The dividend yield comes from `research/calendar.toml`, or 0 with a warning on the leg. Early
-exercise is not modelled in Stage 1; an American lattice is planned for Stage 2 (not in this release). The
+exercise is not modelled in Stage 1; American pricing is planned for Stage 2 (not in this release). Its engine, an
+early-exercise lattice, is in the tree, but no tool reads it yet ([the roadmap](ROADMAP.md), step 2.1). The
 Structuring Desk prices its candidates the same way and prints that it does. See the skill
 [aegis-book-marking-and-greeks-honesty](../skills/aegis-book-marking-and-greeks-honesty/SKILL.md).
 
