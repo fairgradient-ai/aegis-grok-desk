@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 1.0.0 (unreleased)
 
+- **Release 1.0.0** (owner's decision): `release_bump.py 1.0.0` moves the manifests, pins and template hashes from
+  0.3.0, which was never tagged. It is the first major release: the Stage 1 desk with the Stage 2 and Stage 3
+  roadmap and the roadmap's first engine step (below). No answer of the desk changes from 0.3.0.
 - Version bump to 0.3.0 (`release_bump.py 0.3.0`): v0.2.1 is tagged, so the skills this release changes are
   claimed at 0.3.0 (`docs/RELEASE.md`, step 8). It merges the desk-view work of the 0.2.2 branch (one message per
   answer, the book view, the brief's totals) with the structuring quant review.

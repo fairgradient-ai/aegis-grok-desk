@@ -1,10 +1,11 @@
 # Roadmap: Stage 2 and Stage 3
 
-Release v0.3.0 is Stage 1: four Bots (the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control and the
-Aegis Structuring Desk) watch the positions you already hold and tell you when one of your own exit rules is met. This
-page collects everything the repository says is planned for Stage 2 and Stage 3, in the order it can land, with what
-each step must prove before it merges. Nothing on this page is available in this release unless a step says it has
-landed, and a landed engine step changes no answer a Bot gives until its wiring step lands too.
+Release v1.0.0 is Stage 1, with the engine of step 2.1 that no answer reads yet: four Bots (the Aegis Desk Lead, the
+Aegis Exit Sentinel, Aegis Position Control and the Aegis Structuring Desk) watch the positions you already hold and
+tell you when one of your own exit rules is met. This page collects everything the repository says is planned for
+Stage 2 and Stage 3, in the order it can land, with what each step must prove before it merges. Nothing on this page
+is available in this release unless a step says it has landed, and a landed engine step changes no answer a Bot gives
+until its wiring step lands too.
 
 When a Bot is asked for a planned seat or its work, it says that it is not available in this release
 ([the charter](../skills/aegis-desk-charter/SKILL.md)). This page does not change that answer.
