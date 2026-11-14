@@ -434,7 +434,10 @@ class TreeWordingTest(unittest.TestCase):
     def prose(path: str, source: str) -> List[str]:
         if not path.endswith(".py"):
             return [source]
-        tree = ast.parse(source, filename=path)
+        try:
+            tree = ast.parse(source, filename=path)
+        except SyntaxError:
+            return [source]
         strings = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
         comments = [token.string.lstrip("#") for token in tokenize.generate_tokens(io.StringIO(source).readline)
                     if token.type == tokenize.COMMENT]
@@ -453,6 +456,14 @@ class TreeWordingTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual([], [claim for text in self.prose(path, source) for claim in self.claims(text)])
         self.assertGreater(scanned, 300)
+
+    def test_a_python_file_this_interpreter_cannot_parse_is_read_as_text(self) -> None:
+        # The gate fixtures hold modules written in newer syntax (a `match` statement) on purpose, and Python 3.9
+        # cannot parse them. Such a file is scanned as plain text, so its claims are still found.
+        source = "def broken(:\n    pass  # An American lattice is planned for Stage 4 (not in this release).\n"
+        texts = self.prose("unparseable.py", source)
+        self.assertEqual([source], texts)
+        self.assertEqual(1, len([claim for text in texts for claim in self.claims(text)]))
 
     def test_the_pattern_catches_each_way_of_saying_it(self) -> None:
         # Fixture sentences use stage 4, which no plan uses, so they never read as a promise of the roadmap's stages.
