@@ -544,11 +544,26 @@ class StructuringFooterTest(unittest.TestCase):
         self.assertTrue(result.ok, result.problems)
         first = structuring_check(items[0])
         self.assertTrue(first.ok, "a symbol on the text's first line opens an item too: %s" % first.problems)
-        for kind, footer in ((alert_lint.FOOTER_RULES, FOOTER),
-                             (alert_lint.FOOTER_SNAPSHOT, alert_lint.snapshot_footer_line(AS_OF))):
-            with self.subTest(footer=kind):
-                refused = alert_lint.check(items[0] + "\n" + footer, emitted_of(items[0]), footer=kind)
-                self.assertIn("non_ascii", codes(refused), "only a structuring text carries a status symbol")
+        refused = alert_lint.check(items[0] + "\n" + alert_lint.snapshot_footer_line(AS_OF), emitted_of(items[0]),
+                                   footer=alert_lint.FOOTER_SNAPSHOT)
+        self.assertIn("non_ascii", codes(refused), "a market snapshot carries no status symbol")
+
+    def test_the_rules_footer_admits_a_colour_only_at_a_list_item_start(self) -> None:
+        # the desk views (the EOD brief, the book view) colour a gain green, a loss red and an unavailable figure
+        # yellow: under the rules footer a symbol may open a list item, and nothing else
+        green, yellow, red = alert_lint.STATUS_SYMBOLS
+        items = ("- " + green + " **Total** +$7,504.04 (+6.71 %)", "- " + red + " **AMAT long stock** -$130.10",
+                 "- " + yellow + " **NVDA collar** unavailable")
+        text = "\n".join(items)
+        result = alert_lint.check(text + "\n" + FOOTER, emitted_of(text))
+        self.assertTrue(result.ok, result.problems)
+        misplaced = ("| floor | " + green + " |", "  - " + green + " nested", "* " + green + " star", green + " lead",
+                     "- **Total** " + green + " +$1.00", "- " + green + green + " doubled", "- " + green + "tight")
+        for line in misplaced:
+            with self.subTest(line=line):
+                self.assertIn("non_ascii", codes(alert_lint.check(line + "\n" + FOOTER, emitted_of(line))))
+        in_footer = alert_lint.check("- one\n" + FOOTER.replace("deterministic", green + " deterministic"), [])
+        self.assertIn("non_ascii", codes(in_footer))
 
     def test_the_leg_grammar_takes_a_list_mark_and_a_quote_grade_alone(self) -> None:
         # 0.2.1: the structuring texts print their legs as list items, and a proposal or ticket names the quote source
@@ -1066,9 +1081,9 @@ def structuring_fail_fixture_table() -> Dict[str, tuple]:
     structuring = alert_lint.structuring_footer_line(AS_OF)
     caveat = "the score ranks the candidates only on the objective you chose; it is not a forecast"
     return {
-        # the desk view's status symbols stand only in a structuring text: under the rules footer they are non_ascii too
+        # the rules footer never closes a leg or a candidate (its list-item colours are allowed: the desk views use them)
         "fail_structuring_under_rules_footer": ("pass_structuring_ticket", [(structuring, rules)], {"footer": "rules"},
-                                                ["non_ascii", "footer_missing"]),
+                                                ["footer_missing"]),
         # "your plan: close" is no exception under the structuring footer (review L2-7): an imperative start too
         "fail_rules_text_under_structuring_footer": ("pass_exit_signal", [(rules, structuring)],
                                                      {"footer": "structuring"}, ["imperative_start", "footer_missing"]),

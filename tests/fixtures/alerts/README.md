@@ -64,7 +64,7 @@ Each red-team message is one documented change (`structuring_fail_fixture_table(
 
 | Fixture | Change | Lint finding |
 | --- | --- | --- |
-| `fail_structuring_under_rules_footer` | `pass_structuring_ticket` closed by the rules footer (document `footer`: `rules`): the rules footer cannot close a leg or a candidate, and the status symbols stand only in a structuring text | `non_ascii` (first), `footer_missing` |
+| `fail_structuring_under_rules_footer` | `pass_structuring_ticket` closed by the rules footer (document `footer`: `rules`): the rules footer cannot close a leg or a candidate (its list-item colours pass: the desk views use them under that footer) | `footer_missing` |
 | `fail_rules_text_under_structuring_footer` | `pass_exit_signal` closed by the structuring footer (document `footer`: `structuring`): the structuring footer cannot close rule content, and its `your plan: close` is no exception in structuring mode | `imperative_start` (first), `footer_missing` |
 | `fail_structuring_leg_grammar` | the first leg line reworded with a side word and no effect words, outside the fixed leg grammar (the side word at a segment start is a structuring imperative too) | `order_field` (first), `imperative_start` |
 | `fail_structuring_go_with` | an advice phrase (structuring table entry SL04) after the caveat | `forbidden_language` |

@@ -26,6 +26,19 @@
   -$50.00 (row 4)*`; `- **Routines** 1 of 7 ran today` over the late, missed and pending slots), commands in code
   spans, the records read in one italic line at the end, and a blank line before the fixed footer so a chat never
   reads the footer as part of the last item. A gain carries its `+`. The numbers are the same; nothing is summed.
+- **One total, one today, percentages and colours** in the EOD brief and the book view. `**Total**` is the open
+  positions' unrealized P/L plus what was closed this year, with its percentage of the open positions' cost and the
+  liquidation figure, and an italic line of what it is made of and which groups it leaves out; `**Today**` is the
+  book's day P/L with its percentage of the value at the start of the day (or the book's own reason it is
+  unavailable). Each position reads `- <colour> **WMT collar** +$7,634.14 (+17.99 %) | today ...` with `since entry,
+  on a $42,436.22 cost | +$4,963.13 at liquidation` under it, so its P/L says what it is measured from, and one day
+  P/L per position instead of one per row. An unavailable position says which row had no usable quote and why
+  (`row 2 had no usable quote (grade E, stale)`). The new `aegis_desk.pl_figures` computes every total, per-group day
+  P/L and percentage from the book document in `Decimal` (a group's day P/L only when every open leg has one, never
+  partially; no percentage on a credit or on a start value at or below zero); the book and its snapshot are
+  unchanged. A gain is green, a loss red and an unavailable figure yellow: the alert lint now admits its three status
+  circles at a list item's start under the rules footer too (never in a table cell, a nested item, the footer line
+  or under the snapshot footer); `fail_structuring_under_rules_footer` now fails `footer_missing` alone.
 - **`book.py --view`**: the book of record as one linted markdown message for "how's my book?" and "analyze my
   positions". A `### YOUR BOOK <date>` title with an italic line of the open positions and the quotes' source and
   time; `**The whole book**` (unrealized at the mids and at liquidation, today, realized, net delta, the groups the

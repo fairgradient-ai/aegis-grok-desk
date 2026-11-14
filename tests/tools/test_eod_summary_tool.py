@@ -64,23 +64,25 @@ MORNING_SHEET = [
     "deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · data "
     "delayed 15 min, as of 20:59 UTC",
 ]
-PL_GOLDEN = ("- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)\n- **Today** +$400.00\n"
-             "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)")
+PL_GOLDEN = ("- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation\n  - *open positions +$4,097.00, "
+             "closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the open positions' cost "
+             "$111,016.00*\n- \U0001F7E2 **Today** +$400.00 (+0.35 %)")
 BRIEF = [
     "### EOD DESK BRIEF 2026-11-03",
     "",
     "**P/L**",
-    "- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)",
-    "- **Today** +$400.00",
-    "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
+    "- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation",
+    "  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the "
+    "open positions' cost $111,016.00*",
+    "- \U0001F7E2 **Today** +$400.00 (+0.35 %)",
     "",
     "**By trade**",
-    "- **WMT covered call** +$1,145.00 at the mids (+$1,124.00 at liquidation)",
-    "  - *AG-20261020-01 | today +$84.00 (row 3), -$50.00 (row 4)*",
-    "- **NVDA covered call** +$1,515.00 at the mids (+$1,490.00 at liquidation)",
-    "  - *AG-20261022-02 | today +$264.00 (row 5), -$70.00 (row 6)*",
-    "- **SPY protective put** +$1,437.00 at the mids (+$1,420.00 at liquidation)",
-    "  - *AG-20261028-03 | today +$222.00 (row 7), -$50.00 (row 8)*",
+    "- \U0001F7E2 **WMT covered call** +$1,145.00 (+6.02 %) | today +$34.00 (+0.17 %)",
+    "  - *AG-20261020-01 | since entry, on a $19,016.00 cost | +$1,124.00 at liquidation*",
+    "- \U0001F7E2 **NVDA covered call** +$1,515.00 (+5.48 %) | today +$194.00 (+0.67 %)",
+    "  - *AG-20261022-02 | since entry, on a $27,630.00 cost | +$1,490.00 at liquidation*",
+    "- \U0001F7E2 **SPY protective put** +$1,437.00 (+2.23 %) | today +$172.00 (+0.26 %)",
+    "  - *AG-20261028-03 | since entry, on a $64,370.00 cost | +$1,420.00 at liquidation*",
     "",
     "**Desk status**",
     "- **Signals today** 0 (0 EXIT SIGNAL, 0 WATCH, 0 UNAVAILABLE)",
@@ -452,9 +454,12 @@ class EodBriefTest(DeskCopy):
         self.assertIn("- **Signals today** 4 (2 EXIT SIGNAL, 2 WATCH, 0 UNAVAILABLE)", lines)
         self.assertIn("- **Open signals** 4", lines)
         self.assertEqual("**P/L**", lines[2])
-        self.assertEqual("- **Today** unavailable: no snapshot for 2026-11-19 (the desk's first day?)", lines[4])
-        self.assertEqual(["- **WMT covered call** unavailable at the mids (unavailable at liquidation)",
-                          "  - *AG-20261020-01 | today unavailable | data unavailable*"], lines[9:11])
+        self.assertEqual("- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-19 (the desk's first day?)",
+                         lines[5])
+        wmt = next(index for index, line in enumerate(lines) if "**WMT covered call**" in line)
+        self.assertTrue(lines[wmt].startswith("- \U0001F7E1 **WMT covered call** unavailable: row "), lines[wmt])
+        self.assertIn("had no usable quote (grade E", lines[wmt], "the snapshot's own reason, in words")
+        self.assertTrue(lines[wmt + 1].startswith("  - *AG-20261020-01 | on a $"), lines[wmt + 1])
         docket_head = next(line for line in lines if line.startswith("- **Expiry docket**"))
         self.assertTrue(docket_head.startswith("- **Expiry docket** 2 contracts due"),
                         docket_head)
@@ -477,7 +482,7 @@ class ReviewFixTest(DeskCopy):
         code, body = self.run_json("--brief", now="2026-11-20T19:57:00Z")
         lines = body["payload"]["message"].split("\n")
         self.assertEqual("**P/L**", lines[2])
-        self.assertEqual("- totals without AG-20261020-01 (data unavailable)", lines[6])
+        self.assertTrue(lines[4].endswith("| totals without AG-20261020-01 (data unavailable)*"), lines[4])
         self.assertNotIn("no usable mark (E fresh)", "\n".join(lines[2:7]))
         self.assertRelinted(body["payload"])
         self.assertIn(code, (0, 20))

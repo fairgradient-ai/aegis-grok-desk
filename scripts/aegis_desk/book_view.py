@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from . import alert_lint, alerts, data_source, summaries
+from . import alert_lint, alerts, data_source, pl_figures, summaries
 
 TITLE: str = "### YOUR BOOK"
 WHOLE_BOOK_HEAD: str = "**The whole book**"
@@ -145,8 +145,8 @@ def leg_lines(c: summaries.Composer, leg: Mapping[str, Any]) -> List[str]:
         label = "%s %s %s %s %s, %s" % (size, side, symbol,
                                         alerts.fmt_strike(strike, c.emitted) if strike is not None else "unknown strike",
                                         noun, c.date(leg.get("expiry")))
-    head = "- %s cost %s, now %s | P/L %s | today %s" % (
-        summaries.bold_label(label), _price(c, leg.get("entry_price_per_share")), _price(c, leg.get("mark_mid")),
+    head = "%s%s cost %s, now %s | P/L %s | today %s" % (
+        summaries.colour(leg.get("unrealized_pl_mid")), summaries.bold_label(label), _price(c, leg.get("entry_price_per_share")), _price(c, leg.get("mark_mid")),
         _signed(c, leg.get("unrealized_pl_mid")), _signed(c, leg.get("day_pl")))
     details: List[str] = []
     grade = _grade(leg)
@@ -189,69 +189,49 @@ def payoff_item(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[
     return "- %s %s" % (summaries.bold_label("Payoff"), summaries.SOURCE_SEPARATOR.join(parts))
 
 
-def _cost_words(c: summaries.Composer, value: Any) -> str:
-    """``on a $19,016.00 net cost`` (a debit) or ``on a $480.00 net credit`` (a credit)."""
-    amount = _decimal(value)
-    if amount is None:
-        return "on an unavailable net cost"
-    if amount < 0:
-        return "on a %s net credit" % c.money(-amount)
-    return "on a %s net cost" % c.money(amount)
-
-
 def group_block(c: summaries.Composer, group: Mapping[str, Any], legs: Sequence[Mapping[str, Any]],
-                accounts: Sequence[Any]) -> List[str]:
+                accounts: Sequence[Any], figures: "pl_figures.GroupFigures") -> List[str]:
     """The block of one open group: ``#### <UNDERLYING> <structure words>``, an italic line with its id and account,
-    then its items (module notes)."""
+    then its coloured ``P/L`` (with its percentage of the cost) and ``Today`` items, its payoff and its legs (module
+    notes); an unavailable group's P/L item gives its own reason."""
     ident = c.ident(str(group.get("trade_id") or group.get("group_id")))
     structure = str(group.get("structure"))
     words = alerts.STRUCTURE_WORDS.get(structure, structure.replace("_", " "))
     first_row = min((leg.get("row_number") for leg in legs if isinstance(leg.get("row_number"), int)), default=0)
     meta = "%s | %s" % (ident, account_words(group.get("account"), accounts, first_row, c))
+    lines = ["%s %s %s" % (GROUP_MARK, c.reason(str(group.get("underlying"))), words), "*%s*" % meta]
     if group.get("data_quality") != "ok":
-        meta += " | " + DATA_UNAVAILABLE
-    lines = ["%s %s %s" % (GROUP_MARK, c.reason(str(group.get("underlying"))), words), "*%s*" % meta,
-             "- %s %s at the mids (%s at liquidation) %s" % (
-                 summaries.bold_label("P/L"), _signed(c, group.get("unrealized_pl_mid")),
-                 _signed(c, group.get("unrealized_pl_liq")), _cost_words(c, group.get("net_cost"))),
-             payoff_item(c, group, legs)]
+        cost = summaries.cost_words(c, group.get("net_cost"))
+        lines.append("%s%s unavailable: %s%s" % (summaries.colour(None), summaries.bold_label("P/L"),
+                                                 c.reason(figures.reason) if figures.reason else "no usable quote",
+                                                 " | " + cost if cost else ""))
+    else:
+        mid = group.get("unrealized_pl_mid")
+        cost = summaries.cost_words(c, group.get("net_cost"))
+        lines.append("%s%s %s since entry%s | %s at liquidation" % (
+            summaries.colour(mid), summaries.bold_label("P/L"), c.with_pct(mid, figures.pl_pct),
+            ", " + cost if cost else "", _signed(c, group.get("unrealized_pl_liq"))))
+        if figures.day_pl is not None:
+            lines.append("%s%s %s" % (summaries.colour(figures.day_pl), summaries.bold_label("Today"),
+                                      c.with_pct(figures.day_pl, figures.day_pct)))
+        else:
+            lines.append("%s%s unavailable" % (summaries.colour(None), summaries.bold_label("Today")))
+    lines.append(payoff_item(c, group, legs))
     for leg in legs:
         lines.extend(leg_lines(c, leg))
     return lines
 
 
 def whole_book_lines(c: summaries.Composer, document: Mapping[str, Any]) -> List[str]:
-    """``**The whole book**`` and its items (module notes)."""
+    """``**The whole book**``: the brief's own P/L items (``summaries.book_pl_lines``), the net delta and how many
+    other warnings ``book.py`` prints (module notes)."""
     portfolio = document["portfolio"]
     warnings = [text for text in document.get("warnings") or [] if isinstance(text, str)]
-    day = portfolio.get("day_pl")
-    if day is None:
-        reason = next((text for text in warnings if text.startswith(_DAY_PL_PREFIX)), None)
-        day_text = c.reason(reason[len("day P/L "):]) if reason else "unavailable"
-    else:
-        day_text = _signed(c, day)
-    lines = [WHOLE_BOOK_HEAD,
-             "- %s %s at the mids (%s at liquidation)" % (summaries.bold_label("Unrealized"),
-                                                         _signed(c, portfolio.get("unrealized_pl_mid")),
-                                                         _signed(c, portfolio.get("unrealized_pl_liq"))),
-             "- %s %s" % (summaries.bold_label("Today"), day_text),
-             "- %s %s this year (%s today, %s this month)" % (
-                 summaries.bold_label("Realized"), _signed(c, portfolio.get("realized_pl_ytd")),
-                 _signed(c, portfolio.get("realized_pl_today")), _signed(c, portfolio.get("realized_pl_mtd")))]
+    lines = [WHOLE_BOOK_HEAD] + summaries.book_pl_lines(c, document)
     delta = portfolio.get("net_delta")
     if isinstance(delta, (int, float)) and not isinstance(delta, bool):
         lines.append("- %s %s share-equivalents" % (summaries.bold_label("Net delta"),
                                                     alerts.fmt_delta(float(delta), c.emitted)))
-    totals, day_only = summaries.excluded_groups(document)
-    pieces: List[str] = []
-    if totals:
-        pieces.append(summaries.TOTALS_WITHOUT % ", ".join(summaries.EXCLUDED_UNAVAILABLE % c.ident(group_id)
-                                                           for group_id in totals))
-    if day_only and day is not None:
-        pieces.append(summaries.DAY_TOTAL_WITHOUT % ", ".join(summaries.EXCLUDED_DAY % c.ident(group_id)
-                                                              for group_id in day_only))
-    if pieces:
-        lines.append("- " + "; ".join(pieces))
     others = [text for text in warnings if not text.startswith(_DAY_PL_PREFIX)
               and not any(prefix in text for prefix in _EXCLUDED_PREFIXES)]
     if others:
@@ -284,8 +264,10 @@ def render(document: Mapping[str, Any], *, et_date: datetime.date, accounts: Seq
         c.counted(len(shown), "open position"), c.reason(data_source.words_for_label(source.get("name"))),
         alerts.fmt_delay(delay, c.emitted), c.clock(as_of.astimezone(datetime.timezone.utc).strftime("%H:%M UTC"))))
     c.block(*whole_book_lines(c, document))
+    figures = pl_figures.book_figures(document)
     for group in shown:
-        c.block(*group_block(c, group, _open_legs(document, group), accounts))
+        c.block(*group_block(c, group, _open_legs(document, group), accounts,
+                             figures.groups[str(group.get("group_id"))]))
     for entry in quarantined:
         reasons = entry.get("reasons") or []
         words = "; ".join(c.reason(alerts.quarantine_words(str(reason))) for reason in reasons) or alerts.GROUP_WORDS

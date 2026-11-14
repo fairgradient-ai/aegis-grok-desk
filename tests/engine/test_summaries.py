@@ -455,17 +455,17 @@ class EodBriefTest(LintedTest):
             "### EOD DESK BRIEF 2026-11-03",
             "",
             "**P/L**",
-            "- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)",
-            "- **Today** +$400.00",
-            "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
+            "- \U0001F7E2 **Total** +$4,522.00 | +$4,459.00 at liquidation",
+            "  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00)*",
+            "- \U0001F7E2 **Today** +$400.00",
             "",
             "**By trade**",
-            "- **WMT covered call** +$1,145.00 at the mids (+$1,124.00 at liquidation)",
-            "  - *AG-20261020-01 | today +$84.00 (row 3), -$50.00 (row 4)*",
-            "- **NVDA covered call** +$1,515.00 at the mids (+$1,490.00 at liquidation)",
-            "  - *AG-20261022-02 | today +$264.00 (row 5), -$70.00 (row 6)*",
-            "- **SPY protective put** +$1,437.00 at the mids (+$1,420.00 at liquidation)",
-            "  - *AG-20261028-03 | today +$222.00 (row 7), -$50.00 (row 8)*",
+            "- \U0001F7E2 **WMT covered call** +$1,145.00 | today +$34.00",
+            "  - *AG-20261020-01 | since entry | +$1,124.00 at liquidation*",
+            "- \U0001F7E2 **NVDA covered call** +$1,515.00 | today +$194.00",
+            "  - *AG-20261022-02 | since entry | +$1,490.00 at liquidation*",
+            "- \U0001F7E2 **SPY protective put** +$1,437.00 | today +$172.00",
+            "  - *AG-20261028-03 | since entry | +$1,420.00 at liquidation*",
             "",
             "**Desk status**",
             "- **Signals today** 3 (1 EXIT SIGNAL, 1 WATCH, 1 UNAVAILABLE)",
@@ -496,16 +496,21 @@ class EodBriefTest(LintedTest):
                          "the footer is the book's newest quote as-of (alerts.book_as_of)")
         self.assertLinted(summary)
 
-    def test_nothing_is_summed(self) -> None:
+    def test_totals_come_from_pl_figures_and_a_group_day_is_never_partial(self) -> None:
         document = book_document(unrealized_pl_liq=Decimal("1.23"), unrealized_pl_mid=Decimal("4.56"),
                                  day_pl=Decimal("7.89"), realized_pl_ytd=Decimal("10.11"))
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
         self.assertEqual([
-            "- **Unrealized** +$4.56 at the mids (+$1.23 at liquidation)",
-            "- **Today** +$7.89",
-            "- **Realized** +$10.11 this year ($0.00 today, $0.00 this month)",
+            "- \U0001F7E2 **Total** +$14.67 | +$11.34 at liquidation",
+            "  - *open positions +$4.56, closed this year +$10.11 (today $0.00, this month $0.00)*",
+            "- \U0001F7E2 **Today** +$7.89",
         ], summary.lines[3:6])
-        self.assertNotIn("$34.00", summary.text, "84.00 - 50.00 is never computed for the WMT group")
+        self.assertIn("**WMT covered call** +$1,145.00 | today +$34.00", summary.text,
+                      "pl_figures adds the WMT group's two complete leg day P/Ls (84.00 - 50.00), in Decimal")
+        document["legs"][1]["day_pl"] = None
+        partial = summaries.eod_brief(brief(book=book_artifact(document)))
+        self.assertIn("**WMT covered call** +$1,145.00 | today unavailable", partial.text)
+        self.assertNotIn("$84.00", partial.text, "one leg's day P/L is never shown as the group's")
         self.assertLinted(summary)
 
     def test_a_null_prints_unavailable_and_a_null_day_prints_the_books_warning(self) -> None:
@@ -517,19 +522,21 @@ class EodBriefTest(LintedTest):
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
         self.assertEqual([
             "**P/L**",
-            "- **Unrealized** unavailable at the mids (unavailable at liquidation)",
-            "- **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
-            "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
+            "- \U0001F7E1 **Total** unavailable",
+            "  - *open positions unavailable, closed this year +$425.00 (today $0.00, this month $0.00)*",
+            "- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
         ], summary.lines[2:6])
-        self.assertEqual(["- **NVDA covered call** unavailable at the mids (unavailable at liquidation)",
-                          "  - *AG-20261022-02 | today +$264.00 (row 5), unavailable (row 6) | data unavailable*"],
+        self.assertEqual([
+            "- \U0001F7E1 **NVDA covered call** unavailable: no usable quote",
+            "  - *AG-20261022-02*",
+        ],
                          summary.lines[10:12])
-        document["legs"][2]["day_pl"] = None
-        self.assertEqual("  - *AG-20261022-02 | today unavailable | data unavailable*",
-                         summaries.eod_brief(brief(book=book_artifact(document))).lines[11],
-                         "no open leg has a day P/L: one word, not one per row")
+        document["legs"][1]["day_pl"] = None
+        self.assertTrue(summaries.eod_brief(brief(book=book_artifact(document))).lines[8].endswith("| today unavailable"),
+                        "a group with an open leg that has no day P/L prints no partial sum")
         document["warnings"] = []
-        self.assertEqual("- **Today** unavailable", summaries.eod_brief(brief(book=book_artifact(document))).lines[4])
+        self.assertEqual("- \U0001F7E1 **Today** unavailable",
+                         summaries.eod_brief(brief(book=book_artifact(document))).lines[5])
         self.assertLinted(summary)
 
     def test_one_line_per_open_group_quarantined_groups_in_their_own_words(self) -> None:
@@ -547,7 +554,7 @@ class EodBriefTest(LintedTest):
             {"group_id": "ROW-12", "reasons": ["row 12 status: 'opne' is not a status"]}]
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
         self.assertEqual([
-            "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
+            "- \U0001F7E2 **Today** +$400.00",
             "",
             "**By trade**",
         ], summary.lines[5:8])
@@ -675,11 +682,11 @@ class ReviewFixTest(LintedTest):
             "NVDA excluded from the portfolio totals: not a group of this snapshot, never named"]
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
         self.assertEqual([
-            "- **Unrealized** +$2,952.00 at the mids (+$2,910.00 at liquidation)",
-            "- **Today** +$222.00",
-            "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
-            "- totals without AG-20261020-01 (data unavailable); the day total also without AG-20261022-02 (an "
-            "open leg has no day P/L)",
+            "- \U0001F7E2 **Total** +$3,377.00 | +$3,335.00 at liquidation",
+            "  - *open positions +$2,952.00, closed this year +$425.00 (today $0.00, this month $0.00) | totals "
+            "without AG-20261020-01 (data unavailable)*",
+            "- \U0001F7E2 **Today** +$222.00",
+            "  - *the day total also without AG-20261022-02 (an open leg has no day P/L)*",
         ], summary.lines[3:7])
         self.assertNotIn("Roth IRA", summary.text, "a reason may carry a cell the owner typed: only ids are printed")
         self.assertLinted(summary)
@@ -687,9 +694,10 @@ class ReviewFixTest(LintedTest):
         document["portfolio"]["day_pl"] = None
         lines = summaries.eod_brief(brief(book=book_artifact(document))).lines
         self.assertEqual([
-            "- **Today** unavailable",
-            "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
-            "- totals without AG-20261020-01 (data unavailable)",
+            "  - *open positions +$2,952.00, closed this year +$425.00 (today $0.00, this month $0.00) | totals "
+            "without AG-20261020-01 (data unavailable)*",
+            "- \U0001F7E1 **Today** unavailable",
+            "",
         ], lines[4:7])
 
     def test_the_brief_names_the_day_s_incident_files(self) -> None:

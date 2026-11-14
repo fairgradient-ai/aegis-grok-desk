@@ -121,8 +121,10 @@ middle dot between two words cannot hide a number, a phrase or a sentence start 
 structuring mode only (0.2.1): the three status symbols of :data:`STATUS_SYMBOLS` (a green, a yellow and a red circle,
 U+1F7E2, U+1F7E1 and U+1F534, without a variation selector) may each stand at the start of a table cell, right after
 ``| ``, or at the start of a list item, right after ``- `` at the very start of a line, and in both places
-followed by a space; anywhere else (an indented or ``*`` item, a word or a number), doubled, or under the rules or
-snapshot footer they are ``non_ascii``.
+followed by a space. Under the rules footer the same three symbols may open a list item the same way (the desk
+views colour a gain green, a loss red and an unavailable figure yellow), never a table cell; anywhere else (an
+indented or ``*`` item, a word or a number), doubled, in the footer line or under the snapshot footer they are
+``non_ascii``.
 The sentence-start rule reads a status symbol as a list mark, so the word after it is checked as a sentence start,
 and a symbol inside a word or a number is refused, so none can split a phrase, a number or a sentence start.
 """
@@ -204,9 +206,9 @@ _SNAPSHOT_RULE_CONTENT_RE = re.compile(r"(?i:\byour\s+rules?\b)|\bEXIT[ _]SIGNAL
 """Rule content a market-snapshot footer can never close (module notes)."""
 ALLOWED_EXTRA_CHARACTERS: Tuple[str, ...] = ("\n", "\t", MIDDLE_DOT)
 STATUS_SYMBOLS: Tuple[str, ...] = ("\U0001F7E2", "\U0001F7E1", "\U0001F534")
-"""The structuring texts' status colours (module notes, "Alphabet"): passes, accepted by the owner, fails. Each may
-stand only at the start of a table cell (``| <symbol> ``) or of a list item (``- <symbol> `` at the start of a line)
-of a structuring text."""
+"""The status colours (module notes, "Alphabet"): in a structuring text passes, accepted by the owner, fails; in a
+desk view under the rules footer a gain, an unavailable figure, a loss. Each may stand only at the start of a list
+item (``- <symbol> `` at the start of a line) or, in a structuring text, of a table cell (``| <symbol> ``)."""
 STATUS_CELL_LEAD: str = "| "
 STATUS_ITEM_LEAD: str = "- "
 """The desk view prints its checks and candidates as list items, so one message renders as one bubble."""
@@ -677,11 +679,14 @@ def check(text: str, emitted: Iterable[str], *, rule_ids: Optional[Iterable[str]
             item_start = index - len(STATUS_ITEM_LEAD)
             at_item_start = (item_start >= 0 and text[item_start:index] == STATUS_ITEM_LEAD
                              and (item_start == 0 or text[item_start - 1] == "\n"))
-            placed = (at_cell_start or at_item_start) and text[index + 1:index + 2] == " "
-            if structuring and placed and not any(start <= index < end for start, end in footer_spans):
+            spaced = text[index + 1:index + 2] == " "
+            placed = spaced and ((structuring and (at_cell_start or at_item_start))
+                                 or (footer == FOOTER_RULES and at_item_start))
+            if placed and not any(start <= index < end for start, end in footer_spans):
                 continue
             findings.append(Finding(CODE_NON_ASCII, line, column, "line %d, column %d: a status symbol stands only at "
-                                    "the start of a table cell or a list item of a structuring text" % (line, column)))
+                                    "the start of a list item (or, in a structuring text, of a table cell)"
+                                    % (line, column)))
             continue
         if char == MIDDLE_DOT:
             if any(start <= index < end for start, end in footer_spans):

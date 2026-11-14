@@ -134,7 +134,7 @@ ALERT_FAILURES: Tuple[Tuple[str, str], ...] = (
     ("fail_imperative_start", "imperative_start"), ("fail_split_phrase", "forbidden_language"),
     ("fail_homoglyph", "non_ascii"), ("fail_imperative_execute", "imperative_start"),
     ("fail_imperative_fill", "imperative_start"), ("fail_order_kind", "forbidden_language"),
-    ("fail_structuring_under_rules_footer", "non_ascii"),
+    ("fail_structuring_under_rules_footer", "footer_missing"),
     ("fail_rules_text_under_structuring_footer", "imperative_start"),
     ("fail_structuring_leg_grammar", "order_field"), ("fail_structuring_go_with", "forbidden_language"),
     ("fail_structuring_at_price", "order_field"),
@@ -149,8 +149,9 @@ TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 tradin
                     "and the days only fall")
 TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
                 "crossed (rule fired)")
-PL_LINE = ("**P/L**\n- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)\n- **Today** +$400.00\n"
-           "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)")
+PL_LINE = ("**P/L**\n- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation\n  - *open positions "
+           "+$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the open positions' cost "
+           "$111,016.00*\n- \U0001F7E2 **Today** +$400.00 (+0.35 %)")
 RECON_CLEAN = "- **positions.csv** CLEAN, 0 proposed edits"
 DOCKET_NONE_DUE = "- **Expiry docket** 0 contracts due"
 LEVELS_LAST_NIGHT = ("- **Last night's levels**\n  - AG-20261020-01 1 resting-eligible of 3 price levels\n"
@@ -317,11 +318,12 @@ JOURNEYS: Tuple[Journey, ...] = (
                   "payload.emitted.rule_ids": [],
                   "payload.message": TextMatch(
                       prefix="### YOUR BOOK 2026-11-03\n*3 open positions | ",
-                      contains=("**The whole book**\n- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at "
-                                "liquidation)",
-                                "#### WMT covered call\n*AG-20261020-01 | account 1 of desk.toml (margin)*",
+                      contains=("**The whole book**\n- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at "
+                                "liquidation",
+                                "#### WMT covered call\n*AG-20261020-01 | account 1 of desk.toml (margin)*\n"
+                                "- \U0001F7E2 **P/L** +$1,145.00 (+6.02 %) since entry, on a $19,016.00 cost",
                                 "- **Payoff** max profit unbounded | max loss $2,370.00 | breakeven $643.70",
-                                "- **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00"),
+                                "- \U0001F534 **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00"),
                       excludes=("Brokerage (margin)", "Roth IRA", "WMT261120C00105000", "\n|"))}),
     tool_journey("book --snapshot pre_open 2026-11-02 then book regular 2026-11-03 (day P/L from the snapshot)",
                  ("book.py", "--fixture-set", "regular"), 0,

@@ -755,7 +755,8 @@ structuring mode it also refuses advice, preference, urgency, suitability, proba
 language, any claim that a text is not advice, order-type and duration abbreviations, a price after "at", "for",
 "limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed grammar. Its
 one exception to plain ASCII is the desk view's three status circles, and only right after the `- ` that opens a
-list item (or at the start of a table cell) of a structuring text.
+list item (or at the start of a table cell) of a structuring text; the EOD brief and the book view use the same three
+at a list item's start under the rules footer, for a gain, an unavailable figure and a loss.
 
 The one-time disclosure, `structuring-suggestions-1`, which the interview shows last and `structuring.toml` records as
 acknowledged:

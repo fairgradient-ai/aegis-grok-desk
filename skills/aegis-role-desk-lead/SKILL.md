@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 31c569f28a88383e1aeb4a416244a0ea87c82cf85745a1840097c28022b31d37
+  source_sha256: 351ab1626019fce47a7354875d209c31ef68f4b69e1eb1906824d99e441580c4
 ---
 
 # Aegis Desk Lead: role skill
@@ -68,8 +68,9 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod-brief --slot 17:10
 ```
 
 - Post the output verbatim: every line, in order, the footer included. Never shorten, reword, reorder or add to it.
-- The sheet and the brief are markdown (a `###` title, bold section titles, items with details nested under them, no
-  table): post them as one message, as they are, never inside a code block and never split.
+- The sheet and the brief are markdown (a `###` title, bold section titles, items with details nested under them, a
+  green, red or yellow circle for a gain, a loss or an unavailable figure, no table): post them as one message, as
+  they are, never inside a code block and never split. The tool computes every total and percentage; you add none.
 - The written quiet rules (from `routines/manifest.toml`):
   - preopen: "Always one message: the doctor line, the recon verdict, standing signals, the docket and last night's
     levels; a missing or late upstream artifact is UNAVAILABLE."
@@ -97,9 +98,9 @@ The same synthetic copy at the 17:10 slot of 2026-11-03 (after the 16:35 eod run
 ### EOD DESK BRIEF 2026-11-03
 
 **P/L**
-- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)
-- **Today** +$400.00
-- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)
+- 🟢 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation
+  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the open positions' cost $111,016.00*
+- 🟢 **Today** +$400.00 (+0.35 %)
 ```
 
 The morning sheet's footer carries the oldest data instant among the records it read, so it never claims fresher

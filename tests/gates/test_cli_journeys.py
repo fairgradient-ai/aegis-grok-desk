@@ -67,7 +67,7 @@ FAIL_FIXTURE_CODES = {
     "fail_order_kind": "forbidden_language",
     # PR 3b: the structuring footer and its cross-refusals, the leg grammar, the SL table.
     # "your plan: close" is no exception under the structuring footer (PR 3b review L2-7): its first finding
-    "fail_structuring_under_rules_footer": "non_ascii", "fail_rules_text_under_structuring_footer": "imperative_start",
+    "fail_structuring_under_rules_footer": "footer_missing", "fail_rules_text_under_structuring_footer": "imperative_start",
     "fail_structuring_leg_grammar": "order_field", "fail_structuring_go_with": "forbidden_language",
     "fail_structuring_at_price": "order_field",
 }
@@ -140,8 +140,9 @@ TP50_CANNOT_FIRE = ("TP50 cannot fire on this position: time to expiry 13 tradin
                     "and the days only fall")
 TP80_CROSSED = ("TP80 fires at an option price of 0.65 (rounded down from 0.684 = credit 3.42 x (1 - 80 %)); threshold already "
                 "crossed (rule fired)")
-PL_LINE = ("**P/L**\n- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)\n- **Today** +$400.00\n"
-           "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)")
+PL_LINE = ("**P/L**\n- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation\n  - *open positions "
+           "+$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the open positions' cost "
+           "$111,016.00*\n- \U0001F7E2 **Today** +$400.00 (+0.35 %)")
 RECON_MISSING = "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing"
 RECON_CLEAN = "- **positions.csv** CLEAN, 0 proposed edits"
 DOCKET_NONE_DUE = "- **Expiry docket** 0 contracts due"

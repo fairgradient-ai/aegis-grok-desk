@@ -39,36 +39,40 @@ REGULAR_VIEW = [
     "UTC*",
     "",
     "**The whole book**",
-    "- **Unrealized** +$4,097.00 at the mids (+$4,034.00 at liquidation)",
-    "- **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
-    "- **Realized** +$425.00 this year ($0.00 today, $0.00 this month)",
+    "- \U0001F7E2 **Total** +$4,522.00 (+3.69 %) | +$4,459.00 at liquidation",
+    "  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the "
+    "open positions' cost $111,016.00*",
+    "- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
     "- **Net delta** 278.84 share-equivalents",
     "",
     "#### WMT covered call",
     "*AG-20261020-01 | account 1 of desk.toml (margin)*",
-    "- **P/L** +$1,145.00 at the mids (+$1,124.00 at liquidation) on a $19,016.00 net cost",
+    "- \U0001F7E2 **P/L** +$1,145.00 (+6.02 %) since entry, on a $19,016.00 cost | +$1,124.00 at liquidation",
+    "- \U0001F7E1 **Today** unavailable",
     "- **Payoff** max profit $1,984.00 | max loss $19,016.00 | breakeven $95.08",
-    "- **200 WMT shares** cost $98.50, now $104.23 | P/L +$1,146.00 | today unavailable",
+    "- \U0001F7E2 **200 WMT shares** cost $98.50, now $104.23 | P/L +$1,146.00 | today unavailable",
     "  - *quote grade A | liquidation $104.20*",
-    "- **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00 | today unavailable",
+    "- \U0001F534 **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00 | today unavailable",
     "  - *quote grade B | liquidation $3.50 | IV 41.32 % | 17 calendar days (13 trading days) left*",
     "",
     "#### NVDA covered call",
     "*AG-20261022-02 | account 1 of desk.toml (margin)*",
-    "- **P/L** +$1,515.00 at the mids (+$1,490.00 at liquidation) on a $27,630.00 net cost",
+    "- \U0001F7E2 **P/L** +$1,515.00 (+5.48 %) since entry, on a $27,630.00 cost | +$1,490.00 at liquidation",
+    "- \U0001F7E1 **Today** unavailable",
     "- **Payoff** max profit $2,370.00 | max loss $27,630.00 | breakeven $138.15",
-    "- **200 NVDA shares** cost $141.20, now $148.925 | P/L +$1,545.00 | today unavailable",
+    "- \U0001F7E2 **200 NVDA shares** cost $141.20, now $148.925 | P/L +$1,545.00 | today unavailable",
     "  - *quote grade A | liquidation $148.90*",
-    "- **2 short NVDA 150 calls, 2026-11-20** cost $3.05, now $3.20 | P/L -$30.00 | today unavailable",
+    "- \U0001F534 **2 short NVDA 150 calls, 2026-11-20** cost $3.05, now $3.20 | P/L -$30.00 | today unavailable",
     "  - *quote grade C | liquidation $3.30 | IV 27.80 % | 17 calendar days (13 trading days) left*",
     "",
     "#### SPY protective put",
     "*AG-20261028-03 | account 2 of desk.toml (ira)*",
-    "- **P/L** +$1,437.00 at the mids (+$1,420.00 at liquidation) on a $64,370.00 net cost",
+    "- \U0001F7E2 **P/L** +$1,437.00 (+2.23 %) since entry, on a $64,370.00 cost | +$1,420.00 at liquidation",
+    "- \U0001F7E1 **Today** unavailable",
     "- **Payoff** max profit unbounded | max loss $2,370.00 | breakeven $643.70",
-    "- **100 SPY shares** cost $632.40, now $648.12 | P/L +$1,572.00 | today unavailable",
+    "- \U0001F7E2 **100 SPY shares** cost $632.40, now $648.12 | P/L +$1,572.00 | today unavailable",
     "  - *quote grade A | liquidation $648.10*",
-    "- **1 long SPY 620 put, 2026-12-18** cost $11.30, now $9.95 | P/L -$135.00 | today unavailable",
+    "- \U0001F534 **1 long SPY 620 put, 2026-12-18** cost $11.30, now $9.95 | P/L -$135.00 | today unavailable",
     "  - *quote grade B | liquidation $9.80 | IV 24.68 % | 45 calendar days (32 trading days) left*",
     "",
     "*session open; as of 14:31:12 ET; freshness bound 25 min*",
@@ -126,8 +130,9 @@ class BookViewTest(unittest.TestCase):
         code, out = run_tool(self.argv())
         self.assertEqual(0, code, out)
         lines = out.splitlines()
-        self.assertEqual("- **Today** +$400.00", lines[5])
-        self.assertIn("- **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00 | today -$50.00",
+        self.assertEqual("- \U0001F7E2 **Today** +$400.00 (+0.35 %)", lines[6])
+        self.assertIn("- \U0001F534 **2 short WMT 105 calls, 2026-11-20** cost $3.42, now $3.425 | P/L -$1.00 | today "
+                      "-$50.00",
                       lines)
 
     def test_an_odd_lot_names_the_shares_its_calls_leave_uncovered(self) -> None:
@@ -137,7 +142,7 @@ class BookViewTest(unittest.TestCase):
         code, out = run_tool(self.argv())
         self.assertIn(code, (0, 20), out)
         self.assertIn("max profit unbounded (50.5 of the 250.5 shares carry no call)", out)
-        self.assertIn("- **250.5 WMT shares** cost $98.50", out)
+        self.assertIn("**250.5 WMT shares** cost $98.50", out)
 
     def test_json_carries_the_message_its_emitted_document_and_the_lint(self) -> None:
         code, out = run_tool(self.argv("--json"))
@@ -154,7 +159,8 @@ class BookViewTest(unittest.TestCase):
     def test_an_unavailable_book_is_exit_20_and_still_a_linted_view(self) -> None:
         code, out = run_tool(self.argv(fixture_set="stale"))
         self.assertEqual(20, code, out)
-        self.assertIn("| data unavailable", out)
+        self.assertIn("\U0001F7E1 **P/L** unavailable: row ", out)
+        self.assertIn("had no usable quote", out)
         self.assertTrue(alert_lint.FOOTER_RE.match(out.rstrip("\n").splitlines()[-1]))
 
     def test_a_view_that_fails_its_lint_is_withheld(self) -> None:
@@ -219,17 +225,22 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(["### YOUR BOOK 2026-11-13",
                           "*1 open position | Alpaca paper (IEX stocks, indicative options: approximate), 15-min "
                           "delayed, as of 20:29 UTC*"], lines[:2])
-        self.assertEqual("- **Unrealized** +$10,006.47 at the mids (+$8,978.70 at liquidation)", lines[4])
+        self.assertEqual("- \U0001F7E2 **Total** +$10,006.47 (+20.74 %) | +$8,978.70 at liquidation", lines[4])
+        self.assertEqual("- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-12 (the desk's first day?)",
+                         lines[6])
         self.assertEqual(["#### NVDA collar", "*AG-20261113-01 | the account in row 2 of positions.csv*",
-                          "- **P/L** +$2,799.34 at the mids (+$2,682.12 at liquidation) on a $48,252.63 net cost",
+                          "- \U0001F7E2 **P/L** +$2,799.34 (+5.80 %) since entry, on a $48,252.63 cost | +$2,682.12 at "
+                          "liquidation",
+                          "- \U0001F7E1 **Today** unavailable",
                           "- **Payoff** max profit unbounded (21.6301 of the 321.6301 shares carry no call) | max loss "
                           "$3,252.63 | breakeven $150.0252",
-                          "- **321.6301 NVDA shares** cost $150.93, now $162.18 | P/L +$3,618.34 | today unavailable",
+                          "- \U0001F7E2 **321.6301 NVDA shares** cost $150.93, now $162.18 | P/L +$3,618.34 | today "
+                          "unavailable",
                           "  - *quote grade A | liquidation $162.17*",
-                          "- **3 short NVDA 175 calls, 2027-05-21** cost $17.02, now $18.475 | P/L -$436.50 | today "
+                          "- \U0001F534 **3 short NVDA 175 calls, 2027-05-21** cost $17.02, now $18.475 | P/L -$436.50 | today "
                           "-$436.50",
                           "  - *quote grade B | liquidation $18.72 | IV 47.70 % | 189 calendar days (129 trading days) "
-                          "left*"], lines[9:17])
+                          "left*"], lines[9:18])
         self.assertNotIn("Schwab", view.text)
         self.assertEqual(Decimal("21.6301"), book_view.uncovered_shares(self.doc()["groups"][0], self.doc()["legs"]))
 

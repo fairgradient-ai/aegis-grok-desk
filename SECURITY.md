@@ -131,7 +131,8 @@ a live key is deleted, no Ask-first rule guards it.
    valuation language, any claim that a text is not advice, order-type and duration abbreviations, a price after "at",
    "for", "limit", "pay" or "price", and any line with a leg reference or a leg's effect words outside the fixed
    grammar. Its one exception to plain ASCII is the desk view's three status circles (green, yellow, red), and only at
-   the start of a list item or a table cell of a structuring text. The lint is a pattern screen that refuses the forms it names; the
+   the start of a list item (or a table cell of a structuring text); under the rules footer the EOD brief and the book
+   view use them, at a list item's start only, for a gain, an unavailable figure and a loss. The lint is a pattern screen that refuses the forms it names; the
    tools' fixed wording is for counsel to sign ([docs/RELEASE.md](docs/RELEASE.md), step 4). They never print an OCC
    symbol or a cell you typed, such as an account name or a note. The details are in
    [docs/STRUCTURING.md](docs/STRUCTURING.md).

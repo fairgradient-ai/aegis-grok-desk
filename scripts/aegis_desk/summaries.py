@@ -5,8 +5,11 @@ addendum's overrides O3, O5, O12 and O15; standard library only, no I/O, no cloc
 the records and hands them over (:class:`MorningInputs`, :class:`BriefInputs`); this module only composes, so every
 line here is a function of its inputs and the model that relays the message never does arithmetic: every number is
 printed by one formatter of :mod:`aegis_desk.alerts` (``fmt_money`` on the record's own Decimal, ``fmt_count``,
-``fmt_days``, ``fmt_minutes``, ``fmt_reason`` for a sentence the desk's own code wrote) and NOTHING is summed: a
-total the records do not hold is not printed (the brief's per-trade day P/L is the snapshot's own per-leg values).
+``fmt_days``, ``fmt_minutes``, ``fmt_reason`` for a sentence the desk's own code wrote) and nothing is added up
+here: the brief's totals, its per-trade day P/L and its percentages are ``aegis_desk.pl_figures`` of the snapshot
+(``Decimal``; a group's day P/L only when every open leg has one, never partially). A gain is coloured green, a loss
+red and an unavailable figure yellow (:func:`colour`, ``alert_lint`` admits the three symbols at a list item's start
+under the rules footer).
 
 Records and their labels (:func:`make_artifact` checks each one's shape and its own date)
 -----------------------------------------------------------------------------------------
@@ -88,7 +91,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, alerts, doctor, exit_rules, market_clock, occ, recon, routines, signals
+from . import alert_lint, alerts, doctor, exit_rules, market_clock, occ, pl_figures, recon, routines, signals
 
 MODE_MORNING: str = "morning"
 MODE_BRIEF: str = "brief"
@@ -495,6 +498,19 @@ class Composer:
             self.emitted.append(text)
         return text
 
+    def signed_pct(self, value: Any) -> str:
+        """A percentage with its sign (``+6.02 %``, ``-3.40 %``, ``0.00 %``), the signed text emitted."""
+        text = alerts.fmt_pct(value, self.emitted)
+        if not text.startswith("-") and value != 0:
+            text = "+" + text
+            self.emitted.append(text)
+        return text
+
+    def with_pct(self, value: Any, pct: Any) -> str:
+        """``+$1,145.00 (+6.02 %)``: :meth:`signed` money and, when there is one, its signed percentage."""
+        text = self.signed(value)
+        return text if pct is None or value is None else "%s (%s)" % (text, self.signed_pct(pct))
+
     def record(self, item: Artifact) -> None:
         """A record the message was composed from (its path, for the ``read from`` line)."""
         if item.path not in self.records:
@@ -675,36 +691,70 @@ def excluded_groups(document: Mapping[str, Any]) -> Tuple[List[str], List[str]]:
 DAY_PL_PREFIX: str = "day P/L "
 
 
-def pl_lines(c: Composer, item: Artifact) -> List[str]:
-    """The brief's P/L block from the snapshot's portfolio fields, each printed as it is (never summed): ``**P/L**``,
-    then the ``Unrealized``, ``Today`` and ``Realized`` items (a gain carries its ``+``) and, when the book's totals
-    leave groups out, the item that names them (module notes)."""
-    document = item.document
+GAIN_MARK, UNAVAILABLE_MARK, LOSS_MARK = alert_lint.STATUS_SYMBOLS
+"""The colours of a desk view's P/L items (``alert_lint`` admits them at a list item's start under the rules footer):
+a gain is green, a loss red, an unavailable figure yellow; exactly zero has no colour."""
+
+
+def colour(value: Any) -> str:
+    """The ``- `` that opens a P/L item with its colour: ``- <green> `` for a gain, ``- <red> `` for a loss, ``- <yellow>
+    `` for an unavailable figure and a plain ``- `` for exactly zero."""
+    sign = pl_figures.sign_of(pl_figures.decimal_of(value))
+    mark = {1: GAIN_MARK, -1: LOSS_MARK, None: UNAVAILABLE_MARK}.get(sign)
+    return "- %s " % mark if mark else "- "
+
+
+def book_pl_lines(c: Composer, document: Mapping[str, Any]) -> List[str]:
+    """The P/L items of a book document (the brief's ``**P/L**`` block, the book view's whole book): ``Total`` (the
+    open positions' unrealized P/L plus what was closed this year, at the mids, with its percentage of the open
+    positions' cost and the liquidation figure) with a sub-item that says what it is made of and which groups it
+    leaves out, then ``Today`` (the book's day P/L and its percentage, or the book's own reason it is unavailable)
+    with a sub-item for the groups the day total leaves out. Every figure is the book's own or
+    ``pl_figures.book_figures`` of it (``Decimal``); nothing is added here (module notes)."""
     portfolio = document["portfolio"]
+    figures = pl_figures.book_figures(document)
+    total = c.with_pct(figures.total_pl_mid, figures.total_pct)
+    if figures.total_pl_mid is not None:
+        total += " | %s at liquidation" % c.signed(figures.total_pl_liq)
+    lines = ["%s**Total** %s" % (colour(figures.total_pl_mid), total)]
+    made_of = "open positions %s, closed this year %s (today %s, this month %s)" % (
+        c.signed(portfolio.get("unrealized_pl_mid")), c.signed(portfolio.get("realized_pl_ytd")),
+        c.signed(portfolio.get("realized_pl_today")), c.signed(portfolio.get("realized_pl_mtd")))
+    if figures.total_pct is not None and figures.open_cost is not None:
+        made_of += " | the %% is of the open positions' cost %s" % c.money(figures.open_cost)
+    totals, day_only = excluded_groups(document)
+    if totals:
+        made_of += " | " + TOTALS_WITHOUT % ", ".join(EXCLUDED_UNAVAILABLE % c.ident(group_id) for group_id in totals)
+    lines.append("%s*%s*" % (SUB_ITEM, made_of))
     day = portfolio.get("day_pl")
     if day is None:
         warning = next((text for text in document.get("warnings") or []
                         if isinstance(text, str) and text.startswith("day P/L unavailable")), None)
-        day_text = c.reason(warning[len(DAY_PL_PREFIX):]) if warning else "unavailable"
+        lines.append("%s**Today** %s" % (colour(None), c.reason(warning[len(DAY_PL_PREFIX):]) if warning
+                                         else "unavailable"))
     else:
-        day_text = c.signed(day)
-    lines = [PL_HEAD,
-             "- **Unrealized** %s at the mids (%s at liquidation)" % (c.signed(portfolio.get("unrealized_pl_mid")),
-                                                                    c.signed(portfolio.get("unrealized_pl_liq"))),
-             "- **Today** %s" % day_text,
-             "- **Realized** %s this year (%s today, %s this month)" % (
-                 c.signed(portfolio.get("realized_pl_ytd")), c.signed(portfolio.get("realized_pl_today")),
-                 c.signed(portfolio.get("realized_pl_mtd")))]
-    totals, day_only = excluded_groups(document)
-    pieces: List[str] = []
-    if totals:
-        pieces.append(TOTALS_WITHOUT % ", ".join(EXCLUDED_UNAVAILABLE % c.ident(group_id) for group_id in totals))
-    if day_only and day is not None:
-        pieces.append(DAY_TOTAL_WITHOUT % ", ".join(EXCLUDED_DAY % c.ident(group_id) for group_id in day_only))
-    if pieces:
-        lines.append("- " + "; ".join(pieces))
-    c.record(item)
+        lines.append("%s**Today** %s" % (colour(day), c.with_pct(day, figures.day_pct)))
+        if day_only:
+            lines.append("%s*%s*" % (SUB_ITEM, DAY_TOTAL_WITHOUT % ", ".join(EXCLUDED_DAY % c.ident(group_id)
+                                                                             for group_id in day_only)))
     return lines
+
+
+DAY_PL_PREFIX: str = "day P/L "
+
+
+def pl_lines(c: Composer, item: Artifact) -> List[str]:
+    """The brief's ``**P/L**`` block: :func:`book_pl_lines` of the snapshot."""
+    c.record(item)
+    return [PL_HEAD] + book_pl_lines(c, item.document)
+
+
+def cost_words(c: Composer, net_cost: Any) -> Optional[str]:
+    """``on a $19,016.00 cost`` (a debit) or ``on a $480.00 credit`` (a credit); ``None`` when the record has none."""
+    amount = pl_figures.decimal_of(net_cost)
+    if amount is None:
+        return None
+    return "on a %s credit" % c.money(-amount) if amount < 0 else "on a %s cost" % c.money(amount)
 
 
 PL_HEAD: str = "**P/L**"
@@ -714,15 +764,18 @@ STATUS_HEAD: str = "**Desk status**"
 
 def _quarantine_line(c: Composer, group_id: str, reasons: Sequence[Any]) -> str:
     words = "; ".join(c.reason(alerts.quarantine_words(str(reason))) for reason in reasons) or alerts.GROUP_WORDS
-    return "- **%s** quarantined: %s" % (c.ident(group_id), words)
+    return "%s**%s** quarantined: %s" % (colour(None), c.ident(group_id), words)
 
 
 def group_lines(c: Composer, item: Artifact) -> List[str]:
-    """O12: ``**By trade**`` and, per open group of the snapshot in its order, ``- **<UNDERLYING> <structure words>**
-    <unrealized at the mids> (<at liquidation>)`` with the sub-item ``*<trade id> | today <day>*`` (and ``| data
-    unavailable`` when it is not ok); a quarantined group in the desk's own words. No block when the snapshot holds
-    no open or quarantined group."""
+    """O12: ``**By trade**`` and, per open group of the snapshot in its order, ``- <colour> **<UNDERLYING> <structure
+    words>** <unrealized at the mids> (<% of its cost>) | today <day P/L> (<%>)`` with the sub-item ``*<trade id> |
+    since entry, on a <cost> | <at liquidation>*``; an unavailable group reads ``- <yellow> **<...>** unavailable:
+    <its own reason>``; a quarantined group in the desk's own words. The day P/L is ``pl_figures``' sum of the
+    group's open legs when every one has one (never partially summed), else ``unavailable``. No block when the
+    snapshot holds no open or quarantined group."""
     document = item.document
+    figures = pl_figures.book_figures(document)
     legs = {leg.get("row_number"): leg for leg in document.get("legs") or []}
     quarantined = [entry for entry in (document["portfolio"].get("quarantined_groups") or [])
                    if isinstance(entry, Mapping)]
@@ -738,18 +791,21 @@ def group_lines(c: Composer, item: Artifact) -> List[str]:
         open_legs = [legs[row] for row in group.get("legs") or [] if row in legs and legs[row].get("status") == "open"]
         if not open_legs:
             continue
-        if len(open_legs) == 1 or all(leg.get("day_pl") is None for leg in open_legs):
-            day = c.signed(open_legs[0].get("day_pl") if len(open_legs) == 1 else None)
-        else:
-            day = ", ".join("%s (row %s)" % (c.signed(leg.get("day_pl")), c.count(leg["row_number"]))
-                            for leg in open_legs)
-        lines.append("- **%s %s** %s at the mids (%s at liquidation)" % (
-            c.reason(str(group.get("underlying"))), _words(group.get("structure")),
-            c.signed(group.get("unrealized_pl_mid")), c.signed(group.get("unrealized_pl_liq"))))
-        sub = "%s | today %s" % (c.ident(str(group.get("trade_id") or group_id)), day)
+        fig = figures.groups[str(group_id)]
+        name = "**%s %s**" % (c.reason(str(group.get("underlying"))), _words(group.get("structure")))
+        ident = c.ident(str(group.get("trade_id") or group_id))
         if group.get("data_quality") != "ok":
-            sub += " | data %s" % group.get("data_quality")
-        lines.append("%s*%s*" % (SUB_ITEM, sub))
+            lines.append("%s%s unavailable: %s" % (colour(None), name, c.reason(fig.reason) if fig.reason
+                                                   else "no usable quote"))
+            cost = cost_words(c, group.get("net_cost"))
+            lines.append("%s*%s*" % (SUB_ITEM, ident + (" | " + cost if cost else "")))
+            continue
+        mid = group.get("unrealized_pl_mid")
+        today = c.with_pct(fig.day_pl, fig.day_pct) if fig.day_pl is not None else "unavailable"
+        lines.append("%s%s %s | today %s" % (colour(mid), name, c.with_pct(mid, fig.pl_pct), today))
+        cost = cost_words(c, group.get("net_cost"))
+        lines.append("%s*%s | since entry%s | %s at liquidation*" % (
+            SUB_ITEM, ident, ", " + cost if cost else "", c.signed(group.get("unrealized_pl_liq"))))
     for entry in quarantined:
         if entry.get("group_id") not in printed:
             lines.append(_quarantine_line(c, str(entry.get("group_id")), entry.get("reasons") or []))
@@ -981,6 +1037,9 @@ __all__ = [
     "DAY_PL_PREFIX",
     "TOTALS_WITHOUT",
     "bold_label",
+    "book_pl_lines",
+    "colour",
+    "cost_words",
     "book_instant",
     "docket_lines",
     "doctor_line",
