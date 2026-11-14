@@ -937,13 +937,14 @@ class ProposalGoldenTest(unittest.TestCase):
         leg = best.legs[0]
         self.assertEqual((D("22.90"), D("23.10"), D("23.00"), "A", D("0.87"), 136, 93),
                          (leg.bid, leg.ask, leg.mid, leg.grade, leg.spread_pct, leg.dte_calendar, leg.dte_trading))
-        self.assertEqual(("0.274363", "-0.303113"), ("%.6f" % leg.iv, "%.6f" % leg.delta))
-        sigma, delta = solved(leg.occ, "PUT", "648.12", "610", MAR19, "23.00", 0.0115)
+        # the March chain is priced at its put-call parity carry (step 3a), not the calendar's 0.0115
+        self.assertEqual(("0.280384", "-0.298316"), ("%.6f" % leg.iv, "%.6f" % leg.delta))
+        sigma, delta = solved(leg.occ, "PUT", "648.12", "610", MAR19, "23.00", answer.pricing.q_for(MAR19))
         self.assertAlmostEqual(sigma, leg.iv, delta=1e-9)
         self.assertAlmostEqual(delta, leg.delta, delta=1e-9)
         self.assertEqual((D("0.1856"), D("5.88"), D("91.504"), D("9150.40"), D("2310.00")),
                          (best.score, best.floor_pct, best.covered_per_share, best.covered_total, best.cost_total))
-        self.assertEqual(("69.69", D("4550.00"), None, True, D("655.50")),
+        self.assertEqual(("70.17", D("4550.00"), None, True, D("655.50")),
                          (money(best.after.group_delta), best.after.max_loss, best.after.max_profit,
                           best.after.unbounded_up, best.after.breakeven))
         table = [(c.id[-8:-3], c.status, format(c.score, "f")) for c in answer.ranking.candidates]
@@ -969,10 +970,10 @@ class ProposalGoldenTest(unittest.TestCase):
                                                                                put.spread_pct))
         self.assertEqual((D("26.40"), D("26.60"), D("26.50"), "A", D("0.75")), (call.bid, call.ask, call.mid, call.grade,
                                                                                call.spread_pct))
-        self.assertEqual(("-0.334824", "0.423792", "0.233774"), ("%.6f" % put.delta, "%.6f" % call.delta, "%.6f" % call.iv))
+        self.assertEqual(("-0.329158", "0.433348", "0.226162"), ("%.6f" % put.delta, "%.6f" % call.delta, "%.6f" % call.iv))
         self.assertEqual((D("4.92"), D("-0.75"), D("-75.00"), D("4.34"), D("4.92")),
                          (best.score, best.net_debit, best.net_debit_total, best.floor_pct, best.cap_pct))
-        self.assertEqual(("24.14", D("1165.00"), D("4835.00"), D("631.65")),
+        self.assertEqual(("23.75", D("1165.00"), D("4835.00"), D("631.65")),
                          (money(best.after.group_delta), best.after.max_loss, best.after.max_profit, best.after.breakeven))
         self.assertEqual([("ex_dividend", "crosses_ex_dividend", "#assign-ok"), ("ex_dividend", "dividend_unknown", "#assign-ok")],
                          [(a.key, a.code, a.by) for a in best.accepted])
@@ -1037,7 +1038,7 @@ class ReplacementGoldenTest(unittest.TestCase):
         self.assertEqual(("SPY261218P00620000", 8, "long", 1, D("9.80"), "bid", D("-150.00")),
                          (held.occ, held.row_number, held.side, held.contracts, held.close_price, held.close_side,
                           held.realized))
-        self.assertEqual((D("4700.00"), None, True, D("657.00"), "69.69"),
+        self.assertEqual((D("4700.00"), None, True, D("657.00"), "70.17"),
                          (candidate.after.max_loss, candidate.after.max_profit, candidate.after.unbounded_up,
                           candidate.after.breakeven, money(candidate.after.group_delta)))
         self.assertEqual((D("2370.00"), D("643.70")), (answer.before.max_loss, answer.before.breakeven))
@@ -1823,11 +1824,11 @@ class SpotBarTest(unittest.TestCase):
     def test_the_volatility_reads_the_bar_and_the_delta_the_current_spot(self) -> None:
         answer = S.run_proposal(self.desk("640.00").market(), "AG-20261028-03", "collar", CRITERIA)
         leg = next(leg for candidate in answer.ranking.candidates for leg in candidate.legs if leg.unpriced is None)
-        sigma = iv.implied_vol(float(leg.mid), leg.right, 640.0, float(leg.strike), leg.tau_years, RATE,
-                               answer.pricing.q).sigma
+        q = answer.pricing.q_for(leg.expiration)
+        sigma = iv.implied_vol(float(leg.mid), leg.right, 640.0, float(leg.strike), leg.tau_years, RATE, q).sigma
         assert_close(self, sigma, leg.iv)
         delta = greeks.european_greeks(leg.right, float(answer.pricing.spot_mid), float(leg.strike), leg.tau_years,
-                                       RATE, answer.pricing.q, leg.iv).delta
+                                       RATE, q, leg.iv).delta
         assert_close(self, delta, leg.delta)
 
 

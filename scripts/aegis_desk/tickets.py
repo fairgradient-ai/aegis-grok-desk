@@ -1020,6 +1020,7 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
         lines.extend(structuring_text.replacement_lines(w, replacement))
         lines.append("")
         notes.append(structuring_text.MODEL_LINE)
+        notes.extend(structuring_text.carry_lines(w, replacement))
         candidate = replacement.candidate
         if candidate is not None and candidate.american_caveat:
             notes.append(structuring_text.american_line(w, candidate, replacement.pricing))

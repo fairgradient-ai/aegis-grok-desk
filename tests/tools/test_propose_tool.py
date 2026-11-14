@@ -136,7 +136,7 @@ SPY_COLLAR_BEST_TEXT = [
     "| max loss | 63,240.00 | 1,165.00 |",
     "| max profit | unbounded | 4,835.00 |",
     "| breakeven | 632.40 | 631.65 |",
-    "| group delta | 100.00 | 24.14 |",
+    "| group delta | 100.00 | 23.75 |",
     "",
     "**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within "
     "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -164,6 +164,8 @@ SPY_COLLAR_BEST_TEXT = [
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
     "options is not modelled",
+    "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
+    "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "> - you supply the limit; the desk prints none",
     "> - if you decide to act, you type it into your brokerage account yourself",
@@ -198,6 +200,8 @@ SPY_COLLAR_NONE_TEXT = [
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
     "options is not modelled",
+    "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
+    "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "> - you supply the limit; the desk prints none",
     "> - if you decide to act, you type it into your brokerage account yourself",
@@ -232,7 +236,7 @@ SPY_PP_TEXT = [
     "| max loss | 63,240.00 | 4,550.00 |",
     "| max profit | unbounded | unbounded |",
     "| breakeven | 632.40 | 655.50 |",
-    "| group delta | 100.00 | 69.69 |",
+    "| group delta | 100.00 | 70.17 |",
     "",
     "**approval-level check:** the highest step needs level 2 by the desk's convention, within your "
     "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -255,6 +259,8 @@ SPY_PP_TEXT = [
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
     "options is not modelled",
+    "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
+    "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "> - you supply the limit; the desk prints none",
     "> - if you decide to act, you type it into your brokerage account yourself",

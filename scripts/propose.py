@@ -187,6 +187,13 @@ OUTPUT: Dict[str, Any] = {
     "outside_bands": "{puts, calls} | null (collar: the legs outside their floor and cap bands, not paired)",
     "after": dict(_AFTER_SHAPE),
     "model_note": "string (European Black-Scholes-Merton; early exercise not modelled)",
+    "carry": [{"expiration": "YYYY-MM-DD", "source": "parity | calendar_unresolved | calendar_gap | "
+                                                     "calendar_too_few_strikes",
+               "q": "decimal string (the carry the expiration was priced at)",
+               "calendar_q": "decimal string (research/calendar.toml's dividend rate, 0 when it lists none)",
+               "q_imp": "decimal string | null (put-call parity's carry)",
+               "q_quote": "decimal string | null (its quote-resolution bound)",
+               "q_amer": "decimal string | null (its early-exercise bound, when the decision needed it)"}],
     "requests": "{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)",
     "warnings": ["string"],
     "approval": ("{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, "

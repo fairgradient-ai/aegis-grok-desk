@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Structuring Desk: each expiration is priced at the carry its own put-call parity implies when those quotes rule out
+  the calendar's dividend rate (with a quote-width bound and a one-sided early-exercise bound from a binomial tree);
+  otherwise the calendar stands, with the reason in the JSON's new `carry` list. The text adds one `carry:` line per
+  switched expiration after the model line. On the fixture the SPY March chain switches (call and put volatilities now
+  agree within a few hundredths of a point instead of about 1.9 points apart), so the SPY group deltas read 70.17 and
+  23.75 instead of 69.69 and 24.14; the WMT and NVDA chains keep the calendar, and no best candidate changes. The book,
+  the levels and the exit rules keep the calendar's rate.
 - Setup asks which objective ranks each structuring section. The interview (SETUP step 9) shows every objective a
   section accepts, with its words and the documented default first, and records the owner's choice; with no choice
   the default stays. An update (docs/UPDATING.md step 7) asks the same for an existing `structuring.toml`: keeping is

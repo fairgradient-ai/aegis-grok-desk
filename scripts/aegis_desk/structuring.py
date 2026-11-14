@@ -115,7 +115,8 @@ from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from . import alerts, approval, book, bsm, calendar_events, expiry, grouping, iv, market_clock, payoff, positions_csv
+from . import alerts, approval, book, bsm, calendar_events, carry, expiry, grouping, iv, market_clock, payoff
+from . import positions_csv
 from . import quote_cache, quote_qc
 from . import structuring_config, units
 from . import greeks as greeks_module
@@ -773,10 +774,18 @@ class PricingContext:
     spot_bars: Mapping[datetime.datetime, Decimal] = field(default_factory=dict)
     """The stock's one-minute closes by the start of their minute (UTC): the spot at an option quote's own stamp when
     the stock quote is stamped more than :data:`SPOT_ALIGNMENT_SECONDS` from it (:func:`attach_spot_bars`)."""
+    chain_q: Mapping[datetime.date, float] = field(default_factory=dict)
+    """The carry an expiration's own put-call parity implies, where those quotes exclude the calendar's dividend rate
+    (:func:`attach_chain_carry`); an expiration not here is priced at :attr:`q`."""
 
     @property
     def q(self) -> float:
+        """The calendar's dividend rate (``research/calendar.toml``), 0 when it lists none."""
         return 0.0 if self.dividend_yield is None else float(self.dividend_yield)
+
+    def q_for(self, expiration: datetime.date) -> float:
+        """The carry an option of ``expiration`` is priced at: its chain's parity carry, else :attr:`q`."""
+        return self.chain_q.get(expiration, self.q)
 
     @property
     def spot_mid(self) -> Optional[Decimal]:
@@ -902,12 +911,13 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     if unpriced is not None:
         return replace(leg, unpriced=unpriced)
     assert spot is not None and qc.mark_mid is not None and leg.tau_years is not None
-    result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, ctx.q)
+    q = ctx.q_for(expiration)
+    result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
     if not result.ok or result.sigma is None:
         return replace(leg, unpriced=Reason(KEY_UNPRICED, IV_CODE_PREFIX + result.status, leg.mid, None))
     assert current_spot is not None
     # the Greeks at the current spot: the volatility is the option's, the delta is the position's now
-    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, ctx.q,
+    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, q,
                                            result.sigma)
     return replace(leg, iv=result.sigma, delta=values.delta, abs_delta=abs_delta_2dp(values.delta),
                    greeks={"delta": values.delta, "gamma": values.gamma, "theta": values.theta, "vega": values.vega,
@@ -1624,8 +1634,8 @@ def _fit_at(candidate: Candidate, section: Any, spot: Decimal, ctx: "PricingCont
     moving: List[Tuple[Decimal, Tuple[Any, Any]]] = []
     if candidate.kind in (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL):
         assert call is not None and call.iv is not None and call.tau_years is not None
-        moving.append((abs_delta_2dp(bsm.delta("CALL", float(spot), float(call.strike), call.tau_years, ctx.rate, ctx.q,
-                                               call.iv)), section.abs_delta))
+        moving.append((abs_delta_2dp(bsm.delta("CALL", float(spot), float(call.strike), call.tau_years, ctx.rate,
+                                               ctx.q_for(call.expiration), call.iv)), section.abs_delta))
     else:
         assert put is not None
         moving.append((floor_pct(spot, put.strike), section.floor_pct))
@@ -2104,7 +2114,7 @@ ANSWER_KEYS: Tuple[str, ...] = (
     "tool", "kind", "trade_id", "group_id", "structure", "structure_requested", "section", "underlying", "account",
     "account_type", "verdict", "cause", "reason", "objective", "criteria", "spot", "held", "before", "shares",
     "contracts", "stress", "expirations", "candidates", "best", "tie_break", "passed", "failed", "unpriced",
-    "failure_counts", "outside_bands", "after", "model_note", "requests", "warnings",
+    "failure_counts", "outside_bands", "after", "model_note", "carry", "requests", "warnings",
 )
 """The keys of :meth:`Answer.as_dict`, the payload body the three tools extend with their own keys."""
 
@@ -2143,6 +2153,9 @@ class Answer:
     requests: Dict[str, Any] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
     model_note: str = MODEL_NOTE
+    carry: List[Dict[str, Any]] = field(default_factory=list)
+    """One record per evaluated expiration (:func:`attach_chain_carry`): its source, the carry it was priced at, the
+    calendar's rate and the parity estimate with its two bounds."""
 
     @property
     def candidate(self) -> Optional[Candidate]:
@@ -2199,6 +2212,7 @@ class Answer:
             "unpriced": None if ranking is None else ranking.unpriced,
             "failure_counts": None if ranking is None else dict(ranking.failure_counts),
             "outside_bands": self.outside_bands, "after": after, "model_note": self.model_note,
+            "carry": [dict(entry) for entry in self.carry],
             "requests": dict(self.requests), "warnings": list(self.warnings),
         }
 
@@ -2347,6 +2361,68 @@ def attach_spot_bars(answer: Answer, chains: Mapping[datetime.date, Sequence[Quo
         answer.pricing = replace(pricing, spot_bars=closes)
 
 
+CARRY_QUANTUM: Decimal = Decimal("0.000001")
+"""The carry records' resolution (a carry in the JSON as a decimal of 6 places)."""
+
+
+def _carry_value(value: Optional[float]) -> Optional[Decimal]:
+    if value is None:
+        return None
+    return Decimal(repr(value)).quantize(CARRY_QUANTUM, rounding=ROUND_HALF_EVEN)
+
+
+def attach_chain_carry(answer: Answer, chains: Mapping[datetime.date, Sequence[Quote]]) -> None:
+    """The carry of each expiration of ``chains`` (step 3a of the quant review, :func:`carry.decide`): every option is
+    priced at the calendar's rate, the near-the-money calls' and puts' quotes and the puts' volatilities give the
+    parity estimate, and an expiration whose quotes exclude the calendar's rate is priced at its parity carry
+    (:attr:`PricingContext.chain_q`). Each expiration gets a record in :attr:`Answer.carry`. No request is made."""
+    pricing = answer.pricing
+    assert pricing is not None
+    spot = pricing.spot_mid
+    if spot is None:
+        return
+    chosen: Dict[datetime.date, float] = {}
+    records: List[Dict[str, Any]] = []
+    for expiration in sorted(chains):
+        books: Dict[str, Dict[float, Tuple[float, float]]] = {bsm.CALL: {}, bsm.PUT: {}}
+        put_vols: Dict[float, float] = {}
+        taus: List[float] = []
+        spots: List[float] = []
+        for right in (bsm.CALL, bsm.PUT):
+            for quote, listed in listed_options({expiration: chains[expiration]}, right):
+                leg = price_listed(quote, listed, pricing)
+                if (leg.unpriced is not None or leg.iv is None or leg.bid is None or leg.ask is None
+                        or leg.tau_years is None):
+                    continue
+                books[right][float(leg.strike)] = (float(leg.bid), float(leg.ask))
+                taus.append(leg.tau_years)
+                # parity compares the options with the stock price of the same moment: the bar a leg was solved against
+                bar = None if leg.spot_bar_utc is None else pricing.spot_bars.get(leg.spot_bar_utc)
+                spots.append(float(spot if bar is None else bar))
+                if right == bsm.PUT:
+                    put_vols[float(leg.strike)] = leg.iv
+        if taus:
+            tau = sorted(taus)[len(taus) // 2]
+            moment_spot = sorted(spots)[len(spots) // 2]
+            decision = carry.decide(books[bsm.CALL], books[bsm.PUT], moment_spot, tau, pricing.rate, put_vols,
+                                    pricing.q)
+        else:
+            decision = carry.CarryDecision(None, carry.SOURCE_TOO_FEW, None, False)
+        if decision.q is not None:
+            chosen[expiration] = decision.q
+        found = decision.found
+        records.append({
+            "expiration": expiration, "source": decision.source,
+            "q": _carry_value(pricing.q if decision.q is None else decision.q), "calendar_q": _carry_value(pricing.q),
+            "q_imp": None if found is None else _carry_value(found.q_imp),
+            "q_quote": None if found is None else _carry_value(found.q_quote),
+            "q_amer": None if found is None or not decision.bias_computed else _carry_value(found.q_amer),
+        })
+    answer.carry = records
+    if chosen:
+        answer.pricing = replace(pricing, chain_q=chosen)
+
+
 def spot_bar_count(answer: Answer) -> int:
     """How many priced candidate legs solved their volatility against a one-minute bar (the text's disclosure)."""
     if answer.ranking is None:
@@ -2384,6 +2460,7 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     if stopped is not None:
         return stopped
     attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
     assert answer.events is not None and answer.pricing is not None and answer.group_context is not None
     built = candidates_for(answer.kind, chains, answer.pricing, answer.group_context, answer.section, answer.events,
                            held=answer.held)
@@ -2551,6 +2628,7 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     if stopped is not None:
         return stopped
     attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
     assert answer.pricing is not None and answer.group_context is not None and answer.held is not None
     wanted = expiry.plain_decimal(Decimal(strike))
     listed = [q for q in chains[expiration] if (q.option_type or "").upper() == row.occ.right

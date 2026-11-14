@@ -84,9 +84,10 @@ def early_exercise_gap(spot: float, strike: float, tau: float, rate: float, carr
 
 
 def parity_carry(calls: Mapping[float, Quote], puts: Mapping[float, Quote], spot: float, tau: float, rate: float,
-                 vols: Mapping[float, float]) -> Optional[ParityCarry]:
+                 vols: Mapping[float, float], with_bias: bool = True) -> Optional[ParityCarry]:
     """The parity carry and its two bounds from two-sided quotes keyed by strike and each strike's volatility (module
-    notes), or ``None`` with too few usable strikes."""
+    notes), or ``None`` with too few usable strikes. ``with_bias=False`` skips the early-exercise tree and reports
+    ``q_amer = 0.0`` (:func:`decide` asks for the tree only when its answer depends on it)."""
     if spot <= 0 or tau <= 0:
         raise ValueError("parity_carry needs a positive spot and tau")
     usable = [k for k in set(calls) & set(puts) & set(vols)
@@ -103,19 +104,64 @@ def parity_carry(calls: Mapping[float, Quote], puts: Mapping[float, Quote], spot
         return None
     q_imp = rate - math.log(forward / spot) / tau
     error = max(growth * ((calls[k][1] - calls[k][0]) + (puts[k][1] - puts[k][0])) / 2 for k in strikes)
-    tree_carry = min(0.0, q_imp)
-    bias = max(max(0.0, early_exercise_gap(spot, k, tau, rate, tree_carry, vols[k])) for k in strikes)
+    bias = 0.0
+    if with_bias:
+        tree_carry = min(0.0, q_imp)
+        bias = max(max(0.0, early_exercise_gap(spot, k, tau, rate, tree_carry, vols[k])) for k in strikes)
     return ParityCarry(q_imp, error / (forward * tau), growth * bias / (forward * tau))
+
+
+SOURCE_PARITY: str = "parity"
+"""The quotes exclude the calendar's dividend rate: the expiration is priced at ``q_imp``."""
+SOURCE_UNRESOLVED: str = "calendar_unresolved"
+"""The calendar's rate lies inside the interval the quotes allow: they cannot resolve the carry, the calendar stands."""
+SOURCE_GAP: str = "calendar_gap"
+"""``q_imp`` lies more than :data:`MAX_GAP` from the calendar's rate, which looks like a data error: the calendar
+stands."""
+SOURCE_TOO_FEW: str = "calendar_too_few_strikes"
+"""Fewer than :data:`MIN_STRIKES` strikes quote both a call and a put: the calendar stands."""
+
+
+@dataclass(frozen=True)
+class CarryDecision:
+    """What :func:`decide` chose: ``q`` the parity carry (``None``: the calendar's rate stands), ``source`` one of the
+    ``SOURCE_*`` words, ``found`` the parity estimate (``None`` with too few strikes) and ``bias_computed`` whether its
+    ``q_amer`` came from the early-exercise tree."""
+
+    q: Optional[float]
+    source: str
+    found: Optional[ParityCarry]
+    bias_computed: bool
+
+
+def decide(calls: Mapping[float, Quote], puts: Mapping[float, Quote], spot: float, tau: float, rate: float,
+           vols: Mapping[float, float], calendar_q: float) -> CarryDecision:
+    """The carry of one expiration (module notes). The interval is ``[q_imp - q_amer - q_quote, q_imp + q_quote]``,
+    and only its lower end needs the tree: a calendar rate above ``q_imp + q_quote`` is excluded and one in
+    ``[q_imp - q_quote, q_imp + q_quote]`` is kept, whatever ``q_amer`` is. So the tree runs only for a calendar rate
+    below ``q_imp - q_quote``, and the answer is the one :func:`parity_carry` with the tree would give."""
+    found = parity_carry(calls, puts, spot, tau, rate, vols, with_bias=False)
+    if found is None:
+        return CarryDecision(None, SOURCE_TOO_FEW, None, False)
+    if abs(found.q_imp - calendar_q) > MAX_GAP:
+        return CarryDecision(None, SOURCE_GAP, found, False)
+    if calendar_q > found.q_imp + found.q_quote:
+        return CarryDecision(found.q_imp, SOURCE_PARITY, found, False)
+    if calendar_q >= found.q_imp - found.q_quote:
+        return CarryDecision(None, SOURCE_UNRESOLVED, found, False)
+    full = parity_carry(calls, puts, spot, tau, rate, vols)
+    assert full is not None
+    if full.excludes(calendar_q):
+        return CarryDecision(full.q_imp, SOURCE_PARITY, full, True)
+    return CarryDecision(None, SOURCE_UNRESOLVED, full, True)
 
 
 def implied_carry(calls: Mapping[float, Quote], puts: Mapping[float, Quote], spot: float, tau: float, rate: float,
                   vols: Mapping[float, float], calendar_q: float) -> Optional[float]:
     """``q_imp`` when the quotes exclude ``calendar_q`` (module notes), else ``None``."""
-    found = parity_carry(calls, puts, spot, tau, rate, vols)
-    if found is None or abs(found.q_imp - calendar_q) > MAX_GAP:
-        return None
-    return found.q_imp if found.excludes(calendar_q) else None
+    return decide(calls, puts, spot, tau, rate, vols, calendar_q).q
 
 
-__all__ = ["MAX_GAP", "MIN_STRIKES", "NEAREST", "ParityCarry", "Quote", "TREE_STEPS", "early_exercise_gap",
-           "implied_carry", "parity_carry"]
+__all__ = ["CarryDecision", "MAX_GAP", "MIN_STRIKES", "NEAREST", "ParityCarry", "Quote", "SOURCE_GAP", "SOURCE_PARITY",
+           "SOURCE_TOO_FEW", "SOURCE_UNRESOLVED", "TREE_STEPS", "decide", "early_exercise_gap", "implied_carry",
+           "parity_carry"]

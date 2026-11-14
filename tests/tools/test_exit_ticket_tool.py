@@ -396,7 +396,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "| max loss | 2,370.00 | 4,700.00 |",
         "| max profit | unbounded | unbounded |",
         "| breakeven | 643.70 | 657.00 |",
-        "| group delta | 72.52 | 69.69 |",
+        "| group delta | 72.52 | 70.17 |",
         "",
         "**approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, "
         "within your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -414,6 +414,8 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "UTC",
         "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
         "American-style options is not modelled",
+        "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
+        "a year, because those quotes exclude the calendar's 1.15 %",
         "> - the desk does not see your cash balance",
         "> - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
         "> - you supply the limit; the desk prints none",

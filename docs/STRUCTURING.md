@@ -241,8 +241,19 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   `max_spread_pct`. A contract the chain lists more than once with different quotes is not priced (`the chain lists the
   contract more than once with different quotes`); identical copies count once. Its implied volatility is solved from
   the mid with the European Black-Scholes-Merton model and the dividend yield of `research/calendar.toml` (0 with a
-  warning). A held leg you would close is priced at its conservative fresh side, which is the ask for a short and the
+  warning), unless that expiration's own quotes rule it out (the next item). A held leg you would close is priced at its conservative fresh side, which is the ask for a short and the
   bid for a long. At grade E that side still stands, with the note `quote grade E: the conservative side stands`.
+- **The carry of each expiration.** Before the candidates are priced, each expiration's near-the-money calls and puts
+  give the carry their put-call parity implies, with two bounds: one for the quotes' own width, and one, from a
+  binomial tree, for American early exercise, which can only bias the estimate upward. When the calendar's dividend
+  rate lies outside that interval, the quotes rule it out and the expiration is priced at the parity carry; the text
+  then says so after the model line, for example `carry: the 2027-03-19 options are priced at the dividend carry their
+  put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %`. Otherwise the calendar
+  stands: when its rate lies inside the interval (the quotes cannot resolve the carry), when the parity estimate lies
+  more than 5 points from it (more likely a data error), or when fewer than two strikes quote both a call and a put.
+  The JSON's `carry` lists each expiration's source, the carry used and the estimate. Only the structuring tools read
+  it; the book, the levels and the exit rules keep the calendar's rate. On the fixture the SPY chains switch (they were
+  generated with no dividend) and the WMT and NVDA chains keep the calendar.
 - **Statuses.** Each candidate gets every reason that applies and one status, in this precedence:
 
   | Status | Means |
@@ -667,7 +678,7 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 | max loss | 63,240.00 | 4,550.00 |
 | max profit | unbounded | unbounded |
 | breakeven | 632.40 | 655.50 |
-| group delta | 100.00 | 69.69 |
+| group delta | 100.00 | 70.17 |
 
 **approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 
@@ -687,6 +698,7 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 > - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself
@@ -725,7 +737,7 @@ On the same copy, `--structure collar`:
 | max loss | 63,240.00 | 1,165.00 |
 | max profit | unbounded | 4,835.00 |
 | breakeven | 632.40 | 631.65 |
-| group delta | 100.00 | 24.14 |
+| group delta | 100.00 | 23.75 |
 
 **approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 
@@ -750,6 +762,7 @@ On the same copy, `--structure collar`:
 > - tie on cap_within_budget broken by the put strike (higher first)
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself

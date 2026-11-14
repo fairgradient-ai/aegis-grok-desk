@@ -73,6 +73,10 @@ SPOT_BAR_LINE: str = ("spot: %s option %s quoted more than %s seconds from the s
                       "stock's one-minute IEX bar of the minute %s quoted in")
 """The note after :data:`MODEL_LINE` when a priced leg solved its volatility against a one-minute bar
 (``structuring.attach_spot_bars``); absent otherwise."""
+CARRY_LINE: str = ("carry: the %s options are priced at the dividend carry their put-call parity implies, %s a year, "
+                   "because those quotes exclude the calendar's %s")
+"""The note after :data:`MODEL_LINE`, one per expiration priced at its parity carry (``structuring.attach_chain_carry``);
+absent when every expiration kept the calendar's dividend rate."""
 CAVEAT_LINE: str = "the score ranks the candidates only on the objective you chose; it is not a forecast"
 POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                      "and strike")
@@ -1118,6 +1122,14 @@ def spot_bar_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
                              "was" if one else "were", "it was" if one else "each was")]
 
 
+def carry_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
+    """:data:`CARRY_LINE` for each expiration priced at its parity carry, in date order, else nothing."""
+    hundred = Decimal(100)
+    return [CARRY_LINE % (w.date(entry["expiration"]), w.pct((entry["q"] * hundred).quantize(_CENT, ROUND_HALF_EVEN)),
+                          w.pct((entry["calendar_q"] * hundred).quantize(_CENT, ROUND_HALF_EVEN)))
+            for entry in answer.carry if entry["source"] == structuring.carry.SOURCE_PARITY]
+
+
 def notes_block(items: Sequence[str]) -> List[str]:
     """The fine print at the end of a text: one quoted ``- `` item each (``> - ...``)."""
     return ["> - " + _guard(item) for item in items]
@@ -1170,6 +1182,7 @@ def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.dat
     items.append(quotes_line(w, as_of))
     items.append(MODEL_LINE)
     items.extend(spot_bar_lines(w, answer))
+    items.extend(carry_lines(w, answer))
     if best is not None and best.american_caveat:
         items.append(american_line(w, best, answer.pricing))
     items.append(criteria_line(w, answer.criteria.sha256))
@@ -1347,7 +1360,7 @@ def _words_of(*texts: str) -> List[str]:
 
 
 _LEXICON_SOURCES: Tuple[str, ...] = (
-    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, *alerts.STRUCTURE_WORDS.values(),
+    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, *alerts.STRUCTURE_WORDS.values(),
     *ACTION_WORDS.values(), ROLL_PUT_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
     *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
     *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),
