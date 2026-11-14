@@ -38,11 +38,11 @@ the new put, then closes the old one; a collar proposal opens the put, then the 
 Fixed lines
 -----------
 The renderers take integers and words and append every number they print to ``emitted`` (the alert lint's list),
-so the text builders never re-word them: :func:`approval_heading`, :func:`step_row` (one table row per step, the
+so the text builders never re-word them: :func:`approval_heading`, :func:`step_item` (one list item per step, the
 holdings after it), :func:`other_order_line` (printed only when the reversed order would exceed the owner's level:
 :func:`reverse_breach`), :data:`MULTI_LEG_NOTES` (any order with more than one leg), :func:`approval_line`,
 :data:`BROKER_LINE` and :func:`refused_line`. :func:`approval_lines` composes the approval block of a passing check as
-the structuring texts' desk view prints it (0.2.1): a caption, the steps table and the notes;
+the structuring texts' desk view prints it: a caption, one item per step and the notes;
 :func:`refusal_line` gives the REFUSED line of a refused one; :func:`holdings_words` and :func:`step_words` give the
 state and step words.
 """
@@ -465,8 +465,6 @@ APPROVAL_HEADING: str = "approval-level check:"
 """The approval block's caption for one leg; more legs read :func:`approval_heading`'s ``(leg 1 first)``."""
 BROKER_LINE: str = "your broker's own approval for this account decides"
 """The end of every approval caption: the level is self-attested and the broker decides."""
-STEPS_HEADER: str = "| after | you hold | level |"
-STEPS_RULE: str = "|---|---|:-:|"
 
 
 def approval_heading(leg_count: int, emitted: Optional[List[str]] = None) -> str:
@@ -478,16 +476,16 @@ def approval_heading(leg_count: int, emitted: Optional[List[str]] = None) -> str
 
 
 def holdings_cell(holdings: Holdings, underlying: str, emitted: Optional[List[str]] = None) -> str:
-    """``100 SPY shares, 1 short call, 1 long put``: :func:`holdings_words` as a table cell."""
+    """``100 SPY shares, 1 short call, 1 long put``: :func:`holdings_words` without its ``you hold`` and ``and``."""
     words = holdings_words(holdings, underlying, emitted)[len("you hold "):]
     return words.replace(" and ", ", ")
 
 
-def step_row(index: int, level: int, holdings: Holdings, underlying: str, emitted: Optional[List[str]] = None) -> str:
-    """``| leg 1 | 100 SPY shares, 1 long put | 2 |``: one step of the approval table."""
+def step_item(index: int, level: int, holdings: Holdings, underlying: str, emitted: Optional[List[str]] = None) -> str:
+    """``- after leg 1: you hold 100 SPY shares, 1 long put | level 2``: one step of the approval block."""
     number = _emit(emitted, _count(index, "the leg number", positive=True))
     cell = holdings_cell(holdings, underlying, emitted)
-    return "| leg %s | %s | %s |" % (number, cell, _emit(emitted, _level(level, "a step's level")))
+    return "- after leg %s: you hold %s | level %s" % (number, cell, _emit(emitted, _level(level, "a step's level")))
 
 
 def other_order_line(leg_index: int, uncovered_calls: int, level: int = 4, emitted: Optional[List[str]] = None) -> str:
@@ -558,17 +556,18 @@ def refusal_line(result: ApprovalResult, subject: str, underlying: str, structur
 def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, underlying: str,
                    emitted: Optional[List[str]] = None) -> List[str]:
     """The approval block of a passing order as the structuring texts print it (the 0.2.1 desk view): the caption
-    ``**<approval_heading>** <approval_line>; <BROKER_LINE>``, a blank line, the table of what you hold after each
-    step in the leg order (:func:`step_row`) and, when there are any, a blank line and the other-order line (the
+    ``**<approval_heading>** <approval_line>; <BROKER_LINE>``, then one item per step of what you hold after it in
+    the leg order (:func:`step_item`) and, when there are any, the other-order line (the
     reversed order would exceed the owner's level) and the multi-leg note of what the order is
     (:func:`multi_leg_kind`) as ``- `` items. ``ValueError`` when the check is refused (print :func:`refusal_line`)."""
     result = check_legs(state, legs, owner_level)
     if not result.ok:
         raise ValueError("the check is refused at level %d: print the REFUSED line" % result.required_level)
-    caption = "**%s** %s; %s" % (approval_heading(len(result.steps), emitted),
+    heading = approval_heading(len(result.steps), emitted)
+    caption = "**%s** %s; %s" % (heading[:1].upper() + heading[1:],
                                  approval_line(result.required_level, result.owner_level, emitted), BROKER_LINE)
-    lines = [caption, "", STEPS_HEADER, STEPS_RULE]
-    lines.extend(step_row(step.index, step.level, step.after, underlying, emitted) for step in result.steps)
+    lines = [caption]
+    lines.extend(step_item(step.index, step.level, step.after, underlying, emitted) for step in result.steps)
     notes = []
     breach = reverse_breach(state, legs, owner_level)
     if breach is not None:
@@ -576,7 +575,7 @@ def approval_lines(state: Holdings, legs: Sequence[Leg], owner_level: int, under
     kind = multi_leg_kind(legs)
     if kind is not None:
         notes.append("- " + MULTI_LEG_NOTES[kind])
-    return lines + ([""] + notes if notes else [])
+    return lines + notes
 
 
 __all__ = [
@@ -616,8 +615,6 @@ __all__ = [
     "STEP_OPEN_LONG",
     "STEP_OPEN_SHORT_PUT",
     "STEP_OPEN_UNCOVERED_CALL",
-    "STEPS_HEADER",
-    "STEPS_RULE",
     "STEP_TABLE",
     "STRUCTURE_LEVELS",
     "StepLevel",
@@ -634,7 +631,7 @@ __all__ = [
     "refusal_line",
     "refused_line",
     "reverse_breach",
-    "step_row",
+    "step_item",
     "step_words",
     "structure_level",
 ]

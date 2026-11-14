@@ -9,9 +9,9 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 
 ## Start
 
-Open your Aegis Desk Lead's chat and paste, with the release you want (this page's own release is v0.2.1):
+Open your Aegis Desk Lead's chat and paste, with the release you want (this page's own release is v0.3.0):
 
-> Update my Aegis desk to v0.2.1 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.2.1/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
+> Update my Aegis desk to v0.3.0 following https://github.com/fairgradient-ai/aegis-grok-desk/blob/v0.3.0/docs/UPDATING.md. Keep the desk read-only and finish with the update receipt.
 
 The Lead does every step below in its own chat and asks you only to tap the cards and to paste any Auto-review text
 that changed. Do it outside the routine slots, after the 17:10 ET brief or on a weekend, so no check falls in the
@@ -34,7 +34,7 @@ owner says to go on.
 routine runs, so the Lead runs it only after your go-ahead in step 1 and your tap on its card:
 
 ```text
-git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.2.1 && git -C /workspace/aegis-grok-desk checkout --quiet --detach v0.2.1
+git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.3.0 && git -C /workspace/aegis-grok-desk checkout --quiet --detach v0.3.0
 ```
 
 - If git refuses because the checkout has local changes, stop: the checkout must stay exactly the release (runtime
@@ -43,7 +43,7 @@ git -C /workspace/aegis-grok-desk fetch --depth 1 origin tag v0.2.1 && git -C /w
 - If the tag does not exist, stop and tell the owner.
 - If git says the checkout is owned by another user, the fix is SETUP section 9.3 step 4.
 
-Then the doctor's check 1 must read `release v0.2.1 at <commit>, clean`:
+Then the doctor's check 1 must read `release v0.3.0 at <commit>, clean`:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
@@ -96,12 +96,19 @@ An update never rewrites your files. When the changelog names a new or changed k
 adds it ("update the calendar", "set up the structuring desk") and do it only when the owner says so. A file the
 owner changes this way is re-acknowledged in the same card (`ack.py config --owner-tapped`).
 
+When the changelog names a new objective for `structuring.toml`, ask the owner about it as part of this step. For each
+section of their file, show the objective it uses now next to every objective that section accepts in the new
+release, each with its words from `docs/STRUCTURING.md` ("The objectives"), and ask whether to keep or switch. Keeping
+is the default and changes nothing. Only on a switch, write full answers with the chosen objectives and run, after the
+owner's tap, `desk_init.py --answers ... --replace --owner-tapped && ack.py config --owner-tapped`. The receipt names
+each section's objective and whether it changed.
+
 ### 8. The update receipt
 
 One message, opening with two plain lines, for example:
 
 ```text
-Your Aegis desk is on release v0.2.1: the checkout, the skills and the Auto-review rules match it.
+Your Aegis desk is on release v0.3.0: the checkout, the skills and the Auto-review rules match it.
 Nothing else is needed now; your positions, rules and settings are unchanged.
 ```
 
@@ -117,6 +124,17 @@ Update stayed read-only: no credential was added; no order was created or sent.
 
 The previous release is still a tag: the same two commands with its tag move the checkout back, and the skills and
 Auto-review texts of that release are restored the same way (steps 4 and 5). Your desk files need nothing.
+
+## Release 0.3.0, for a desk set up from release 0.2.1
+
+- **New objectives for your structuring criteria.** A covered call, a protective put and a collar can be ranked by
+  `band_centre` (closeness to the centre of your own bands, with each leg's quote spread counted), and a roll by
+  `net_extrinsic_per_added_day` (the time value the roll adds or gives up). The update asks you, section by section,
+  whether to keep your current objective or switch (step 7). Keeping changes nothing.
+- **Two information notes** can appear in structuring answers: when the runner-up lies within the best's own quote
+  spread, and, under `band_centre`, the share prices at which another candidate would be best. Neither changes the
+  ranking.
+- Routines, alerts and your other desk files do not change.
 
 ## Release 0.2.1, for a desk set up from an earlier release
 

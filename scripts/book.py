@@ -3,7 +3,7 @@
 
 Usage::
 
-    python3 scripts/book.py [--snapshot] [--report] [--fixture-set NAME] [--json] [--schema] [--timeout S]
+    python3 scripts/book.py [--snapshot] [--report] [--view] [--fixture-set NAME] [--json] [--schema] [--timeout S]
         [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
 
 Loads ``desk.toml``, ``positions.csv`` (quarantined groups are listed, not fatal), ``research/calendar.toml``
@@ -22,6 +22,13 @@ table alone): an owner-injected closure on today's ET date is a closed day for t
 ``NYSE closed (calendar closure): no quote fetch; nothing is usable for rules today``, every open group
 unavailable, exit 20, while the ET date (the snapshot's name, ``positions.csv``'s ``today``) and the request
 batch are unchanged.
+
+``--view`` prints the same book as the book view instead (``aegis_desk.book_view``): one markdown message a chat
+renders as one bubble, a title and a block per open group with the numbers to scan (no table), linted in strict mode
+under the fixed footer before it prints; the account prints as ``account <n> of desk.toml (<type>)``, never the name
+the owner typed, and a contract in words, never its OCC symbol. A view that fails its lint prints nothing but
+``WITHHELD: ...`` (exit 1 ``lint_failed``). With ``--json`` the payload is then ``{"message", "emitted", "lint",
+"exit_code"}`` (the shape ``eod_summary.py`` gives, so a relay re-lints it) instead of the book dict.
 
 ``--snapshot`` writes ``data/book/<ET date>.json`` atomically under the desk lock (the artifact of record the
 next day's day P/L is measured against); ``--report`` writes ``reports/book.md``. Both are written whatever the
@@ -56,7 +63,7 @@ import datetime  # noqa: E402
 import sys  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence  # noqa: E402
 
-from aegis_desk import book, desk_config, desk_paths, market_clock, quote_cache, state  # noqa: E402
+from aegis_desk import book, book_view, desk_config, desk_paths, market_clock, quote_cache, state  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "book"
@@ -133,6 +140,9 @@ OUTPUT: Dict[str, Any] = {
 }
 
 
+VIEW_WITHHELD = "WITHHELD: the book view failed the alert lint (%s); book.py without --view prints the book"
+
+
 def user_agent(version: str) -> str:
     return "aegis-desk/%s %s (read-only market data)" % (version, TOOL)
 
@@ -142,6 +152,9 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--snapshot", action="store_true",
                         help="write data/book/<ET date>.json, the snapshot of record (atomic, under the desk lock)")
     parser.add_argument("--report", action="store_true", help="write reports/book.md")
+    parser.add_argument("--view", action="store_true",
+                        help="print the book view: one linted markdown message for a chat (with --json the payload is "
+                             "{message, emitted, lint, exit_code} instead of the book dict)")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
                         help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
@@ -160,6 +173,42 @@ def fail(args: Any, version: str, now: datetime.datetime, code: str, message: st
         print("UNAVAILABLE: %s" % message)
     else:
         print("error: %s" % message)
+    return exit_code
+
+
+def session_line(session: Any, document: Any, bound_min: int) -> str:
+    """The session line ``book.py`` prints under the book (the same words in the view's sources block)."""
+    if session.trading_day:
+        return "session %s; %s; freshness bound %d min" % (session.session, document["as_of_label"], bound_min)
+    name = session.holiday_name or ("weekend" if session.session == market_clock.SESSION_WEEKEND else "closed")
+    return "%s (%s): no quote fetch; nothing is usable for rules today" % (document["as_of_label"], name)
+
+
+def print_view(args: Any, version: str, now: datetime.datetime, market: Any, run: Any, written: List[str]) -> int:
+    """``--view``: the linted book view (``aegis_desk.book_view``), or the WITHHELD line (exit 1 ``lint_failed``)."""
+    document, session = run.document, run.session
+    view = book_view.render(document, et_date=session.et_date, accounts=market.cfg.owner.accounts,
+                            session_line=session_line(session, document, market.bound_min))
+    exit_code = run.exit_code if view.ok else contract.EXIT_ERROR
+    codes = sorted({finding.code for finding in view.lint.findings})
+    if args.json:
+        payload = {"message": view.text if view.ok else None, "emitted": view.emitted, "lint": view.lint.as_dict(),
+                   "exit_code": exit_code}
+        if not view.ok:
+            return fail(args, version, now, "lint_failed", VIEW_WITHHELD % ", ".join(codes), contract.EXIT_ERROR)
+        envelope = contract.envelope(TOOL, version, payload, source=quote_cache.source_label(market.cfg),
+                                     delay_min=market.cfg.market_data.feed_delay_min, generated_at=now,
+                                     status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
+        print(contract.json_dumps(envelope))
+        return exit_code
+    if not view.ok:
+        print(VIEW_WITHHELD % ", ".join(codes))
+        return exit_code
+    lines = [view.text]
+    for path in written:
+        kind = "snapshot" if path.endswith(".json") else "report"
+        lines.insert(0, "%s written: %s" % (kind, market.paths.relative(path)))
+    print("\n".join(lines))
     return exit_code
 
 
@@ -210,6 +259,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return fail(args, version, now, "io_error", "cannot write under the desk root: %s" % exc, contract.EXIT_ERROR)
     exit_code = run.exit_code
 
+    if args.view:
+        return print_view(args, version, now, market, run, written)
+
     if args.json:
         envelope = contract.envelope(TOOL, version, document, source=quote_cache.source_label(market.cfg),
                                      delay_min=market.cfg.market_data.feed_delay_min, generated_at=now,
@@ -223,11 +275,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for path in written:
         kind = "snapshot" if path.endswith(".json") else "report"
         lines.append("%s written: %s" % (kind, market.paths.relative(path)))
-    if session.trading_day:
-        lines.append("session %s; %s; freshness bound %d min" % (session.session, document["as_of_label"], market.bound_min))
-    else:
-        name = session.holiday_name or ("weekend" if session.session == market_clock.SESSION_WEEKEND else "closed")
-        lines.append("%s (%s): no quote fetch; nothing is usable for rules today" % (document["as_of_label"], name))
+    lines.append(session_line(session, document, market.bound_min))
     stamps = [leg["as_of"] for leg in document["legs"] if leg["as_of"] is not None]
     lines.append(quote_cache.footer_line(market.cfg, max(stamps) if stamps else now))
     print("\n".join(lines))

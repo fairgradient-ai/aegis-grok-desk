@@ -89,7 +89,8 @@ the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position Control.
 A synthetic example: the brief on a fixture copy at 2026-11-03 22:10 UTC, where only the `eod` routine had run:
 
 ```text
-routines: 1 of 7 ran today; late: none; missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET
+- **Routines** 1 of 7 ran today
+  - missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET
 ```
 
 **The owner-side dead-man rule.** On a trading day, no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15

@@ -188,14 +188,21 @@ class MorningSheetTest(LintedTest):
     def test_the_whole_sheet(self) -> None:
         summary = summaries.morning_sheet(morning())
         self.assertEqual([
-            "MORNING DESK SHEET 2026-11-03",
-            "doctor (state/doctor.json, quick check at 12:31 UTC): PASS, 1 warning: key_source",
-            "positions.csv reconciliation (data/positions/2026-11-03.recon.json): CLEAN, 0 proposed edits "
-            "(csv_recon.py --diff lists them)",
-            "open signals: 0",
-            "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due",
-            "last night's levels (levels/2026-11-02.json): AG-20261020-01 1 resting-eligible of 3 price levels; "
-            "AG-20261022-02 1 resting-eligible of 5 price levels; AG-20261028-03 0 resting-eligible of 3 price levels",
+            "### MORNING DESK SHEET 2026-11-03",
+            "",
+            "**Desk status**",
+            "- **Doctor** PASS, 1 warning: key_source (quick check at 12:31 UTC)",
+            "- **positions.csv** CLEAN, 0 proposed edits (`csv_recon.py --diff` lists them)",
+            "- **Open signals** 0",
+            "- **Expiry docket** 0 contracts due",
+            "- **Last night's levels**",
+            "  - AG-20261020-01 1 resting-eligible of 3 price levels",
+            "  - AG-20261022-02 1 resting-eligible of 5 price levels",
+            "  - AG-20261028-03 0 resting-eligible of 3 price levels",
+            "",
+            "*read from state/doctor.json, data/positions/2026-11-03.recon.json, "
+            "reports/expiry/2026-11-03.week.json, levels/2026-11-02.json*",
+            "",
             FOOTER_2059_PREVIOUS,
         ], summary.text.split("\n"))
         self.assertEqual(summaries.MODE_MORNING, summary.mode)
@@ -213,12 +220,15 @@ class MorningSheetTest(LintedTest):
         summary = summaries.morning_sheet(inputs)
         lines = summary.text.split("\n")
         self.assertEqual([
-            "MORNING DESK SHEET 2026-11-03",
-            "UNAVAILABLE: doctor result state/doctor.json missing",
-            "UNAVAILABLE: reconciliation is from 2026-11-02 (upstream late)",
-            "open signals: 0",
-            "UNAVAILABLE: expiry docket reports/expiry/2026-11-03.week.json cannot be read (moved aside)",
-            "UNAVAILABLE: levels sheet levels/2026-11-02.json cannot be read (not the record the desk writes)",
+            "### MORNING DESK SHEET 2026-11-03",
+            "",
+            "**Desk status**",
+            "- UNAVAILABLE: doctor result state/doctor.json missing",
+            "- UNAVAILABLE: reconciliation is from 2026-11-02 (upstream late)",
+            "- **Open signals** 0",
+            "- UNAVAILABLE: expiry docket reports/expiry/2026-11-03.week.json cannot be read (moved aside)",
+            "- UNAVAILABLE: levels sheet levels/2026-11-02.json cannot be read (not the record the desk writes)",
+            "",
         ], lines[:-1])
         self.assertEqual(alert_lint.footer_line(MORNING_NOW), lines[-1], "no record read: the footer is the run's")
         self.assertEqual(20, summary.exit_code)
@@ -270,21 +280,21 @@ class MorningSheetTest(LintedTest):
         )
         for raw, tail in cases:
             summary = summaries.morning_sheet(morning(doctor=made(summaries.LABEL_DOCTOR, DOCTOR_PATH, raw)))
-            line = summary.lines[1]
-            self.assertEqual("doctor (state/doctor.json, %s check at 12:31 UTC): %s" % (raw["mode"], tail), line)
+            line = summary.lines[3]
+            self.assertEqual("- **Doctor** %s (%s check at 12:31 UTC)" % (tail, raw["mode"]), line)
             self.assertNotIn("reason", summary.text)
             self.assertEqual(0, summary.exit_code, "a doctor FAIL is the doctor's own exit 20, not an UNAVAILABLE")
             self.assertLinted(summary)
 
     def test_the_recon_line_reads_only_the_verdict_and_the_counts(self) -> None:
-        cases = ((recon_record("EDITS_PENDING", edits=1), "EDITS_PENDING, 1 proposed edit (csv_recon.py --diff lists it)"),
+        cases = ((recon_record("EDITS_PENDING", edits=1),
+                  "EDITS_PENDING, 1 proposed edit (`csv_recon.py --diff` lists it)"),
                  (recon_record("UNAVAILABLE", edits=2, unavailable=3),
-                  "UNAVAILABLE, 2 proposed edits (csv_recon.py --diff lists them), 3 unavailable items "
-                  "(csv_recon.py shows them)"))
+                  "UNAVAILABLE, 2 proposed edits (`csv_recon.py --diff` lists them), 3 unavailable items "
+                  "(`csv_recon.py` shows them)"))
         for raw, tail in cases:
             summary = summaries.morning_sheet(morning(recon=made(summaries.LABEL_RECON, RECON_PATH, raw)))
-            self.assertEqual("positions.csv reconciliation (data/positions/2026-11-03.recon.json): " + tail,
-                             summary.lines[2])
+            self.assertEqual("- **positions.csv** " + tail, summary.lines[4])
             self.assertNotIn("the owner typed", summary.text)
             self.assertLinted(summary)
 
@@ -307,16 +317,17 @@ class MorningSheetTest(LintedTest):
             levels=made(summaries.LABEL_LEVELS, "levels/2026-11-25.json", levels_record("2026-11-25"),
                         datetime.date(2026, 11, 25)),
             early_close_et=datetime.time(13, 0)))
+        at = summary.lines.index("- **Expiry docket** 3 contracts due, 1 unavailable (`expiry_checklist.py --week` "
+                                 "shows why)")
         self.assertEqual([
-            "expiry docket (reports/expiry/2026-11-27.week.json): 3 contracts due, 1 unavailable "
-            "(expiry_checklist.py --week shows why)",
-            "AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day 2026-11-27 (0 trading days) | "
+            "  - AG-20261020-01 WMT261127C00105000 short 2 | WMT covered call | last trading day 2026-11-27 (0 trading "
+            "days) | " + act,
+            "  - ROW-6 NVDA261127C00150000 short 2 | NVDA short call | last trading day 2026-11-27 (0 trading days) | "
             + act,
-            "ROW-6 NVDA261127C00150000 short 2 | NVDA short call | last trading day 2026-11-27 (0 trading days) | " + act,
-            "AG-20261028-03 SPY261204P00620000 long 1 | SPY protective put | last trading day 2026-12-04 (5 trading days) "
-            "| act by Fri 2026-12-04 16:30 ET (21:30 UTC)",
-            "early close today at 13:00 ET: 2 contracts on their last trading day; " + act,
-        ], summary.lines[4:9])
+            "  - AG-20261028-03 SPY261204P00620000 long 1 | SPY protective put | last trading day 2026-12-04 (5 trading "
+            "days) | act by Fri 2026-12-04 16:30 ET (21:30 UTC)",
+            "- **Early close** today at 13:00 ET: 2 contracts on their last trading day; " + act,
+        ], summary.lines[at + 1:at + 5])
         self.assertLinted(summary)
 
     def test_each_docket_line_names_its_contract_and_side(self) -> None:
@@ -342,17 +353,17 @@ class MorningSheetTest(LintedTest):
                        recon_record(et_date="2026-11-20", generated_at="2026-11-20T12:31:00+00:00"), today),
             levels=made(summaries.LABEL_LEVELS, "levels/2026-11-19.json", levels_record("2026-11-19"),
                         datetime.date(2026, 11, 19))))
+        at = summary.lines.index("- **Expiry docket** 2 contracts due")
         self.assertEqual([
-            "expiry docket (reports/expiry/2026-11-20.week.json): 2 contracts due",
-            "AG-20261101-05 SPY261120P00600000 long 1 | SPY put debit vertical | last trading day 2026-11-20 "
+            "  - AG-20261101-05 SPY261120P00600000 long 1 | SPY put debit vertical | last trading day 2026-11-20 "
             "(0 trading days) | " + long_act,
-            "AG-20261101-05 SPY261120P00590000 short 1 | SPY put debit vertical | last trading day 2026-11-20 "
+            "  - AG-20261101-05 SPY261120P00590000 short 1 | SPY put debit vertical | last trading day 2026-11-20 "
             "(0 trading days) | " + short_act,
-        ], summary.lines[4:7])
+        ], summary.lines[at + 1:at + 3])
         self.assertLinted(summary)
         evening = summaries.eod_brief(brief(docket=docket))
-        self.assertIn(summary.lines[5], evening.lines, "the EOD brief prints the same docket lines")
-        self.assertIn(summary.lines[6], evening.lines)
+        self.assertIn(summary.lines[at + 1], evening.lines, "the EOD brief prints the same docket lines")
+        self.assertIn(summary.lines[at + 2], evening.lines)
 
     def test_a_docket_leg_without_its_contract_side_or_size_is_invalid(self) -> None:
         good = docket_leg(WMT, "WMT", "covered_call", "2026-11-20", 0, "act by Fri 2026-11-20 16:00 ET (21:00 UTC)",
@@ -370,24 +381,26 @@ class MorningSheetTest(LintedTest):
 
     def test_the_early_close_line_without_contracts_or_without_a_docket(self) -> None:
         one = morning(early_close_et=datetime.time(13, 0))
-        self.assertIn("early close today at 13:00 ET: no contract on its last trading day", summaries.morning_sheet(one).lines)
+        self.assertIn("- **Early close** today at 13:00 ET: no contract on its last trading day",
+                      summaries.morning_sheet(one).lines)
         gone = morning(early_close_et=datetime.time(13, 0),
                        docket=made(summaries.LABEL_DOCKET, DOCKET_PATH, None, status="missing"))
         summary = summaries.morning_sheet(gone)
-        self.assertIn("early close today at 13:00 ET: the expiry docket is unavailable, so the contracts on their last "
-                      "trading day are unknown", summary.lines)
+        self.assertIn("- **Early close** today at 13:00 ET: the expiry docket is unavailable, so the contracts on their "
+                      "last trading day are unknown", summary.lines)
         self.assertLinted(summary)
-        self.assertFalse([line for line in summaries.morning_sheet(morning()).lines if line.startswith("early close")])
+        self.assertFalse([line for line in summaries.morning_sheet(morning()).lines if "early close" in line])
 
     def test_the_levels_line_of_a_group_without_a_trade_id_and_of_no_group(self) -> None:
         raw = levels_record(groups=((None, 1, 1), (WMT, 0, 0)))
         summary = summaries.morning_sheet(morning(levels=made(summaries.LABEL_LEVELS, LEVELS_PATH, raw,
                                                                datetime.date(2026, 11, 2))))
-        self.assertEqual("last night's levels (levels/2026-11-02.json): ROW-1 1 resting-eligible of 1 price level; "
-                         "AG-20261020-01 0 resting-eligible of 0 price levels", summary.lines[5])
+        at = summary.lines.index("- **Last night's levels**")
+        self.assertEqual(["  - ROW-1 1 resting-eligible of 1 price level",
+                          "  - AG-20261020-01 0 resting-eligible of 0 price levels"], summary.lines[at + 1:at + 3])
         none = summaries.morning_sheet(morning(levels=made(summaries.LABEL_LEVELS, LEVELS_PATH, levels_record(groups=()),
                                                             datetime.date(2026, 11, 2))))
-        self.assertEqual("last night's levels (levels/2026-11-02.json): no open group", none.lines[5])
+        self.assertIn("- **Last night's levels** no open group", none.lines)
         self.assertLinted(summary)
         self.assertLinted(none)
 
@@ -405,20 +418,21 @@ class OpenSignalLinesTest(LintedTest):
         ]
         summary = summaries.morning_sheet(morning(open_signals=items))
         self.assertEqual([
-            "open signals: 6",
-            "SIG-20261103-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted 2026-11-03 "
-            "19:50 UTC | posted 1 of 4 times; next re-post 1 run after the first post | not acknowledged",
-            "SIG-20261103-002 | AG-20261022-02 covered call | EXIT SIGNAL | your plan: review a roll | first posted "
-            "2026-11-03 19:50 UTC | posted 2 of 4 times; next re-post 3 runs after the first post | not acknowledged",
-            "SIG-20261103-003 | AG-20261028-03 protective put | EXIT SIGNAL | your plan: review and decide | first "
-            "posted 2026-11-03 19:50 UTC | posted 4 of 4 times; the re-post ladder is done | not acknowledged",
-            "SIG-20261103-004 | portfolio all open groups | WATCH | your plan: review and decide | first posted "
+            "- **Open signals** 6",
+            "  - SIG-20261103-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted "
+            "2026-11-03 19:50 UTC | posted 1 of 4 times; next re-post 1 run after the first post | not acknowledged",
+            "  - SIG-20261103-002 | AG-20261022-02 covered call | EXIT SIGNAL | your plan: review a roll | first "
+            "posted 2026-11-03 19:50 UTC | posted 2 of 4 times; next re-post 3 runs after the first post | not "
+            "acknowledged",
+            "  - SIG-20261103-003 | AG-20261028-03 protective put | EXIT SIGNAL | your plan: review and decide | "
+            "first posted 2026-11-03 19:50 UTC | posted 4 of 4 times; the re-post ladder is done | not acknowledged",
+            "  - SIG-20261103-004 | portfolio all open groups | WATCH | your plan: review and decide | first posted "
             "2026-11-03 19:50 UTC | posted 1 time; no re-post ladder for WATCH | not acknowledged",
-            "SIG-20261103-005 | ROW-9 cash-secured put | UNAVAILABLE | first posted 2026-11-03 19:50 UTC | posted 3 "
-            "times; re-posted on every run until acknowledged | not acknowledged",
-            "SIG-20261103-006 | AG-20261028-07 short call | WATCH | your plan: close | first posted 2026-11-03 19:50 UTC "
-            "| posted 2 times; no re-post ladder for WATCH | snoozed until 2026-11-04 14:00 UTC",
-        ], summary.lines[3:10])
+            "  - SIG-20261103-005 | ROW-9 cash-secured put | UNAVAILABLE | first posted 2026-11-03 19:50 UTC | posted "
+            "3 times; re-posted on every run until acknowledged | not acknowledged",
+            "  - SIG-20261103-006 | AG-20261028-07 short call | WATCH | your plan: close | first posted 2026-11-03 19:50 "
+            "UTC | posted 2 times; no re-post ladder for WATCH | snoozed until 2026-11-04 14:00 UTC",
+        ], summary.lines[summary.lines.index("- **Open signals** 6"):][:7])
         self.assertLinted(summary)
         self.assertEqual(0, summary.exit_code, "an UNAVAILABLE signal is a journal record, not an UNAVAILABLE line")
 
@@ -438,28 +452,43 @@ class EodBriefTest(LintedTest):
                             {"name": "rulebook", "old": "b" * 64, "new": "c" * 64}],
             calendar_findings=1))
         self.assertEqual([
-            "EOD DESK BRIEF 2026-11-03",
-            "P/L (data/book/2026-11-03.json): realized today $0.00, month to date $0.00, year to date $425.00 | "
-            "unrealized $4,034.00 (liquidation), $4,097.00 (mid) | day $400.00",
-            "AG-20261020-01 WMT covered call | unrealized $1,124.00 (liquidation), $1,145.00 (mid) | day $84.00 "
-            "(row 3), -$50.00 (row 4) | ok",
-            "AG-20261022-02 NVDA covered call | unrealized $1,490.00 (liquidation), $1,515.00 (mid) | day $264.00 "
-            "(row 5), -$70.00 (row 6) | ok",
-            "AG-20261028-03 SPY protective put | unrealized $1,420.00 (liquidation), $1,437.00 (mid) | day $222.00 "
-            "(row 7), -$50.00 (row 8) | ok",
-            "signals today: 3 (1 EXIT SIGNAL, 1 WATCH, 1 UNAVAILABLE)",
-            "open signals: 1",
-            "SIG-20261103-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted 2026-11-03 "
-            "19:50 UTC | posted 1 of 4 times; next re-post 1 run after the first post | not acknowledged",
-            "positions.csv reconciliation (data/positions/2026-11-03.recon.json): EDITS_PENDING, 2 proposed edits "
-            "(csv_recon.py --diff lists them)",
-            "expiry docket (reports/expiry/2026-11-03.week.json): 0 contracts due",
-            "routines: 3 of 4 ran today; late: book-check 10:05 ET (31 min late); missed: book-check 12:05 ET",
-            "to do: SIG-20261103-001 not acknowledged (ack.py show SIG-20261103-001); positions.csv: 2 proposed edits "
-            "pending (csv_recon.py --diff lists them); CONFIG CHANGED pending: desk.toml, adopted rulebook "
-            "(acknowledge with ack.py config --owner-tapped); research/calendar.toml: 1 finding (calendar_check.py "
-            "lists it)",
-            FOOTER_1931,
+            "### EOD DESK BRIEF 2026-11-03",
+            "",
+            "**P/L**",
+            "- \U0001F7E2 **Total** +$4,522.00 | +$4,459.00 at liquidation",
+            "  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00)*",
+            "- \U0001F7E2 **Today** +$400.00",
+            "",
+            "**By trade**",
+            "- \U0001F7E2 **WMT covered call** +$1,145.00 | today +$34.00",
+            "  - *AG-20261020-01 | since entry | +$1,124.00 at liquidation*",
+            "- \U0001F7E2 **NVDA covered call** +$1,515.00 | today +$194.00",
+            "  - *AG-20261022-02 | since entry | +$1,490.00 at liquidation*",
+            "- \U0001F7E2 **SPY protective put** +$1,437.00 | today +$172.00",
+            "  - *AG-20261028-03 | since entry | +$1,420.00 at liquidation*",
+            "",
+            "**Desk status**",
+            "- **Signals today** 3 (1 EXIT SIGNAL, 1 WATCH, 1 UNAVAILABLE)",
+            "- **Open signals** 1",
+            "  - SIG-20261103-001 | AG-20261020-01 covered call | EXIT SIGNAL | your plan: close | first posted "
+            "2026-11-03 19:50 UTC | posted 1 of 4 times; next re-post 1 run after the first post | not acknowledged",
+            "- **positions.csv** EDITS_PENDING, 2 proposed edits (`csv_recon.py --diff` lists them)",
+            "- **Expiry docket** 0 contracts due",
+            "- **Routines** 3 of 4 ran today",
+            "  - late: book-check 10:05 ET (31 min late)",
+            "  - missed: book-check 12:05 ET",
+            "",
+            "**To do**",
+            "- SIG-20261103-001 not acknowledged (`ack.py show SIG-20261103-001`)",
+            "- positions.csv: 2 proposed edits pending (`csv_recon.py --diff` lists them)",
+            "- CONFIG CHANGED pending: desk.toml, adopted rulebook (acknowledge with ack.py config --owner-tapped)",
+            "- research/calendar.toml: 1 finding (`calendar_check.py` lists it)",
+            "",
+            "*read from data/book/2026-11-03.json, data/positions/2026-11-03.recon.json, "
+            "reports/expiry/2026-11-03.week.json*",
+            "",
+            "deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · "
+            "data delayed 15 min, as of 19:31 UTC",
         ], summary.text.split("\n"))
         self.assertEqual(summaries.MODE_BRIEF, summary.mode)
         self.assertEqual(0, summary.exit_code)
@@ -467,12 +496,21 @@ class EodBriefTest(LintedTest):
                          "the footer is the book's newest quote as-of (alerts.book_as_of)")
         self.assertLinted(summary)
 
-    def test_nothing_is_summed(self) -> None:
+    def test_totals_come_from_pl_figures_and_a_group_day_is_never_partial(self) -> None:
         document = book_document(unrealized_pl_liq=Decimal("1.23"), unrealized_pl_mid=Decimal("4.56"),
                                  day_pl=Decimal("7.89"), realized_pl_ytd=Decimal("10.11"))
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
-        self.assertIn("year to date $10.11 | unrealized $1.23 (liquidation), $4.56 (mid) | day $7.89", summary.lines[1])
-        self.assertNotIn("$34.00", summary.text, "84.00 - 50.00 is never computed for the WMT group")
+        self.assertEqual([
+            "- \U0001F7E2 **Total** +$14.67 | +$11.34 at liquidation",
+            "  - *open positions +$4.56, closed this year +$10.11 (today $0.00, this month $0.00)*",
+            "- \U0001F7E2 **Today** +$7.89",
+        ], summary.lines[3:6])
+        self.assertIn("**WMT covered call** +$1,145.00 | today +$34.00", summary.text,
+                      "pl_figures adds the WMT group's two complete leg day P/Ls (84.00 - 50.00), in Decimal")
+        document["legs"][1]["day_pl"] = None
+        partial = summaries.eod_brief(brief(book=book_artifact(document)))
+        self.assertIn("**WMT covered call** +$1,145.00 | today unavailable", partial.text)
+        self.assertNotIn("$84.00", partial.text, "one leg's day P/L is never shown as the group's")
         self.assertLinted(summary)
 
     def test_a_null_prints_unavailable_and_a_null_day_prints_the_books_warning(self) -> None:
@@ -482,18 +520,23 @@ class EodBriefTest(LintedTest):
         document["groups"][1].update(unrealized_pl_liq=None, unrealized_pl_mid=None, data_quality="unavailable")
         document["legs"][3]["day_pl"] = None
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
-        self.assertEqual("P/L (data/book/2026-11-03.json): realized today $0.00, month to date $0.00, year to date "
-                         "$425.00 | unrealized unavailable (liquidation), unavailable (mid) | day P/L unavailable: no "
-                         "snapshot for 2026-11-02 (the desk's first day?)", summary.lines[1])
-        self.assertEqual("AG-20261022-02 NVDA covered call | unrealized unavailable (liquidation), unavailable (mid) | "
-                         "day $264.00 (row 5), unavailable (row 6) | unavailable", summary.lines[3])
-        document["legs"][2]["day_pl"] = None
-        self.assertEqual("AG-20261022-02 NVDA covered call | unrealized unavailable (liquidation), unavailable (mid) | "
-                         "day unavailable | unavailable", summaries.eod_brief(brief(book=book_artifact(document))).lines[3],
-                         "no open leg has a day P/L: one word, not one per row")
+        self.assertEqual([
+            "**P/L**",
+            "- \U0001F7E1 **Total** unavailable",
+            "  - *open positions unavailable, closed this year +$425.00 (today $0.00, this month $0.00)*",
+            "- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
+        ], summary.lines[2:6])
+        self.assertEqual([
+            "- \U0001F7E1 **NVDA covered call** unavailable: no usable quote",
+            "  - *AG-20261022-02*",
+        ],
+                         summary.lines[10:12])
+        document["legs"][1]["day_pl"] = None
+        self.assertTrue(summaries.eod_brief(brief(book=book_artifact(document))).lines[8].endswith("| today unavailable"),
+                        "a group with an open leg that has no day P/L prints no partial sum")
         document["warnings"] = []
-        self.assertTrue(summaries.eod_brief(brief(book=book_artifact(document))).lines[1].endswith(
-            "| day P/L unavailable"))
+        self.assertEqual("- \U0001F7E1 **Today** unavailable",
+                         summaries.eod_brief(brief(book=book_artifact(document))).lines[5])
         self.assertLinted(summary)
 
     def test_one_line_per_open_group_quarantined_groups_in_their_own_words(self) -> None:
@@ -511,9 +554,9 @@ class EodBriefTest(LintedTest):
             {"group_id": "ROW-12", "reasons": ["row 12 status: 'opne' is not a status"]}]
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
         self.assertEqual([
-            "ROW-10 TSLA short call | unrealized -$12.00 (liquidation), -$10.00 (mid) | day $3.00 | ok",
-            "AG-20261030-05 | quarantined: account mismatch (positions_check.py shows the rows)",
-            "ROW-12 | quarantined: row 12: the status cell cannot be used (positions_check.py shows it)",
+            "- \U0001F7E2 **Today** +$400.00",
+            "",
+            "**By trade**",
         ], summary.lines[5:8])
         self.assertNotIn("AG-20261001-04", summary.text, "a group whose rows are all closed has no line")
         self.assertNotIn("opne", summary.text)
@@ -526,15 +569,22 @@ class EodBriefTest(LintedTest):
             docket=made(summaries.LABEL_DOCKET, DOCKET_PATH, None, status="missing", older=datetime.date(2026, 10, 30)),
             audit=audit([])))
         self.assertEqual([
-            "EOD DESK BRIEF 2026-11-03",
-            "UNAVAILABLE: book snapshot data/book/2026-11-03.json missing",
-            "signals today: 0 (0 EXIT SIGNAL, 0 WATCH, 0 UNAVAILABLE)",
-            "open signals: 0",
-            "UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",
-            "expiry docket: none recorded today (reports/expiry/2026-11-03.week.json missing)",
-            "routines: 0 of 0 ran today; late: none; missed: none",
-            "to do: nothing pending",
-            alert_lint.footer_line(BRIEF_NOW),
+            "### EOD DESK BRIEF 2026-11-03",
+            "",
+            "**P/L**",
+            "- UNAVAILABLE: book snapshot data/book/2026-11-03.json missing",
+            "",
+            "**Desk status**",
+            "- **Signals today** 0 (0 EXIT SIGNAL, 0 WATCH, 0 UNAVAILABLE)",
+            "- **Open signals** 0",
+            "- UNAVAILABLE: reconciliation data/positions/2026-11-03.recon.json missing",
+            "- **Expiry docket** none recorded today (reports/expiry/2026-11-03.week.json missing)",
+            "- **Routines** 0 of 0 ran today, none late or missed",
+            "",
+            "**To do** nothing pending",
+            "",
+            "deterministic rules you adopted · posted by an AI assistant · not personalized investment advice · "
+            "data delayed 15 min, as of 22:12 UTC",
         ], summary.text.split("\n"))
         self.assertEqual(20, summary.exit_code)
         self.assertEqual([summaries.LABEL_BOOK, summaries.LABEL_RECON], [item.label for item in summary.unavailable])
@@ -543,17 +593,18 @@ class EodBriefTest(LintedTest):
     def test_a_present_docket_that_cannot_be_used_is_unavailable_in_the_brief(self) -> None:
         late = made(summaries.LABEL_DOCKET, DOCKET_PATH, docket_record(today="2026-11-02"))
         summary = summaries.eod_brief(brief(docket=late))
-        self.assertIn("UNAVAILABLE: expiry docket is from 2026-11-02 (upstream late)", summary.lines)
+        self.assertIn("- UNAVAILABLE: expiry docket is from 2026-11-02 (upstream late)", summary.lines)
         self.assertEqual(20, summary.exit_code)
 
     def test_the_routines_line_names_pending_slots_and_a_manifest_problem(self) -> None:
         pending = audit([slot("preopen", "07:30", True, 0), slot("eod", "16:35")])
         summary = summaries.eod_brief(brief(audit=pending))
-        self.assertIn("routines: 1 of 2 ran today; late: none; missed: none; pending: eod 16:35 ET", summary.lines)
+        at = summary.lines.index("- **Routines** 1 of 2 ran today, none late or missed")
+        self.assertEqual(["  - pending: eod 16:35 ET", ""], summary.lines[at + 1:at + 3])
         problem = summaries.Artifact(summaries.LABEL_MANIFEST, "routines/manifest.toml", summaries.ARTIFACT_INVALID,
                                      why="routine_audit.py --budget shows why")
         broken = summaries.eod_brief(brief(audit=None, audit_problem=problem))
-        self.assertIn("UNAVAILABLE: routine manifest routines/manifest.toml cannot be read (routine_audit.py --budget "
+        self.assertIn("- UNAVAILABLE: routine manifest routines/manifest.toml cannot be read (routine_audit.py --budget "
                       "shows why)", broken.lines)
         self.assertEqual(20, broken.exit_code)
         self.assertLinted(summary)
@@ -564,10 +615,11 @@ class EodBriefTest(LintedTest):
         self.assertEqual("journal/signals.jsonl has lines that do not parse: they were skipped (the file is kept as it is)",
                          note)
         summary = summaries.eod_brief(brief(notes=[note]))
-        self.assertEqual(note, summary.lines[-2])
+        at = summary.lines.index("- " + note)
+        self.assertEqual("", summary.lines[at + 1], "the last item of the desk status, before the to-do list")
         self.assertLinted(summary)
         morning_summary = summaries.morning_sheet(morning(notes=[note]))
-        self.assertEqual(note, morning_summary.lines[-1])
+        self.assertIn("- " + note, morning_summary.lines)
 
 
 class ReviewFixTest(LintedTest):
@@ -629,28 +681,36 @@ class ReviewFixTest(LintedTest):
             "2026-11-02",
             "NVDA excluded from the portfolio totals: not a group of this snapshot, never named"]
         summary = summaries.eod_brief(brief(book=book_artifact(document)))
-        self.assertEqual("P/L (data/book/2026-11-03.json): realized today $0.00, month to date $0.00, year to date "
-                         "$425.00 | unrealized $2,910.00 (liquidation), $2,952.00 (mid) | day $222.00 | totals without "
-                         "AG-20261020-01 (data unavailable); the day total also without AG-20261022-02 (an open leg has "
-                         "no day P/L)", summary.lines[1])
+        self.assertEqual([
+            "- \U0001F7E2 **Total** +$3,377.00 | +$3,335.00 at liquidation",
+            "  - *open positions +$2,952.00, closed this year +$425.00 (today $0.00, this month $0.00) | totals "
+            "without AG-20261020-01 (data unavailable)*",
+            "- \U0001F7E2 **Today** +$222.00",
+            "  - *the day total also without AG-20261022-02 (an open leg has no day P/L)*",
+        ], summary.lines[3:7])
         self.assertNotIn("Roth IRA", summary.text, "a reason may carry a cell the owner typed: only ids are printed")
         self.assertLinted(summary)
         document["warnings"] = document["warnings"][:1]
         document["portfolio"]["day_pl"] = None
-        line = summaries.eod_brief(brief(book=book_artifact(document))).lines[1]
-        self.assertTrue(line.endswith("| day P/L unavailable | totals without AG-20261020-01 (data unavailable)"), line)
+        lines = summaries.eod_brief(brief(book=book_artifact(document))).lines
+        self.assertEqual([
+            "  - *open positions +$2,952.00, closed this year +$425.00 (today $0.00, this month $0.00) | totals "
+            "without AG-20261020-01 (data unavailable)*",
+            "- \U0001F7E1 **Today** unavailable",
+            "",
+        ], lines[4:7])
 
     def test_the_brief_names_the_day_s_incident_files(self) -> None:
         incidents = [("book-check", "trigger_levels"), ("final-call", "expiry_checklist-final-call withheld"),
                      (None, "dirty checkout"), (None, None)]
         summary = summaries.eod_brief(brief(incidents=incidents))
-        self.assertIn("incidents today: 4 (book-check trigger_levels, final-call expiry_checklist-final-call withheld, "
-                      "dirty checkout, 1 other file); details in incidents/", summary.lines)
-        self.assertEqual("to do: incidents/: 4 files today", summary.lines[-1])
+        self.assertIn("- **Incidents today** 4 (book-check trigger_levels, final-call expiry_checklist-final-call "
+                      "withheld, dirty checkout, 1 other file); details in `incidents/`", summary.lines)
+        self.assertEqual(["**To do**", "- `incidents/`: 4 files today"], summary.lines[-4:-2])
         self.assertEqual(0, summary.exit_code, "an incident is named, it is not an unavailable record")
         self.assertLinted(summary)
         quiet = summaries.eod_brief(brief())
-        self.assertFalse(any(line.startswith("incidents today") for line in quiet.lines))
+        self.assertFalse(any("incidents today" in line for line in quiet.lines))
         self.assertNotIn("incidents/", quiet.text)
 
 

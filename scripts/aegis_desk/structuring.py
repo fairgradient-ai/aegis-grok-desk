@@ -110,11 +110,13 @@ L2-1 and L3-1). UNAVAILABLE causes: :data:`CAUSES`. Errors (exit 1 in the tools)
 from __future__ import annotations
 
 import datetime
+import math
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from . import alerts, approval, book, bsm, calendar_events, expiry, grouping, iv, market_clock, payoff, positions_csv
+from . import alerts, approval, book, bsm, calendar_events, carry, expiry, grouping, iv, market_clock, payoff
+from . import positions_csv
 from . import quote_cache, quote_qc
 from . import structuring_config, units
 from . import greeks as greeks_module
@@ -181,6 +183,9 @@ KEY_CAP_PCT: str = "cap_pct"
 KEY_STRESS_DROP_PCT: str = "stress_drop_pct"
 KEY_MAX_NET_DEBIT: str = "max_net_debit"
 KEY_CREDIT_ONLY: str = "credit_only"
+KEY_ROLL_TEST: str = "roll_test"
+"""``[roll] roll_test = "net_time_value"`` (schema_version 2): the roll must not buy back more time value than it
+sells."""
 KEY_STRIKE_FLOOR: str = "strike_floor"
 KEY_EARNINGS: str = "earnings"
 KEY_EX_DIVIDEND: str = "ex_dividend"
@@ -188,7 +193,7 @@ KEY_UNPRICED: str = "unpriced"
 BAND_KEYS: Tuple[str, ...] = (KEY_DTE, KEY_ABS_DELTA, KEY_MIN_CREDIT, KEY_MAX_SPREAD_PCT, KEY_FLOOR_PCT, KEY_CAP_PCT,
                               KEY_STRESS_DROP_PCT, KEY_MAX_NET_DEBIT)
 """The OUTSIDE_BANDS keys (the owner's windows, bands, minimums and budgets)."""
-CRITERION_KEYS: Tuple[str, ...] = (KEY_CREDIT_ONLY, KEY_STRIKE_FLOOR, KEY_EARNINGS, KEY_EX_DIVIDEND)
+CRITERION_KEYS: Tuple[str, ...] = (KEY_CREDIT_ONLY, KEY_ROLL_TEST, KEY_STRIKE_FLOOR, KEY_EARNINGS, KEY_EX_DIVIDEND)
 """The FAILS_CRITERION keys (the owner's yes/no criteria)."""
 REASON_KEY_ORDER: Tuple[str, ...] = BAND_KEYS + CRITERION_KEYS + (KEY_UNPRICED,)
 
@@ -201,6 +206,7 @@ CODE_CAP_OUTSIDE_BAND: str = "cap_outside_band"
 CODE_NO_COVER_AT_STRESS: str = "no_cover_at_stress"
 CODE_NET_DEBIT_ABOVE_BUDGET: str = "net_debit_above_budget"
 CODE_DEBIT_ROLL: str = "debit_roll"
+CODE_GIVES_UP_TIME_VALUE: str = "gives_up_time_value"
 CODE_ROLL_DOWN_BELOW_COST: str = "roll_down_below_cost"
 CODE_STRIKE_BELOW_COST: str = "strike_below_cost"
 CODE_CROSSES_EARNINGS: str = "crosses_earnings"
@@ -246,7 +252,7 @@ CODE_KEYS: Dict[str, str] = {
     CODE_DTE_OUTSIDE_WINDOW: KEY_DTE, CODE_DELTA_OUTSIDE_BAND: KEY_ABS_DELTA, CODE_CREDIT_BELOW_MINIMUM: KEY_MIN_CREDIT,
     CODE_SPREAD_ABOVE_MAX: KEY_MAX_SPREAD_PCT, CODE_FLOOR_OUTSIDE_BAND: KEY_FLOOR_PCT, CODE_CAP_OUTSIDE_BAND: KEY_CAP_PCT,
     CODE_NO_COVER_AT_STRESS: KEY_STRESS_DROP_PCT, CODE_NET_DEBIT_ABOVE_BUDGET: KEY_MAX_NET_DEBIT,
-    CODE_DEBIT_ROLL: KEY_CREDIT_ONLY, CODE_ROLL_DOWN_BELOW_COST: KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST: KEY_STRIKE_FLOOR,
+    CODE_DEBIT_ROLL: KEY_CREDIT_ONLY, CODE_GIVES_UP_TIME_VALUE: KEY_ROLL_TEST, CODE_ROLL_DOWN_BELOW_COST: KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST: KEY_STRIKE_FLOOR,
     CODE_CROSSES_EARNINGS: KEY_EARNINGS, CODE_EARNINGS_UNKNOWN: KEY_EARNINGS, CODE_CROSSES_EX_DIVIDEND: KEY_EX_DIVIDEND,
     CODE_DIVIDEND_UNKNOWN: KEY_EX_DIVIDEND,
 }
@@ -313,6 +319,9 @@ WARNING_SPOT_NOT_REALIGNED: str = ("%s quote stamped %s could not be refetched n
 """The warning :func:`align_spot` adds when its refetch gave no usable, newer spot."""
 CONTRACT_SIZE: int = units.CONTRACT_MULTIPLIER
 SCORE_QUANTUM: Decimal = Decimal("0.0001")
+NET_SCORE_QUANTUM: Decimal = Decimal("0.000001")
+"""``net_extrinsic_per_added_day``'s quantum: one step is ``5e-9 x S x days added`` per share (0.0001 at S = 648.12 over
+90 days added), so no two rolls a cent apart in net time value share a score."""
 PCT_QUANTUM: Decimal = Decimal("0.01")
 DECIMAL_DIGITS: int = 28
 AMERICAN_PUT_ABS_DELTA: Decimal = Decimal("0.80")
@@ -342,6 +351,25 @@ TIE_BREAK_DIRECTIONS: Dict[str, Dict[str, int]] = {
     KIND_COLLAR: {"put_strike": _DESCENDING, "net_debit": _ASCENDING, "expiration": _DESCENDING, "contract": _ASCENDING},
 }
 """``1`` ascending (lower or earlier first, contracts in symbol order), ``-1`` descending (higher or later first)."""
+_OBJ = structuring_config
+TIE_BREAKS_BY_OBJECTIVE: Dict[Tuple[str, str], Tuple[str, ...]] = {
+    (KIND_COVERED_CALL, _OBJ.OBJECTIVE_BAND_CENTRE): ("extrinsic_per_day", "abs_delta", "expiration", "strike",
+                                                      "contract"),
+    (KIND_REPLACEMENT_CALL, _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY): ("net_credit", "abs_delta", "expiration",
+                                                                          "strike", "contract"),
+    (KIND_PROTECTIVE_PUT, _OBJ.OBJECTIVE_BAND_CENTRE): ("stress_cost_per_day", "strike", "expiration", "contract"),
+    (KIND_REPLACEMENT_PUT, _OBJ.OBJECTIVE_BAND_CENTRE): ("stress_cost_per_day", "strike", "expiration", "contract"),
+    (KIND_COLLAR, _OBJ.OBJECTIVE_BAND_CENTRE): ("net_debit", "put_strike", "expiration", "contract"),
+}
+"""The tie-breaks of an objective other than the kind's release-1 one (:data:`TIE_BREAKS` otherwise)."""
+TIE_BREAK_EXTRA_DIRECTIONS: Dict[str, int] = {"extrinsic_per_day": _DESCENDING, "net_extrinsic_per_added_day": _DESCENDING,
+                                              "stress_cost_per_day": _ASCENDING}
+SPOT_BAND_KEYS: Tuple[str, ...] = (KEY_ABS_DELTA, KEY_FLOOR_PCT, KEY_CAP_PCT)
+"""The bands whose reading moves with the share price (``band_centre`` switching prices)."""
+SWITCH_REACH: Decimal = Decimal("0.05")
+"""How far from the spot, as a fraction of it, :func:`band_centre_switches` looks for a change of best."""
+SWITCH_STEPS: int = 200
+"""The scan steps on each side (0.025 % of the spot each at the default reach) before the cent bisection."""
 
 _ZERO = Decimal(0)
 _HUNDRED = Decimal(100)
@@ -396,7 +424,7 @@ class Accepted:
 LEG_KEYS: Tuple[str, ...] = ("occ", "root", "right", "strike", "expiration", "last_trading_day", "dte_calendar",
                              "dte_trading", "bid", "ask", "mid", "spread_pct", "grade", "quote_status", "quote_age_min",
                              "as_of", "tau_years", "iv", "delta", "abs_delta", "greeks", "unpriced",
-                             "spot_bar_utc")
+                             "spot_bar_utc", "spot_used")
 
 
 @dataclass(frozen=True)
@@ -427,6 +455,9 @@ class PricedLeg:
     greeks: Optional[Dict[str, float]] = None
     unpriced: Optional[Reason] = None
     spot_bar_utc: Optional[datetime.datetime] = None
+    spot_used: Optional[Decimal] = None
+    """The stock price the leg's volatility was solved against: the current mid, or the one-minute bar close of the
+    option's own minute (``spot_bar_utc``). A call's time value is measured against it too (:func:`leg_spot`)."""
     """The start of the one-minute bar whose close was the spot the implied volatility was solved against, when the
     stock quote was stamped too far from this option's; ``None`` when the stock quote itself was used."""
 
@@ -523,7 +554,8 @@ class AfterState:
 CANDIDATE_KEYS: Tuple[str, ...] = ("rank", "id", "kind", "expiration", "contracts", "status", "score", "reasons",
                                    "accepted", "lost_because", "american_caveat", "extrinsic_bid", "net_credit",
                                    "net_credit_total", "credit_total", "floor_pct", "cap_pct", "covered_per_share",
-                                   "covered_total", "net_debit", "net_debit_total", "cost_total", "legs", "after")
+                                   "covered_total", "net_debit", "net_debit_total", "cost_total", "net_time_value",
+                                   "incremental_cost_per_day", "days_added", "objective_scores", "legs", "after")
 
 
 @dataclass(frozen=True)
@@ -554,6 +586,15 @@ class Candidate:
     net_debit: Optional[Decimal] = None
     net_debit_total: Optional[Decimal] = None
     cost_total: Optional[Decimal] = None
+    net_time_value: Optional[Decimal] = None
+    """A replacement call's ``N = E_new - E_held`` per share at the conservative sides (:func:`net_time_value`)."""
+    incremental_cost_per_day: Optional[Decimal] = None
+    """A replacement put's cost net of the held put's bid, per calendar day added (:func:`incremental_cost_per_day`)."""
+    days_added: Optional[int] = None
+    """A replacement's calendar days beyond the held leg's expiration."""
+    objective_scores: Optional[Dict[str, Tuple[Optional[Decimal], Optional[Decimal]]]] = None
+    """Every objective the section accepts: ``{id: (score, score at the mids)}`` (the mid value is ``None`` for an
+    objective that reads no price); :func:`rank_candidates` ranks by the one the owner's section names."""
     rank: int = 0
     lost_because: Optional[Dict[str, Any]] = None
 
@@ -565,6 +606,8 @@ class Candidate:
                 value = [item.as_dict() for item in value]
             elif key == "after":
                 value = None if value is None else value.as_dict()
+            elif key == "objective_scores":
+                value = None if value is None else {name: list(pair) for name, pair in sorted(value.items())}
             out[key] = value
         return out
 
@@ -622,10 +665,37 @@ def abs_delta_2dp(delta: float) -> Decimal:
     return abs(Decimal(repr(delta))).quantize(PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
+def leg_spot(leg: "PricedLeg", fallback: Decimal) -> Decimal:
+    """The stock price a leg's time value is measured against: the one its volatility was solved against
+    (``spot_used``), else ``fallback`` (the current mid), so the volatility and the time value read one instant."""
+    return fallback if leg.spot_used is None else leg.spot_used
+
+
 def extrinsic(bid: Decimal, spot: Decimal, strike: Decimal) -> Decimal:
     """The bid's time value of a call: ``bid - max(0, S - K)`` (negative when the bid is below intrinsic)."""
     with localcontext(_DECIMAL_CONTEXT):
         return bid - max(_ZERO, spot - strike)
+
+
+def net_time_value(new_bid: Decimal, held_ask: Decimal, spot: Decimal, new_strike: Decimal, held_strike: Decimal
+                   ) -> Decimal:
+    """``N = E_new - E_held`` per share: the time value a roll sells (the new call's bid less its intrinsic value) less
+    the time value it buys back (the held call's ask less its intrinsic value). A held call in the money carries the
+    owner's own share gain as intrinsic value, which the roll does not give up."""
+    with localcontext(_DECIMAL_CONTEXT):
+        return extrinsic(new_bid, spot, new_strike) - extrinsic(held_ask, spot, held_strike)
+
+
+def incremental_cost_per_day(new_ask: Decimal, held_bid: Decimal, spot: Decimal, new_days: int, held_days: int
+                             ) -> Decimal:
+    """A replacement put's ``(ask_new - bid_held) / S / (T_new - T_held) x 100``: what the protection it adds costs,
+    net of what the held put still fetches, per calendar day added, in percent of the share price, quantized 0.0001
+    half-even. ``ValueError`` unless the replacement expires later."""
+    if new_days <= held_days or spot <= 0:
+        raise ValueError("a replacement must expire after the held leg and the share price must be positive")
+    with localcontext(_DECIMAL_CONTEXT):
+        return ((new_ask - held_bid) / spot / Decimal(new_days - held_days) * _HUNDRED).quantize(
+            SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
 def extrinsic_per_day(bid: Decimal, spot: Decimal, strike: Decimal, days: int) -> Decimal:
@@ -667,6 +737,60 @@ def cap_pct(spot: Decimal, strike: Decimal) -> Decimal:
         return ((strike - spot) / spot * _HUNDRED).quantize(PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
+def net_extrinsic_per_added_day(new_bid: Decimal, held_close: Decimal, spot: Decimal, new_strike: Decimal,
+                                held_strike: Decimal, new_days: int, held_days: int) -> Decimal:
+    """``net_extrinsic_per_added_day`` of a replacement call, with ``N = E_new - E_held``, ``E_new = bid - max(0, S -
+    K_new)`` and ``E_held = held close - max(0, S - K_held)`` (the held call's time value bought back at its conservative
+    side): ``N / S / (T_new - T_held) x 100`` when ``N >= 0``, else ``N / S x 100`` (a roll that gives up time value is
+    charged the whole amount, never spread over the days it adds), quantized :data:`NET_SCORE_QUANTUM` half-even, higher
+    first. The score
+    is continuous at ``N = 0`` and never decreases as ``N`` rises, so every roll that adds time value ranks above every
+    roll that gives some up, and among the latter the one that gives up less ranks first."""
+    added = new_days - held_days
+    if added <= 0 or spot <= 0:
+        raise ValueError("net_extrinsic_per_added_day needs a positive spot and a later new expiration")
+    with localcontext(_DECIMAL_CONTEXT):
+        net = extrinsic(new_bid, spot, new_strike) - extrinsic(held_close, spot, held_strike)
+        per = Decimal(added) if net >= 0 else Decimal(1)
+        return (net / spot / per * _HUNDRED).quantize(NET_SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
+
+
+def quote_term(legs: Sequence["PricedLeg"], max_spread_pct: Decimal) -> Optional[Decimal]:
+    """``band_centre``'s execution-cost part: the sum over the legs of ``spread_pct / max_spread_pct`` (each leg's quote
+    width in percent of its mid, counted in your own ``[general] max_spread_pct``: 0 for a zero spread, 1 at your limit);
+    ``None`` when a leg has no spread. Unquantized: :func:`band_fit` quantizes the sum."""
+    if max_spread_pct <= 0:
+        raise ValueError("max_spread_pct must be positive")
+    with localcontext(_DECIMAL_CONTEXT):
+        total = _ZERO
+        for leg in legs:
+            if leg.spread_pct is None:
+                return None
+            total += leg.spread_pct / max_spread_pct
+        return total
+
+
+def band_fit(values: Sequence[Tuple[Any, ...]], extra: Decimal = Decimal(0)) -> Decimal:
+    """``band_centre``: the sum over the section's bands of ``weight x |x - c| / w`` with ``w = (hi - lo) / 2`` and
+    ``c`` the band's centre, plus ``extra`` (the weighted :func:`quote_term`), quantized 0.01 half-even. Each entry is
+    ``(x, (lo, hi))`` (centre ``(lo + hi) / 2``, weight 1) or ``(x, (lo, hi), centre, weight)`` with the owner's
+    ``schema_version = 2`` settings (``centre`` ``None`` for the midpoint). With the defaults: 0 at the centre of every
+    band with zero spreads, 1 per band at its edge and 1 per leg whose spread is at your limit."""
+    with localcontext(_DECIMAL_CONTEXT):
+        total = Decimal(extra)
+        for entry in values:
+            value, (low, high) = entry[0], entry[1]
+            centre = entry[2] if len(entry) > 2 else None
+            weight = Decimal(entry[3]) if len(entry) > 3 else Decimal(1)
+            low_d, high_d, value_d = Decimal(low), Decimal(high), Decimal(value)
+            half = (high_d - low_d) / 2
+            if half <= 0:
+                raise ValueError("a band needs lo < hi, got [%s, %s]" % (low, high))
+            middle = (low_d + high_d) / 2 if centre is None else Decimal(centre)
+            total += weight * abs(value_d - middle) / half
+        return total.quantize(PCT_QUANTUM, rounding=ROUND_HALF_EVEN)
+
+
 def _money(value: Decimal) -> Decimal:
     return payoff.quantize_money(value)
 
@@ -696,10 +820,18 @@ class PricingContext:
     spot_bars: Mapping[datetime.datetime, Decimal] = field(default_factory=dict)
     """The stock's one-minute closes by the start of their minute (UTC): the spot at an option quote's own stamp when
     the stock quote is stamped more than :data:`SPOT_ALIGNMENT_SECONDS` from it (:func:`attach_spot_bars`)."""
+    chain_q: Mapping[datetime.date, float] = field(default_factory=dict)
+    """The carry an expiration's own put-call parity implies, where those quotes exclude the calendar's dividend rate
+    (:func:`attach_chain_carry`); an expiration not here is priced at :attr:`q`."""
 
     @property
     def q(self) -> float:
+        """The calendar's dividend rate (``research/calendar.toml``), 0 when it lists none."""
         return 0.0 if self.dividend_yield is None else float(self.dividend_yield)
+
+    def q_for(self, expiration: datetime.date) -> float:
+        """The carry an option of ``expiration`` is priced at: its chain's parity carry, else :attr:`q`."""
+        return self.chain_q.get(expiration, self.q)
 
     @property
     def spot_mid(self) -> Optional[Decimal]:
@@ -825,12 +957,14 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     if unpriced is not None:
         return replace(leg, unpriced=unpriced)
     assert spot is not None and qc.mark_mid is not None and leg.tau_years is not None
-    result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, ctx.q)
+    leg = replace(leg, spot_used=spot)
+    q = ctx.q_for(expiration)
+    result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
     if not result.ok or result.sigma is None:
         return replace(leg, unpriced=Reason(KEY_UNPRICED, IV_CODE_PREFIX + result.status, leg.mid, None))
     assert current_spot is not None
     # the Greeks at the current spot: the volatility is the option's, the delta is the position's now
-    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, ctx.q,
+    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, q,
                                            result.sigma)
     return replace(leg, iv=result.sigma, delta=values.delta, abs_delta=abs_delta_2dp(values.delta),
                    greeks={"delta": values.delta, "gamma": values.gamma, "theta": values.theta, "vega": values.vega,
@@ -1093,8 +1227,26 @@ def _short_call_caveat(leg: PricedLeg, spot: Decimal, events: EventContext) -> b
     return extrinsic(leg.bid, spot, leg.strike) < window.amount
 
 
-def _put_caveat(leg: PricedLeg) -> bool:
-    return leg.abs_delta is not None and leg.abs_delta >= AMERICAN_PUT_ABS_DELTA
+def put_exercise_carry(leg: PricedLeg, ctx: PricingContext) -> Optional[Tuple[Decimal, Decimal]]:
+    """``(time value at the mid, interest on the strike to expiry)`` of an IN-THE-MONEY put, ``(P_mid - (K - S),
+    K x (1 - e^(-r x tau)))``; ``None`` for a put at or out of the money (exercising it now pays nothing) or without a
+    mid or tau. The interest is an upper bound on what early exercise can add, so a time value below it is where the
+    American premium can be a large part of the put's time value."""
+    spot = ctx.spot_mid
+    if spot is None or leg.mid is None or leg.tau_years is None or leg.strike <= spot:
+        return None
+    with localcontext(_DECIMAL_CONTEXT):
+        carry = leg.strike * (1 - Decimal(repr(math.exp(-ctx.rate * leg.tau_years))))
+        return (_money(leg.mid - (leg.strike - spot)), _money(carry))
+
+
+def _put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
+    """The American caveat of a long put: absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with
+    a time value at the mid below the interest on its strike (:func:`put_exercise_carry`)."""
+    if leg.abs_delta is not None and leg.abs_delta >= AMERICAN_PUT_ABS_DELTA:
+        return True
+    pair = put_exercise_carry(leg, ctx)
+    return pair is not None and pair[0] < pair[1]
 
 
 # --------------------------------------------------------------------------------------------
@@ -1123,6 +1275,34 @@ def _call_events(leg: PricedLeg, group: GroupContext, section: Any, events: Even
                           earnings_policy=section.earnings, ex_dividend_policy=section.ex_dividend)
 
 
+def _at_mid(score: Any, leg: PricedLeg, *args: Any) -> Optional[Decimal]:
+    """An objective evaluated at the leg's mid instead of its conservative side (the quote-precision test of
+    :func:`rank_candidates`); ``None`` without a mid."""
+    return None if leg.mid is None else score(leg.mid, *args)
+
+
+def _centre_score(bands: Sequence[Tuple[str, Any, Tuple[Any, Any]]], legs: Sequence[PricedLeg],
+                  ctx: "PricingContext", section: Any) -> Optional[Decimal]:
+    """``band_centre`` of a candidate: its ``(band name, reading, band)`` distances plus its legs' :func:`quote_term`,
+    at the section's centres and weights (:meth:`band_centre_of`, :meth:`band_weight`: the midpoint and 1 unless the
+    owner set them); ``None`` when a reading is missing."""
+    quotes = quote_term(legs, ctx.max_spread_pct)
+    if quotes is None or any(value is None for _name, value, _band in bands):
+        return None
+    centre_of = getattr(section, "band_centre_of", None)
+    weight_of = getattr(section, "band_weight", None)
+    entries = [(value, band, None if centre_of is None else centre_of(name),
+                Decimal(1) if weight_of is None else weight_of(name)) for name, value, band in bands]
+    with localcontext(_DECIMAL_CONTEXT):
+        weighted = quotes * (Decimal(1) if weight_of is None else weight_of(structuring_config.QUOTE_WEIGHT))
+    return band_fit(entries, weighted)
+
+
+def _call_fit(leg: PricedLeg, section: Any, ctx: "PricingContext") -> Optional[Decimal]:
+    return _centre_score([("dte", leg.dte_calendar, section.dte), ("abs_delta", leg.abs_delta, section.abs_delta)],
+                         [leg], ctx, section)
+
+
 def covered_call_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any,
                            events: EventContext) -> Candidate:
     """A fresh covered call on the group's shares, ``floor(n / 100)`` contracts, under ``[covered_call]``."""
@@ -1137,10 +1317,14 @@ def covered_call_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupCont
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST, leg.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(leg, group, section, events, None)
     after = after_state(group, contracts, [(leg, -contracts, leg.bid)], None)
-    return _finish(KIND_COVERED_CALL, [leg], contracts, extrinsic_per_day(leg.bid, spot, leg.strike, leg.dte_calendar),
+    spot = leg_spot(leg, spot)
+    epd = extrinsic_per_day(leg.bid, spot, leg.strike, leg.dte_calendar)
+    scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, _at_mid(extrinsic_per_day, leg, spot, leg.strike, leg.dte_calendar)),
+              _OBJ.OBJECTIVE_BAND_CENTRE: (_call_fit(leg, section, ctx), None)}
+    return _finish(KIND_COVERED_CALL, [leg], contracts, epd,
                    reasons + kept, accepted, _short_call_caveat(leg, spot, events), after,
                    extrinsic_bid=extrinsic(leg.bid, spot, leg.strike),
-                   credit_total=_money(leg.bid * _MULTIPLIER * contracts))
+                   credit_total=_money(leg.bid * _MULTIPLIER * contracts), objective_scores=scores)
 
 
 def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, held: HeldLeg, section: Any,
@@ -1155,16 +1339,32 @@ def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: Group
     reasons: List[Reason] = []
     _call_bands(reasons, leg, section, ctx)
     net = leg.bid - held.close_price
-    if section.credit_only and net < 0:
+    net_tv = net_time_value(leg.bid, held.close_price, spot, leg.strike, held.strike)
+    rule = section.roll_rule() if hasattr(section, "roll_rule") else ("credit" if section.credit_only else "none")
+    if rule == structuring_config.ROLL_TEST_CREDIT and net < 0:
         reasons.append(Reason(KEY_CREDIT_ONLY, CODE_DEBIT_ROLL, net, _ZERO))
+    if rule == structuring_config.ROLL_TEST_NET_TIME_VALUE and net_tv < 0:
+        reasons.append(Reason(KEY_ROLL_TEST, CODE_GIVES_UP_TIME_VALUE, net_tv, _ZERO))
     if section.strike_floor == "cost_basis" and leg.strike < held.strike and leg.strike < group.s0:
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_ROLL_DOWN_BELOW_COST, leg.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(leg, group, section, events, held)
     after = after_state(group, contracts, [(leg, -contracts, leg.bid)], held)
-    return _finish(KIND_REPLACEMENT_CALL, [leg], contracts, extrinsic_per_day(leg.bid, spot, leg.strike, leg.dte_calendar),
-                   reasons + kept, accepted, _short_call_caveat(leg, spot, events), after,
-                   extrinsic_bid=extrinsic(leg.bid, spot, leg.strike), net_credit=net,
-                   net_credit_total=_money(net * _MULTIPLIER * contracts))
+    own_spot = leg_spot(leg, spot)  # the new call alone: its time value at the price its volatility was solved at
+    epd = extrinsic_per_day(leg.bid, own_spot, leg.strike, leg.dte_calendar)
+    held_days = market_clock.dte(held.expiration, ctx.today, market_clock.UNIT_CALENDAR, False, ctx.extra_holidays)
+    net_e = net_extrinsic_per_added_day(leg.bid, held.close_price, spot, leg.strike, held.strike, leg.dte_calendar,
+                                        held_days)
+    net_e_mid = (None if leg.mid is None or held.mid is None else
+                 net_extrinsic_per_added_day(leg.mid, held.mid, spot, leg.strike, held.strike, leg.dte_calendar,
+                                             held_days))
+    scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, _at_mid(extrinsic_per_day, leg, own_spot, leg.strike,
+                                                              leg.dte_calendar)),
+              _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: (net_e, net_e_mid)}
+    return _finish(KIND_REPLACEMENT_CALL, [leg], contracts, epd,
+                   reasons + kept, accepted, _short_call_caveat(leg, own_spot, events), after,
+                   extrinsic_bid=extrinsic(leg.bid, own_spot, leg.strike), net_credit=net,
+                   net_credit_total=_money(net * _MULTIPLIER * contracts), net_time_value=net_tv,
+                   objective_scores=scores)
 
 
 def _put_parts(leg: PricedLeg, ctx: PricingContext, section: Any, contracts: int,
@@ -1180,8 +1380,14 @@ def _put_parts(leg: PricedLeg, ctx: PricingContext, section: Any, contracts: int
     score = stress_cost_per_day(leg.ask, leg.strike, stressed, leg.dte_calendar) if leg.dte_calendar > 0 else None
     if cover <= 0:
         reasons.append(Reason(KEY_STRESS_DROP_PCT, CODE_NO_COVER_AT_STRESS, cover, section.stress_drop_pct))
+    mid_score = (None if leg.mid is None or leg.dte_calendar <= 0 else
+                 stress_cost_per_day(leg.mid, leg.strike, stressed, leg.dte_calendar))
+    scores = {_OBJ.OBJECTIVE_STRESS_COST_PER_DAY: (score, mid_score),
+              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([("dte", leg.dte_calendar, section.dte),
+                                                          ("floor_pct", floor, section.floor_pct)], [leg], ctx, section),
+                                           None)}
     return score, {"floor_pct": floor, "covered_per_share": cover, "covered_total": _money(cover * _MULTIPLIER * contracts),
-                   "cost_total": _money(leg.ask * _MULTIPLIER * contracts)}
+                   "cost_total": _money(leg.ask * _MULTIPLIER * contracts), "objective_scores": scores}
 
 
 def protective_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any) -> Candidate:
@@ -1193,7 +1399,7 @@ def protective_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupCo
     score, metrics = _put_parts(leg, ctx, section, contracts, reasons)
     assert leg.ask is not None
     after = after_state(group, contracts, [(leg, contracts, leg.ask)], None)
-    return _finish(KIND_PROTECTIVE_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg), after, **metrics)
+    return _finish(KIND_PROTECTIVE_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg, ctx), after, **metrics)
 
 
 def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, held: HeldLeg,
@@ -1205,9 +1411,15 @@ def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupC
         return _unpriced(KIND_REPLACEMENT_PUT, [leg], contracts, leg.unpriced)
     reasons: List[Reason] = []
     score, metrics = _put_parts(leg, ctx, section, contracts, reasons)
-    assert leg.ask is not None
+    assert leg.ask is not None and leg.dte_calendar is not None
     after = after_state(group, contracts, [(leg, contracts, leg.ask)], held)
-    return _finish(KIND_REPLACEMENT_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg), after, **metrics)
+    held_days = market_clock.dte(held.expiration, ctx.today, market_clock.UNIT_CALENDAR, False, ctx.extra_holidays)
+    spot = ctx.spot_mid
+    if held.close_price is not None and spot is not None and leg.dte_calendar > held_days:
+        metrics["incremental_cost_per_day"] = incremental_cost_per_day(leg.ask, held.close_price, spot,
+                                                                       leg.dte_calendar, held_days)
+        metrics["days_added"] = leg.dte_calendar - held_days
+    return _finish(KIND_REPLACEMENT_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg, ctx), after, **metrics)
 
 
 def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any,
@@ -1235,9 +1447,15 @@ def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST, call.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(call, group, section, events, None)
     after = after_state(group, contracts, [(put, contracts, put.ask), (call, -contracts, call.bid)], None)
-    caveat = _put_caveat(put) or _short_call_caveat(call, spot, events)
+    caveat = _put_caveat(put, ctx) or _short_call_caveat(call, spot, events)
+    scores = {_OBJ.OBJECTIVE_CAP_WITHIN_BUDGET: (cap, None),
+              _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([("dte", put.dte_calendar, section.dte),
+                                                          ("floor_pct", floor, section.floor_pct),
+                                                          ("cap_pct", cap, section.cap_pct)], [put, call], ctx, section),
+                                           None)}
     return _finish(KIND_COLLAR, [put, call], contracts, cap, reasons + kept, accepted, caveat, after, floor_pct=floor,
-                   cap_pct=cap, net_debit=debit, net_debit_total=_money(debit * _MULTIPLIER * contracts))
+                   cap_pct=cap, net_debit=debit, net_debit_total=_money(debit * _MULTIPLIER * contracts),
+                   objective_scores=scores)
 
 
 @dataclass(frozen=True)
@@ -1247,6 +1465,9 @@ class CandidateSet:
 
     candidates: List[Candidate]
     outside_bands: Optional[Dict[str, int]] = None
+    switch_pool: Tuple[Candidate, ...] = ()
+    """For a collar only: the pairs (not ranked, never shown) with a leg outside its floor or cap band at today's spot
+    that enters the band within :data:`SWITCH_REACH`, so :func:`band_centre_switches` can re-test them."""
 
 
 QUOTE_IDENTITY_FIELDS: Tuple[str, ...] = ("bid", "ask", "bid_date", "ask_date", "strike", "expiration_date",
@@ -1286,6 +1507,7 @@ def price_listed(quote: Quote, quotes_listed: int, ctx: PricingContext) -> Price
         return leg
     return replace(leg, bid=None, ask=None, mid=None, spread_pct=None, grade=None, quote_status=None,
                    quote_age_min=None, as_of=None, tau_years=None, iv=None, delta=None, abs_delta=None, greeks=None,
+                   spot_used=None,
                    unpriced=Reason(KEY_UNPRICED, CODE_QUOTE_CONFLICT, quotes_listed, None))
 
 
@@ -1323,7 +1545,20 @@ def candidates_for(kind: str, chains: Mapping[datetime.date, Sequence[Quote]], c
     in_calls = [leg for leg in calls if section.cap_pct[0] <= cap_pct(spot, leg.strike) <= section.cap_pct[1]]
     pairs = [collar_candidate(put, call, ctx, group, section, events) for put in in_puts for call in in_calls
              if put.expiration == call.expiration]
-    return CandidateSet(pairs, {"puts": len(puts) - len(in_puts), "calls": len(calls) - len(in_calls)})
+    low, high = spot * (1 - SWITCH_REACH), spot * (1 + SWITCH_REACH)
+    near_puts = [leg for leg in puts if leg not in in_puts and _reaches(floor_pct(low, leg.strike),
+                                                                        floor_pct(high, leg.strike), section.floor_pct)]
+    near_calls = [leg for leg in calls if leg not in in_calls and _reaches(cap_pct(high, leg.strike),
+                                                                           cap_pct(low, leg.strike), section.cap_pct)]
+    extra = tuple(collar_candidate(put, call, ctx, group, section, events)
+                  for put, call in [(p, c) for p in near_puts + in_puts for c in near_calls + in_calls]
+                  if put.expiration == call.expiration and (put in near_puts or call in near_calls))
+    return CandidateSet(pairs, {"puts": len(puts) - len(in_puts), "calls": len(calls) - len(in_calls)}, extra)
+
+
+def _reaches(first: Decimal, last: Decimal, band: Tuple[Any, Any]) -> bool:
+    """Whether a reading that runs from ``first`` to ``last`` over the switch reach meets ``band``."""
+    return first <= Decimal(band[1]) and last >= Decimal(band[0])
 
 
 # --------------------------------------------------------------------------------------------
@@ -1348,6 +1583,12 @@ class Ranking:
     failure_counts: Dict[str, int]
     objective: Objective
     unpriced: int = 0
+    near_best: Tuple[str, ...] = ()
+    """Quote precision (information only, never a change of order): the best's id, then the ids of the ELIGIBLE
+    candidates whose score lies within the best's own half-spread of the best's score (empty when none does)."""
+    switches: Tuple[Optional["SpotSwitch"], Optional["SpotSwitch"]] = (None, None)
+    """Under ``band_centre``: the nearest share price above, then below, the spot at which another candidate becomes
+    best at today's quotes and volatilities (:func:`band_centre_switches`); ``None`` when none lies within the reach."""
 
     @property
     def priced(self) -> int:
@@ -1358,7 +1599,9 @@ class Ranking:
         return {"candidates": [candidate.as_dict() for candidate in self.candidates],
                 "best": None if self.best is None else self.best.id, "verdict": self.verdict,
                 "tie_break": self.tie_break, "passed": self.passed, "failed": self.failed, "unpriced": self.unpriced,
-                "failure_counts": dict(self.failure_counts), "objective": objective_dict(self.objective)}
+                "failure_counts": dict(self.failure_counts), "objective": objective_dict(self.objective),
+                "near_best": list(self.near_best),
+                "switches": [None if item is None else item.as_dict() for item in self.switches]}
 
 
 def objective_dict(objective: Objective) -> Dict[str, Any]:
@@ -1366,13 +1609,43 @@ def objective_dict(objective: Objective) -> Dict[str, Any]:
             "direction": objective.direction}
 
 
-def kind_objective(kind: str) -> Objective:
-    """The objective a kind ranks by (S3)."""
+def kind_objective(kind: str, criteria: Optional[StructuringConfig] = None) -> Objective:
+    """The objective a kind ranks by: the one the owner's section names, or the section's release-1 objective when no
+    criteria are given (S3)."""
+    if criteria is not None:
+        return criteria.objective(KIND_SECTIONS[kind])
     return structuring_config.objective_for(KIND_SECTIONS[kind])
+
+
+def tie_breaks(kind: str, objective: Objective) -> Tuple[str, ...]:
+    return TIE_BREAKS_BY_OBJECTIVE.get((kind, objective.id), TIE_BREAKS[kind])
+
+
+def _direction(kind: str, key: str) -> int:
+    return TIE_BREAK_EXTRA_DIRECTIONS.get(key) or TIE_BREAK_DIRECTIONS[kind][key]
+
+
+def with_objective(candidate: Candidate, objective: Objective) -> Candidate:
+    """The candidate scored by ``objective`` (its ``objective_scores`` entry); an UNPRICED candidate keeps ``None``."""
+    scores = candidate.objective_scores
+    if not scores or objective.id not in scores:
+        return candidate
+    return replace(candidate, score=scores[objective.id][0])
+
+
+def _half_spread_in_score(candidate: Candidate, objective: Objective) -> Optional[Decimal]:
+    """``|score at the conservative side - score at the mid|``: the candidate's own quote spread in score units."""
+    pair = (candidate.objective_scores or {}).get(objective.id)
+    if candidate.score is None or pair is None or pair[1] is None:
+        return None
+    return abs(candidate.score - pair[1])
 
 
 def _tie_value(candidate: Candidate, key: str) -> Any:
     leg = candidate.legs[0]
+    if key in TIE_BREAK_EXTRA_DIRECTIONS:
+        pair = (candidate.objective_scores or {}).get(key)
+        return None if pair is None else pair[0]
     if key == "abs_delta":
         return leg.abs_delta
     if key == "expiration":
@@ -1398,33 +1671,142 @@ def _component(value: Any, direction: int) -> Tuple[int, Any]:
     return (0, -value if direction == _DESCENDING else value)
 
 
+def _tie_parts(candidate: Candidate, kind: str, objective: Objective) -> List[Tuple[int, Any]]:
+    return [_component(_tie_value(candidate, key), _direction(kind, key)) for key in tie_breaks(kind, objective)]
+
+
 def _sort_key(candidate: Candidate, kind: str, objective: Objective) -> Tuple[Any, ...]:
     tier = TABLE_ORDER.index(candidate.status)
     if candidate.status == STATUS_UNPRICED:
         return (tier, (0, candidate.id))
     direction = _DESCENDING if objective.direction == "higher" else _ASCENDING
-    parts = [tier, _component(candidate.score, direction)]
-    directions = TIE_BREAK_DIRECTIONS[kind]
-    parts.extend(_component(_tie_value(candidate, key), directions[key]) for key in TIE_BREAKS[kind])
+    parts: List[Any] = [tier, _component(candidate.score, direction)]
+    parts.extend(_tie_parts(candidate, kind, objective))
     return tuple(parts)
+
+
+@dataclass(frozen=True)
+class SpotSwitch:
+    """A share price at which ``band_centre`` names another best: ``price`` to the cent, ``pct`` its distance from the
+    spot in percent (signed, 0.01 half-even) and ``becomes`` the id of the candidate that would be best there."""
+
+    price: Decimal
+    pct: Decimal
+    becomes: str
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"price": self.price, "pct": self.pct, "becomes": self.becomes}
+
+
+def _fit_at(candidate: Candidate, section: Any, spot: Decimal, ctx: "PricingContext") -> Optional[Decimal]:
+    """``band_centre`` of ``candidate`` were the share price ``spot`` (quotes, volatilities and days unchanged), or
+    ``None`` when a band that moves with the share price would no longer hold it."""
+    call = next((leg for leg in candidate.legs if leg.right == "CALL"), None)
+    put = next((leg for leg in candidate.legs if leg.right == "PUT"), None)
+    values: List[Tuple[str, Any, Tuple[Any, Any]]] = [("dte", candidate.legs[0].dte_calendar, section.dte)]
+    moving: List[Tuple[str, Decimal, Tuple[Any, Any]]] = []
+    if candidate.kind in (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL):
+        assert call is not None and call.iv is not None and call.tau_years is not None
+        moving.append(("abs_delta", abs_delta_2dp(bsm.delta("CALL", float(spot), float(call.strike), call.tau_years,
+                                                            ctx.rate, ctx.q_for(call.expiration), call.iv)),
+                       section.abs_delta))
+    else:
+        assert put is not None
+        moving.append(("floor_pct", floor_pct(spot, put.strike), section.floor_pct))
+        if call is not None:
+            moving.append(("cap_pct", cap_pct(spot, call.strike), section.cap_pct))
+    for _name, value, (low, high) in moving:
+        if not Decimal(low) <= value <= Decimal(high):
+            return None
+    return _centre_score(values + moving, candidate.legs, ctx, section)
+
+
+def _best_at(pool: Sequence[Candidate], section: Any, spot: Decimal, ctx: "PricingContext") -> Optional[str]:
+    scored = [(fit, order, candidate.id) for order, candidate in enumerate(pool)
+              for fit in [_fit_at(candidate, section, spot, ctx)] if fit is not None]
+    return min(scored)[2] if scored else None
+
+
+def band_centre_switches(ranked: Sequence[Candidate], kind: str, objective: Objective, section: Any,
+                         ctx: "PricingContext", extra: Sequence[Candidate] = ()
+                         ) -> Tuple[Optional[SpotSwitch], Optional[SpotSwitch]]:
+    """The nearest share price above and below the spot (within :data:`SWITCH_REACH` of it) at which ``band_centre``
+    names another best, holding every quote, implied volatility and day count fixed. The pool is every ELIGIBLE
+    candidate plus every OUTSIDE_BANDS one whose only reasons are bands that move with the share price
+    (:data:`SPOT_BAND_KEYS`), re-tested at each price; ``extra`` adds the candidates the ranking never built (for a
+    collar, :attr:`CandidateSet.switch_pool`: the pairs with a leg outside its floor or cap band today that enters it
+    within the reach). A tie is broken by the objective's tie-breaks at today's values. Each side is scanned in
+    :data:`SWITCH_STEPS` steps, then bisected to the cent."""
+    spot = ctx.spot_mid
+    if spot is None:
+        return (None, None)
+    pool = [c for c in list(ranked) + list(extra) if all(leg.iv is not None and leg.tau_years is not None for leg in c.legs)
+            and (c.status == STATUS_ELIGIBLE or (c.status == STATUS_OUTSIDE_BANDS
+                                                 and all(r.key in SPOT_BAND_KEYS for r in c.reasons)))]
+    pool.sort(key=lambda c: tuple(_tie_parts(c, kind, objective)))
+    with localcontext(_DECIMAL_CONTEXT):
+        today = _best_at(pool, section, spot, ctx)
+        if today is None:
+            return (None, None)
+        found: List[Optional[SpotSwitch]] = []
+        for sign in (1, -1):
+            previous, hit = spot, None
+            for step in range(1, SWITCH_STEPS + 1):
+                trial = spot * (1 + sign * SWITCH_REACH * step / SWITCH_STEPS)
+                if _best_at(pool, section, trial, ctx) != today:
+                    low, high = previous, trial
+                    while abs(high - low) > _CENT / 2:
+                        middle = (low + high) / 2
+                        if _best_at(pool, section, middle, ctx) == today:
+                            low = middle
+                        else:
+                            high = middle
+                    price = high.quantize(_CENT, rounding=ROUND_HALF_EVEN)
+                    becomes = _best_at(pool, section, high, ctx)
+                    assert becomes is not None
+                    hit = SpotSwitch(price, ((price - spot) / spot * _HUNDRED).quantize(PCT_QUANTUM,
+                                                                                        rounding=ROUND_HALF_EVEN),
+                                     becomes)
+                    break
+                previous = trial
+            found.append(hit)
+        return (found[0], found[1])
+
+
+def near_best(ordered: Sequence[Candidate], objective: Objective) -> Tuple[str, ...]:
+    """Quote precision, one-sided: with ``h`` the best's own half-spread in score units, the ELIGIBLE candidates whose
+    conservative score lies within ``h`` of the best's. Only the best's quote sets ``h`` and only a candidate's
+    conservative side admits it, so no candidate is ever noted because its own quote is wider; membership is a prefix of
+    the ranking. Information only: the order and the best are unchanged."""
+    eligible = [c for c in ordered if c.status == STATUS_ELIGIBLE and c.score is not None]
+    if len(eligible) < 2:
+        return ()
+    best = eligible[0]
+    half = _half_spread_in_score(best, objective)
+    if half is None or half <= 0:
+        return ()
+    near = [c.id for c in eligible[1:] if abs(c.score - best.score) <= half]
+    return (best.id,) + tuple(near) if near else ()
 
 
 def _separating(candidate: Candidate, best: Candidate, kind: str, objective: Objective) -> Optional[Dict[str, Any]]:
     if candidate.score != best.score:
         return {"by": objective.id, "value": candidate.score, "best": best.score}
-    for key in TIE_BREAKS[kind]:
+    for key in tie_breaks(kind, objective):
         mine, theirs = _tie_value(candidate, key), _tie_value(best, key)
         if mine != theirs:
             return {"by": key, "value": mine, "best": theirs}
     return None
 
 
-def rank_candidates(candidates: Iterable[Candidate], kind: str) -> Ranking:
-    """Order, rank and name the best (module notes, "Objectives"); deterministic whatever the input order."""
+def rank_candidates(candidates: Iterable[Candidate], kind: str, objective: Optional[Objective] = None) -> Ranking:
+    """Order, rank and name the best (module notes, "Objectives"); deterministic whatever the input order. ``objective``
+    defaults to the kind's release-1 objective."""
     if kind not in KINDS:
         raise ValueError("unknown candidate kind %r" % (kind,))
-    objective = kind_objective(kind)
-    ordered = sorted(candidates, key=lambda candidate: _sort_key(candidate, kind, objective))
+    objective = objective or kind_objective(kind)
+    scored = [with_objective(candidate, objective) for candidate in candidates]
+    ordered = sorted(scored, key=lambda candidate: _sort_key(candidate, kind, objective))
     top = ordered[0] if ordered else None
     best = top if top is not None and top.status == STATUS_ELIGIBLE else None
     ranked: List[Candidate] = []
@@ -1447,7 +1829,7 @@ def rank_candidates(candidates: Iterable[Candidate], kind: str) -> Ranking:
     failure_counts = {key: counts[key] for key in REASON_KEY_ORDER if key in counts}
     return Ranking(tuple(ranked), None if best is None else ranked[0], VERDICT_BEST if best is not None
                    else VERDICT_NONE_QUALIFIES, tie, passed, len(ranked) - passed - unpriced, failure_counts, objective,
-                   unpriced)
+                   unpriced, near_best(ranked, objective) if best is not None else ())
 
 
 # --------------------------------------------------------------------------------------------
@@ -1806,7 +2188,7 @@ ANSWER_KEYS: Tuple[str, ...] = (
     "tool", "kind", "trade_id", "group_id", "structure", "structure_requested", "section", "underlying", "account",
     "account_type", "verdict", "cause", "reason", "objective", "criteria", "spot", "held", "before", "shares",
     "contracts", "stress", "expirations", "candidates", "best", "tie_break", "passed", "failed", "unpriced",
-    "failure_counts", "outside_bands", "after", "model_note", "requests", "warnings",
+    "failure_counts", "outside_bands", "after", "model_note", "carry", "requests", "warnings",
 )
 """The keys of :meth:`Answer.as_dict`, the payload body the three tools extend with their own keys."""
 
@@ -1845,6 +2227,9 @@ class Answer:
     requests: Dict[str, Any] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
     model_note: str = MODEL_NOTE
+    carry: List[Dict[str, Any]] = field(default_factory=list)
+    """One record per evaluated expiration (:func:`attach_chain_carry`): its source, the carry it was priced at, the
+    calendar's rate and the parity estimate with its two bounds."""
 
     @property
     def candidate(self) -> Optional[Candidate]:
@@ -1901,6 +2286,7 @@ class Answer:
             "unpriced": None if ranking is None else ranking.unpriced,
             "failure_counts": None if ranking is None else dict(ranking.failure_counts),
             "outside_bands": self.outside_bands, "after": after, "model_note": self.model_note,
+            "carry": [dict(entry) for entry in self.carry],
             "requests": dict(self.requests), "warnings": list(self.warnings),
         }
 
@@ -2049,6 +2435,68 @@ def attach_spot_bars(answer: Answer, chains: Mapping[datetime.date, Sequence[Quo
         answer.pricing = replace(pricing, spot_bars=closes)
 
 
+CARRY_QUANTUM: Decimal = Decimal("0.000001")
+"""The carry records' resolution (a carry in the JSON as a decimal of 6 places)."""
+
+
+def _carry_value(value: Optional[float]) -> Optional[Decimal]:
+    if value is None:
+        return None
+    return Decimal(repr(value)).quantize(CARRY_QUANTUM, rounding=ROUND_HALF_EVEN)
+
+
+def attach_chain_carry(answer: Answer, chains: Mapping[datetime.date, Sequence[Quote]]) -> None:
+    """The carry of each expiration of ``chains`` (step 3a of the quant review, :func:`carry.decide`): every option is
+    priced at the calendar's rate, the near-the-money calls' and puts' quotes and the puts' volatilities give the
+    parity estimate, and an expiration whose quotes exclude the calendar's rate is priced at its parity carry
+    (:attr:`PricingContext.chain_q`). Each expiration gets a record in :attr:`Answer.carry`. No request is made."""
+    pricing = answer.pricing
+    assert pricing is not None
+    spot = pricing.spot_mid
+    if spot is None:
+        return
+    chosen: Dict[datetime.date, float] = {}
+    records: List[Dict[str, Any]] = []
+    for expiration in sorted(chains):
+        books: Dict[str, Dict[float, Tuple[float, float]]] = {bsm.CALL: {}, bsm.PUT: {}}
+        put_vols: Dict[float, float] = {}
+        taus: List[float] = []
+        spots: List[float] = []
+        for right in (bsm.CALL, bsm.PUT):
+            for quote, listed in listed_options({expiration: chains[expiration]}, right):
+                leg = price_listed(quote, listed, pricing)
+                if (leg.unpriced is not None or leg.iv is None or leg.bid is None or leg.ask is None
+                        or leg.tau_years is None):
+                    continue
+                books[right][float(leg.strike)] = (float(leg.bid), float(leg.ask))
+                taus.append(leg.tau_years)
+                # parity compares the options with the stock price of the same moment: the bar a leg was solved against
+                bar = None if leg.spot_bar_utc is None else pricing.spot_bars.get(leg.spot_bar_utc)
+                spots.append(float(spot if bar is None else bar))
+                if right == bsm.PUT:
+                    put_vols[float(leg.strike)] = leg.iv
+        if taus:
+            tau = sorted(taus)[len(taus) // 2]
+            moment_spot = sorted(spots)[len(spots) // 2]
+            decision = carry.decide(books[bsm.CALL], books[bsm.PUT], moment_spot, tau, pricing.rate, put_vols,
+                                    pricing.q)
+        else:
+            decision = carry.CarryDecision(None, carry.SOURCE_TOO_FEW, None, False)
+        if decision.q is not None:
+            chosen[expiration] = decision.q
+        found = decision.found
+        records.append({
+            "expiration": expiration, "source": decision.source,
+            "q": _carry_value(pricing.q if decision.q is None else decision.q), "calendar_q": _carry_value(pricing.q),
+            "q_imp": None if found is None else _carry_value(found.q_imp),
+            "q_quote": None if found is None else _carry_value(found.q_quote),
+            "q_amer": None if found is None or not decision.bias_computed else _carry_value(found.q_amer),
+        })
+    answer.carry = records
+    if chosen:
+        answer.pricing = replace(pricing, chain_q=chosen)
+
+
 def spot_bar_count(answer: Answer) -> int:
     """How many priced candidate legs solved their volatility against a one-minute bar (the text's disclosure)."""
     if answer.ranking is None:
@@ -2086,11 +2534,16 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     if stopped is not None:
         return stopped
     attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
     assert answer.events is not None and answer.pricing is not None and answer.group_context is not None
     built = candidates_for(answer.kind, chains, answer.pricing, answer.group_context, answer.section, answer.events,
                            held=answer.held)
     answer.outside_bands = built.outside_bands
-    answer.ranking = rank_candidates(built.candidates, answer.kind)
+    answer.ranking = rank_candidates(built.candidates, answer.kind, answer.objective)
+    if answer.ranking.best is not None and answer.objective.id == structuring_config.OBJECTIVE_BAND_CENTRE:
+        answer.ranking = replace(answer.ranking, switches=band_centre_switches(answer.ranking.candidates, answer.kind,
+                                                                               answer.objective, answer.section,
+                                                                               answer.pricing, built.switch_pool))
     if answer.ranking.priced == 0 and (built.candidates or answer.kind != KIND_COLLAR):
         return _unavailable(answer, CAUSE_NO_CANDIDATE_PRICED, no_candidate_words(built.candidates))
     return _close(answer, answer.ranking.verdict)
@@ -2125,7 +2578,7 @@ def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringCo
     """``roll_analysis.py``: every replacement short call of a later standard monthly inside ``[roll] dte`` for the
     short call of a ``covered_call`` group, ranked by ``extrinsic_per_day`` (module notes)."""
     answer = Answer(tool=TOOL_ROLL_ANALYSIS, kind=KIND_REPLACEMENT_CALL, trade_id=trade_id, section_name="roll",
-                    criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL))
+                    criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL, criteria))
     stopped = _start(answer, market)
     if stopped is not None:
         return stopped
@@ -2182,7 +2635,7 @@ def run_proposal(market: MarketData, trade_id: str, structure: str, criteria: St
         raise ValueError("structure must be one of %s, got %r" % (", ".join(PROPOSAL_STRUCTURES), structure))
     kind = PROPOSAL_KINDS[structure]
     answer = Answer(tool=TOOL_PROPOSE, kind=kind, trade_id=trade_id, section_name=structure, criteria=criteria,
-                    structure_requested=structure, section=criteria.section(structure), objective=kind_objective(kind))
+                    structure_requested=structure, section=criteria.section(structure), objective=kind_objective(kind, criteria))
     stopped = _start(answer, market)
     if stopped is not None:
         return stopped
@@ -2211,7 +2664,7 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     put under ``[protective_put]`` (S1, S2). ``ValueError`` when ``expiration`` is not after the held leg's (a usage
     error in the tool). A ticket needs a live session (``require_live``: S5)."""
     answer = Answer(tool=TOOL_EXIT_TICKET, kind=KIND_REPLACEMENT_CALL, trade_id=trade_id, section_name="roll",
-                    criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL))
+                    criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL, criteria))
     stopped = _start(answer, market)
     if stopped is not None:
         return stopped
@@ -2223,7 +2676,7 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
         return _close(answer, applicability.verdict, applicability.code, applicability.reason)
     if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_PUT, "protective_put", criteria.protective_put
-        answer.objective = kind_objective(KIND_REPLACEMENT_PUT)
+        answer.objective = kind_objective(KIND_REPLACEMENT_PUT, criteria)
         row = _option_row(group, "PUT", False)
     else:
         row = _option_row(group, "CALL", True)
@@ -2249,6 +2702,7 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     if stopped is not None:
         return stopped
     attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
     assert answer.pricing is not None and answer.group_context is not None and answer.held is not None
     wanted = expiry.plain_decimal(Decimal(strike))
     listed = [q for q in chains[expiration] if (q.option_type or "").upper() == row.occ.right
@@ -2265,7 +2719,7 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     else:
         candidate = replacement_call_candidate(leg, answer.pricing, answer.group_context, answer.held, answer.section,
                                                answer.events)
-    answer.ranking = rank_candidates([candidate], answer.kind)
+    answer.ranking = rank_candidates([candidate], answer.kind, answer.objective)
     return _close(answer, VERDICT_PRICED)
 
 

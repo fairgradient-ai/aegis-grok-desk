@@ -32,7 +32,7 @@ One exit-code table for every tool:
 ## ack
 
 - script: `scripts/ack.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the owner's acknowledgements: list and show the open signals with their re-post ladder, ack, snooze or record acted on a signal, acknowledge the configuration hashes book_check compares, and record the owner's readback of the connected apps and MCP servers
 - network access: none
@@ -74,7 +74,7 @@ Payload (`--json` envelope key `payload`):
 ## alert_lint
 
 - script: `scripts/alert_lint.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: prove that a message carries only numbers the desk emitted, the fixed footer and no trade language (exit 0 passes, 1 fails: the message must not be posted)
 - network access: none
@@ -105,7 +105,7 @@ Payload (`--json` envelope key `payload`):
 ## assignment_watch
 
 - script: `scripts/assignment_watch.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times (a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a dividend or quote is unknown
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -143,7 +143,7 @@ Payload (`--json` envelope key `payload`):
 ## book
 
 - script: `scripts/book.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the book of record: every position marked from the desk's quotes with IV, Greeks, P/L, payoff metrics and day P/L against the desk's own snapshot; unavailable is a verdict (exit 20), never a zero
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -159,6 +159,7 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--snapshot` | none | write data/book/<ET date>.json, the snapshot of record (atomic, under the desk lock) |
 | `--report` | none | write reports/book.md |
+| `--view` | none | print the book view: one linted markdown message for a chat (with --json the payload is {message, emitted, lint, exit_code} instead of the book dict) |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
@@ -179,7 +180,7 @@ Payload (`--json` envelope key `payload`):
 ## book_check
 
 - script: `scripts/book_check.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the routine check: the book, the adopted exit rules, the rule state and the posting rules; prints the linted message to post (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, pre-close, watch alive) or quiet; --post records it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -236,7 +237,7 @@ Payload (`--json` envelope key `payload`):
 ## calendar_check
 
 - script: `scripts/calendar_check.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: freshness lint of research/calendar.toml: STALE, MISSING, UNKNOWN_DIVIDEND and PAST findings against the held symbols and the short-call underlyings; no network, nothing written
 - network access: none
@@ -270,7 +271,7 @@ Payload (`--json` envelope key `payload`):
 ## csv_recon
 
 - script: `scripts/csv_recon.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: reconcile positions.csv: settle expired legs from official closes and settlement values, list proposed edits (never applied), check quotes, coverage, roll links and acknowledged-but-unchanged groups, snapshot the file; CLEAN / EDITS_PENDING / UNAVAILABLE / ERRORS
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v2/stocks/bars only (through the quote cache); none with --offline
@@ -311,7 +312,7 @@ Payload (`--json` envelope key `payload`):
 ## desk_doctor
 
 - script: `scripts/desk_doctor.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the desk doctor: release pin, interpreter, holiday table, key source, paper key, machine role, broker-looking environment names, desk files, market status, connector readback, heartbeats and the engine selftest; PASS / WARN / FAIL per check, one verdict, state/doctor.json
 - network access: GET https://paper-api.alpaca.markets/v2/clock once with the paper key pair (full mode only); none with --offline, --quick or --selftest
@@ -344,7 +345,7 @@ Payload (`--json` envelope key `payload`):
 ## desk_init
 
 - script: `scripts/desk_init.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: render desk.toml once from the owner's interview answers (the ex-dividend and earnings intake into research/calendar.toml and the structuring intake into structuring.toml), byte for byte, validated before it is written; owner-authority
 - network access: none
@@ -374,12 +375,12 @@ Payload (`--json` envelope key `payload`):
 
 Input (`--schema` key `input`):
 
-- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "earnings": {"SYMBOL": "{date YYYY-MM-DD, time pre | post | unknown, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml with the ex_dividends of the same answers)"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"credentials_file": "string (optional; a file with no group or other permission bits holding the key ID on line 1 and the secret on line 2)", "host": "paper (live is refused: the desk holds an Alpaca paper key pair only)", "key_env": "string (the NAME of the environment variable that holds the paper key ID, for example APCA_API_KEY_ID; never the key itself)", "secret_env": "string (the NAME of the environment variable that holds the paper secret, for example APCA_API_SECRET_KEY; never the secret itself)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, structuring, or any of these together)", "structuring": {"collar": {"cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)", "objective": "cap_within_budget", "strike_floor": "cost_basis | none"}, "covered_call": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, at the bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}, "disclosure_acknowledged": "structuring-suggestions-1 (given only after the owner acknowledges the disclosure the interview shows last)", "general": {"max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)", "max_spread_pct": "decimal string: percent, 0 < x <= 25"}, "protective_put": {"dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "enabled": "boolean", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "objective": "stress_cost_per_day", "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90"}, "roll": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "credit_only": "boolean (a net debit fails it; a zero net passes)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, the new call's bid)", "objective": "extrinsic_per_day", "strike_floor": "cost_basis | none"}}}`
+- `answers`: `{"desk": {"cadence_profile": "lean | active", "chatty_or_quiet": "chatty | quiet", "engagement": "string"}, "earnings": {"SYMBOL": "{date YYYY-MM-DD, time pre | post | unknown, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml with the ex_dividends of the same answers)"}, "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or {status none, source string} (optional; written to research/calendar.toml)"}, "levels": {"penny_all_classes": ["OCC root (optional)"], "penny_classes": ["OCC root (optional)"]}, "market_data": {"credentials_file": "string (optional; a file with no group or other permission bits holding the key ID on line 1 and the secret on line 2)", "host": "paper (live is refused: the desk holds an Alpaca paper key pair only)", "key_env": "string (the NAME of the environment variable that holds the paper key ID, for example APCA_API_KEY_ID; never the key itself)", "secret_env": "string (the NAME of the environment variable that holds the paper secret, for example APCA_API_SECRET_KEY; never the secret itself)"}, "owner": {"accounts": [{"name": "string", "type": "cash | margin | ira"}], "approval_level": "integer 0-5 (self-attested)", "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"}, "broker_exercise_cutoff_et": "HH:MM (America/New_York)", "declared_equity": "decimal string, for example \"250000.00\"", "disclosures_acknowledged": ["string"]}, "rates": {"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}, "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, structuring, or any of these together)", "structuring": {"collar": {"band_weights": "{dte, floor_pct, cap_pct, quote: decimal string > 0 and <= 10} (optional; band_centre only; each absent band weighs 1; writes schema_version 2)", "cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100", "cap_pct_centre": "decimal string (optional; band_centre only; inside cap_pct; writes schema_version 2)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "dte_centre": "decimal string (optional; band_centre only; inside dte; writes schema_version 2)", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "floor_pct_centre": "decimal string (optional; band_centre only; inside floor_pct; writes schema_version 2)", "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)", "objective": "cap_within_budget | band_centre", "strike_floor": "cost_basis | none"}, "covered_call": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "abs_delta_centre": "decimal string (optional; band_centre only; inside abs_delta; writes schema_version 2)", "band_weights": "{dte, abs_delta, quote: decimal string > 0 and <= 10} (optional; band_centre only; each absent band weighs 1; writes schema_version 2)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "dte_centre": "decimal string (optional; band_centre only; inside dte; writes schema_version 2)", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, at the bid)", "objective": "extrinsic_per_day | band_centre", "strike_floor": "cost_basis | none"}, "disclosure_acknowledged": "structuring-suggestions-1 (given only after the owner acknowledges the disclosure the interview shows last)", "general": {"max_candidates_shown": "integer 1-10 (the text only; JSON lists every candidate)", "max_spread_pct": "decimal string: percent, 0 < x <= 25"}, "protective_put": {"band_weights": "{dte, floor_pct, quote: decimal string > 0 and <= 10} (optional; band_centre only; each absent band weighs 1; writes schema_version 2)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "dte_centre": "decimal string (optional; band_centre only; inside dte; writes schema_version 2)", "enabled": "boolean", "floor_pct": "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50", "floor_pct_centre": "decimal string (optional; band_centre only; inside floor_pct; writes schema_version 2)", "objective": "stress_cost_per_day | band_centre", "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90"}, "roll": {"abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places", "credit_only": "boolean (a net debit fails it; a zero net passes)", "dte": "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90", "earnings": "exclude | allow", "enabled": "boolean", "ex_dividend": "exclude | allow", "min_credit": "decimal string >= 0.01 (per share, the new call's bid)", "objective": "extrinsic_per_day | net_extrinsic_per_added_day", "roll_test": "credit | net_time_value | none (optional; given in place of credit_only; net_time_value fails a roll whose new call holds less time value than the held call; writes schema_version 2)", "strike_floor": "cost_basis | none"}}}`
 
 ## eod_summary
 
 - script: `scripts/eod_summary.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the Morning Desk Sheet (default) or the EOD Desk Brief (--brief): one linted message composed from the desk's own records (doctor, reconciliation, docket, levels, book snapshot, journals, heartbeats); never fetches, writes nothing
 - network access: none
@@ -416,7 +417,7 @@ Payload (`--json` envelope key `payload`):
 ## exit_check
 
 - script: `scripts/exit_check.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the adopted exit rules evaluated against the book: one verdict per group (EXIT_SIGNAL, UNAVAILABLE, WATCH, HOLD) with every fired, pending, unavailable and suppressed rule; reads the rule state, never writes it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
@@ -459,7 +460,7 @@ Payload (`--json` envelope key `payload`):
 ## exit_ticket
 
 - script: `scripts/exit_ticket.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: a ticket for a group you hold in positions.csv, only when you ask: the legs of CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT or ROLL in the safe order with their quotes, the approval-level check, the cash and the realized estimate; you supply the limit and act in your brokerage account
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest (one batch of the group's symbols) and, for ROLL, the replacement expiration's chain (https://paper-api.alpaca.markets/v2/options/contracts, then https://data.alpaca.markets/v1beta1/options/snapshots/<UNDERLYING>), through the quote cache; none with --offline
@@ -523,7 +524,7 @@ Payload (`--json` envelope key `payload`):
 ## expiry_checklist
 
 - script: `scripts/expiry_checklist.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: expiry-week docket (--week), T-1 preview (--tomorrow) or Final Call sheet (--final-call) for the open option legs: settlement, implications, act-by times (a short leg's session close or the owner's broker cutoff), dividend and pin tiers
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -565,7 +566,7 @@ Payload (`--json` envelope key `payload`):
 ## heartbeat
 
 - script: `scripts/heartbeat.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: record one routine heartbeat (state/heartbeat/<id>.json plus history.jsonl) with its lateness against the scheduled ET slot, or list the recorded heartbeats with their ages
 - network access: none
@@ -599,7 +600,7 @@ Payload (`--json` envelope key `payload`):
 ## market_clock
 
 - script: `scripts/market_clock.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: NYSE session, ET time, minutes to close, previous close, next trading day and holiday-table status at an instant; with --expiry the DTE (calendar and trading), last trading day and exercise cutoff
 - network access: none
@@ -639,7 +640,7 @@ Payload (`--json` envelope key `payload`):
 ## opening_bell
 
 - script: `scripts/opening_bell.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: a public market snapshot of one symbol: its quote, the nearest standard expiration at least 20 calendar days out, the ATM implied volatility and the expected move to it, stated two ways; not a signal
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, https://paper-api.alpaca.markets/v2/options/contracts (the expirations, then one expiration's contracts) and https://data.alpaca.markets/v1beta1/options/snapshots/<SYMBOL> only (at least four requests, more when a listing pages); none with --offline
@@ -683,7 +684,7 @@ Payload (`--json` envelope key `payload`):
 ## positions_check
 
 - script: `scripts/positions_check.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: validate positions.csv, group the legs into structures and run the first-observation plausibility check of every open leg against its quote; CLEAN, or the quarantined groups and file errors (never writes the file)
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -718,7 +719,7 @@ Payload (`--json` envelope key `payload`):
 ## propose
 
 - script: `scripts/propose.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: on the owner's request only: a covered call, protective put or collar on a group that holds shares only, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never a new symbol, a spread, an uncovered short or a cash-secured put; never in a routine
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
@@ -744,7 +745,8 @@ Payload (`--json` envelope key `payload`):
 - `approval`: `"{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, exposure_step, steps: [{index, kind, level, words}]} | null (no check ran: the answer prices nothing)"`
 - `before`: `"{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)"`
 - `best`: `"candidate id | null (rank 1 when ELIGIBLE)"`
-- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null (collar)", "contracts": "integer", "cost_total": "decimal string | null (protective put: ask x 100 x contracts)", "covered_per_share": "decimal string | null (protective put: K - stressed price)", "covered_total": "decimal string | null", "credit_total": "decimal string | null (covered call: bid x 100 x contracts)", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null (covered call)", "floor_pct": "decimal string | null (protective put, collar)", "id": "string (the leg's OCC symbol; a collar '<put>+<call>')", "kind": "covered_call | protective_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "null", "net_credit_total": "null", "net_debit": "decimal string | null (collar: put ask - call bid)", "net_debit_total": "decimal string | null", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null (collar)", "contracts": "integer", "cost_total": "decimal string | null (protective put: ask x 100 x contracts)", "covered_per_share": "decimal string | null (protective put: K - stressed price)", "covered_total": "decimal string | null", "credit_total": "decimal string | null (covered call: bid x 100 x contracts)", "days_added": "integer | null (a replacement: calendar days beyond the held leg's expiration)", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null (covered call)", "floor_pct": "decimal string | null (protective put, collar)", "id": "string (the leg's OCC symbol; a collar '<put>+<call>')", "incremental_cost_per_day": "decimal string | null (a replacement put: (ask_new - bid_held) / S / days added x 100)", "kind": "covered_call | protective_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spot_bar_utc": "ISO-8601 UTC | null (the one-minute bar the volatility was solved against)", "spot_used": "decimal string | null (the stock price the volatility and a call's time value read)", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "null", "net_credit_total": "null", "net_debit": "decimal string | null (collar: put ask - call bid)", "net_debit_total": "decimal string | null", "net_time_value": "null (a proposal holds no call to roll)", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `carry`: `[{"calendar_q": "decimal string (research/calendar.toml's dividend rate, 0 when it lists none)", "expiration": "YYYY-MM-DD", "q": "decimal string (the carry the expiration was priced at)", "q_amer": "decimal string | null (its early-exercise bound, when the decision needed it)", "q_imp": "decimal string | null (put-call parity's carry)", "q_quote": "decimal string | null (its quote-resolution bound)", "source": "parity | calendar_unresolved | calendar_gap | calendar_too_few_strikes"}]`
 - `cause`: `"null | the UNAVAILABLE cause (market_closed, group_quarantined, positions_quarantined, spot_unusable, expirations_not_served, chain_not_served, no_candidate_priced, criteria_missing, config_unacknowledged) | the NOTHING_TO_PROPOSE code (not_shares_only, fewer_than_100_shares, no_shares, no_free_shares, not_enough_free_shares) | the NOT_APPLICABLE code (index_underlying, disabled, no_open_legs, no_expiration_in_window) | the REFUSED code (approval_level, intermediate_exposure)"`
 - `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
 - `contracts`: `"integer | null (floor(shares / 100))"`
@@ -784,7 +786,7 @@ Payload (`--json` envelope key `payload`):
 ## quote_cache
 
 - script: `scripts/quote_cache.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: serve quotes from the desk cache or the GET-only Alpaca paper client (TTL, 200/min budget, chains on demand); never places, modifies or cancels an order
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and, for --chain, /v1beta1/options/snapshots/<SYMBOL> with https://paper-api.alpaca.markets/v2/options/contracts only; none with --offline
@@ -819,7 +821,7 @@ Payload (`--json` envelope key `payload`):
 ## quote_qc
 
 - script: `scripts/quote_qc.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: grade quotes A-F: session-aware per-side freshness against the desk's bound, spread bands, fair and liquidation marks; stale or missing is UNAVAILABLE (exit 20), never HOLD
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline
@@ -849,7 +851,7 @@ Payload (`--json` envelope key `payload`):
 ## roll_analysis
 
 - script: `scripts/roll_analysis.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: on the owner's request only: the replacement candidates for the short call of a covered call, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
@@ -874,7 +876,8 @@ Payload (`--json` envelope key `payload`):
 - `approval`: `"{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, exposure_step, steps: [{index, kind, level, words}]} | null (no check ran: the answer prices nothing)"`
 - `before`: `"{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)"`
 - `best`: `"candidate id | null (rank 1 when ELIGIBLE)"`
-- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null", "contracts": "integer", "cost_total": "decimal string | null", "covered_per_share": "decimal string | null", "covered_total": "decimal string | null", "credit_total": "decimal string | null", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null", "floor_pct": "decimal string | null", "id": "string (the new leg's OCC symbol; a collar '<put>+<call>')", "kind": "covered_call | replacement_call | protective_put | replacement_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "decimal string | null (per share: new bid - held ask)", "net_credit_total": "decimal string | null", "net_debit": "decimal string | null", "net_debit_total": "decimal string | null", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `candidates`: `[{"accepted": [{"by": "#earnings-ok | #assign-ok | your structuring.toml", "code": "string", "key": "earnings | ex_dividend", "threshold": "any", "value": "any"}], "after": "{...} | null (as after)", "american_caveat": "boolean (early exercise matters for this leg; the text names it)", "cap_pct": "decimal string | null", "contracts": "integer", "cost_total": "decimal string | null", "covered_per_share": "decimal string | null", "covered_total": "decimal string | null", "credit_total": "decimal string | null", "days_added": "integer | null (a replacement: calendar days beyond the held leg's expiration)", "expiration": "YYYY-MM-DD", "extrinsic_bid": "decimal string | null", "floor_pct": "decimal string | null", "id": "string (the new leg's OCC symbol; a collar '<put>+<call>')", "incremental_cost_per_day": "decimal string | null (a replacement put: (ask_new - bid_held) / S / days added x 100)", "kind": "covered_call | replacement_call | protective_put | replacement_put | collar", "legs": [{"abs_delta": "decimal string | null (2 dp, half-even)", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "delta": "float | null (greeks.european_greeks)", "dte_calendar": "integer | null", "dte_trading": "integer | null", "expiration": "YYYY-MM-DD", "grade": "A-F | null", "greeks": "{delta, gamma, theta, vega, rho: float} | null", "iv": "float | null (iv.implied_vol at the mid)", "last_trading_day": "YYYY-MM-DD | null", "mid": "decimal string | null", "occ": "OCC symbol (JSON only; the text never prints one)", "quote_age_min": "integer | null", "quote_status": "string | null", "right": "CALL | PUT", "root": "string", "spot_bar_utc": "ISO-8601 UTC | null (the one-minute bar the volatility was solved against)", "spot_used": "decimal string | null (the stock price the volatility and a call's time value read)", "spread_pct": "decimal string | null", "strike": "decimal string", "tau_years": "float | null", "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)"}], "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)", "net_credit": "decimal string | null (per share: new bid - held ask)", "net_credit_total": "decimal string | null", "net_debit": "decimal string | null", "net_debit_total": "decimal string | null", "net_time_value": "decimal string | null (per share: the new bid's time value less the held ask's)", "rank": "integer (1-based table position)", "reasons": [{"code": "string", "key": "structuring.toml key | unpriced", "threshold": "the owner's band, window or minimum", "value": "the value the desk read"}], "score": "decimal string | null (the objective's value)", "status": "ELIGIBLE | FAILS_CRITERION | OUTSIDE_BANDS | UNPRICED"}]`
+- `carry`: `[{"calendar_q": "decimal string (research/calendar.toml's dividend rate, 0 when it lists none)", "expiration": "YYYY-MM-DD", "q": "decimal string (the carry the expiration was priced at)", "q_amer": "decimal string | null (its early-exercise bound, when the decision needed it)", "q_imp": "decimal string | null (put-call parity's carry)", "q_quote": "decimal string | null (its quote-resolution bound)", "source": "parity | calendar_unresolved | calendar_gap | calendar_too_few_strikes"}]`
 - `cause`: `"null | the UNAVAILABLE cause (market_closed, group_quarantined, positions_quarantined, spot_unusable, held_leg_unusable, expirations_not_served, chain_not_served, no_candidate_priced, criteria_missing, config_unacknowledged) | the NOT_APPLICABLE code (structure, index_underlying, disabled, no_open_legs, no_expiration_in_window) | the REFUSED code (approval_level, intermediate_exposure)"`
 - `config_changed`: `[{"name": "desk_toml | positions_csv | rulebook | structuring_toml", "new": "current sha256 | null (missing)", "old": "acknowledged sha256 | null"}]`
 - `contracts`: `"integer | null"`
@@ -914,7 +917,7 @@ Payload (`--json` envelope key `payload`):
 ## routine
 
 - script: `scripts/routine.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the single routine entry point: checks the release pin, runs one manifest routine's steps in-process with JSON captured, composes and lints the one message the Bot posts verbatim, and records the heartbeat, the journal, the step copies and the run record
 - network access: GET https://data.alpaca.markets/... and https://paper-api.alpaca.markets/v2/options/contracts only (Alpaca paper market data), through the step tools' quote cache; none with --offline
@@ -963,7 +966,7 @@ Payload (`--json` envelope key `payload`):
 ## routine_audit
 
 - script: `scripts/routine_audit.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the routine budget per cadence profile, the Grok Bot Auto-review texts rendered from the manifest, and the day audit of the routine heartbeats (expected, ran, late, missed); posts nothing
 - network access: none
@@ -1003,7 +1006,7 @@ Payload (`--json` envelope key `payload`):
 ## rules_adopt
 
 - script: `scripts/rules_adopt.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: adopt one exit rulebook version, owner-tapped: lint against the held structures, refuse during regular trading hours, copy it immutably, write rules/ADOPTED, append rules/CHANGELOG.md and carry the rule state forward
 - network access: none
@@ -1048,7 +1051,7 @@ Payload (`--json` envelope key `payload`):
 ## rules_diff
 
 - script: `scripts/rules_diff.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the adopted and a candidate rulebook evaluated on one book with a scratch rule state: the group verdicts that would change (exit 10), the rule and section results that differ, the rules added, removed and changed; nothing is written
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book
@@ -1093,7 +1096,7 @@ Payload (`--json` envelope key `payload`):
 ## trigger_levels
 
 - script: `scripts/trigger_levels.py`
-- tool version: 0.2.1
+- tool version: 0.3.0
 - mode: read-only
 - description: the threshold-level sheet: every adopted rule of every open group as the option, spread or underlying price, band or date at which its own reading turns, linted; writes levels/<D>.md and levels/<D>.json (and plans/<group>.md with --plan); reads the rule state, never writes it
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only (through the quote cache); none with --offline or --book

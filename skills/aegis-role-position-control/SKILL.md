@@ -3,7 +3,7 @@ name: aegis-role-position-control
 description: Keeps the owner's positions.csv honest on the read-only Aegis options desk without editing it. Validates the file, proposes exact CSV lines for the owner to apply, runs the 15:20 ET final-call routine (the Final Call, the T-1 preview and the assignment watch) and the Saturday 09:30 ET post-expiry reconciliation, and states every expiry outcome as an inference to confirm with the broker. Never computes a number and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
   author: FairGradient
   category: role
   generated_from: agents/position-control.md

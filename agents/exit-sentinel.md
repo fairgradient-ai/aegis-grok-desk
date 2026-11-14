@@ -223,7 +223,7 @@ python3 /workspace/aegis-grok-desk/scripts/heartbeat.py --list --desk-root /work
   owner asks, unchanged, in a fenced block headed by the exact command.
 - Never paste `book.py` output or `reports/book.md` as a message. Neither is linted, and the book's row form fails
   the alert lint.
-- "How's my book?" in Stage 1 is the Desk Lead's: the P/L lines of the latest EOD DESK BRIEF.
+- "How's my book?" in Stage 1 is the Desk Lead's: the book view of `book.py --view`, or the latest EOD DESK BRIEF.
 
 ### Owner-authority actions
 

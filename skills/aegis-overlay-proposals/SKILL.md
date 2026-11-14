@@ -79,19 +79,20 @@ most 2 decimals, and every `dte` window is calendar days with 7 <= lo < hi <= 40
 | | `min_credit` | `0.50` | per share, at the bid; at least 0.01 |
 | | `strike_floor` | `"cost_basis"` | `cost_basis` (no strike below the stock cost) or `none` |
 | | `earnings`, `ex_dividend` | `"exclude"` | `exclude` or `allow` |
-| | `objective` | `"extrinsic_per_day"` | the one objective of the section |
+| | `objective` | `"extrinsic_per_day"` | `extrinsic_per_day` or `band_centre`, the owner's choice |
 | the replacement call's section `[roll]` | the covered call's keys | the same values | for a roll analysis and a covered call's ROLL ticket |
 | | `credit_only` | `true` | a net debit fails it; a zero net passes |
+| | `objective` | `"extrinsic_per_day"` | `extrinsic_per_day` or `net_extrinsic_per_added_day`, never `band_centre` |
 | `[protective_put]` | `enabled` | `true` | a boolean |
 | | `dte` | `[120, 210]` | the window of the put's expiration |
 | | `floor_pct` | `[3, 10]` | (S - K) / S x 100 at 2 decimals; 0 <= lo < hi <= 50 |
 | | `stress_drop_pct` | `20` | above the floor band's hi, at most 90 |
-| | `objective` | `"stress_cost_per_day"` | the one objective of the section |
+| | `objective` | `"stress_cost_per_day"` | `stress_cost_per_day` or `band_centre`, the owner's choice |
 | `[collar]` | `enabled`, `dte` | `true`, `[120, 210]` | as above |
 | | `floor_pct`, `cap_pct` | `[3, 10]`, `[2, 10]` | the cap is (Kc - S) / S x 100 at 2 decimals; 0 < lo < hi <= 100 |
 | | `max_net_debit` | `0.00` | per share, at least 0: 0.00 means a zero cost or a credit |
 | | `strike_floor`, `earnings`, `ex_dividend` | `"cost_basis"`, `"exclude"`, `"exclude"` | as for the covered call |
-| | `objective` | `"cap_within_budget"` | the one objective of the section |
+| | `objective` | `"cap_within_budget"` | `cap_within_budget` or `band_centre`, the owner's choice |
 
 An earnings or ex-dividend date that `research/calendar.toml` lists as unknown, or does not list at all, counts as
 inside the window; it is never treated as none. A listed date that has already passed counts as unknown and inside
@@ -108,16 +109,19 @@ owner's first request:
    `earnings = "exclude"` and `ex_dividend = "exclude"` fail every candidate on a stock that reports earnings or pays a
    quarterly dividend, and asks the owner to choose `exclude` or `allow` for each; `desk_init.py` prints the same as
    `note:` lines, which are posted with its output.
-2. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
+2. For each enabled section, it asks which objective ranks the candidates, shows each objective the section accepts
+   with its words (below), the default first, and records the owner's choice; with no choice the default stays.
+   Under `band_centre` it may record the owner's own `<band>_centre` and `band_weights` (`schema_version = 2`).
+3. Last, it shows the disclosure below, verbatim, and records `disclosure_acknowledged` only after the owner says
    they acknowledge it.
-3. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to
+4. It writes the answers (the `structuring` shape of `desk_init` in [docs/TOOLS.md](../../docs/TOOLS.md)) to
    `/workspace/aegis-desk/setup/structuring-answers.json`, then, after the owner's tap, runs:
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/structuring-answers.json --desk-root /workspace/aegis-desk
 ```
 
-4. Joined with `&&` to that command, `ack.py config --owner-tapped` acknowledges it in the same tap.
+5. Joined with `&&` to that command, `ack.py config --owner-tapped` acknowledges it in the same tap.
 
 When candidates fail only on an earnings or ex-dividend date, give the owner both ways past it, with their effects,
 and let them choose: `allow` in the section (a new interview answer and `desk_init.py --replace --owner-tapped`)
@@ -148,7 +152,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
 
 ## The objectives in words
 
-Each section declares one objective, echoed in every answer with the file's sha. The words describe a formula; they
+Each section declares one of the objectives it accepts, echoed in every answer with the file's sha. The words describe a formula; they
 never name a gain of any kind and never forecast.
 
 | Objective | Words in the text | Formula | Order | Ties broken by |
@@ -156,16 +160,18 @@ never name a gain of any kind and never forecast.
 | `extrinsic_per_day` | the bid's time value per calendar day, in percent of the share price | (bid - max(0, S - K)) / S / T x 100 | higher first | the absolute delta (lower first), the expiration (earlier first), the strike (higher first), the contract |
 | `stress_cost_per_day` | the put's ask per calendar day per 100 of loss it offsets at your stress drop | ask / T / (K - S_x) x 100, with S_x = S x (1 - x / 100) | lower first | the strike (higher first), the expiration (later first), the contract |
 | `cap_within_budget` | the cap's distance above the share price, in percent, among pairs within your net-debit budget | (Kc - S) / S x 100 | higher first | the put strike (higher first), the net debit (lower first), the expiration (later first), the contracts |
+| `band_centre` | the distance from the centre of your bands, each band in its own half-width, plus each leg's quote spread in your max_spread_pct, summed with equal weight (a desk convention) | sum of abs(x - c) / w over the bands + sum of spread_pct / max_spread_pct over the legs | lower first | the section's money measure (`extrinsic_per_day`, `stress_cost_per_day` or the net debit), then the keys above |
+| `net_extrinsic_per_added_day` (`[roll]` only) | the new call's time value at its bid less the held call's at its ask, per calendar day added when the roll adds time value, the whole amount when it gives some up | N = E_new - E_held; N / S / (T_new - T_held) x 100 when N >= 0, else N / S x 100 | higher first | the net credit (higher first), then the covered call's keys |
 
 S is the underlying's mid, K the strike, T the calendar days to expiry and x `stress_drop_pct`. Scores are quantized
-to 4 decimals, the cap to 2. A put whose strike is at or below the stressed price covers no loss there and falls
+to 4 decimals, the cap and `band_centre` to 2, `net_extrinsic_per_added_day` to 6. A put whose strike is at or below the stressed price covers no loss there and falls
 outside the bands. A collar pair whose net debit (the put's ask minus the call's bid) is above `max_net_debit` falls
 outside the bands too.
 
 ## The desk view of a proposal
 
 A proposal is markdown laid out as a desk view, built to read in a chat on a phone; the Bot posts it as it is, never
-in a code block, so the tables render. Its blocks, in order:
+in a code block and never split, and it holds no table, so the chat shows it as one message. Its blocks, in order:
 
 - The title `### PROPOSAL <trade id> | a <structure> on the <n> <SYMBOL> shares you hold`, then the context strip:
   the account as `<n> of desk.toml (<type>)` (never the name typed in `positions.csv`), the share price (the mid the
@@ -173,21 +179,21 @@ in a code block, so the tables render. Its blocks, in order:
 - `**BEST CANDIDATE k of n** by your objective <id>: **<score>**, the highest among the m candidates that passed every
   criterion` (`the lowest` for `stress_cost_per_day`), the legs as list items in the fixed leg grammar, and the caveat
   quoted right under them: `the score ranks the candidates only on the objective you chose; it is not a forecast`.
-- The checks table: each criterion with the candidate's value and your band, and a status cell: a green circle for a
+- The checks: each criterion with the candidate's value and your band, and a status mark: a green circle for a
   criterion it passes, a yellow circle for an earnings or ex-dividend label you accepted (`#earnings-ok`,
   `#assign-ok`, or `allow` in the section), a red circle for one it fails. A protective put adds its cost (the ask,
   and its total for the contracts).
-- The group table, now and after the legs: max loss, max profit, breakeven and the group delta. When the contracts
+- The group block, now and after the legs: max loss, max profit, breakeven and the group delta. When the contracts
   do not cover every share (`floor(shares / 100)` contracts), an item says how many shares the structure leaves out.
-- The approval block, then the ranked candidates table (the best first, its status column the same colours, a
-  failing candidate's red cell naming the keys it fails), the counts in its caption and, for a collar, the legs
+- The approval block, then the ranked candidates list (the best first, its status mark the same colours, a
+  failing candidate's red mark naming the keys it fails), the counts in its caption and, for a collar, the legs
   outside their bands.
 - The notes, quoted: the objective's words, the tie-break when one decided, the quote source, the model line, the
   criteria file's sha, `you supply the limit; the desk prints none` and `if you decide to act, you type it into your
   brokerage account yourself`. Then the structuring footer.
 
 `no candidate passed every criterion: the desk names no best candidate` replaces the best candidate's blocks
-(NONE_QUALIFIES, a complete answer), and the items under the candidates table say why each shown candidate fails.
+(NONE_QUALIFIES, a complete answer), and the items under the candidates list say why each shown candidate fails.
 "Best" means only the highest score on the owner's objective among the candidates that passed every criterion. The
 Bot never adds a word from the lint's advice, claim or urgency categories, and never compares candidates.
 
@@ -197,48 +203,39 @@ A copy whose SPY put row was removed, so AG-20261028-03 holds 100 SPY shares onl
 
 ```text
 ### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY shares you hold
-
-| account | SPY mid | your cost | quotes |
-|---|--:|--:|---|
-| 2 of desk.toml (ira) | 648.12 | 632.40 | 19:31 UTC, 15-min delayed |
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
 **BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
 - leg 1 of 1: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | quote grade A
 
 > the score ranks the candidates only on the objective you chose; it is not a forecast
 
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| floor | 5.88 % below | 3 to 10 % | 🟢 |
-| cost | ask 23.10 (2,310.00 in all) |  |  |
-| covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spread | 0.87 % | at most 25 % | 🟢 |
+**Checks for this candidate**
+- 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
+- **cost** ask 23.10 (2,310.00 in all)
+- 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spread** 0.87 % | your criteria: at most 25 %
 
-| the group | now | after the leg |
-|---|--:|--:|
-| max loss | 63,240.00 | 4,550.00 |
-| max profit | unbounded | unbounded |
-| breakeven | 632.40 | 655.50 |
-| group delta | 100.00 | 69.69 |
+**The group, now and after the leg**
+- **max loss** 63,240.00 now, 4,550.00 after
+- **max profit** unbounded now, unbounded after
+- **breakeven** 632.40 now, 655.50 after
+- **group delta** 100.00 now, 70.17 after
 
-**approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+**Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
+- after leg 1: you hold 100 SPY shares, 1 long put | level 2
 
-| after | you hold | level |
-|---|---|:-:|
-| leg 1 | 100 SPY shares, 1 long put | 2 |
-
-**candidates by rank:** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
-
-| # | expiry | strike | floor | ask | stress_cost_per_day |  |
-|--:|---|---|--:|--:|--:|---|
-| 1 | 2027-03-19 | 610 | 5.88 % | 23.10 | 0.1856 | 🟢 |
-| 2 | 2027-03-19 | 620 | 4.34 % | 25.65 | 0.1858 | 🟢 |
-| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | 🟢 |
+**Candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+- 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
+- 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858
+- 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868
 
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
+> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself
@@ -248,37 +245,33 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 ## A collar's checks and candidates
 
-The same copy with `#assign-ok` on the share row, `--structure collar`: its checks table, group table and ranked
+The same copy with `#assign-ok` on the share row, `--structure collar`: its checks, group block and ranked
 candidates.
 
 ```text
-| check | this candidate | your criteria |  |
-|---|---|---|:-:|
-| floor | 4.34 % below | 3 to 10 % | 🟢 |
-| cap | 4.92 % above | 2 to 10 % | 🟢 |
-| net per share | credit 0.75 (75.00 in all) | net debit at most 0.00 | 🟢 |
-| call strike | 680 | at or above your cost 632.40 | 🟢 |
-| calendar days | 136 | 120 to 210 | 🟢 |
-| spreads | 0.78 % and 0.75 % | at most 25 % | 🟢 |
-| ex-dividend | 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok | 🟡 |
-| ex-dividend | a second ex-date may fall before the call's last trading day | accepted by #assign-ok | 🟡 |
+**Checks for this candidate**
+- 🟢 **floor** 4.34 % below | your criteria: 3 to 10 %
+- 🟢 **cap** 4.92 % above | your criteria: 2 to 10 %
+- 🟢 **net per share** credit 0.75 (75.00 in all) | your criteria: net debit at most 0.00
+- 🟢 **call strike** 680 | your criteria: at or above your cost 632.40
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spreads** 0.78 % and 0.75 % | your criteria: at most 25 %
+- **spread cost** 0.20 per share (20.00 in all)
+- 🟡 **ex-dividend** 2026-12-18 (estimated, cum 2026-12-17), inside the call's life | accepted by #assign-ok
+- 🟡 **ex-dividend** a second ex-date may fall before the call's last trading day | accepted by #assign-ok
 
-| the group | now | after both legs |
-|---|--:|--:|
-| max loss | 63,240.00 | 1,165.00 |
-| max profit | unbounded | 4,835.00 |
-| breakeven | 632.40 | 631.65 |
-| group delta | 100.00 | 24.14 |
+**The group, now and after both legs**
+- **max loss** 63,240.00 now, 1,165.00 after
+- **max profit** unbounded now, 4,835.00 after
+- **breakeven** 632.40 now, 631.65 after
+- **group delta** 100.00 now, 23.75 after
 
-**candidates by rank:** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+**Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
+- 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75
+- 🟢 **2** 2027-03-19 | put 610 / call 680 | floor 5.88 % | cap 4.92 % | credit 3.30
+- 🟢 **3** 2027-03-19 | put 600 / call 680 | floor 7.42 % | cap 4.92 % | credit 5.60
 
-| # | expiry | put / call | floor | cap | net per share |  |
-|--:|---|---|--:|--:|---|---|
-| 1 | 2027-03-19 | 620 / 680 | 4.34 % | 4.92 % | credit 0.75 | 🟢 |
-| 2 | 2027-03-19 | 610 / 680 | 5.88 % | 4.92 % | credit 3.30 | 🟢 |
-| 3 | 2027-03-19 | 600 / 680 | 7.42 % | 4.92 % | credit 5.60 | 🟢 |
-
-- not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
+not paired, outside their bands: 7 puts outside your floor band and 10 calls outside your cap band
 ```
 
 Without the tag every pair fails `ex_dividend`, and the same run is NONE_QUALIFIES. Legs outside their own bands are

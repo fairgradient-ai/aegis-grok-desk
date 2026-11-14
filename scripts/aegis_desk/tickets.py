@@ -847,17 +847,17 @@ def quiet_reason(ticket: Ticket) -> str:
     return ticket.reason or ""
 
 
-def cash_lines(w: structuring_text.Writer, cash: Cash, realized: Sequence[RealizedLeg]) -> List[str]:
-    """The cash table (``structuring_text.cash_table``): the steps' net cash and the closing legs' realized estimate at
-    the conservative prices and at the mids (the mid column says :data:`NO_MID_WORDS` when a leg has none), and the
+def cash_lines(w: structuring_text.Writer, cash: Cash, realized: Sequence[RealizedLeg], legs: int = 1) -> List[str]:
+    """The cash block (``structuring_text.cash_block``): the steps' net cash and the closing legs' realized estimate at
+    the conservative prices and at the mids (the mids read :data:`NO_MID_WORDS` when a leg has none), and the
     most cash the steps need at once."""
     with localcontext(_CONTEXT):
         conservative = sum((item.conservative for item in realized), _ZERO)
         mids = [item.mid for item in realized]
         mid = sum((value for value in mids if value is not None), _ZERO) if all(value is not None for value in mids) \
             else None
-    return structuring_text.cash_table(w, cash.net_conservative, cash.net_mid, conservative, mid, len(realized),
-                                       cash.peak_needed)
+    return structuring_text.cash_block(w, cash.net_conservative, cash.net_mid, conservative, mid, len(realized),
+                                       cash.peak_needed, legs)
 
 
 def _relation(w: structuring_text.Writer, right: str, spot: Decimal, strike: Decimal, itm: bool) -> str:
@@ -893,8 +893,8 @@ def _dividend_line(w: structuring_text.Writer, leg: LetAssignLeg, today: datetim
 
 
 def _let_assign_blocks(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
-    """Per short option left to expiry: the OCC line, then a table of its moneyness now, the act-by of the alternative,
-    what assignment would do and its dividend window."""
+    """Per short option left to expiry: the OCC line, then the contract's items (its moneyness now, the act-by of the
+    alternative, what assignment would do and its dividend window) under the contract in bold."""
     target, group = ticket.target, ticket.group
     assert target is not None and group is not None
     cutoff = target.market.cfg.owner.broker_exercise_cutoff_et
@@ -919,13 +919,17 @@ def _let_assign_blocks(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
         if dividend is not None:
             rows.append(["ex-dividend", dividend])
         lines.extend([structuring_text.let_assign_line(w, leg.strike, leg.right, cutoff), ""])
-        lines.extend(structuring_text.table([structuring_text.contract_words(w, leg.expiration, leg.strike, leg.right),
-                                             ""], "ll", rows))
+        words = structuring_text.contract_words(w, leg.expiration, leg.strike, leg.right)
+        lines.append(structuring_text.bold(words[:1].upper() + words[1:]))
+        lines.extend(structuring_text.labelled_items(rows))
         lines.append("")
     return lines
 
 
-def _put_table(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
+PUT_CAPTION: str = "**The put**"
+
+
+def _put_block(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
     """MONETIZE_PUT: each put's moneyness and the intrinsic and time value of its bid, then what the shares carry
     after the leg."""
     group = ticket.group
@@ -946,7 +950,7 @@ def _put_table(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
     calls = any(row.is_option and row.is_call and row.is_short for row in group.open_legs)
     rows.append(["after the leg", "your %s %s shares carry no put%s: their downside is unhedged"
                  % (w.number(expiry.plain(shares)), group.underlying, " (the short call stays)" if calls else "")])
-    return structuring_text.table(["the put", ""], "ll", rows)
+    return [PUT_CAPTION] + structuring_text.labelled_items(rows)
 
 
 def _leg_lines(w: structuring_text.Writer, ticket: Ticket) -> List[str]:
@@ -968,8 +972,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
                  rulebook_changes: Sequence[Mapping[str, Optional[str]]] = (),
                  delay_min: int = structuring_text.FEED_DELAY_MIN) -> List[str]:
     """The ticket in the desk view (0.2.1, without the footer): the title, the context strip (account, computed,
-    valid until, quotes), the legs, the cash table, a ROLL's replacement checks and group tables, MONETIZE_PUT's put
-    table or LET_ASSIGN's table per short option, F1's approval block, then the notes; one line for an answer that
+    valid until, quotes) on one line, the legs, the cash, a ROLL's replacement checks and group, MONETIZE_PUT's put
+    items or LET_ASSIGN's items per short option, F1's approval block, then the notes; one line for an answer that
     prints no ticket. ``rulebook_changes`` (an unacknowledged adopted rulebook alone, which does not block) prints
     first."""
     lines: List[str] = []
@@ -999,12 +1003,12 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     if ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         words = structuring_text.ROLL_PUT_WORDS
     as_of = ticket_as_of(ticket)
-    lines.extend([structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
-                                                 words), ""])
-    lines.extend(structuring_text.table(["account", "computed", "valid until", "quotes"], "llll", [[
-        account, w.clock(ticket.now), structuring_text.valid_until_cell(w, ticket.valid_until, bool(ticket.valid_full)),
-        structuring_text.quotes_cell(w, as_of, delay_min)]]))
-    lines.append("")
+    lines.append(structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
+                                                words))
+    lines.extend([structuring_text.strip_line([
+        ("account", account), ("computed", w.clock(ticket.now)),
+        ("valid until", structuring_text.valid_until_cell(w, ticket.valid_until, bool(ticket.valid_full))),
+        ("quotes", structuring_text.quotes_cell(w, as_of, delay_min))]), ""])
     notes = [structuring_text.validity_line(w, ticket.valid_until), structuring_text.quotes_line(w, as_of, delay_min)]
     if ticket.action == structuring.ACTION_LET_ASSIGN:
         lines.extend(_let_assign_blocks(w, ticket))
@@ -1013,18 +1017,19 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     lines.append(structuring_text.LEGS_CAPTION)
     lines.extend(structuring_text.ITEM + leg for leg in _leg_lines(w, ticket))
     lines.append("")
-    lines.extend(cash_lines(w, ticket.cash, ticket.realized))
+    lines.extend(cash_lines(w, ticket.cash, ticket.realized, len(ticket.legs)))
     lines.append("")
     replacement = ticket.replacement if ticket.action == structuring.ACTION_ROLL else None
     if replacement is not None:
         lines.extend(structuring_text.replacement_lines(w, replacement))
         lines.append("")
         notes.append(structuring_text.MODEL_LINE)
+        notes.extend(structuring_text.carry_lines(w, replacement))
         candidate = replacement.candidate
         if candidate is not None and candidate.american_caveat:
-            notes.append(structuring_text.american_line(w, candidate))
+            notes.append(structuring_text.american_line(w, candidate, replacement.pricing))
     if ticket.action == structuring.ACTION_MONETIZE_PUT:
-        lines.extend(_put_table(w, ticket))
+        lines.extend(_put_block(w, ticket))
         lines.append("")
     lines.extend(approval.approval_lines(ticket.holdings, approval_legs(ticket.plan), ticket.owner_level,
                                          group.underlying, w.emitted))

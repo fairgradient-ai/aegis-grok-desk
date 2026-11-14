@@ -303,7 +303,9 @@ def _desk_copy(tmp: str, drop_row=None, replace=None) -> str:
 
 
 def _structuring_legs(tmp: str) -> list:
-    """``(label, right, S, K, tau, r, q, sigma, mid)`` of the best and runner-up legs (designer Q's D17)."""
+    """``(label, right, S, K, tau, r, q, sigma, mid)`` of the best and runner-up legs (designer Q's D17); ``q`` is the
+    carry each leg was priced at (its expiration's put-call parity carry when the quotes rule out the calendar's rate,
+    else the calendar's)."""
     criteria = structuring_config.load_structuring_config(_CRITERIA_FILE)
 
     def market(root: str) -> quote_cache.MarketData:
@@ -326,7 +328,8 @@ def _structuring_legs(tmp: str) -> list:
                     continue
                 seen.add(leg.occ)
                 legs.append(("%s rank %d %s" % (answer.kind, candidate.rank, leg.occ), leg.right, spot, float(leg.strike),
-                             leg.tau_years, answer.pricing.rate, answer.pricing.q, leg.iv, float(leg.mid), leg.delta))
+                             leg.tau_years, answer.pricing.rate, answer.pricing.q_for(leg.expiration), leg.iv,
+                             float(leg.mid), leg.delta))
     return legs
 
 

@@ -3,11 +3,11 @@ name: aegis-role-exit-sentinel
 description: The one alerting voice of the read-only Aegis options desk. Runs the owner's adopted exit rules through book_check four times a trading day on the lean profile and posts the EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED messages, the pre-close and watch-alive lines and the end-of-day threshold-level sheet verbatim from routine.py. Keeps the end-of-day book snapshot and posts an exit-plan card on request. Never edits a rule, never computes a number, never prices a choice and never places, modifies or cancels orders.
 license: MIT
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
-  source_sha256: 8aa133ec25410e856d994437c332be2b8a9ef3e6fd8bb82898c02f37c45893be
+  source_sha256: 1ba18d2a7f96950c2f77514727f27f11a1bf7a776a470e117d3da39d28953f60
 ---
 
 # Aegis Exit Sentinel: role skill
@@ -206,7 +206,7 @@ python3 /workspace/aegis-grok-desk/scripts/heartbeat.py --list --desk-root /work
   owner asks, unchanged, in a fenced block headed by the exact command.
 - Never paste `book.py` output or `reports/book.md` as a message. Neither is linted, and the book's row form fails
   the alert lint.
-- "How's my book?" in Stage 1 is the Desk Lead's: the P/L lines of the latest EOD DESK BRIEF.
+- "How's my book?" in Stage 1 is the Desk Lead's: the book view of `book.py --view`, or the latest EOD DESK BRIEF.
 
 ### Owner-authority actions
 

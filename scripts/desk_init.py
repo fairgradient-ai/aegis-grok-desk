@@ -137,8 +137,13 @@ STRUCTURING_KINDS: Dict[str, str] = {
     "dte": "integer_band", "abs_delta": "decimal_band", "min_credit": "decimal", "credit_only": "boolean",
     "strike_floor": "string", "earnings": "string", "ex_dividend": "string", "objective": "string",
     "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
+    "dte_centre": "decimal", "abs_delta_centre": "decimal", "floor_pct_centre": "decimal", "cap_pct_centre": "decimal",
+    "band_weights": "decimal_table", "roll_test": "string",
 }
-"""How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS``)."""
+"""How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS`` and of
+``structuring_config.V2_KEYS``)."""
+BARE_KEY_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+"""A ``band_weights`` name as a bare TOML key (the reader judges whether it names a band)."""
 PAYLOAD_KEYS: Tuple[str, ...] = ("written", "replaced", "desk_toml", "calendar_toml", "structuring_toml", "acknowledge",
                                  "notes")
 _FILE_SHAPE: Dict[str, Any] = {"path": "desk-root relative path", "sha256": "hex of the written bytes",
@@ -156,6 +161,23 @@ OUTPUT: Dict[str, Any] = {
 _DTE_WORDS = "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90"
 _EVENT_WORDS = " | ".join(structuring_config.EVENT_POLICIES)
 _FLOOR_WORDS = "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50"
+
+
+def _objective_words(section: str) -> str:
+    """``extrinsic_per_day | band_centre``: the objectives a section accepts, its default first."""
+    return " | ".join(structuring_config.OBJECTIVES[section])
+
+
+def _v2_words(section: str) -> Dict[str, str]:
+    """The optional ``schema_version = 2`` keys of a section that can take ``band_centre``, described."""
+    bands = structuring_config.CENTRE_BANDS[section]
+    words = {"%s_centre" % band: "decimal string (optional; band_centre only; inside %s; writes schema_version 2)" % band
+             for band in bands}
+    words["band_weights"] = ("{%s: decimal string > 0 and <= 10} (optional; band_centre only; each absent band "
+                             "weighs 1; writes schema_version 2)" % ", ".join(bands + (structuring_config.QUOTE_WEIGHT,)))
+    return words
+
+
 STRUCTURING_SHAPE: Dict[str, Any] = {
     "disclosure_acknowledged": "%s (given only after the owner acknowledges the disclosure the interview shows "
                                "last)" % structuring_config.DISCLOSURE_ID,
@@ -165,23 +187,28 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
                      "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
                      "min_credit": "decimal string >= 0.01 (per share, at the bid)",
                      "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-                     "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+                     "ex_dividend": _EVENT_WORDS, "objective": _objective_words("covered_call"),
+                     **_v2_words("covered_call")},
     "roll": {"enabled": "boolean", "dte": _DTE_WORDS,
              "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
              "min_credit": "decimal string >= 0.01 (per share, the new call's bid)",
              "credit_only": "boolean (a net debit fails it; a zero net passes)",
              "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-             "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+             "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll"),
+             "roll_test": "%s (optional; given in place of credit_only; net_time_value fails a roll whose new call "
+                          "holds less time value than the held call; writes schema_version 2)"
+                          % " | ".join(structuring_config.ROLL_TESTS)},
     "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                        "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
-                       "objective": structuring_config.OBJECTIVE_STRESS_COST_PER_DAY},
+                       "objective": _objective_words("protective_put"), **_v2_words("protective_put")},
     "collar": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                "cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100",
                "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)",
                "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-               "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_CAP_WITHIN_BUDGET},
+               "ex_dividend": _EVENT_WORDS, "objective": _objective_words("collar"), **_v2_words("collar")},
 }
-"""``ANSWERS_SHAPE["structuring"]``: every key required, decimals as JSON strings, no default injected."""
+"""``ANSWERS_SHAPE["structuring"]``: every key required except the optional version-2 keys, decimals as JSON strings,
+no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
     "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, "
                       "structuring, or any of these together)",
@@ -461,6 +488,19 @@ def structuring_value(kind: str, value: Any, where: str) -> str:
         return str(value)
     if kind == "decimal":
         return decimal_value(value, where)
+    if kind == "decimal_table":
+        if not isinstance(value, dict):
+            raise answers_error("%s must be a JSON object of decimal strings, for example {\"dte\": \"0.5\"}" % where)
+        for name in value:
+            if not isinstance(name, str) or not BARE_KEY_RE.match(name):
+                raise answers_error("%s has the key %r, which is not a band name" % (where, name))
+        order = [name for name in structuring_config.CENTRE_BANDS.get(where.split(".")[1], ())
+                 + (structuring_config.QUOTE_WEIGHT,) if name in value]
+        order += sorted(name for name in value if name not in order)
+        if not order:
+            return "{}"
+        return "{ %s }" % ", ".join("%s = %s" % (name, decimal_value(value[name], "%s.%s" % (where, name)))
+                                    for name in order)
     if not isinstance(value, list) or len(value) != 2:
         raise answers_error("%s must be a two-element array [lo, hi]" % where)
     item_kind = "integer" if kind == "integer_band" else "decimal"
@@ -471,18 +511,30 @@ def structuring_value(kind: str, value: Any, where: str) -> str:
 def render_structuring_toml(intake: Any) -> str:
     """The ``structuring.toml`` text of the structuring answers (module notes), ending with one newline."""
     answers = table(intake, "structuring", STRUCTURING_KEYS, STRUCTURING_KEYS)
-    lines: List[str] = list(STRUCTURING_HEADER) + ["schema_version = %d" % structuring_config.SCHEMA_VERSION]
+    body: List[str] = []
+    version = structuring_config.SCHEMA_VERSION
     for section in structuring_config.SECTIONS:
         keys = structuring_config.SECTION_KEYS[section]
         if section == structuring_config.SECTION_DISCLOSURE:
             values: Dict[str, Any] = {"acknowledged": answers["disclosure_acknowledged"]}
-            places = {"acknowledged": "structuring.disclosure_acknowledged"}
+            written = list(keys)
         else:
-            values = table(answers[section], "structuring.%s" % section, keys, keys)
-            places = {key: "structuring.%s.%s" % (section, key) for key in keys}
-        lines += ["", "[%s]" % section]
-        lines += ["%s = %s" % (key, structuring_value(STRUCTURING_KINDS[key], values[key], places[key])) for key in keys]
-    return "\n".join(lines) + "\n"
+            optional = structuring_config.V2_KEYS.get(section, ())
+            raw = answers[section]
+            required = keys
+            if isinstance(raw, dict) and structuring_config.ROLL_TEST_KEY in raw and "credit_only" not in raw:
+                required = tuple(key for key in keys if key != "credit_only")  # roll_test in place of credit_only
+            values = table(raw, "structuring.%s" % section, keys + optional, required)
+            used = [key for key in optional if key in values]
+            if used:
+                version = structuring_config.SCHEMA_VERSION_2
+            written = [key for key in keys if key in values] + used
+        places = {key: ("structuring.disclosure_acknowledged" if section == structuring_config.SECTION_DISCLOSURE
+                        else "structuring.%s.%s" % (section, key)) for key in written}
+        body += ["", "[%s]" % section]
+        body += ["%s = %s" % (key, structuring_value(STRUCTURING_KINDS[key], values[key], places[key]))
+                 for key in written]
+    return "\n".join(list(STRUCTURING_HEADER) + ["schema_version = %d" % version] + body) + "\n"
 
 
 def read_answers(path: str) -> Dict[str, Any]:

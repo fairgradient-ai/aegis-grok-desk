@@ -23,13 +23,13 @@ marked synthetic comes from a copy of the fixture desk (`tests/fixtures/desk`, `
 ## 1. Get the pinned release onto the desk computer
 
 ```text
-git clone --depth 1 --branch v0.2.1 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
+git clone --depth 1 --branch v0.3.0 https://github.com/fairgradient-ai/aegis-grok-desk.git /workspace/aegis-grok-desk
 mkdir -p /workspace/aegis-desk
 python3 /workspace/aegis-grok-desk/scripts/desk_doctor.py --desk-root /workspace/aegis-desk
 ```
 
 If the tag does not exist, stop and tell the owner. An existing checkout stays as it is (no overwrite, reset or
-switch). Check 1 passes on the clean release: `release v0.2.1 at <commit>, clean`. Until section 9.1 writes
+switch). Check 1 passes on the clean release: `release v0.3.0 at <commit>, clean`. Until section 9.1 writes
 `desk.toml`, checks 4, 5, 10 and 11 warn and check 8 fails, as expected. If check 1 says `git refuses this checkout:
 it is owned by another user (see SETUP)`, record it as pending: its fix is one owner-approved command (section 9.3
 step 4), and nothing in the first run needs it (no `routine.py` runs before section 9.3).
@@ -142,7 +142,7 @@ Record the key source (the card with `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`
 One message, opening with three plain lines, for example:
 
 ```text
-Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v0.2.1.
+Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v0.3.0.
 Live market data works: SPY was quoted from Alpaca's paper market data, labelled 15-minute delayed.
 Nothing else is needed now. Talk to me here for everything; when you want the desk to watch your positions, say "add my positions".
 ```

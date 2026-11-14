@@ -27,7 +27,7 @@ Three rules hold in every incident:
 | Line | Meaning |
 | --- | --- |
 | `INCIDENT \| <id> <slot> ET \| <tool> failed (<code>); the other steps ran; details in incidents/<file>` | one step of a routine failed; the rest of the message stands |
-| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.2.1: <reason>; no step ran \| ...` | the pin check refused the run |
+| `INCIDENT \| <id> \| the desk checkout is not the pinned release v0.3.0: <reason>; no step ran \| ...` | the pin check refused the run |
 | `INCIDENT \| <id> \| another run of this routine holds its lock; this run did nothing` | two runs overlapped |
 | `INCIDENT \| <id> \| the routine did not run (routine_crashed): ...` | an unexpected error; a traceback is in `incidents/<stamp>-<id>-crash.md` |
 | `WITHHELD \| <tool>: the text failed the alert lint (<codes>) and is withheld; <tool>.py shows it` | one part failed the lint and was not printed |
@@ -89,9 +89,11 @@ A typo in the header stops the whole file. A synthetic pre-open run on a fixture
 ```text
 INCIDENT | preopen 07:30 ET | csv_recon failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-csv_recon.md
 INCIDENT | preopen 07:30 ET | expiry_checklist failed (positions_invalid); the other steps ran; details in incidents/20261103T123500.000000Z-preopen-expiry_checklist-week.md
-MORNING DESK SHEET 2026-11-03
-doctor (state/doctor.json, quick check at 12:35 UTC): FAIL, 1 warning: key_source; 1 failure: desk_files
-positions.csv reconciliation (data/positions/2026-11-03.recon.json): ERRORS, 0 proposed edits (csv_recon.py --diff lists them)
+### MORNING DESK SHEET 2026-11-03
+
+**Desk status**
+- **Doctor** FAIL, 1 warning: key_source; 1 failure: desk_files (quick check at 12:35 UTC)
+- **positions.csv** ERRORS, 0 proposed edits (`csv_recon.py --diff` lists them)
 ```
 
 The response:
@@ -144,15 +146,15 @@ Lead never acknowledges a change on the owner's behalf.
 
 ## The checkout is not the pinned release, or git refuses it
 
-Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.2.1. If not, no step runs.
+Every routine first checks that `/workspace/aegis-grok-desk` is the clean commit of tag v0.3.0. If not, no step runs.
 From a development checkout (synthetic):
 
 ```text
-INCIDENT | preopen | the desk checkout is not the pinned release v0.2.1: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
+INCIDENT | preopen | the desk checkout is not the pinned release v0.3.0: development checkout (no tag); no step ran | details in incidents/20261104T123500.000000Z-dirty-checkout.md
 ```
 
 The reasons the pin check can give include `the checkout has <n> uncommitted or untracked path(s)`, `HEAD <commit> is
-not the commit of v0.2.1 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
+not the commit of v0.3.0 (<commit>)` and `git refuses this checkout: it is owned by another user (see SETUP)`.
 
 - **Uncommitted or untracked paths.** Something wrote into the checkout. The Lead lists the paths with the read-only
   `git -C /workspace/aegis-grok-desk --no-optional-locks status --short` and reports them; the owner decides. A desk
@@ -177,7 +179,9 @@ Missed runs are never replayed and never backfilled; the next run evaluates the 
 the audit name the gaps. From a synthetic fixture copy where no routine ran on 2026-11-03 (the brief at 17:10 ET):
 
 ```text
-routines: 0 of 7 ran today; late: none; missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET; pending: eod 16:35 ET
+- **Routines** 0 of 7 ran today
+  - missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 ET
+  - pending: eod 16:35 ET
 ```
 
 The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading day

@@ -7,10 +7,10 @@
       "name": "aegis-desk",
       "description": "Turn Grok Build into a read-only options desk: position monitoring, P/L and rule-driven exit alerts. Zero broker writers.",
       "category": "development",
-      "source": {"source": "url", "url": "https://github.com/fairgradient-ai/aegis-grok-desk.git", "ref": "v0.2.1"},
+      "source": {"source": "url", "url": "https://github.com/fairgradient-ai/aegis-grok-desk.git", "ref": "v0.3.0"},
       "homepage": "https://github.com/fairgradient-ai/aegis-grok-desk",
       "keywords": ["aegis-desk", "options", "exit alerts", "grok bot"],
-      "version": "0.2.1",
+      "version": "0.3.0",
       "author": {"name": "FairGradient"},
       "tags": ["options", "monitoring", "agents"]
     }

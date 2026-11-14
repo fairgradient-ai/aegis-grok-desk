@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import desk_init as tool  # the tool scripts/desk_init.py
@@ -35,6 +36,13 @@ STRUCTURING_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuri
 EXPECTED_STRUCTURING = os.path.join(ROOT, "tests", "fixtures", "init", "expected_structuring.toml")
 EXPECTED_STRUCTURING_SHA = "5155427cbe37f8ff252db1181ff766c3d4be06739aca3a15a1b58055479a8d5c"
 EXPECTED_STRUCTURING_BYTES = 1090
+NEW_OBJECTIVES_ANSWERS = os.path.join(ROOT, "tests", "fixtures", "init", "structuring-answers-new-objectives.json")
+OVERLAY_SKILL = os.path.join(ROOT, "skills", "aegis-overlay-proposals", "SKILL.md")
+STRUCTURING_DOC = os.path.join(ROOT, "docs", "STRUCTURING.md")
+UPDATING_DOC = os.path.join(ROOT, "docs", "UPDATING.md")
+INTERVIEW_AGENT = os.path.join(ROOT, "agents", "structuring-desk.md")
+NEW_OBJECTIVES = {"covered_call": "band_centre", "roll": "net_extrinsic_per_added_day",
+                  "protective_put": "band_centre", "collar": "band_centre"}
 STRUCTURING_HINT = ("acknowledge with ack.py config --owner-tapped: the structuring tools show nothing until "
                     "structuring.toml is acknowledged")
 S3_VALUES = {
@@ -134,10 +142,13 @@ class SchemaAndUsageTest(TempRoot):
         self.assertEqual(("disclosure_acknowledged", "general", "covered_call", "roll", "protective_put", "collar"),
                          tool.STRUCTURING_KEYS)
         for section in structuring_config.SECTIONS[1:]:
-            self.assertEqual(sorted(structuring_config.SECTION_KEYS[section]), sorted(shape[section]), section)
-            self.assertEqual(list(structuring_config.SECTION_KEYS[section]), list(tool.STRUCTURING_SHAPE[section]))
+            self.assertEqual(sorted(structuring_config.SECTION_KEYS[section] + structuring_config.V2_KEYS.get(section, ())),
+                             sorted(shape[section]), section)
+            self.assertEqual(list(structuring_config.SECTION_KEYS[section]) + list(structuring_config.V2_KEYS.get(section, ())),
+                             list(tool.STRUCTURING_SHAPE[section]))
         self.assertEqual(set(tool.STRUCTURING_KINDS),
-                         {key for keys in structuring_config.SECTION_KEYS.values() for key in keys})
+                         {key for keys in structuring_config.SECTION_KEYS.values() for key in keys}
+                         | {key for keys in structuring_config.V2_KEYS.values() for key in keys})
         self.assertEqual(sorted(tool.PAYLOAD_KEYS), sorted(body["envelope"]["payload"]))
         self.assertEqual([], order_shaped(out))
 
@@ -589,6 +600,150 @@ class StructuringIntakeTest(TempRoot):
         self.assertEqual(["research/calendar.toml", "structuring.toml"], body["payload"]["written"])
         self.assertEqual(STRUCTURING_HINT, body["payload"]["acknowledge"])
         self.assertEqual(["research/calendar.toml", "structuring.toml"], self.files())
+
+
+def read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+class ObjectiveChoiceTest(TempRoot):
+    """The interview and the update ask the owner which objective ranks each section; desk_init writes the choice."""
+
+    def test_the_new_objectives_fixture_differs_from_the_defaults_only_in_the_objectives(self) -> None:
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        expected = copy.deepcopy(S3_VALUES)
+        for section, objective in NEW_OBJECTIVES.items():
+            expected[section]["objective"] = objective
+        self.assertEqual({"schema_version": 1, "structuring": expected}, chosen)
+
+    def test_a_first_setup_writes_the_chosen_objectives(self) -> None:
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        code, body = self.run_json(chosen)
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual(NEW_OBJECTIVES, {name: getattr(cfg, name).objective for name in NEW_OBJECTIVES})
+        self.assertNotEqual(EXPECTED_STRUCTURING_SHA, cfg.sha256)
+
+    def test_an_update_switch_rewrites_only_the_objective_lines(self) -> None:
+        self.assertEqual(0, self.invoke(structuring_answers())[0])
+        before = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8").split("\n")
+        with open(NEW_OBJECTIVES_ANSWERS, encoding="utf-8") as handle:
+            chosen = json.load(handle)
+        code, body = self.run_json(chosen)
+        self.assertEqual((1, "structuring_exists"), (code, body["error"]["code"]), "keeping is the default")
+        code, body = self.run_json(chosen, "--replace", "--owner-tapped")
+        self.assertEqual(0, code, body)
+        after = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8").split("\n")
+        changed = [(old, new) for old, new in zip(before, after) if old != new]
+        self.assertEqual(len(before), len(after))
+        self.assertEqual([('objective = "%s"' % structuring_config.OBJECTIVES[name][0], 'objective = "%s"' % chosen_id)
+                          for name, chosen_id in NEW_OBJECTIVES.items()], changed)
+
+    def test_a_roll_cannot_choose_band_centre(self) -> None:
+        answers = structuring_answers()
+        answers["structuring"]["roll"]["objective"] = "band_centre"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn("[roll] objective", body["error"]["message"])
+        self.assertEqual([], self.files())
+
+    def test_the_schema_lists_every_accepted_objective_default_first(self) -> None:
+        for section, ids in structuring_config.OBJECTIVES.items():
+            self.assertEqual(" | ".join(ids), tool.STRUCTURING_SHAPE[section]["objective"], section)
+
+    def test_every_accepted_objective_is_documented_where_the_interview_reads_it(self) -> None:
+        skill, doc = read_text(OVERLAY_SKILL), read_text(STRUCTURING_DOC)
+        for ids in structuring_config.OBJECTIVES.values():
+            for objective in ids:
+                self.assertIn("| `%s`" % objective, skill, objective)
+                self.assertIn("| `%s` |" % objective, doc, objective)
+        agent = read_text(INTERVIEW_AGENT)
+        self.assertIn("ask which objective ranks its candidates", agent)
+        self.assertIn("with no choice, the default stays", agent)
+        self.assertIn("Where they choose `band_centre`, ask whether they want their own centres", agent)
+        updating = read_text(UPDATING_DOC)
+        self.assertIn("When the changelog names a new objective for `structuring.toml`", updating)
+        self.assertIn("Keeping\nis the default and changes nothing.", updating)
+
+
+
+class SchemaTwoAnswersTest(TempRoot):
+    """Step 3b: desk_init writes schema_version = 2, with the owner's centres and weights, only when an answer uses a
+    version-2 key; every other file stays byte for byte as before."""
+
+    def answers(self, **covered_call: Any) -> Dict[str, Any]:
+        values = copy.deepcopy(S3_VALUES)
+        values["covered_call"]["objective"] = "band_centre"
+        values["covered_call"].update(covered_call)
+        return {"schema_version": 1, "structuring": values}
+
+    def test_without_version_two_keys_the_file_stays_version_one(self) -> None:
+        text = tool.render_structuring_toml(self.answers()["structuring"])
+        self.assertIn("\nschema_version = 1\n", text)
+        self.assertNotIn("band_weights", text)
+
+    def test_centres_and_weights_are_written_after_the_objective(self) -> None:
+        code, body = self.run_json(self.answers(dte_centre="50", abs_delta_centre="0.30",
+                                                band_weights={"quote": "2", "dte": "0.5"}))
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        text = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8")
+        self.assertIn("\nschema_version = 2\n", text)
+        block = text[text.index("[covered_call]"):text.index("[roll]")]
+        self.assertTrue(block.rstrip("\n").endswith('objective = "band_centre"\ndte_centre = 50\n'
+                                                     'abs_delta_centre = 0.30\nband_weights = { dte = 0.5, quote = 2 }'),
+                        block)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual((2, Decimal("50"), Decimal("0.5"), Decimal("2")),
+                         (cfg.schema_version, cfg.covered_call.band_centre_of("dte"),
+                          cfg.covered_call.band_weight("dte"), cfg.covered_call.band_weight("quote")))
+
+    def test_shapes_desk_init_refuses(self) -> None:
+        for change in ({"band_weights": ["0.5"]}, {"band_weights": {"dte": 0.5}}, {"band_weights": {"d te": "1"}},
+                       {"dte_centre": 50}, {"roll_centre": "1"}):
+            with self.subTest(change=change):
+                code, body = self.run_json(self.answers(**change))
+                self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]), body)
+        self.assertEqual([], self.files())
+
+    def test_values_the_reader_refuses(self) -> None:
+        for change, needle in (({"dte_centre": "80"}, "[covered_call] dte_centre must lie inside dte"),
+                               ({"band_weights": {"dte": "0"}}, "band_weights.dte must be above 0"),
+                               ({"band_weights": {"gamma": "1"}}, "unknown band 'gamma'")):
+            with self.subTest(change=change):
+                code, body = self.run_json(self.answers(**change))
+                self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]), body)
+                self.assertIn(needle, body["error"]["message"])
+        answers = self.answers(dte_centre="50")
+        answers["structuring"]["covered_call"]["objective"] = "extrinsic_per_day"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn('applies only with objective = "band_centre"', body["error"]["message"])
+
+
+    def test_roll_test_replaces_credit_only_and_writes_version_two(self) -> None:
+        values = copy.deepcopy(S3_VALUES)
+        values["roll"].pop("credit_only")
+        values["roll"]["roll_test"] = "net_time_value"
+        code, body = self.run_json({"schema_version": 1, "structuring": values})
+        self.assertEqual((0, "ok"), (code, body["status"]), body)
+        text = read_bytes(os.path.join(self.root, "structuring.toml")).decode("utf-8")
+        block = text[text.index("[roll]"):text.index("[protective_put]")]
+        self.assertIn("\nschema_version = 2\n", text)
+        self.assertNotIn("credit_only", block)
+        self.assertTrue(block.rstrip("\n").endswith('objective = "extrinsic_per_day"\nroll_test = "net_time_value"'),
+                        block)
+        cfg = structuring_config.load_structuring_config(os.path.join(self.root, "structuring.toml"))
+        self.assertEqual("net_time_value", cfg.roll.roll_rule())
+
+    def test_roll_test_and_credit_only_together_are_refused(self) -> None:
+        values = copy.deepcopy(S3_VALUES)
+        values["roll"]["roll_test"] = "credit"
+        code, body = self.run_json({"schema_version": 1, "structuring": values})
+        self.assertEqual((1, "structuring_invalid"), (code, body["error"]["code"]))
+        self.assertIn("[roll] give roll_test or credit_only, not both", body["error"]["message"])
 
 
 if __name__ == "__main__":

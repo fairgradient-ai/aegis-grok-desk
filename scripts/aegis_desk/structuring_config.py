@@ -67,6 +67,10 @@ from .toml_compat import TomlError
 
 FILE_NAME: str = "structuring.toml"
 SCHEMA_VERSION: int = 1
+"""The version ``desk_init`` writes unless an answer uses a version-2 key (:data:`SCHEMA_VERSION_2`)."""
+SCHEMA_VERSION_2: int = 2
+SCHEMA_VERSIONS: Tuple[int, ...] = (SCHEMA_VERSION, SCHEMA_VERSION_2)
+"""The versions the reader accepts. Version 2 adds the optional keys of :data:`V2_KEYS`; everything else is as in 1."""
 DISCLOSURE_ID: str = "structuring-suggestions-1"
 DISCLOSURE_TEXT: str = (
     "The Aegis Structuring Desk answers only when you ask. For a position you hold in positions.csv, its tools list "
@@ -111,6 +115,33 @@ SECTION_KEYS: Dict[str, Tuple[str, ...]] = {
 }
 """Every section's keys, in the order ``desk_init.render_structuring_toml`` writes them; all are required."""
 
+BAND_WEIGHTS_KEY: str = "band_weights"
+QUOTE_WEIGHT: str = "quote"
+CENTRE_BANDS: Dict[str, Tuple[str, ...]] = {
+    SECTION_COVERED_CALL: ("dte", "abs_delta"),
+    SECTION_PROTECTIVE_PUT: ("dte", "floor_pct"),
+    SECTION_COLLAR: ("dte", "floor_pct", "cap_pct"),
+}
+"""The bands ``band_centre`` measures in each section that can take it (``[roll]`` cannot)."""
+ROLL_TEST_KEY: str = "roll_test"
+ROLL_TEST_CREDIT: str = "credit"
+ROLL_TEST_NET_TIME_VALUE: str = "net_time_value"
+ROLL_TEST_NONE: str = "none"
+ROLL_TESTS: Tuple[str, ...] = (ROLL_TEST_CREDIT, ROLL_TEST_NET_TIME_VALUE, ROLL_TEST_NONE)
+"""``[roll] roll_test`` (``schema_version = 2``, in place of ``credit_only``): ``credit`` fails a net debit (as
+``credit_only = true``), ``net_time_value`` fails a roll that buys back more time value than it sells, ``none`` tests
+neither (as ``credit_only = false``)."""
+V2_KEYS: Dict[str, Tuple[str, ...]] = {
+    section: tuple("%s_centre" % band for band in bands) + (BAND_WEIGHTS_KEY,)
+    for section, bands in CENTRE_BANDS.items()
+}
+V2_KEYS[SECTION_ROLL] = (ROLL_TEST_KEY,)
+"""The optional keys of ``schema_version = 2``, in the order ``desk_init`` writes them after ``objective``: each band's
+centre (a number inside the band; the midpoint when absent) and ``band_weights``, an inline table of positive numbers
+per band and for ``quote`` (1 when absent), which apply only with ``objective = "band_centre"``; and ``[roll]
+roll_test`` (:data:`ROLL_TESTS`), given in place of ``credit_only``."""
+BAND_WEIGHT_MAX: Decimal = Decimal("10")
+
 EVENT_EXCLUDE: str = "exclude"
 EVENT_ALLOW: str = "allow"
 EVENT_POLICIES: Tuple[str, ...] = (EVENT_EXCLUDE, EVENT_ALLOW)
@@ -138,15 +169,27 @@ _CENT = Decimal("0.01")
 OBJECTIVE_EXTRINSIC_PER_DAY: str = "extrinsic_per_day"
 OBJECTIVE_STRESS_COST_PER_DAY: str = "stress_cost_per_day"
 OBJECTIVE_CAP_WITHIN_BUDGET: str = "cap_within_budget"
+OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: str = "net_extrinsic_per_added_day"
+OBJECTIVE_BAND_CENTRE: str = "band_centre"
 OBJECTIVE_IDS: Tuple[str, ...] = (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_STRESS_COST_PER_DAY,
-                                  OBJECTIVE_CAP_WITHIN_BUDGET)
+                                  OBJECTIVE_CAP_WITHIN_BUDGET, OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY,
+                                  OBJECTIVE_BAND_CENTRE)
 OBJECTIVES: Dict[str, Tuple[str, ...]] = {
-    SECTION_COVERED_CALL: (OBJECTIVE_EXTRINSIC_PER_DAY,),
-    SECTION_ROLL: (OBJECTIVE_EXTRINSIC_PER_DAY,),
-    SECTION_PROTECTIVE_PUT: (OBJECTIVE_STRESS_COST_PER_DAY,),
-    SECTION_COLLAR: (OBJECTIVE_CAP_WITHIN_BUDGET,),
+    SECTION_COVERED_CALL: (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_BAND_CENTRE),
+    SECTION_ROLL: (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY),
+    SECTION_PROTECTIVE_PUT: (OBJECTIVE_STRESS_COST_PER_DAY, OBJECTIVE_BAND_CENTRE),
+    SECTION_COLLAR: (OBJECTIVE_CAP_WITHIN_BUDGET, OBJECTIVE_BAND_CENTRE),
 }
-"""Exactly one objective id per structure section (a tuple, so ``in`` tests membership, never a substring)."""
+"""The objective ids each structure section accepts, the release-1 id first (a tuple, so ``in`` tests membership,
+never a substring); the owner names one in the section and the file's sha names it. ``[roll]`` does not take
+``band_centre``: a roll trades a position already held, and a score that ignores the time value it buys back can name a
+roll that gives up more than it sells."""
+BAND_CENTRE_KEYS: Dict[str, Tuple[str, ...]] = {
+    SECTION_COVERED_CALL: ("dte", "abs_delta"),
+    SECTION_PROTECTIVE_PUT: ("dte", "floor_pct"),
+    SECTION_COLLAR: ("dte", "floor_pct", "cap_pct"),
+}
+"""The bands whose centres ``band_centre`` measures from, per section."""
 DIRECTION_HIGHER: str = "higher"
 DIRECTION_LOWER: str = "lower"
 
@@ -167,13 +210,14 @@ OBJECTIVE_DEFS: Dict[str, Objective] = {
     OBJECTIVE_EXTRINSIC_PER_DAY: Objective(
         OBJECTIVE_EXTRINSIC_PER_DAY,
         "the bid's time value per calendar day, in percent of the share price",
-        "E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even",
+        "E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even; T_c = calendar days to the "
+        "last trading day",
         "percent of the share price per calendar day", DIRECTION_HIGHER),
     OBJECTIVE_STRESS_COST_PER_DAY: Objective(
         OBJECTIVE_STRESS_COST_PER_DAY,
         "the put's ask per calendar day per 100 of loss it offsets at your stress drop",
         "S_x = S x (1 - x / 100) with x = stress_drop_pct; score = ask / T_c / (K - S_x) x 100, quantized 0.0001 "
-        "half-even (no cover at the stress when K <= S_x)",
+        "half-even (no cover at the stress when K <= S_x); T_c = calendar days to the last trading day",
         "premium per calendar day per 100 of loss offset at your stress drop", DIRECTION_LOWER),
     OBJECTIVE_CAP_WITHIN_BUDGET: Objective(
         OBJECTIVE_CAP_WITHIN_BUDGET,
@@ -181,6 +225,25 @@ OBJECTIVE_DEFS: Dict[str, Objective] = {
         "U = (Kc - S) / S x 100, quantized 0.01 half-even; score = U among the put and call pairs of one expiration "
         "whose net debit (put ask - call bid) is at most max_net_debit",
         "percent above the share price", DIRECTION_HIGHER),
+    OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: Objective(
+        OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY,
+        "the new call's time value at its bid less the held call's time value at its ask, in percent of the share "
+        "price per calendar day added when the roll adds time value, and the whole amount, not divided by days, when "
+        "it gives some up",
+        "E_new = bid - max(0, S - K_new); E_held = ask_held - max(0, S - K_held); N = E_new - E_held; score = N / S / "
+        "(T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even; T_c = calendar days "
+        "to the last trading day",
+        "percent of the share price per calendar day added (N >= 0), percent of the share price (N < 0)",
+        DIRECTION_HIGHER),
+    OBJECTIVE_BAND_CENTRE: Objective(
+        OBJECTIVE_BAND_CENTRE,
+        "the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote "
+        "spread counted in your max_spread_pct, all summed with equal weight (a desk convention: one half-width of days "
+        "counts as much as one half-width of delta, floor or cap, and as one leg quoted at your spread limit)",
+        "c = (lo + hi) / 2 and w = (hi - lo) / 2 for each band of the section (dte with abs_delta, dte with floor_pct, "
+        "or dte with floor_pct and cap_pct); score = sum of |x - c| / w + sum over the legs of spread_pct / "
+        "max_spread_pct, quantized 0.01 half-even",
+        "half-widths of your bands", DIRECTION_LOWER),
 }
 """The objectives by id (PR 3b decision S3; the formulas of designer Q's D5, D7 and D8)."""
 
@@ -215,8 +278,41 @@ class GeneralSection:
     max_candidates_shown: int
 
 
+class _CentreMixin:
+    """``band_centre``'s owner-set centres and weights (``schema_version = 2``) with their defaults."""
+
+    centres: Tuple[Tuple[str, Decimal], ...]
+    band_weights: Tuple[Tuple[str, Decimal], ...]
+
+    def band_centre_of(self, band: str) -> Decimal:
+        """The centre of ``band``: the owner's ``<band>_centre``, else the band's midpoint."""
+        for name, value in self.centres:
+            if name == band:
+                return value
+        low, high = getattr(self, band)
+        return (Decimal(low) + Decimal(high)) / 2
+
+    def band_weight(self, band: str) -> Decimal:
+        """The weight of ``band`` (or of ``quote``): the owner's ``band_weights`` entry, else 1."""
+        for name, value in self.band_weights:
+            if name == band:
+                return value
+        return Decimal(1)
+
+    def owner_set(self) -> bool:
+        """Whether the owner set any centre or weight."""
+        return bool(self.centres or self.band_weights)
+
+    def v2_echo(self) -> Dict[str, Any]:
+        """The version-2 keys the owner set, as the payload echoes them."""
+        echo: Dict[str, Any] = {"%s_centre" % name: value for name, value in self.centres}
+        if self.band_weights:
+            echo[BAND_WEIGHTS_KEY] = dict(self.band_weights)
+        return echo
+
+
 @dataclass(frozen=True)
-class CoveredCallSection:
+class CoveredCallSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     abs_delta: Tuple[Decimal, Decimal]
@@ -225,6 +321,8 @@ class CoveredCallSection:
     earnings: str
     ex_dividend: str
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -238,19 +336,30 @@ class RollSection:
     earnings: str
     ex_dividend: str
     objective: str
+    roll_test: Optional[str] = None
+    """The ``schema_version = 2`` roll test, or ``None`` when the file states ``credit_only`` (:meth:`roll_rule`)."""
+
+    def roll_rule(self) -> str:
+        """The roll test the candidates are judged by: ``roll_test``, else ``credit`` or ``none`` from
+        ``credit_only``."""
+        if self.roll_test is not None:
+            return self.roll_test
+        return ROLL_TEST_CREDIT if self.credit_only else ROLL_TEST_NONE
 
 
 @dataclass(frozen=True)
-class ProtectivePutSection:
+class ProtectivePutSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     floor_pct: Tuple[Decimal, Decimal]
     stress_drop_pct: Decimal
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
-class CollarSection:
+class CollarSection(_CentreMixin):
     enabled: bool
     dte: Tuple[int, int]
     floor_pct: Tuple[Decimal, Decimal]
@@ -260,6 +369,8 @@ class CollarSection:
     earnings: str
     ex_dividend: str
     objective: str
+    centres: Tuple[Tuple[str, Decimal], ...] = ()
+    band_weights: Tuple[Tuple[str, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -300,6 +411,12 @@ class StructuringConfig:
             section = self.section(name)
             echo[name] = {key: (list(getattr(section, key)) if isinstance(getattr(section, key), tuple)
                                 else getattr(section, key)) for key in SECTION_KEYS[name]}
+            if isinstance(section, _CentreMixin):
+                echo[name].update(section.v2_echo())
+            if isinstance(section, RollSection) and section.roll_test is not None:
+                echo[name] = {(ROLL_TEST_KEY if key == "credit_only" else key):
+                              (section.roll_test if key == "credit_only" else value)
+                              for key, value in echo[name].items()}
         echo["sha256"] = self.sha256
         return echo
 
@@ -326,6 +443,7 @@ class _Reader:
 
     def __init__(self, path: str) -> None:
         self.path = path
+        self.version = SCHEMA_VERSION
 
     def fail(self, reason: str) -> StructuringConfigError:
         return StructuringConfigError(self.path, reason)
@@ -337,14 +455,62 @@ class _Reader:
         table = document[name]
         if not isinstance(table, dict):
             raise self.fail("section [%s] must be a table, not a %s value" % (name, type(table).__name__))
-        allowed = SECTION_KEYS[name]
+        required = SECTION_KEYS[name]
+        allowed = required + (V2_KEYS.get(name, ()) if self.version >= SCHEMA_VERSION_2 else ())
+        if name == SECTION_ROLL and self.version >= SCHEMA_VERSION_2 and ROLL_TEST_KEY in table:
+            if "credit_only" in table:
+                raise self.fail("[%s] give %s or credit_only, not both" % (name, ROLL_TEST_KEY))
+            required = tuple(key for key in required if key != "credit_only")
         for key in table:
             if key not in allowed:
                 raise self.fail("unknown key '%s' in section [%s] (allowed: %s)" % (key, name, ", ".join(allowed)))
-        for key in allowed:
+        for key in required:
             if key not in table:
                 raise self.fail("missing key '%s' in section [%s]" % (key, name))
         return table
+
+    def centres_and_weights(self, table: Dict[str, Any], where: str, bands: Dict[str, Tuple[Any, Any]], objective: str
+                            ) -> Tuple[Tuple[Tuple[str, Decimal], ...], Tuple[Tuple[str, Decimal], ...]]:
+        """The version-2 centres and ``band_weights`` of a section that can take ``band_centre`` (:data:`V2_KEYS`)."""
+        present = [key for key in V2_KEYS[where] if key in table]
+        if present and objective != OBJECTIVE_BAND_CENTRE:
+            raise self.fail('[%s] %s applies only with objective = "%s" (got %r)'
+                            % (where, present[0], OBJECTIVE_BAND_CENTRE, objective))
+        centres: List[Tuple[str, Decimal]] = []
+        for band in CENTRE_BANDS[where]:
+            key = "%s_centre" % band
+            if key not in table:
+                continue
+            value = self.number(table, key, where)
+            low, high = bands[band]
+            if not Decimal(low) <= value <= Decimal(high):
+                raise self.fail("[%s] %s must lie inside %s [%s, %s] (got %s)"
+                                % (where, key, band, _text(Decimal(low)), _text(Decimal(high)), _text(value)))
+            centres.append((band, value))
+        weights: List[Tuple[str, Decimal]] = []
+        if BAND_WEIGHTS_KEY in table:
+            value = table[BAND_WEIGHTS_KEY]
+            names = CENTRE_BANDS[where] + (QUOTE_WEIGHT,)
+            if not isinstance(value, dict):
+                raise self.fail("[%s] %s must be a table of numbers, for example { dte = 0.5 } (got %r)"
+                                % (where, BAND_WEIGHTS_KEY, value))
+            if not value:
+                raise self.fail("[%s] %s must name at least one band (allowed: %s)"
+                                % (where, BAND_WEIGHTS_KEY, ", ".join(names)))
+            for name in value:
+                if name not in names:
+                    raise self.fail("unknown band '%s' in [%s] %s (allowed: %s)"
+                                    % (name, where, BAND_WEIGHTS_KEY, ", ".join(names)))
+            for name in names:
+                if name not in value:
+                    continue
+                label = "%s.%s" % (BAND_WEIGHTS_KEY, name)
+                weight = self.decimal(value[name], label, where)
+                if not Decimal(0) < weight <= BAND_WEIGHT_MAX:
+                    raise self.fail("[%s] %s must be above 0 and at most %s (got %s)"
+                                    % (where, label, BAND_WEIGHT_MAX, _text(weight)))
+                weights.append((name, weight))
+        return tuple(centres), tuple(weights)
 
     # -- typed values --------------------------------------------------------------------------
     def boolean(self, table: Dict[str, Any], key: str, where: str) -> bool:
@@ -433,11 +599,11 @@ class _Reader:
 
     def objective(self, table: Dict[str, Any], where: str) -> str:
         value = table["objective"]
-        expected = OBJECTIVES[where][0]
-        if value != expected:
-            raise self.fail("[%s] objective must be %s, the one objective this release ranks [%s] by (got %r)"
-                            % (where, expected, where, value))
-        return expected
+        allowed = OBJECTIVES[where]
+        if not isinstance(value, str) or value not in allowed:
+            raise self.fail("[%s] objective must be one of %s, the objectives this release ranks [%s] by (got %r)"
+                            % (where, ", ".join(allowed), where, value))
+        return value
 
     # -- sections ------------------------------------------------------------------------------
     def disclosure(self, document: Dict[str, Any]) -> DisclosureSection:
@@ -459,21 +625,27 @@ class _Reader:
     def covered_call(self, document: Dict[str, Any]) -> CoveredCallSection:
         where = SECTION_COVERED_CALL
         table = self.section(document, where)
+        dte, abs_delta = self.dte(table, where), self.abs_delta(table, where)
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "abs_delta": abs_delta}, objective)
         return CoveredCallSection(
-            enabled=self.boolean(table, "enabled", where), dte=self.dte(table, where),
-            abs_delta=self.abs_delta(table, where), min_credit=self.min_credit(table, where),
+            enabled=self.boolean(table, "enabled", where), dte=dte,
+            abs_delta=abs_delta, min_credit=self.min_credit(table, where),
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=self.objective(table, where))
+            objective=objective, centres=centres, band_weights=weights)
 
     def roll(self, document: Dict[str, Any]) -> RollSection:
         where = SECTION_ROLL
         table = self.section(document, where)
+        roll_test = (self.choice(table, ROLL_TEST_KEY, where, ROLL_TESTS) if ROLL_TEST_KEY in table else None)
         return RollSection(
             enabled=self.boolean(table, "enabled", where), dte=self.dte(table, where),
             abs_delta=self.abs_delta(table, where), min_credit=self.min_credit(table, where),
-            credit_only=self.boolean(table, "credit_only", where),
+            credit_only=(roll_test == ROLL_TEST_CREDIT if roll_test is not None
+                         else self.boolean(table, "credit_only", where)),
+            roll_test=roll_test,
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
@@ -489,8 +661,10 @@ class _Reader:
         if not floor[1] < stress <= STRESS_DROP_PCT_MAX:
             raise self.fail("[%s] stress_drop_pct must lie above the floor band's hi and at most %s: %s < x <= %s "
                             "(got %s)" % (where, STRESS_DROP_PCT_MAX, _text(floor[1]), STRESS_DROP_PCT_MAX, _text(stress)))
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "floor_pct": floor}, objective)
         return ProtectivePutSection(enabled=enabled, dte=dte, floor_pct=floor, stress_drop_pct=stress,
-                                    objective=self.objective(table, where))
+                                    objective=objective, centres=centres, band_weights=weights)
 
     def collar(self, document: Dict[str, Any]) -> CollarSection:
         where = SECTION_COLLAR
@@ -507,12 +681,15 @@ class _Reader:
         if debit < MAX_NET_DEBIT_MIN:
             raise self.fail("[%s] max_net_debit must be a number >= %s per share (0.00 is a zero cost or a credit; "
                             "got %s)" % (where, MAX_NET_DEBIT_MIN, _text(debit)))
+        objective = self.objective(table, where)
+        centres, weights = self.centres_and_weights(table, where, {"dte": dte, "floor_pct": floor, "cap_pct": (lo, hi)},
+                                                    objective)
         return CollarSection(
             enabled=enabled, dte=dte, floor_pct=floor, cap_pct=(lo, hi), max_net_debit=debit,
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=self.objective(table, where))
+            objective=objective, centres=centres, band_weights=weights)
 
     def parse(self, document: Dict[str, Any], sha256: str) -> StructuringConfig:
         sections = ", ".join("[%s]" % name for name in SECTIONS)
@@ -523,10 +700,11 @@ class _Reader:
                 raise self.fail("unknown section [%s] (expected only %s)" % (key, sections))
             raise self.fail("unknown top-level key '%s' (expected schema_version and the sections %s)" % (key, sections))
         if "schema_version" not in document:
-            raise self.fail("missing key 'schema_version' (it must be the integer %d)" % SCHEMA_VERSION)
+            raise self.fail("missing key 'schema_version' (it must be the integer %d or %d)" % SCHEMA_VERSIONS)
         version = document["schema_version"]
-        if not _is_int(version) or version != SCHEMA_VERSION:
-            raise self.fail("schema_version must be the integer %d (got %r)" % (SCHEMA_VERSION, version))
+        if not _is_int(version) or version not in SCHEMA_VERSIONS:
+            raise self.fail("schema_version must be the integer %d or %d (got %r)" % (SCHEMA_VERSIONS + (version,)))
+        self.version = version
         return StructuringConfig(
             schema_version=version,
             disclosure=self.disclosure(document),
@@ -627,6 +805,7 @@ def load_structuring_config_if_present(path: str) -> Optional[StructuringConfig]
 
 __all__ = [
     "ABS_DELTA_RANGE",
+    "BAND_CENTRE_KEYS",
     "CAP_PCT_RANGE",
     "CollarSection",
     "CoveredCallSection",
@@ -652,10 +831,12 @@ __all__ = [
     "MAX_SPREAD_PCT_MAX",
     "MIN_CREDIT_MIN",
     "OBJECTIVES",
+    "OBJECTIVE_BAND_CENTRE",
     "OBJECTIVE_CAP_WITHIN_BUDGET",
     "OBJECTIVE_DEFS",
     "OBJECTIVE_EXTRINSIC_PER_DAY",
     "OBJECTIVE_IDS",
+    "OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY",
     "OBJECTIVE_STRESS_COST_PER_DAY",
     "Objective",
     "ProtectivePutSection",

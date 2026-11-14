@@ -124,6 +124,8 @@ _LEG_SHAPE: Dict[str, Any] = {
     "delta": "float | null (greeks.european_greeks)", "abs_delta": "decimal string | null (2 dp, half-even)",
     "greeks": "{delta, gamma, theta, vega, rho: float} | null",
     "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)",
+    "spot_bar_utc": "ISO-8601 UTC | null (the one-minute bar the volatility was solved against)",
+    "spot_used": "decimal string | null (the stock price the volatility and a call's time value read)",
 }
 _AFTER_SHAPE: Dict[str, Any] = {
     "group_delta": "float | null (share-equivalents)", "delta_change": "float | null",
@@ -146,7 +148,12 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "floor_pct": "decimal string | null", "cap_pct": "decimal string | null",
     "covered_per_share": "decimal string | null", "covered_total": "decimal string | null",
     "net_debit": "decimal string | null", "net_debit_total": "decimal string | null",
-    "cost_total": "decimal string | null", "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
+    "cost_total": "decimal string | null",
+    "net_time_value": "decimal string | null (per share: the new bid's time value less the held ask's)",
+    "incremental_cost_per_day": "decimal string | null (a replacement put: (ask_new - bid_held) / S / days added "
+                                "x 100)",
+    "days_added": "integer | null (a replacement: calendar days beyond the held leg's expiration)",
+    "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {
     "tool": "roll_analysis", "kind": "replacement_call", "trade_id": "AG-YYYYMMDD-NN",
@@ -182,6 +189,13 @@ OUTPUT: Dict[str, Any] = {
     "failure_counts": "{structuring.toml key: n} | null (the failing candidates; the unpriced apart)",
     "outside_bands": "null", "after": dict(_AFTER_SHAPE),
     "model_note": "string (European Black-Scholes-Merton; early exercise not modelled)",
+    "carry": [{"expiration": "YYYY-MM-DD", "source": "parity | calendar_unresolved | calendar_gap | "
+                                                     "calendar_too_few_strikes",
+               "q": "decimal string (the carry the expiration was priced at)",
+               "calendar_q": "decimal string (research/calendar.toml's dividend rate, 0 when it lists none)",
+               "q_imp": "decimal string | null (put-call parity's carry)",
+               "q_quote": "decimal string | null (its quote-resolution bound)",
+               "q_amer": "decimal string | null (its early-exercise bound, when the decision needed it)"}],
     "requests": "{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)",
     "warnings": ["string"],
     "approval": ("{stage: before_market_data | best_candidate, owner_level, required_level, ok, refusal_step, "
