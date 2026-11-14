@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- Structuring Desk: two optional objectives. `band_centre` (`[covered_call]`, `[protective_put]`, `[collar]`) ranks by
+  the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote spread
+  counted in your `max_spread_pct`, all summed with equal weight; `net_extrinsic_per_added_day`
+  (`[roll]`) ranks a replacement call by the time value it sells less the time value the roll buys back, per calendar
+  day added when that is at least zero and as the whole amount given up otherwise. Each section still defaults to its release-1 objective, and a file that names it ranks exactly as before.
+- Quote precision, information only: an answer notes the ELIGIBLE candidates whose score lies within the best's own
+  quote spread (`rank 2 lies within the best's own quote spread on stress_cost_per_day: ...`). The order and the best
+  never change. The SPY protective-put example gains that line.
+- `band_centre` answers name the share prices, above and below, at which another candidate would be best, against one
+  feed delay's move at the best's volatility. Information only.
+- The American caveat of a long put also applies to an in-the-money put whose time value at the mid is below the
+  interest on its strike to expiry, K x (1 - e^(-r x tau)); the absolute-delta rule (0.80) is kept.
+- `aegis_desk.carry` (not yet wired): the carry an expiration's quotes imply by put-call parity, with a quote-resolution
+  bound and a one-sided bound on the American early-exercise bias; the calendar yield is replaced only when the quotes
+  exclude it.
+- Candidates carry `objective_scores` (every objective the section accepts, at the conservative side and at the mid)
+  and a ranking carries `near_best` in JSON.
+
 ## 0.2.1 (2026-11-13)
 
 - Version bump to 0.2.1 (`release_bump.py 0.2.1`).

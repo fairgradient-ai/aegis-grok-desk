@@ -183,17 +183,15 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(Decimal("0"), sc.MAX_NET_DEBIT_MIN)
         self.assertEqual(2, sc.DECIMAL_PLACES)
 
-    def test_objectives_one_id_per_section(self) -> None:
-        self.assertEqual({"covered_call": ("extrinsic_per_day",), "roll": ("extrinsic_per_day",),
-                          "protective_put": ("stress_cost_per_day",), "collar": ("cap_within_budget",)},
-                         sc.OBJECTIVES)
-        self.assertEqual(("extrinsic_per_day", "stress_cost_per_day", "cap_within_budget"), sc.OBJECTIVE_IDS)
-        self.assertEqual(("extrinsic_per_day", "stress_cost_per_day", "cap_within_budget"),
-                         (sc.OBJECTIVE_EXTRINSIC_PER_DAY, sc.OBJECTIVE_STRESS_COST_PER_DAY,
-                          sc.OBJECTIVE_CAP_WITHIN_BUDGET))
+    def test_objectives_per_section(self) -> None:
+        self.assertEqual({"covered_call": ("extrinsic_per_day", "band_centre"),
+                          "roll": ("extrinsic_per_day", "net_extrinsic_per_added_day"),
+                          "protective_put": ("stress_cost_per_day", "band_centre"),
+                          "collar": ("cap_within_budget", "band_centre")}, sc.OBJECTIVES)
+        self.assertEqual(("extrinsic_per_day", "stress_cost_per_day", "cap_within_budget",
+                          "net_extrinsic_per_added_day", "band_centre"), sc.OBJECTIVE_IDS)
         for section, ids in sc.OBJECTIVES.items():
-            self.assertEqual(1, len(ids), section)
-            self.assertEqual(ids[0], sc.objective_for(section).id)
+            self.assertEqual(ids[0], sc.objective_for(section).id)   # the release-1 objective stays the default
         self.assertEqual(set(sc.OBJECTIVE_IDS), set(sc.OBJECTIVE_DEFS))
 
     def test_objective_words_formulas_and_directions(self) -> None:
@@ -556,16 +554,19 @@ class ChoicesTest(StructuringConfigTestCase):
                     self.assert_rejected(in_section(name, "%s = %s" % (key, old), "%s = %s" % (key, bad)),
                                          "[%s] %s must be one of" % (name, key))
 
-    def test_each_section_takes_only_its_own_objective(self) -> None:
-        for name, (objective,) in sc.OBJECTIVES.items():
-            line = 'objective = "%s"' % objective
+    def test_each_section_takes_only_its_own_objectives(self) -> None:
+        for name, allowed in sc.OBJECTIVES.items():
+            line = 'objective = "%s"' % allowed[0]
+            for good in allowed:
+                with self.subTest(section=name, objective=good):
+                    self.assert_loads(in_section(name, line, 'objective = "%s"' % good))
             for other in sc.OBJECTIVE_IDS + ("credit_per_day", "return_if_unchanged_per_day", ""):
-                if other == objective:
+                if other in allowed:
                     continue
                 with self.subTest(section=name, objective=other):
                     self.assert_rejected(in_section(name, line, 'objective = "%s"' % other),
-                                         "[%s] objective must be %s" % (name, objective))
-            self.assert_rejected(in_section(name, line, "objective = 1"), "[%s] objective must be %s" % (name, objective))
+                                         "[%s] objective must be one of" % name)
+            self.assert_rejected(in_section(name, line, "objective = 1"), "[%s] objective must be one of" % name)
 
 
 class ProtectionBandsTest(StructuringConfigTestCase):

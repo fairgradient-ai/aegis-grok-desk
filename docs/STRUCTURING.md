@@ -124,10 +124,10 @@ examples on this page assume.
 | `covered_call`, `roll`, `collar` | `earnings` | `exclude` | `exclude` or `allow` | an earnings date inside the call's life fails, unless allowed |
 | `covered_call`, `roll`, `collar` | `ex_dividend` | `exclude` | `exclude` or `allow` | an ex-dividend date inside the call's life fails, unless allowed |
 | `protective_put`, `collar` | `floor_pct` | [3, 10] | 0 to 50, low below high | the put's distance below the share price, (S - K) / S x 100 |
-| `protective_put` | `stress_drop_pct` | 20 | above the top of `floor_pct`, at most 90 | the drop in the share price the put's cost is measured against |
+| `protective_put` | `stress_drop_pct` | 20 | above the top of `floor_pct`, at most 90 | the drop in the share price the put's cost is measured against; it shapes the score only, because every put inside `floor_pct` is then struck above the stressed price |
 | `collar` | `cap_pct` | [2, 10] | above 0, at most 100, low below high | the call's distance above the share price, (Kc - S) / S x 100 |
 | `collar` | `max_net_debit` | 0.00 | at least 0 | the put's ask minus the call's bid, per share; 0.00 means a zero cost or a credit |
-| every structure | `objective` | one per section (below) | fixed | the score the candidates are ranked by, echoed with the file's sha |
+| every structure | `objective` | the section's first objective (below) | one of the section's objectives (below) | the score the candidates are ranked by, echoed with the file's sha |
 
 Every decimal carries at most 2 decimal places. The reader is strict: every section and key is required, an unknown
 key is an error, and a boolean is never a number. One rule is fixed, not a key: an earnings or ex-dividend date that
@@ -269,17 +269,27 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
 
 ### The objectives
 
-Each section declares one objective, so the file's sha names how the candidates were ranked:
+Each section declares one of the objectives it accepts, so the file's sha names how the candidates were ranked:
 
 | Objective | Ranks | Words the text prints | Formula |
 | --- | --- | --- | --- |
 | `extrinsic_per_day` | higher first | the bid's time value per calendar day, in percent of the share price | E = bid - max(0, S - K); score = E / S / T_c x 100, quantized 0.0001 half-even |
 | `stress_cost_per_day` | lower first | the put's ask per calendar day per 100 of loss it offsets at your stress drop | S_x = S x (1 - x / 100) with x = stress_drop_pct; score = ask / T_c / (K - S_x) x 100, quantized 0.0001 half-even (no cover at the stress when K <= S_x) |
 | `cap_within_budget` | higher first | the cap's distance above the share price, in percent, among pairs within your net-debit budget | U = (Kc - S) / S x 100, quantized 0.01 half-even, among the put and call pairs of one expiration whose net debit (put ask - call bid) is at most max_net_debit |
+| `net_extrinsic_per_added_day` | higher first | the new call's time value at its bid less the held call's time value at its ask, in percent of the share price per calendar day added when the roll adds time value, and the whole amount, not divided by days, when it gives some up | E_new = bid - max(0, S - K_new); E_held = ask_held - max(0, S - K_held); N = E_new - E_held; score = N / S / (T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even |
+| `band_centre` | lower first | the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote spread counted in your max_spread_pct, all summed with equal weight (a desk convention: one half-width of days counts as much as one half-width of delta, floor or cap, and as one leg quoted at your spread limit) | c = (lo + hi) / 2 and w = (hi - lo) / 2 for each band of the section (dte with abs_delta, dte with floor_pct, or dte with floor_pct and cap_pct); score = sum of abs(x - c) / w + sum over the legs of spread_pct / max_spread_pct, quantized 0.01 half-even |
 
-S is the underlying's mid, K the strike, Kc the call strike, and T_c the calendar days to expiry. `covered_call` and
-`roll` use `extrinsic_per_day`, `protective_put` uses `stress_cost_per_day`, and `collar` uses `cap_within_budget`. A
-collar pairs a put and a call of the same expiration; a leg outside its band is counted, not paired.
+S is the underlying's mid, K the strike, Kc the call strike, and T_c the calendar days to expiry. The objectives each
+section accepts, its default first: `covered_call` takes `extrinsic_per_day` or `band_centre`; `roll` takes
+`extrinsic_per_day` or `net_extrinsic_per_added_day`; `protective_put` takes `stress_cost_per_day` or `band_centre`;
+`collar` takes `cap_within_budget` or `band_centre`. A file that names the default ranks exactly as before. `roll` does
+not take `band_centre`: a roll trades a call you already hold, and a score that ignores the time value the roll buys
+back can name a roll that gives up more than it sells. The quote part of `band_centre` makes a wide quote cost score in
+the same units as a band: a leg quoted at your `max_spread_pct` adds 1, as much as a band edge. Under `band_centre` the
+first tie-break is the section's money measure: `extrinsic_per_day` (higher first) for a covered call,
+`stress_cost_per_day` (lower first) for a put, and the net debit (lower first) for a collar. Nothing is sorted ahead of
+the `band_centre` score. A collar pairs a put and a call of the same expiration; a leg outside its band is counted, not
+paired.
 
 ### The ranking and the best candidate
 
@@ -290,6 +300,18 @@ collar pairs a put and a call of the same expiration; a leg outside its band is 
   keys; a protective put by the strike (higher first), the expiration (later first); a collar by the put strike
   (higher first), the net debit (lower first), the expiration (later first). The contract decides last. The text says
   so when a tie was broken, for example `tie on cap_within_budget broken by the put strike (higher first)`.
+- Quote precision, information only: when the best's score at its mid differs from its score at the conservative side
+  (bid for a call sold, ask for a put bought) by h, every other ELIGIBLE candidate whose score lies within h of the
+  best's is noted, for example `rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do
+  not tell it apart from the best`. Only the best's own spread sets h and only a candidate's conservative score admits
+  it, so a wider quote never earns a note. The order and the best are unchanged.
+- Share-price sensitivity under `band_centre`, information only: the delta, floor and cap readings move with the
+  share price, so the text names the nearest share price above and below the spot (within 5 %) at which another
+  candidate would be best, holding every quote, volatility and day count fixed (for a collar, pairs with a leg that
+  enters its floor or cap band within that reach count too), and compares the nearer one with one
+  feed delay's move at the best's volatility, sigma x sqrt(15 / (252 x 390)). For example `band_centre at these quotes
+  and volatilities: another candidate is best if the stock rises 0.31 % (to 104.55) or falls 1.77 % (to 102.39); one
+  15-min delay is a move of about 0.48 % at the best's volatility, so these quotes do not settle the best`.
 - The best candidate is rank 1 when it is ELIGIBLE. It means only this: the highest score (or, for
   `stress_cost_per_day`, the lowest) on the objective you chose, among the candidates that passed every criterion.
   The text says so in its fixed caveat: `the score ranks the candidates only on the objective you chose; it is not a
@@ -328,8 +350,10 @@ A short call (a covered call, a replacement call, a collar's call) is checked ag
 - An accepted label stays visible, as a yellow row whose criteria cell reads `accepted by #assign-ok`, `accepted by
   #earnings-ok` or `accepted by your structuring.toml`.
 - A short call in the money whose bid's time value is below a dividend before its last trading day, or a long put
-  with an absolute delta of 0.80 or more, gets an `american-style note:` in the notes: early exercise can matter
-  there, and the European model does not price it.
+  with an absolute delta of 0.80 or more, or a long put in the money (K > S) whose time value at the mid is below the
+  interest on its strike to expiry, K x (1 - e^(-r x tau)), gets an `american-style note:` in the notes: early
+  exercise can matter there, and the European model does not price it. A put at or out of the money never gets the
+  note from the interest test: exercising it now pays nothing.
 
 ## The approval-level check
 
@@ -657,6 +681,7 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 | 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | 🟢 |
 
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
+> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
 > - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
 > - criteria: your structuring.toml (sha 5155427c)

@@ -250,6 +250,8 @@ SPY_PP_TEXT = [
     "| 3 | 2027-03-19 | 625 | 3.57 % | 27.05 | 0.1868 | \U0001F7E2 |",
     "",
     "> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop",
+    "> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from "
+    "the best",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
     "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
     "options is not modelled",

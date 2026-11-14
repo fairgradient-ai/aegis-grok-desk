@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -104,6 +105,9 @@ TIE_BREAK_WORDS: Dict[str, str] = {
     "net_credit": "the net credit (higher first)", "abs_delta": "the absolute delta (lower first)",
     "strike": "the strike (higher first)", "put_strike": "the put strike (higher first)",
     "net_debit": "the net debit (lower first)", "contract": "the contract (in symbol order)",
+    "extrinsic_per_day": "the bid's time value per calendar day (higher first)",
+    "net_extrinsic_per_added_day": "the net time value per calendar day added (higher first)",
+    "stress_cost_per_day": "the ask per calendar day per 100 of loss offset at your stress drop (lower first)",
 }
 EXPIRATION_WORDS: Dict[int, str] = {1: "the expiration (earlier first)", -1: "the expiration (later first)"}
 ARTICLE_WORDS: Dict[str, str] = {"covered_call": "a covered call", "protective_put": "a protective put",
@@ -455,6 +459,46 @@ def best_line(w: Writer, rank: int, total: int, objective: Any, score: Decimal, 
 def objective_line(w: Writer, objective: Any) -> str:
     """``extrinsic_per_day: the bid's time value per calendar day, in percent of the share price``."""
     return "%s: %s" % (_guard(objective.id), w.words(objective.words))
+
+
+def near_best_line(w: Writer, objective: Any, near: int) -> str:
+    """``rank 2 lies within the best's own quote spread on <id>: these quotes do not tell it apart from the best``
+    (information only; the ranking is unchanged)."""
+    if near == 1:
+        return ("rank 2 lies within the best's own quote spread on %s: these quotes do not tell it apart from the best"
+                % _guard(objective.id))
+    return ("ranks 2 to %s lie within the best's own quote spread on %s: these quotes do not tell them apart from the "
+            "best" % (w.count(near + 1), _guard(objective.id)))
+
+
+TRADING_MINUTES_PER_YEAR: int = 252 * 390
+"""Regular-session minutes in a trading year: the clock a one-delay move of the share price is measured on."""
+
+
+def delay_move_pct(sigma: float, delay_min: int = FEED_DELAY_MIN) -> Decimal:
+    """One standard deviation of the share price over the feed's delay at volatility ``sigma``, in percent:
+    ``sigma x sqrt(delay / (252 x 390)) x 100``, quantized 0.01 half-even."""
+    move = sigma * math.sqrt(delay_min / TRADING_MINUTES_PER_YEAR) * 100
+    return Decimal(repr(move)).quantize(_CENT, rounding=ROUND_HALF_EVEN)
+
+
+def switch_line(w: Writer, ranking: "structuring.Ranking", best: "structuring.Candidate") -> str:
+    """``band_centre``: where the share price would have to be for another candidate to be best, against one delay's
+    move at the best's volatility (information only; the ranking is unchanged)."""
+    up, down = ranking.switches
+    sides = []
+    if up is not None:
+        sides.append("rises %s (to %s)" % (w.pct(abs(up.pct)), w.price(up.price)))
+    if down is not None:
+        sides.append("falls %s (to %s)" % (w.pct(abs(down.pct)), w.price(down.price)))
+    sigma = max(leg.iv for leg in best.legs if leg.iv is not None)
+    move = delay_move_pct(sigma)
+    nearest = min(abs(item.pct) for item in (up, down) if item is not None)
+    verdict = ("so these quotes do not settle the best" if nearest <= move
+               else "so a change needs more than one such move")
+    return ("band_centre at these quotes and volatilities: another candidate is best if the stock %s; one "
+            "%s-min delay is a move of about %s at the best's volatility, %s"
+            % (" or ".join(sides), w.count(FEED_DELAY_MIN), w.pct(move), verdict))
 
 
 def tie_line(w: Writer, objective_id: str, key: str, kind: Optional[str] = None) -> str:
@@ -853,7 +897,8 @@ def group_table(w: Writer, after: "structuring.AfterState", before: Optional["st
     return table(["the group", "now", head], "lrr", rows)
 
 
-def american_line(w: Writer, candidate: "structuring.Candidate") -> str:
+def american_line(w: Writer, candidate: "structuring.Candidate",
+                  pricing: Optional["structuring.PricingContext"] = None) -> str:
     """The American caveat of a candidate that carries one (designer Q's D4): early exercise may matter and the
     European model does not price it."""
     put = next((leg for leg in candidate.legs if leg.right == "PUT"), None)
@@ -861,6 +906,11 @@ def american_line(w: Writer, candidate: "structuring.Candidate") -> str:
         return ("american-style note: %s is deep in the money (absolute delta %s); early exercise can be worth more "
                 "than the European model prices" % (contract_words(w, put.expiration, put.strike, "PUT"),
                                                     w.plain(put.abs_delta)))
+    pair = None if put is None or pricing is None else structuring.put_exercise_carry(put, pricing)
+    if pair is not None and pair[0] < pair[1]:
+        return ("american-style note: %s is in the money and its time value at the mid, %s, is below the interest on "
+                "its strike to expiry, %s; early exercise can be worth more than the European model prices"
+                % (contract_words(w, put.expiration, put.strike, "PUT"), w.money(pair[0]), w.money(pair[1])))
     call = next(leg for leg in candidate.legs if leg.right == "CALL")
     return ("american-style note: %s is in the money and its bid's time value is below the dividend before its last "
             "trading day, so an early exercise before the ex-date is possible; the European model does not price it"
@@ -1113,11 +1163,15 @@ def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.dat
     items = [objective_line(w, ranking.objective)]
     if best is not None and ranking.tie_break is not None:
         items.append(tie_line(w, ranking.objective.id, ranking.tie_break, best.kind))
+    if best is not None and len(ranking.near_best) > 1:
+        items.append(near_best_line(w, ranking.objective, len(ranking.near_best) - 1))
+    if best is not None and any(item is not None for item in ranking.switches):
+        items.append(switch_line(w, ranking, best))
     items.append(quotes_line(w, as_of))
     items.append(MODEL_LINE)
     items.extend(spot_bar_lines(w, answer))
     if best is not None and best.american_caveat:
-        items.append(american_line(w, best))
+        items.append(american_line(w, best, answer.pricing))
     items.append(criteria_line(w, answer.criteria.sha256))
     return items
 
@@ -1252,7 +1306,7 @@ def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
 _DESK_WORDS = ("cash", "margin", "ira", "account", "call", "put", "shares")
 _TEMPLATE_WORDS: str = (
     "above absent absolute acceptance accepted account accounts acknowledge acknowledged across action advanced "
-    "after alert allow already american among amount analysis another answer applicable apply approval assign "
+    "after alert allow already american among amount analysis another answer apart applicable apply approval assign "
     "assigned assignment attested away balance band bands before below best both break breakeven breakevens "
     "broken broker brokerage brokers budget cache calendar call called calls candidate candidates cannot carry "
     "cash cause chain chains change check chose class clock clocks close closed closes closing code codes collar "
@@ -1278,7 +1332,7 @@ _TEMPLATE_WORDS: str = (
     "section secured self sequence served session share shares short shows side some soon source split spot spread "
     "spreads stale stamp stamped standard stands state states status stays stem step steps stock strategies "
     "stress stressed strike structure structuring style subject supply symbol takes tapped tell text than that "
-    "their these theta they this threshold tick ticket tickets time today together toml tool trade trading "
+    "their them these theta they this threshold tick ticket tickets time today together toml tool trade trading "
     "transaction type unavailable unbounded uncovered undated underlying underlyings unhedged unit unknown "
     "unlisted unpriced until usable used valid value vega verdict volatility warnings were what which while whole "
     "wider window with withheld within without words worth would yield your yours yourself "

@@ -1022,7 +1022,7 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
         notes.append(structuring_text.MODEL_LINE)
         candidate = replacement.candidate
         if candidate is not None and candidate.american_caveat:
-            notes.append(structuring_text.american_line(w, candidate))
+            notes.append(structuring_text.american_line(w, candidate, replacement.pricing))
     if ticket.action == structuring.ACTION_MONETIZE_PUT:
         lines.extend(_put_table(w, ticket))
         lines.append("")

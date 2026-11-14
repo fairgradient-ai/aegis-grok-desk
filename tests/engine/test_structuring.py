@@ -927,6 +927,9 @@ class ProposalGoldenTest(unittest.TestCase):
         answer = self.put
         self.assertEqual((S.VERDICT_BEST, "SPY270319P00610000", 1), (answer.verdict, answer.ranking.best.id,
                                                                     answer.contracts))
+        # quote precision is information only: 620 (0.1858) lies within 610's own half-spread (0.1856 at the ask,
+        # 0.1848 at the mid), 625 (0.1868) does not; the order and the best are unchanged
+        self.assertEqual(("SPY270319P00610000", "SPY270319P00620000"), answer.ranking.near_best)
         self.assertEqual({"drop_pct": D("20"), "spot": D("518.496")}, answer.stress)
         self.assertEqual({"made": 4, "chains": 1, "per_run_max_requests": 40, "per_run_max_chains": 4,
                           "budget_left": 176}, answer.requests)

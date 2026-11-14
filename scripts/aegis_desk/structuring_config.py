@@ -138,15 +138,27 @@ _CENT = Decimal("0.01")
 OBJECTIVE_EXTRINSIC_PER_DAY: str = "extrinsic_per_day"
 OBJECTIVE_STRESS_COST_PER_DAY: str = "stress_cost_per_day"
 OBJECTIVE_CAP_WITHIN_BUDGET: str = "cap_within_budget"
+OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: str = "net_extrinsic_per_added_day"
+OBJECTIVE_BAND_CENTRE: str = "band_centre"
 OBJECTIVE_IDS: Tuple[str, ...] = (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_STRESS_COST_PER_DAY,
-                                  OBJECTIVE_CAP_WITHIN_BUDGET)
+                                  OBJECTIVE_CAP_WITHIN_BUDGET, OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY,
+                                  OBJECTIVE_BAND_CENTRE)
 OBJECTIVES: Dict[str, Tuple[str, ...]] = {
-    SECTION_COVERED_CALL: (OBJECTIVE_EXTRINSIC_PER_DAY,),
-    SECTION_ROLL: (OBJECTIVE_EXTRINSIC_PER_DAY,),
-    SECTION_PROTECTIVE_PUT: (OBJECTIVE_STRESS_COST_PER_DAY,),
-    SECTION_COLLAR: (OBJECTIVE_CAP_WITHIN_BUDGET,),
+    SECTION_COVERED_CALL: (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_BAND_CENTRE),
+    SECTION_ROLL: (OBJECTIVE_EXTRINSIC_PER_DAY, OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY),
+    SECTION_PROTECTIVE_PUT: (OBJECTIVE_STRESS_COST_PER_DAY, OBJECTIVE_BAND_CENTRE),
+    SECTION_COLLAR: (OBJECTIVE_CAP_WITHIN_BUDGET, OBJECTIVE_BAND_CENTRE),
 }
-"""Exactly one objective id per structure section (a tuple, so ``in`` tests membership, never a substring)."""
+"""The objective ids each structure section accepts, the release-1 id first (a tuple, so ``in`` tests membership,
+never a substring); the owner names one in the section and the file's sha names it. ``[roll]`` does not take
+``band_centre``: a roll trades a position already held, and a score that ignores the time value it buys back can name a
+roll that gives up more than it sells."""
+BAND_CENTRE_KEYS: Dict[str, Tuple[str, ...]] = {
+    SECTION_COVERED_CALL: ("dte", "abs_delta"),
+    SECTION_PROTECTIVE_PUT: ("dte", "floor_pct"),
+    SECTION_COLLAR: ("dte", "floor_pct", "cap_pct"),
+}
+"""The bands whose centres ``band_centre`` measures from, per section."""
 DIRECTION_HIGHER: str = "higher"
 DIRECTION_LOWER: str = "lower"
 
@@ -181,6 +193,24 @@ OBJECTIVE_DEFS: Dict[str, Objective] = {
         "U = (Kc - S) / S x 100, quantized 0.01 half-even; score = U among the put and call pairs of one expiration "
         "whose net debit (put ask - call bid) is at most max_net_debit",
         "percent above the share price", DIRECTION_HIGHER),
+    OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: Objective(
+        OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY,
+        "the new call's time value at its bid less the held call's time value at its ask, in percent of the share "
+        "price per calendar day added when the roll adds time value, and the whole amount, not divided by days, when "
+        "it gives some up",
+        "E_new = bid - max(0, S - K_new); E_held = ask_held - max(0, S - K_held); N = E_new - E_held; score = N / S / "
+        "(T_c,new - T_c,held) x 100 when N >= 0, else N / S x 100, quantized 0.000001 half-even",
+        "percent of the share price per calendar day added (N >= 0), percent of the share price (N < 0)",
+        DIRECTION_HIGHER),
+    OBJECTIVE_BAND_CENTRE: Objective(
+        OBJECTIVE_BAND_CENTRE,
+        "the distance from the centre of your bands, each band counted in its own half-width, plus each leg's quote "
+        "spread counted in your max_spread_pct, all summed with equal weight (a desk convention: one half-width of days "
+        "counts as much as one half-width of delta, floor or cap, and as one leg quoted at your spread limit)",
+        "c = (lo + hi) / 2 and w = (hi - lo) / 2 for each band of the section (dte with abs_delta, dte with floor_pct, "
+        "or dte with floor_pct and cap_pct); score = sum of |x - c| / w + sum over the legs of spread_pct / "
+        "max_spread_pct, quantized 0.01 half-even",
+        "half-widths of your bands", DIRECTION_LOWER),
 }
 """The objectives by id (PR 3b decision S3; the formulas of designer Q's D5, D7 and D8)."""
 
@@ -433,11 +463,11 @@ class _Reader:
 
     def objective(self, table: Dict[str, Any], where: str) -> str:
         value = table["objective"]
-        expected = OBJECTIVES[where][0]
-        if value != expected:
-            raise self.fail("[%s] objective must be %s, the one objective this release ranks [%s] by (got %r)"
-                            % (where, expected, where, value))
-        return expected
+        allowed = OBJECTIVES[where]
+        if not isinstance(value, str) or value not in allowed:
+            raise self.fail("[%s] objective must be one of %s, the objectives this release ranks [%s] by (got %r)"
+                            % (where, ", ".join(allowed), where, value))
+        return value
 
     # -- sections ------------------------------------------------------------------------------
     def disclosure(self, document: Dict[str, Any]) -> DisclosureSection:
@@ -627,6 +657,7 @@ def load_structuring_config_if_present(path: str) -> Optional[StructuringConfig]
 
 __all__ = [
     "ABS_DELTA_RANGE",
+    "BAND_CENTRE_KEYS",
     "CAP_PCT_RANGE",
     "CollarSection",
     "CoveredCallSection",
@@ -652,10 +683,12 @@ __all__ = [
     "MAX_SPREAD_PCT_MAX",
     "MIN_CREDIT_MIN",
     "OBJECTIVES",
+    "OBJECTIVE_BAND_CENTRE",
     "OBJECTIVE_CAP_WITHIN_BUDGET",
     "OBJECTIVE_DEFS",
     "OBJECTIVE_EXTRINSIC_PER_DAY",
     "OBJECTIVE_IDS",
+    "OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY",
     "OBJECTIVE_STRESS_COST_PER_DAY",
     "Objective",
     "ProtectivePutSection",

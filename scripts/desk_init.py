@@ -156,6 +156,13 @@ OUTPUT: Dict[str, Any] = {
 _DTE_WORDS = "[lo, hi] of integers: calendar days, 7 <= lo < hi <= 400 and hi - lo <= 90"
 _EVENT_WORDS = " | ".join(structuring_config.EVENT_POLICIES)
 _FLOOR_WORDS = "[lo, hi] of decimal strings: percent of the share price below it, 0 <= lo < hi <= 50"
+
+
+def _objective_words(section: str) -> str:
+    """``extrinsic_per_day | band_centre``: the objectives a section accepts, its default first."""
+    return " | ".join(structuring_config.OBJECTIVES[section])
+
+
 STRUCTURING_SHAPE: Dict[str, Any] = {
     "disclosure_acknowledged": "%s (given only after the owner acknowledges the disclosure the interview shows "
                                "last)" % structuring_config.DISCLOSURE_ID,
@@ -165,21 +172,21 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
                      "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
                      "min_credit": "decimal string >= 0.01 (per share, at the bid)",
                      "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-                     "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+                     "ex_dividend": _EVENT_WORDS, "objective": _objective_words("covered_call")},
     "roll": {"enabled": "boolean", "dte": _DTE_WORDS,
              "abs_delta": "[lo, hi] of decimal strings: 0.05 <= lo < hi <= 0.60, at most 2 places",
              "min_credit": "decimal string >= 0.01 (per share, the new call's bid)",
              "credit_only": "boolean (a net debit fails it; a zero net passes)",
              "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-             "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_EXTRINSIC_PER_DAY},
+             "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll")},
     "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                        "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
-                       "objective": structuring_config.OBJECTIVE_STRESS_COST_PER_DAY},
+                       "objective": _objective_words("protective_put")},
     "collar": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                "cap_pct": "[lo, hi] of decimal strings: percent of the share price above it, 0 < lo < hi <= 100",
                "max_net_debit": "decimal string >= 0 (per share; 0.00 is a zero cost or a credit)",
                "strike_floor": " | ".join(structuring_config.STRIKE_FLOORS), "earnings": _EVENT_WORDS,
-               "ex_dividend": _EVENT_WORDS, "objective": structuring_config.OBJECTIVE_CAP_WITHIN_BUDGET},
+               "ex_dividend": _EVENT_WORDS, "objective": _objective_words("collar")},
 }
 """``ANSWERS_SHAPE["structuring"]``: every key required, decimals as JSON strings, no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
