@@ -552,7 +552,7 @@ CANDIDATE_KEYS: Tuple[str, ...] = ("rank", "id", "kind", "expiration", "contract
                                    "accepted", "lost_because", "american_caveat", "extrinsic_bid", "net_credit",
                                    "net_credit_total", "credit_total", "floor_pct", "cap_pct", "covered_per_share",
                                    "covered_total", "net_debit", "net_debit_total", "cost_total", "net_time_value",
-                                   "objective_scores", "legs", "after")
+                                   "incremental_cost_per_day", "days_added", "objective_scores", "legs", "after")
 
 
 @dataclass(frozen=True)
@@ -585,6 +585,10 @@ class Candidate:
     cost_total: Optional[Decimal] = None
     net_time_value: Optional[Decimal] = None
     """A replacement call's ``N = E_new - E_held`` per share at the conservative sides (:func:`net_time_value`)."""
+    incremental_cost_per_day: Optional[Decimal] = None
+    """A replacement put's cost net of the held put's bid, per calendar day added (:func:`incremental_cost_per_day`)."""
+    days_added: Optional[int] = None
+    """A replacement's calendar days beyond the held leg's expiration."""
     objective_scores: Optional[Dict[str, Tuple[Optional[Decimal], Optional[Decimal]]]] = None
     """Every objective the section accepts: ``{id: (score, score at the mids)}`` (the mid value is ``None`` for an
     objective that reads no price); :func:`rank_candidates` ranks by the one the owner's section names."""
@@ -671,6 +675,18 @@ def net_time_value(new_bid: Decimal, held_ask: Decimal, spot: Decimal, new_strik
     owner's own share gain as intrinsic value, which the roll does not give up."""
     with localcontext(_DECIMAL_CONTEXT):
         return extrinsic(new_bid, spot, new_strike) - extrinsic(held_ask, spot, held_strike)
+
+
+def incremental_cost_per_day(new_ask: Decimal, held_bid: Decimal, spot: Decimal, new_days: int, held_days: int
+                             ) -> Decimal:
+    """A replacement put's ``(ask_new - bid_held) / S / (T_new - T_held) x 100``: what the protection it adds costs,
+    net of what the held put still fetches, per calendar day added, in percent of the share price, quantized 0.0001
+    half-even. ``ValueError`` unless the replacement expires later."""
+    if new_days <= held_days or spot <= 0:
+        raise ValueError("a replacement must expire after the held leg and the share price must be positive")
+    with localcontext(_DECIMAL_CONTEXT):
+        return ((new_ask - held_bid) / spot / Decimal(new_days - held_days) * _HUNDRED).quantize(
+            SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
 def extrinsic_per_day(bid: Decimal, spot: Decimal, strike: Decimal, days: int) -> Decimal:
@@ -1382,8 +1398,14 @@ def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupC
         return _unpriced(KIND_REPLACEMENT_PUT, [leg], contracts, leg.unpriced)
     reasons: List[Reason] = []
     score, metrics = _put_parts(leg, ctx, section, contracts, reasons)
-    assert leg.ask is not None
+    assert leg.ask is not None and leg.dte_calendar is not None
     after = after_state(group, contracts, [(leg, contracts, leg.ask)], held)
+    held_days = market_clock.dte(held.expiration, ctx.today, market_clock.UNIT_CALENDAR, False, ctx.extra_holidays)
+    spot = ctx.spot_mid
+    if held.close_price is not None and spot is not None and leg.dte_calendar > held_days:
+        metrics["incremental_cost_per_day"] = incremental_cost_per_day(leg.ask, held.close_price, spot,
+                                                                       leg.dte_calendar, held_days)
+        metrics["days_added"] = leg.dte_calendar - held_days
     return _finish(KIND_REPLACEMENT_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg, ctx), after, **metrics)
 
 

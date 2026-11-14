@@ -150,6 +150,9 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "net_debit_total": "decimal string | null", "cost_total": "decimal string | null (protective put: ask x 100 x "
                                                              "contracts)",
     "net_time_value": "null (a proposal holds no call to roll)",
+    "incremental_cost_per_day": "decimal string | null (a replacement put: (ask_new - bid_held) / S / days added "
+                                "x 100)",
+    "days_added": "integer | null (a replacement: calendar days beyond the held leg's expiration)",
     "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {

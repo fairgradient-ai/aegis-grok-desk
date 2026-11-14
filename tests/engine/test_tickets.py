@@ -405,6 +405,7 @@ class SpyGoldenTest(unittest.TestCase):
                          (candidate.kind, candidate.status, candidate.after.max_loss, candidate.after.breakeven,
                           candidate.after.unbounded_up))
         self.assertEqual((2, True), (ticket.approval.required_level, ticket.approval.ok))
+        self.assertEqual((D("0.0226"), 91), (candidate.incremental_cost_per_day, candidate.days_added))
 
     def test_let_assign_is_not_applicable(self) -> None:
         ticket = run(self, SPY, "LET_ASSIGN")

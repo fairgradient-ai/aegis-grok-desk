@@ -1043,6 +1043,12 @@ class ReplacementGoldenTest(unittest.TestCase):
                           candidate.after.breakeven, money(candidate.after.group_delta)))
         self.assertEqual((D("2370.00"), D("643.70")), (answer.before.max_loss, answer.before.breakeven))
         self.assertEqual(D("2310.00"), candidate.cost_total)
+        # step 3d: the replacement's cost net of the held put's bid, per calendar day added, in percent of the share
+        # price: (23.10 - 9.80) / 648.12 / (136 - 45) x 100
+        self.assertEqual((D("0.0226"), 91), (candidate.incremental_cost_per_day, candidate.days_added))
+        self.assertEqual(D("0.0226"), S.incremental_cost_per_day(D("23.10"), D("9.80"), D("648.12"), 136, 45))
+        with self.assertRaises(ValueError):
+            S.incremental_cost_per_day(D("23.10"), D("9.80"), D("648.12"), 45, 45)
 
     def test_a_contract_the_chain_does_not_list(self) -> None:
         answer = S.run_replacement(Desk(self).market(), "AG-20261020-01", JAN15, D("117"), CRITERIA)

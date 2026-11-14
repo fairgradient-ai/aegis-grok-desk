@@ -294,6 +294,7 @@ checks read `[protective_put]`.
 |---|---|---|:-:|
 | floor | 5.88 % below | 3 to 10 % | 🟢 |
 | cost | ask 23.10 (2,310.00 in all) |  |  |
+| net cost per day added | 0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 days added) |  |  |
 | covered at your stress drop | 91.504 per share (9,150.40 in all) | drop 20 % (stressed price 518.496) | 🟢 |
 | calendar days | 136 | 120 to 210 | 🟢 |
 | spread | 0.87 % | at most 25 % | 🟢 |

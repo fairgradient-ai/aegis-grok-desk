@@ -563,6 +563,11 @@ are never counted as failing your criteria.
 
 ### A ticket
 
+A ROLL of a protective put's long put adds one row to its checks table, `net cost per day added`: the new put's ask
+less the held put's bid, per share, over the calendar days the replacement adds, in percent of the share price
+((ask_new - bid_held) / S / (T_new - T_held) x 100, quantized 0.0001). On the fixture, the March 610 put in place of
+the December 620 put reads `0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 days added)`.
+
 `exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115`, the replacement
 named by the roll analysis above:
 

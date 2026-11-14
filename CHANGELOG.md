@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A ROLL ticket of a protective put's long put adds the row `net cost per day added`: (the new put's ask - the held
+  put's bid) / S / (days added) x 100, in percent of the share price, so the cost reads net of what the held put still
+  fetches. Candidates carry `incremental_cost_per_day` and `days_added`.
 - `[roll] roll_test` (`schema_version = 2`, in place of `credit_only`): `"credit"`, `"none"` or `"net_time_value"`,
   which fails a roll whose new call holds less time value than the held call (N = E_new - E_held < 0) and passes an
   in-the-money roll that `credit_only` would fail. Its checks row shows N per share and says when N lies within the

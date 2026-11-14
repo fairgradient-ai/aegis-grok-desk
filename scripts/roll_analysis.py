@@ -148,6 +148,9 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "net_debit": "decimal string | null", "net_debit_total": "decimal string | null",
     "cost_total": "decimal string | null",
     "net_time_value": "decimal string | null (per share: the new bid's time value less the held ask's)",
+    "incremental_cost_per_day": "decimal string | null (a replacement put: (ask_new - bid_held) / S / days added "
+                                "x 100)",
+    "days_added": "integer | null (a replacement: calendar days beyond the held leg's expiration)",
     "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {

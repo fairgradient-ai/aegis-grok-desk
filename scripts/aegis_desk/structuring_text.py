@@ -733,6 +733,11 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
         rows.append(["floor", "%s below" % w.pct(candidate.floor_pct), "%s %%" % _band_words(w, section.floor_pct),
                      status(structuring.KEY_FLOOR_PCT)])
         rows.append(["cost", "ask %s (%s in all)" % (w.price(leg.ask), w.amount(candidate.cost_total)), "", ""])
+        if (kind == structuring.KIND_REPLACEMENT_PUT and candidate.incremental_cost_per_day is not None
+                and held is not None and held.close_price is not None and candidate.days_added is not None):
+            rows.append(["net cost per day added", "%s of the share price (ask %s less the held put's bid %s, over %s "
+                         "days added)" % (w.pct(candidate.incremental_cost_per_day), w.price(leg.ask),
+                                          w.price(held.close_price), w.count(candidate.days_added)), "", ""])
         cover = candidate.covered_per_share
         covered = ("%s per share (%s in all)" % (w.number(format(cover, "f")), w.amount(candidate.covered_total))
                    if cover > 0 else "none")
