@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Threshold levels: the `N sigma` distance of a model level is now the lognormal measure |ln(level / S)| / (sigma x
+  sqrt(tau)) instead of the arithmetic |level - S| / (sigma x sqrt(tau) x S), so a rise and a fall of the same ratio
+  read the same. The fixture's SPY MONETIZE level reads 1.42 sigma (was 1.34); the NVDA DELTA_SIGNAL level is unchanged.
 - A ROLL ticket of a protective put's long put adds the row `net cost per day added`: (the new put's ask - the held
   put's bid) / S / (days added) x 100, in percent of the share price, so the cost reads net of what the held put still
   fetches. Candidates carry `incremental_cost_per_day` and `days_added`.

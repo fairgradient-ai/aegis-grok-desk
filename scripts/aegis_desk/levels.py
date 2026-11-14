@@ -494,6 +494,16 @@ class PlanCard(_Emitted):
 # --------------------------------------------------------------------------------------------
 
 
+
+def sigma_moves(level: Decimal, spot: Decimal, sigma: float, tau: float) -> Decimal:
+    """How far ``level`` lies from ``spot`` in standard deviations of the log price to expiry,
+    ``|ln(level / S)| / (sigma x sqrt(tau))``, quantized 0.01 half-even (the lognormal measure the model's own
+    ``sigma`` describes; a rise and a fall of the same ratio read the same)."""
+    if level <= 0 or spot <= 0 or sigma <= 0 or tau <= 0:
+        raise ValueError("sigma_moves needs a positive level, spot, sigma and tau")
+    moves = abs(math.log(bsm.as_float("level", level) / bsm.as_float("spot", spot))) / (sigma * math.sqrt(tau))
+    return Decimal(repr(moves)).quantize(_CENT, rounding=ROUND_HALF_EVEN)
+
 class _Writer:
     def __init__(self) -> None:
         self.emitted: List[str] = []
@@ -1230,9 +1240,7 @@ class _LineMaker:
         parts.append("model estimate at IV %s, date fixed" % self.w.pct(pnl.quantize_pct(Decimal(repr(sigma)) * _HUNDRED)))
         distance = self.distance(level, spot)
         if distance is not None:
-            one_sigma = Decimal(repr(sigma)) * Decimal(repr(math.sqrt(tau))) * spot
-            moves = (abs(level - spot) / one_sigma).quantize(_CENT, rounding=ROUND_HALF_EVEN)
-            parts.append("%s, %s sigma" % (distance, self.w.delta(moves)))
+            parts.append("%s, %s sigma" % (distance, self.w.delta(sigma_moves(level, spot, sigma, tau))))
         head = "fires near %s %s" % (self.w.reason(symbol), self.w.price(level))
         model = {"iv": sigma, "tau_years": tau, "r": rate, "q": q, "delta_boundary": delta_boundary(threshold, condition.op)}
         return _Body(KIND_UNDERLYING_MODEL, head, parts, level=level, exact=root,

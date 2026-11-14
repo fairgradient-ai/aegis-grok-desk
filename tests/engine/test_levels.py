@@ -92,7 +92,7 @@ REGULAR_SHEET = [
     # ROLL30 at a line start reads as an imperative to the lint (IS04): the line names it "your rule ROLL30"
     "your rule ROLL30 fires on 2026-11-18 (30 calendar days before the last trading day 2026-12-18)",
     "MONETIZE fires near SPY 572.79 (rounded up from 572.7826; model estimate at IV 24.68 %, date fixed; 11.62 % below "
-    "the current 648.12, 1.34 sigma)",
+    "the current 648.12, 1.42 sigma)",
     "FLOOR fires at SPY 619.99 or below (one cent below the strike 620; 4.34 % below the current 648.12)",
     "AUTOEX fires at SPY 619.99 or below (one cent below the strike 620; 4.34 % below the current 648.12) on the last "
     "trading day 2026-12-18",
@@ -902,6 +902,24 @@ class SourceTest(unittest.TestCase):
         self.assertIsNone(re.search(r"(?<![A-Za-z0-9_.])float\(", source), "floats come through bsm.as_float only")
         self.assertIsNone(re.search(r"(?<![A-Za-z0-9_.])print\(", source))
         self.assertEqual([], order_words(source.replace(ALERT.split(": ", 1)[1], "")))
+
+
+
+class SigmaMovesTest(unittest.TestCase):
+    """Step 3e of the quant review (finding F14): the distance in sigmas is |ln(level / S)| / (sigma x sqrt(tau)), the
+    lognormal measure, not the arithmetic |level - S| / (sigma x sqrt(tau) x S)."""
+
+    def test_log_distances(self) -> None:
+        tau = 136 / 365
+        self.assertEqual(Decimal("0.45"), levels.sigma_moves(Decimal("600"), Decimal("648.12"), 0.28, tau))
+        self.assertEqual(Decimal("0.86"), levels.sigma_moves(Decimal("560"), Decimal("648.12"), 0.28, tau))
+        self.assertEqual(Decimal("0.45"), levels.sigma_moves(Decimal("700"), Decimal("648.12"), 0.28, tau))
+
+    def test_symmetric_in_log_space(self) -> None:
+        up = levels.sigma_moves(Decimal("200"), Decimal("100"), 0.5, 1.0)
+        down = levels.sigma_moves(Decimal("50"), Decimal("100"), 0.5, 1.0)
+        self.assertEqual(up, down)
+        self.assertEqual(Decimal("0.00"), levels.sigma_moves(Decimal("100"), Decimal("100"), 0.5, 1.0))
 
 
 if __name__ == "__main__":
