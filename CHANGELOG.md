@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (unreleased)
 
+- Version bump to 0.2.2 (`release_bump.py 0.2.2`).
 - Multi-leg answers show what the quotes' spreads cost: a ticket of two legs or more adds `spread cost against the
   mids` to its cash table, and a collar proposal adds `spread cost` (half of both legs' spreads per share) to its
   checks table. Each leg's JSON carries `spot_used`, the stock price its volatility was solved against, and a call's
