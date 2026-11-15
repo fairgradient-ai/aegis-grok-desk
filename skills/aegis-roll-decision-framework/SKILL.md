@@ -1,6 +1,6 @@
 ---
 name: aegis-roll-decision-framework
-description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
+description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call, the long put of a protective put) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -38,16 +38,18 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
 
 ## What the analysis covers
 
-- The open short call of a `covered_call` group, on a symbol held in `positions.csv`. Chains are fetched only for
-  that group's underlying.
-- Any other structure is NOT_APPLICABLE with its reason. A protective put's long put is replaced by a ROLL ticket
-  the owner names. The roll analysis of long puts, short puts and collars, weekly expirations and American
-  pricing are planned for Stage 2 (not in this release).
-- An index underlying (the data source cannot quote index options) and the setting `[roll] enabled = false` are
-  NOT_APPLICABLE too.
+- The open short call of a `covered_call` group, on a symbol held in `positions.csv`, judged under `[roll]`. Chains
+  are fetched only for that group's underlying.
+- The open long put of a `protective_put` group, judged under `[protective_put]`: every put of a later standard
+  monthly inside its `dte`, ranked by its objective (`stress_cost_per_day` by default). The best candidate opens the
+  new put at its ask first, then closes the held put at its bid, and each check reads the net cost per day added.
+- Any other structure is NOT_APPLICABLE with its reason. The roll analysis of short puts and collars, weekly
+  expirations and American pricing are planned for Stage 2 (not in this release).
+- An index underlying (the data source cannot quote index options) and the structure's section disabled
+  (`[roll] enabled = false`, or `[protective_put] enabled = false`) are NOT_APPLICABLE too.
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call and the long put of a protective put; the roll analysis of a short put or a collar is planned for Stage 2 (not in this release)
 ```
 
 ## The replacement set

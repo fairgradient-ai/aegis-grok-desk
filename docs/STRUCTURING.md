@@ -23,7 +23,7 @@ Counsel has not signed this wording yet ([RELEASE.md](RELEASE.md), step 4).
 | what happens if a short option is left to expiry (`--action LET_ASSIGN`) | `exit_ticket.py` | short options only |
 | a ticket that closes the long put for its value (`--action MONETIZE_PUT`) | `exit_ticket.py` | protective put and collar groups |
 | a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, and the long put of a protective put |
-| the replacement candidates for a covered call's short call | `roll_analysis.py` | covered call groups |
+| the replacement candidates for a covered call's short call or a protective put's long put | `roll_analysis.py` | covered call and protective put groups |
 | a covered call, a protective put or a collar on shares you hold (`--structure`) | `propose.py` | groups that hold shares only |
 
 The commands, with the trade ids of the synthetic fixture:
@@ -48,7 +48,7 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 What the desk never does: it proposes no new symbol, no spread, no uncovered short option and no cash-secured put. A
 group that already holds an option leg, or fewer than 100 shares, or whose shares a short call of another group in the
 same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index underlyings are NOT_APPLICABLE, because
-the data source cannot quote index options. The roll analysis of long puts, short puts and collars, weekly
+the data source cannot quote index options. The roll analysis of short puts and collars, weekly
 expirations, American pricing, scenario and iv_snapshot, a cash-balance check and per-account approval levels are
 planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
 ROLL of either collar leg is NOT_APPLICABLE.
@@ -773,10 +773,11 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 ### Answers without a candidate
 
-- NOT_APPLICABLE names the reason, for example the roll analysis of the SPY protective put:
+- NOT_APPLICABLE names the reason, for example the roll analysis of a collar (synthetic: the fixture's SPY group
+  with a short 2026-12-18 680 call added):
 
   ```text
-  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
+  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call and the long put of a protective put; the roll analysis of a short put or a collar is planned for Stage 2 (not in this release)
 
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
   ```

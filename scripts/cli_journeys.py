@@ -61,7 +61,8 @@ hours (refused). The fixture roots hold no runtime state, so every journey that 
 runs ``ack.py config --owner-tapped`` as its first step.
 
 The PR 3b journeys run the Aegis Structuring Desk's three tools on the main root: ``roll_analysis`` (the WMT roll's best
-candidate, the NVDA roll where none qualifies, the stale set), ``propose`` (the SPY protective put on a group that already
+candidate, the SPY protective put's long put and its best replacement, the NVDA roll where none qualifies, the stale
+set), ``propose`` (the SPY protective put on a group that already
 holds a put: NOTHING_TO_PROPOSE) and ``exit_ticket`` (two ROLL tickets, a MONETIZE_PUT ticket and a ROLL on expiration
 day). The fixture root holds no ``structuring.toml``, so each chain writes it on its copy with ``desk_init.py --answers``
 (the fixture answers) and acknowledges it with ``ack.py config --owner-tapped`` first; two journeys prove the tools fail
@@ -688,6 +689,21 @@ JOURNEYS += (
                                 "- \U0001F7E1 **ex-dividend** 2026-11-24 (cum 2026-11-23), inside the new call's life | "
                                 "accepted by #assign-ok",
                                 "- **max loss** 19,016.00 now, 19,006.00 after",
+                                STRUCTURING_FOOTER))},
+                 steps=REGULAR_STRUCTURING),
+    tool_journey("desk_init structuring, ack config, roll_analysis SPY protective put regular -> BEST (the Mar 610 put)",
+                 ("roll_analysis.py", "--trade", "AG-20261028-03"), 0,
+                 {"status": "ok", "tool": "roll_analysis", "payload.verdict": "BEST", "payload.kind": "replacement_put",
+                  "payload.section": "protective_put", "payload.best": "SPY270319P00610000",
+                  "payload.candidates.0.score": "0.1856", "payload.passed": 5, "payload.failed": 7,
+                  "payload.after.max_loss": "4700.00", "payload.requests.chains": 1, "payload.lint.ok": True,
+                  "payload.files.json": "reports/rolls/AG-20261028-03-20261103T195000Z.json",
+                  "payload.message": TextMatch(
+                      prefix="### STRUCTURING AG-20261028-03 | SPY protective put: the roll analysis of the long "
+                             "2026-12-18 620 put",
+                      contains=("**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**",
+                                "- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | ask 23.10 | quote grade A, 18 min old",
+                                "- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old",
                                 STRUCTURING_FOOTER))},
                  steps=REGULAR_STRUCTURING),
     tool_journey("desk_init structuring, ack config, roll_analysis NVDA regular -> NONE_QUALIFIES",

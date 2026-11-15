@@ -170,10 +170,54 @@ WMT_TEXT = [
     "",
     footer("19:31"),
 ]
-SPY_NOT_APPLICABLE = [
-    "NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the "
-    "short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll "
-    "analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)",
+SPY_TEXT = [
+    '### STRUCTURING AG-20261028-03 | SPY protective put: the roll analysis of the long 2026-12-18 620 put',
+    '*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*',
+    '',
+    '**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 '
+    'candidates that passed every criterion',
+    '- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | ask 23.10 | quote grade A, 18 min old',
+    '- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old',
+    '',
+    '> the score ranks the candidates only on the objective you chose; it is not a forecast',
+    '',
+    '**Checks for this candidate**',
+    '- 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %',
+    '- **cost** ask 23.10 (2,310.00 in all)',
+    "- **net cost per day added** 0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 "
+    'days added)',
+    '- 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed '
+    'price 518.496)',
+    '- 🟢 **calendar days** 136 | your criteria: 120 to 210',
+    '- 🟢 **spread** 0.87 % | your criteria: at most 25 %',
+    '',
+    '**The group, now and after both legs**',
+    '- **max loss** 2,370.00 now, 4,700.00 after',
+    '- **max profit** unbounded now, unbounded after',
+    '- **breakeven** 643.70 now, 657.00 after',
+    '- **group delta** 72.52 now, 70.17 after',
+    '',
+    '**Replacement candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)',
+    '- 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856',
+    '- 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858',
+    '- 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868',
+    '',
+    'a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike',
+    '',
+    "> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop",
+    "> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it "
+    'apart from the best',
+    '> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC',
+    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
+    'options is not modelled',
+    '> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a '
+    "year, because those quotes exclude the calendar's 1.15 %",
+    '> - criteria: your structuring.toml (sha 5155427c)',
+    '',
+    footer("19:31"),
+]
+SPY_DISABLED_TEXT = [
+    "NOT_APPLICABLE | AG-20261028-03 roll analysis | the protective_put section is disabled in your structuring.toml",
     "",
     footer("19:50"),
 ]
@@ -420,13 +464,60 @@ class GoldenTest(DeskCopy):
         self.assertEqual(["NVDA261218C00180000", "NVDA270115C00180000"],
                          [c["id"] for c in payload["candidates"] if c["status"] == "UNPRICED"])
 
-    def test_a_protective_put_group_is_not_applicable_without_a_request(self) -> None:
-        self.assertEqual(SPY_NOT_APPLICABLE, self.run_text(SPY))
+    def test_a_protective_puts_long_put_is_best_with_the_full_text(self) -> None:
+        self.assertEqual(SPY_TEXT, self.run_text(SPY))
+
+    def test_a_protective_puts_long_put_payload(self) -> None:
         payload = self.run_json(SPY)["payload"]
-        self.assertEqual(("NOT_APPLICABLE", "structure", []), (payload["verdict"], payload["cause"],
-                                                               payload["candidates"]))
-        self.assertEqual(0, payload["requests"]["made"])
-        self.assertIsNone(payload["approval"])
+        self.assertEqual(set(tool.PAYLOAD_KEYS), set(payload))
+        self.assertEqual(("BEST", None, "SPY270319P00610000", "protective_put", "protective_put", "replacement_put"),
+                         (payload["verdict"], payload["cause"], payload["best"], payload["structure"],
+                          payload["section"], payload["kind"]))
+        self.assertEqual("stress_cost_per_day", payload["objective"]["id"])
+        self.assertEqual((5, 7, 0, 12, {"floor_pct": 7}), (payload["passed"], payload["failed"], payload["unpriced"],
+                                                            len(payload["candidates"]), payload["failure_counts"]))
+        best = payload["candidates"][0]
+        self.assertEqual((1, "ELIGIBLE", "0.1856", "2310.00", "5.88", "0.0226", 91, 1),
+                         (best["rank"], best["status"], best["score"], best["cost_total"], best["floor_pct"],
+                          best["incremental_cost_per_day"], best["days_added"], best["contracts"]))
+        self.assertEqual(("SPY261218P00620000", "long", "9.80", "bid", "B"),
+                         (payload["held"]["occ"], payload["held"]["side"], payload["held"]["close_price"],
+                          payload["held"]["close_side"], payload["held"]["grade"]))
+        self.assertEqual({"listed_in_window": ["2027-03-19"], "evaluated": ["2027-03-19"], "not_evaluated": []},
+                         payload["expirations"])
+        self.assertEqual(("4700.00", None, "657.00", True, "-150.00"),
+                         (payload["after"]["max_loss"], payload["after"]["max_profit"], payload["after"]["breakeven"],
+                          payload["after"]["unbounded_up"], payload["after"]["realized_on_close"]))
+        # S7: the new long put is opened first (level 2 by the desk's convention), then the held one closed
+        self.assertEqual({"ok": True, "owner_level": 2, "required_level": 2, "refusal_step": None},
+                         {k: payload["approval"][k] for k in ("ok", "owner_level", "required_level", "refusal_step")})
+        self.assertEqual([[1, "open_long", 2], [2, "close_option", 0]],
+                         [[step["index"], step["kind"], step["level"]] for step in payload["approval"]["steps"]])
+        self.assertEqual({"json": "reports/rolls/AG-20261028-03-20261103T195000Z.json",
+                          "md": "reports/rolls/AG-20261028-03-20261103T195000Z.md", "written": True}, payload["files"])
+        self.assertEqual({"ok": True, "problems": []}, {k: payload["lint"][k] for k in ("ok", "problems")})
+
+    def test_a_protective_put_with_no_candidate_in_its_floor_band_quotes_the_held_puts_close(self) -> None:
+        self.edit("structuring.toml", "[protective_put]\nenabled = true\ndte = [120, 210]\nfloor_pct = [3, 10]",
+                  "[protective_put]\nenabled = true\ndte = [120, 210]\nfloor_pct = [12, 14]")
+        self.ack()
+        text = self.run_text(SPY)
+        at = text.index("**no candidate passed every criterion: the desk names no best candidate**")
+        self.assertEqual("- the net costs close the held 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old",
+                         text[at + 1])
+        self.assertNotIn("BEST CANDIDATE", "\n".join(text))
+        payload = self.run_json(SPY)["payload"]
+        self.assertEqual(("NONE_QUALIFIES", None, 0), (payload["verdict"], payload["best"], payload["passed"]))
+        self.assertEqual("floor_pct", payload["candidates"][0]["reasons"][0]["key"])
+
+    def test_a_protective_put_with_its_section_disabled_is_not_applicable_without_a_request(self) -> None:
+        self.edit("structuring.toml", "[protective_put]\nenabled = true", "[protective_put]\nenabled = false")
+        self.ack()
+        self.assertEqual(SPY_DISABLED_TEXT, self.run_text(SPY))
+        payload = self.run_json(SPY)["payload"]
+        self.assertEqual(("NOT_APPLICABLE", "disabled", "replacement_put", "protective_put", 0, None),
+                         (payload["verdict"], payload["cause"], payload["kind"], payload["section"],
+                          payload["requests"]["made"], payload["approval"]))
         self.assertEqual([], self.ledger())
         # BD6: only BEST and NONE_QUALIFIES (a complete evaluation) write a report; the journal record stays
         self.assertEqual([], self.reports())
@@ -555,6 +646,22 @@ class FailClosedTest(DeskCopy):
         self.assertEqual(("REFUSED", "approval_level", None),
                          (self.journal()[-1]["verdict"], self.journal()[-1]["refused_code"],
                           self.journal()[-1]["best_candidate"]))
+
+    def test_a_long_put_roll_is_refused_below_level_2_before_any_request(self) -> None:
+        # opening the new long put comes first (S7) and needs level 2 by the desk's convention
+        self.init_structuring()
+        self.edit("desk.toml", "approval_level = 2 ", "approval_level = 1 ")
+        self.ack()
+        text = self.run_text(SPY, expected=20)
+        self.assertTrue(text[0].startswith("REFUSED AG-20261028-03 | SPY protective put | opening 1 new long put needs "
+                                           "level 2 by the desk's convention"), text[0])
+        payload = self.run_json(SPY, expected=20)["payload"]
+        self.assertEqual(("REFUSED", "approval_level", "replacement_put", [], None),
+                         (payload["verdict"], payload["cause"], payload["kind"], payload["candidates"], payload["best"]))
+        self.assertEqual({"ok": False, "owner_level": 1, "required_level": 2, "refusal_step": 1},
+                         {k: payload["approval"][k] for k in ("ok", "owner_level", "required_level", "refusal_step")})
+        self.assertEqual(0, payload["requests"]["made"])
+        self.assertEqual([], self.ledger(), "the approval-level check comes before any market data")
 
     def test_an_unacknowledged_rulebook_alone_prints_its_line_first_and_continues(self) -> None:
         self.prepare()

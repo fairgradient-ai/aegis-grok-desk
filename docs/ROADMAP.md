@@ -91,7 +91,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | proposed |
 | 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule; 2.2 for any early-exercise line that reads a dividend | planned |
-| 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | nothing | planned |
+| 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | nothing | in progress: a long put's roll analysis landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget | planned |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash | planned |
 | 2.7 | Exposures and limits: beta-weighted delta and limit messages | your decision on the limits | planned |
@@ -182,9 +182,14 @@ context, sourced dates) and widens the Structuring Desk's scope.
 
 ### 2.4 The Structuring Desk's wider scope
 
-- **What lands.** The roll analysis of a long put, a short put and a collar; a ROLL ticket for a short put; a collar's
-  two legs replaced as a unit; a vertical's other choices beyond the CLOSE ticket. Today each answers NOT_APPLICABLE
-  with "planned for Stage 2 (not in this release)" (`scripts/aegis_desk/structuring.py`).
+- **What landed.** The roll analysis of a protective put's long put: `roll_analysis.py` ranks every put of a later
+  standard monthly inside `[protective_put] dte` under that section's criteria and objective, opens the new put
+  first (S7) and reads each candidate's net cost per day added. It reuses the pricing and labels of the ROLL ticket
+  for a long put, so it needed no new criteria and no new owner-facing words beyond the header, the legs and the held
+  put's close.
+- **What still lands.** The roll analysis of a short put and a collar; a ROLL ticket for a short put; a collar's two
+  legs replaced as a unit; a vertical's other choices beyond the CLOSE ticket. Today each answers NOT_APPLICABLE with
+  "planned for Stage 2 (not in this release)" (`scripts/aegis_desk/structuring.py`).
 - **Needs nothing, with one new caveat.** The tree names no prerequisite. A long put priced on the European model
   already carries the `american-style note:` (`_put_caveat` in `scripts/aegis_desk/structuring.py`: an absolute delta
   of 0.80 or more, or in the money with a time value below the interest on its strike). That caveat covers long puts
@@ -403,7 +408,7 @@ only the files that do.
 | --- | --- | --- |
 | American pricing: the desk's prices and Greeks, and early-exercise analysis beside the expiry tiers | 2.3 (2.1 rewrote the lines that named the lattice or an early-exercise model) | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `docs/PROVENANCE.md`, `docs/STRUCTURING.md`, `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `scripts/aegis_desk/structuring.py` (`MODEL_NOTE`, `_put_caveat`), `scripts/aegis_desk/structuring_text.py` (`MODEL_LINE`), `scripts/aegis_desk/bsm.py` and `scripts/aegis_desk/iv.py` (module notes), `tests/engine/test_lattice.py` (the `MODEL_NOTE` assertion) |
 | The parity-carry bound's own tree (proposed here) | 2.3 | `scripts/aegis_desk/carry.py` (`_tree`, `early_exercise_gap`, `TREE_STEPS`), `docs/STRUCTURING.md` (the carry of each expiration) |
-| Roll analysis of long puts, short puts and collars | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py`, `tests/engine/test_structuring_text.py`, `tests/tools/test_roll_analysis_tool.py` |
+| Roll analysis of short puts and collars (a long put's landed) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
 | Short put, collar-as-a-unit and vertical replacements | 2.4 | `docs/STRUCTURING.md`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
 | Weekly expirations | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
 | Cash-balance check, per-account approval levels | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
@@ -455,5 +460,3 @@ both counts reach zero.
 | `skills/aegis-ticket-and-unwind-order/SKILL.md` | 1 | 0 |
 | `skills/aegis-vertical-spread-management/SKILL.md` | 1 | 0 |
 | `tests/engine/test_lattice.py` | 1 | 0 |
-| `tests/engine/test_structuring_text.py` | 1 | 0 |
-| `tests/tools/test_roll_analysis_tool.py` | 1 | 0 |

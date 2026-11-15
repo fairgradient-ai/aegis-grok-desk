@@ -2,6 +2,17 @@
 
 ## 1.0.0 (unreleased)
 
+- **The roll analysis of a protective put's long put** (roadmap step 2.4, its first part). `roll_analysis.py --trade`
+  on a `protective_put` group ranks every put of a later standard monthly inside `[protective_put] dte`, labelled
+  against that section's criteria and ranked by its objective (`stress_cost_per_day` by default), with the same
+  pricing as a ROLL ticket for the long put. The text reads `the roll analysis of the long <date> <strike> put`, the
+  best candidate opens the new put at its ask first and then closes the held put at its bid (S7), each check carries
+  the net cost per day added, and with no best candidate the held put's close is quoted (`the net costs close the held
+  ... put | bid ...`). The approval-level check runs on those two legs before any market data (opening a long put is
+  level 2 by the desk's convention). `[protective_put] enabled = false` makes it NOT_APPLICABLE `disabled`, naming
+  that section. A short put, a collar and any other structure stay NOT_APPLICABLE, now with `the roll analysis covers
+  the short call of a covered call and the long put of a protective put`. "over" joins the structuring text's template
+  words (the replacement put's net-cost row already printed it). The roadmap marks step 2.4 in progress.
 - **Release 1.0.0** (owner's decision): `release_bump.py 1.0.0` moves the manifests, pins and template hashes from
   0.3.0, which was never tagged. It is the first major release: the Stage 1 desk with the Stage 2 and Stage 3
   roadmap and the roadmap's first engine step (below). No answer of the desk changes from 0.3.0.
