@@ -1,6 +1,6 @@
 ---
 name: aegis-roll-decision-framework
-description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call, the long put of a protective put, the short put of a cash-secured put) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
+description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call, the long put of a protective put, the short put of a cash-secured put, a collar's two legs) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -51,14 +51,19 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
 - Where a short put's holder may do better exercising it than holding it (the long put's two tests: absolute delta
   0.80 or more, or in the money with a time value below the interest on its strike), the answer carries an
   `early-assignment note:`: the short put can be assigned before expiry, and the European model does not price that.
-- Any other structure is NOT_APPLICABLE with its reason. The roll analysis of collars, weekly expirations and
-  American pricing are planned for Stage 2 (not in this release).
+- A `collar` group's two legs, replaced as a unit and judged under `[collar]`: every pair of a later standard
+  monthly inside its `dte` and floor and cap bands, the new collar's own net debit against `max_net_debit`, ranked
+  by its objective. The best candidate's four legs open the new put, close the held put, close the held call and
+  open the new call (protected and covered at every step); its checks add the roll's net per share, and with no best
+  candidate both held legs' closes are quoted. A ticket for one pair names its expiration and both strikes.
+- Any other structure is NOT_APPLICABLE with its reason. A vertical's other choices, weekly expirations and American
+  pricing are planned for Stage 2 (not in this release).
 - An index underlying (the data source cannot quote index options) and the structure's section disabled
   (`[roll] enabled = false` for a covered call or a cash-secured put, `[protective_put] enabled = false` for a
-  protective put) are NOT_APPLICABLE too.
+  protective put, `[collar] enabled = false` for a collar) are NOT_APPLICABLE too.
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call, the long put of a protective put and the short put of a cash-secured put; the roll analysis of a collar is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's other choices are planned for Stage 2 (not in this release)
 ```
 
 ## The replacement set

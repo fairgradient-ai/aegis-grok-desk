@@ -17,7 +17,8 @@ One :class:`PlanLeg` per open row (a lot keeps its own cost), rows in file order
 * ``ROLL``: the held leg :func:`replaced_row` names and the owner's :class:`Replacement` (the held leg's root and
   right, the owner's expiration and strike, as many contracts): a covered call's short call closes the old call, then
   opens the new one; a protective put's long put opens the new put, then closes the old one; a cash-secured put's
-  short put closes the old put, then opens the new one (roadmap step 2.4).
+  short put closes the old put, then opens the new one; a collar's two legs are replaced as a unit: open the new put,
+  close the old put, close the old call, open the new call (roadmap step 2.4).
 
 Approval and exposure (S5, S7): :func:`check_plan` runs ``aegis_desk.approval.check_legs`` over the plan from the
 account's holdings of the underlying (``approval.holdings_of``: every open row of the account, whatever the group), so
@@ -138,6 +139,8 @@ class Replacement:
     strike: Decimal
     expiration: datetime.date
     contracts: int
+    call_strike: Optional[Decimal] = None
+    """A collar's ROLL only: the new call's strike (``strike`` is then the new put's; roadmap step 2.4)."""
 
 
 @dataclass(frozen=True)
@@ -218,6 +221,13 @@ def replaced_row(group: PositionGroup) -> Optional[PositionRow]:
     return rows[0] if len(rows) == 1 else None
 
 
+def collar_rows(group: PositionGroup) -> Tuple[Optional[PositionRow], Optional[PositionRow]]:
+    """A collar's held long put and held short call, each when the group holds it on exactly one row."""
+    puts = [row for row in group.open_legs if row.is_option and row.is_put and row.is_long]
+    calls = [row for row in group.open_legs if row.is_option and row.is_call and row.is_short]
+    return (puts[0] if len(puts) == 1 else None), (calls[0] if len(calls) == 1 else None)
+
+
 def plan_legs(group: PositionGroup, action: str, replacement: Optional[Replacement] = None) -> List[PlanLeg]:
     """The legs of ``action`` on ``group`` in the S7 order (module notes); ``ValueError`` for an unknown action, a ROLL
     without its replacement or held leg, short shares or a quantity that is not whole."""
@@ -237,6 +247,16 @@ def plan_legs(group: PositionGroup, action: str, replacement: Optional[Replaceme
                    + [(INTENT_CLOSE_LONG, row) for row in longs])
     elif action == structuring.ACTION_MONETIZE_PUT:
         ordered = [(INTENT_CLOSE_LONG, row) for row in longs if row.is_put]
+    elif action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_COLLAR:
+        held_put, held_call = collar_rows(group)
+        if replacement is None or held_put is None or held_call is None or replacement.call_strike is None:
+            raise ValueError("a collar's ROLL needs its held put and call and both new strikes")
+        new_put = PlanLeg(1, INTENT_OPEN_LONG, approval.INSTRUMENT_PUT, replacement.contracts, None, None,
+                          replacement.root, "PUT", replacement.strike, replacement.expiration, held_put.multiplier)
+        new_call = PlanLeg(4, INTENT_OPEN_SHORT, approval.INSTRUMENT_CALL, replacement.contracts, None, None,
+                           held_call.occ.root if held_call.occ is not None else replacement.root, "CALL",
+                           replacement.call_strike, replacement.expiration, held_call.multiplier)
+        return [new_put, _row_leg(2, INTENT_CLOSE_LONG, held_put), _row_leg(3, INTENT_CLOSE_SHORT, held_call), new_call]
     elif action == structuring.ACTION_ROLL:
         held = replaced_row(group)
         if replacement is None or held is None:
@@ -613,10 +633,11 @@ class Ticket:
 
     @property
     def section_name(self) -> Optional[str]:
-        """The ``structuring.toml`` section a ROLL is judged under (``roll`` or ``protective_put``)."""
+        """The ``structuring.toml`` section a ROLL is judged under (``roll``, ``protective_put`` or ``collar``)."""
         if self.action != structuring.ACTION_ROLL or self.group is None:
             return None
-        return "protective_put" if self.group.structure == grouping.STRUCTURE_PROTECTIVE_PUT else "roll"
+        return {grouping.STRUCTURE_PROTECTIVE_PUT: "protective_put",
+                grouping.STRUCTURE_COLLAR: "collar"}.get(self.group.structure, "roll")
 
     def as_dict(self) -> Dict[str, Any]:
         """The payload body (:data:`TICKET_KEYS`; Decimals, dates and instants for ``contract.json_dumps``)."""
@@ -667,7 +688,8 @@ def _close(ticket: Ticket, market: MarketData, verdict: str, cause: Optional[str
     return ticket
 
 
-def _check_flags(action: str, new_expiration: Optional[datetime.date], new_strike: Optional[Decimal]) -> None:
+def _check_flags(action: str, new_expiration: Optional[datetime.date], new_strike: Optional[Decimal],
+                 new_call_strike: Optional[Decimal] = None) -> None:
     if action not in structuring.ACTIONS:
         raise ValueError("action must be one of %s, got %r" % (", ".join(structuring.ACTIONS), action))
     given = (new_expiration is not None, new_strike is not None)
@@ -677,13 +699,18 @@ def _check_flags(action: str, new_expiration: Optional[datetime.date], new_strik
         raise TicketUsageError("--new-expiration and --new-strike apply to --action ROLL only")
     if new_strike is not None and not (new_strike.is_finite() and new_strike > 0):
         raise TicketUsageError("--new-strike must be a positive number, got %s" % new_strike)
+    if new_call_strike is not None and action != structuring.ACTION_ROLL:
+        raise TicketUsageError("--new-call-strike applies to --action ROLL only")
+    if new_call_strike is not None and not (new_call_strike.is_finite() and new_call_strike > 0):
+        raise TicketUsageError("--new-call-strike must be a positive number, got %s" % new_call_strike)
 
 
 def run_ticket(market: MarketData, trade_id: str, action: str, criteria: StructuringConfig, *,
-               new_expiration: Optional[datetime.date] = None, new_strike: Optional[Decimal] = None) -> Ticket:
+               new_expiration: Optional[datetime.date] = None, new_strike: Optional[Decimal] = None,
+               new_call_strike: Optional[Decimal] = None) -> Ticket:
     """The ticket of ``action`` for ``trade_id`` (module notes): ``structuring.StructuringError`` for an unknown trade or
     a desk file that cannot be used, :class:`TicketUsageError` for a replacement the command line cannot name."""
-    _check_flags(action, new_expiration, new_strike)
+    _check_flags(action, new_expiration, new_strike, new_call_strike)
     ticket = Ticket(action=action, trade_id=trade_id, criteria=criteria, now=market.now,
                     owner_level=market.cfg.owner.approval_level)
     target = structuring.load_target(market, trade_id)
@@ -697,7 +724,35 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
     if applicability is not None:
         return _close(ticket, market, applicability.verdict, applicability.code, applicability.reason)
     replacement: Optional[Replacement] = None
-    if action == structuring.ACTION_ROLL:
+    collar = group.structure == grouping.STRUCTURE_COLLAR
+    if action == structuring.ACTION_ROLL and collar != (new_call_strike is not None):
+        raise TicketUsageError("a collar's ROLL needs --new-call-strike (the new call; --new-strike is the new put)"
+                               if collar else "--new-call-strike applies to a collar's ROLL only")
+    if action == structuring.ACTION_ROLL and collar:
+        held_put, held_call = collar_rows(group)
+        missing = "long put" if held_put is None else ("short call" if held_call is None else None)
+        if missing is not None:
+            return _close(ticket, market, VERDICT_NOT_APPLICABLE, structuring.NA_STRUCTURE,
+                          structuring.NA_TWO_ROWS_WORDS % (trade_id, missing))
+        assert held_put is not None and held_call is not None and held_put.occ is not None and held_call.occ is not None
+        assert new_expiration is not None and new_strike is not None and new_call_strike is not None
+        latest = max(held_put.occ.expiration, held_call.occ.expiration)
+        if new_expiration <= latest:
+            raise TicketUsageError("--new-expiration %s must be later than the held legs' expiration %s"
+                                   % (new_expiration.isoformat(), latest.isoformat()))
+        if abs(held_put.open_quantity) != abs(held_call.open_quantity):
+            words = structuring.NA_COLLAR_SIZES_WORDS % (trade_id, structuring._plain(abs(held_put.open_quantity)),
+                                                         "" if abs(held_put.open_quantity) == 1 else "s",
+                                                         structuring._plain(abs(held_call.open_quantity)),
+                                                         "" if abs(held_call.open_quantity) == 1 else "s")
+            return _close(ticket, market, VERDICT_NOT_APPLICABLE, structuring.NA_STRUCTURE, words)
+        try:
+            contracts = _whole(held_put.open_quantity, held_put)
+        except ValueError as exc:
+            raise structuring.StructuringError(structuring.ERROR_POSITIONS_INVALID, str(exc)) from None
+        replacement = Replacement(held_put.occ.root, "PUT", expiry.plain_decimal(new_strike), new_expiration, contracts,
+                                  expiry.plain_decimal(new_call_strike))
+    elif action == structuring.ACTION_ROLL:
         held = replaced_row(group)
         if held is None or held.occ is None:
             words = {grouping.STRUCTURE_PROTECTIVE_PUT: "long put",
@@ -795,27 +850,35 @@ def _held_ticket(ticket: Ticket, market: MarketData) -> Ticket:
 
 def _roll(ticket: Ticket, market: MarketData, replacement: Replacement) -> Ticket:
     answer = structuring.run_replacement(market, ticket.trade_id, replacement.expiration, replacement.strike,
-                                         ticket.criteria, require_live=True)
+                                         ticket.criteria, require_live=True, call_strike=replacement.call_strike)
     ticket.replacement = answer
     ticket.warnings.extend(answer.warnings)
     if answer.verdict != structuring.VERDICT_PRICED or answer.candidate is None or answer.held is None:
         return _close(ticket, market, answer.verdict, answer.cause, answer.reason)
-    new = answer.candidate.legs[0]
-    if new.unpriced is not None:
-        words = "%s cannot be priced: %s" % (
-            "the %s %s %s" % (new.expiration.isoformat(), expiry.plain(new.strike), new.right.lower()),
-            structuring_text.reason_words(structuring_text.Writer(), new.unpriced))
-        return _close(ticket, market, VERDICT_UNAVAILABLE, CAUSE_REPLACEMENT_UNPRICED, words)
-    held_quote = quote_of_held(answer.held)
-    if held_quote is None:  # run_replacement answers UNAVAILABLE first; kept for the invariant
-        return _close(ticket, market, VERDICT_UNAVAILABLE, structuring.CAUSE_HELD_LEG_UNUSABLE)
+    new_legs = {leg.right: leg for leg in answer.candidate.legs}
+    for new in answer.candidate.legs:
+        if new.unpriced is not None:
+            words = "%s cannot be priced: %s" % (
+                "the %s %s %s" % (new.expiration.isoformat(), expiry.plain(new.strike), new.right.lower()),
+                structuring_text.reason_words(structuring_text.Writer(), new.unpriced))
+            return _close(ticket, market, VERDICT_UNAVAILABLE, CAUSE_REPLACEMENT_UNPRICED, words)
+    held_quotes: Dict[int, LegQuote] = {}
+    for held in (answer.held, answer.held_call):
+        if held is None:
+            continue
+        quote = quote_of_held(held)
+        if quote is None:  # run_replacement answers UNAVAILABLE first; kept for the invariant
+            return _close(ticket, market, VERDICT_UNAVAILABLE, structuring.CAUSE_HELD_LEG_UNUSABLE)
+        held_quotes[held.row_number] = quote
     rows = {row.row_number: row for row in ticket.group.open_legs} if ticket.group is not None else {}
     priced: List[PlanLeg] = []
     for plan in ticket.plan:
         if plan.row_number is None:
+            new = new_legs[plan.right]
             plan = replace(plan, symbol=new.occ)
             ticket.legs.append(_priced(ticket, plan, quote_of_new(new, plan.intent), market))
         else:
+            held_quote = held_quotes[plan.row_number]
             ticket.legs.append(_priced(ticket, plan, held_quote, market))
             ticket.realized.append(realized_estimate(rows[plan.row_number], held_quote.conservative, held_quote.mid))
         priced.append(plan)
@@ -1009,6 +1072,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
         words = structuring_text.ROLL_PUT_WORDS
     elif ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_CASH_SECURED_PUT:
         words = structuring_text.ROLL_SHORT_PUT_WORDS
+    elif ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_COLLAR:
+        words = structuring_text.ROLL_COLLAR_WORDS
     as_of = ticket_as_of(ticket)
     lines.append(structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
                                                 words))

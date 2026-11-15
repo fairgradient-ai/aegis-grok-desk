@@ -4,7 +4,8 @@
 Usage::
 
     python3 scripts/exit_ticket.py --trade AG-YYYYMMDD-NN --action CLOSE|UNWIND_STOCK|LET_ASSIGN|MONETIZE_PUT|ROLL
-        [--new-expiration YYYY-MM-DD --new-strike K] [--fixture-set NAME] [--json] [--schema] [--timeout S]
+        [--new-expiration YYYY-MM-DD --new-strike K [--new-call-strike K]] [--fixture-set NAME] [--json] [--schema]
+        [--timeout S]
         [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
 
 The Aegis Structuring Desk's ticket tool (PR 3b; designer Q's D11-D13 and designer C's D3, D6, D7 and D15 under the
@@ -12,8 +13,8 @@ addendum S1, S2 and S5-S11), run only when the owner asks (an Ask-first card per
 the legs of the action for one group of ``positions.csv`` in the fixed leg grammar, in the safe order, with each leg's
 bid, ask, mid, quote grade and age, the approval-level check, the cash at the conservative side and at the mid with
 the most cash the steps need at once, the realized estimate of the closing legs and, for ROLL, the replacement the
-owner names (``--new-expiration`` and ``--new-strike``: the held leg's root and right) with its criteria labels and
-after-state. The owner supplies the limit (the desk prints none) and acts in the brokerage account.
+owner names (``--new-expiration`` and ``--new-strike``: the held leg's root and right; a collar's two legs together,
+with ``--new-call-strike`` naming the new call: roadmap step 2.4) with its criteria labels and after-state. The owner supplies the limit (the desk prints none) and acts in the brokerage account.
 ``aegis_desk.tickets`` computes everything; this tool gathers the inputs in designer C's D3.6 order, prints the linted
 text and records it:
 
@@ -211,13 +212,16 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--action", choices=structuring.ACTIONS, default=None,
                         help="CLOSE (the option legs), UNWIND_STOCK (the shares and every option leg), LET_ASSIGN (the "
                              "short option left to expiry), MONETIZE_PUT (the long put of a protective put or a collar) "
-                             "or ROLL (a covered call's short call, a protective put's long put or a cash-secured put's "
-                             "short put replaced) (required)")
+                             "or ROLL (a covered call's short call, a protective put's long put, a cash-secured put's "
+                             "short put, or a collar's two legs together, replaced) (required)")
     parser.add_argument("--new-expiration", metavar="YYYY-MM-DD", default=None,
                         help="ROLL only, with --new-strike: the replacement's expiration, later than the held leg's")
     parser.add_argument("--new-strike", metavar="K", default=None,
                         help="ROLL only, with --new-expiration: the replacement's strike (its root and right are the "
                              "held leg's)")
+    parser.add_argument("--new-call-strike", metavar="K", default=None,
+                        help="a collar's ROLL only, with --new-expiration and --new-strike (the new put's): the new "
+                             "call's strike; both legs are replaced as a unit")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
                         help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
@@ -257,6 +261,19 @@ def validate(parser: contract.ReadOnlyParser, args: Any) -> None:
         if strike is None or not strike > 0:
             parser.error("--new-strike must be a positive number such as 115 or 112.5, got %r" % args.new_strike)
         args.new_strike = strike
+    if args.new_call_strike is not None:
+        if args.action != structuring.ACTION_ROLL:
+            parser.error("--new-call-strike applies to --action ROLL only")
+        call_strike: Optional[Decimal] = None
+        if STRIKE_RE.match(args.new_call_strike):
+            try:
+                call_strike = Decimal(args.new_call_strike)
+            except InvalidOperation:
+                call_strike = None
+        if call_strike is None or not call_strike > 0:
+            parser.error("--new-call-strike must be a positive number such as 680 or 112.5, got %r"
+                         % args.new_call_strike)
+        args.new_call_strike = call_strike
     if args.fixture_set is not None and not args.offline:
         parser.error("--fixture-set applies only to --offline runs")
 
@@ -397,7 +414,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         market = open_market(args, now, version)
         try:
             ticket = tickets.run_ticket(market, args.trade, args.action, criteria, new_expiration=args.new_expiration,
-                                        new_strike=args.new_strike)
+                                        new_strike=args.new_strike, new_call_strike=args.new_call_strike)
         except tickets.TicketUsageError as exc:
             parser.error(str(exc))
         except structuring.StructuringError as exc:

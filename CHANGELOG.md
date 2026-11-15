@@ -2,6 +2,19 @@
 
 ## 1.0.0 (unreleased)
 
+- **A collar's two legs replaced as a unit** (roadmap step 2.4). `roll_analysis.py --trade` on a `collar` group ranks
+  every pair of a later standard monthly inside `[collar] dte` and the floor and cap bands, judged as a fresh collar
+  (its own net debit against `max_net_debit`, the strike floor, the call's events beyond the held call's life) and
+  ranked by the section's objective; `exit_ticket.py --action ROLL` takes the new `--new-call-strike` beside
+  `--new-strike` (the new put's). The kind is `replacement_collar`; the answer carries the held call as `held_call`
+  beside `held` (a new key of the roll analysis and proposal payloads, null elsewhere). The four legs open the new
+  put, close the held put, close the held call and open the new call (`open_long` 2, `close_option` 0 twice,
+  `open_covered_call` 1), so the shares stay protected and covered at every step. The checks add `net of the roll per
+  share` and name the new pair's own `new collar net per share`; with no best candidate both held legs' closes are
+  quoted (`the roll's net closes the held ...`); the pointer asks for a ticket with `its expiration and both strikes`.
+  A collar whose put and call differ in size is NOT_APPLICABLE. `after_state` closes more than one held leg, and its
+  realized amount sums them. A vertical's other choices wait on the owner (the roadmap's open question 9: the approval
+  convention counts only shares as a short call's cover).
 - **A cash-secured put's short put: its roll analysis, a ROLL ticket and the early-assignment note** (roadmap step
   2.4). `roll_analysis.py --trade` on a `cash_secured_put` group ranks every put of a later standard monthly inside
   `[roll] dte`, and `exit_ticket.py --action ROLL` prices the one the owner names; both judge it under `[roll]` as a

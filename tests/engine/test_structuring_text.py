@@ -56,6 +56,14 @@ CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-0
            "cash-secured put")
 
 
+COLLAR_CALL_ROW = "option,SPY,SPY261218C00660000,-1,,,,Roth IRA,AG-20261028-03,2026-10-28,-940.00,,9.40,open,,,,,collar call"
+COLLAR_QUOTES = {"quotes": {
+    "SPY261218C00660000": {"ap": 9.7, "as": 40, "ax": "Z", "bp": 9.4, "bs": 40, "bx": "Z", "c": "A",
+                           "t": "2026-11-03T19:31:12Z"},
+    "SPY261218P00620000": {"ap": 10.1, "as": 75, "ax": "Z", "bp": 9.8, "bs": 60, "bx": "Z", "c": "A",
+                           "t": "2026-11-03T19:31:12Z"}}}
+
+
 class DeskCopy:
     def __init__(self, owner, drop_row=None, replace=None) -> None:
         tmp = tempfile.mkdtemp(prefix="aegis-structuring-text-")
@@ -698,6 +706,16 @@ class GoldenTextTest(unittest.TestCase):
         csp = DeskCopy(cls, replace=("closed early", "closed early\n" + CSP_ROW))
         wide_roll = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, dte=(130, 140)))
         cls.short_put = S.run_roll_analysis(csp.market(), "AG-20261101-05", wide_roll)
+        put_row = "SPY261218P00620000,1,,,,Roth IRA,AG-20261028-03,2026-10-28,1130.00,,11.30,open,,,,,protective put"
+        tagged_collar = DeskCopy(cls, replace=(put_row, put_row + " #assign-ok\n" + COLLAR_CALL_ROW))
+        plain_collar = DeskCopy(cls, replace=(put_row, put_row + "\n" + COLLAR_CALL_ROW))
+        for desk in (tagged_collar, plain_collar):
+            path = os.path.join(desk.root, "fixtures", "alpaca", "regular",
+                                "option_quotes__SPY261218C00660000,SPY261218P00620000.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(COLLAR_QUOTES, handle)
+        cls.collar_roll = S.run_roll_analysis(tagged_collar.market(), "AG-20261028-03", CRITERIA)
+        cls.collar_none = S.run_roll_analysis(plain_collar.market(), "AG-20261028-03", CRITERIA)
         cls.nothing = S.run_proposal(main.market(), "AG-20261028-03", "protective_put", CRITERIA)
         expiry_now = datetime.datetime(2026, 11, 20, 19, 50, tzinfo=UTC)
         cls.expiry_day = S.run_roll_analysis(DeskCopy(cls).market("expiry_day", expiry_now), "AG-20261020-01", CRITERIA)
@@ -764,6 +782,33 @@ class GoldenTextTest(unittest.TestCase):
         w = T.Writer()
         self.assertEqual("the net credits close the held 2026-12-18 620 put | ask 10.10 | quote grade B, 18 min old",
                          T.held_line(w, self.short_put.held))
+
+    def test_a_collars_roll_replaces_both_legs_as_a_unit(self) -> None:
+        self.assertEqual(S.VERDICT_BEST, self.collar_roll.verdict)
+        lines = self.render(T.roll_analysis_lines, self.collar_roll).text.split("\n")
+        self.assertEqual("### STRUCTURING AG-20261028-03 | SPY collar: the roll analysis of the collar's 2026-12-18 620 "
+                         "put and 2026-12-18 660 call", lines[0])
+        legs = [line for line in lines if line.startswith("- leg ")]
+        self.assertEqual(4, len(legs))
+        self.assertTrue(legs[0].startswith("- leg 1 of 4: opens a new long 1 x SPY 2027-03-19 "), legs[0])
+        self.assertEqual("- leg 2 of 4: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min "
+                         "old", legs[1])
+        self.assertEqual("- leg 3 of 4: closes your short 1 x SPY 2026-12-18 660 call | ask 9.70 | quote grade B, 18 "
+                         "min old", legs[2])
+        self.assertTrue(legs[3].startswith("- leg 4 of 4: opens a new short 1 x SPY 2027-03-19 "), legs[3])
+        self.assertTrue(any(line.startswith("- **net of the roll per share** credit ") for line in lines))
+        self.assertTrue(any(line.startswith("- \U0001F7E2 **new collar net per share** ") for line in lines))
+        self.assertIn("**The group, now and after the 4 legs**", lines)
+        self.assertIn(T.COLLAR_POINTER_LINE, lines)
+        self.assertNotIn(T.POINTER_LINE, lines)
+
+    def test_a_collar_with_no_candidate_quotes_both_held_legs(self) -> None:
+        self.assertEqual(S.VERDICT_NONE_QUALIFIES, self.collar_none.verdict)
+        lines = self.render(T.roll_analysis_lines, self.collar_none).text.split("\n")
+        at = lines.index("**no candidate passed every criterion: the desk names no best candidate**")
+        self.assertEqual(["- the roll's net closes the held 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old",
+                          "- the roll's net closes the held 2026-12-18 660 call | ask 9.70 | quote grade B, 18 min old"],
+                         lines[at + 1:at + 3])
 
     def test_a_short_puts_early_assignment_note(self) -> None:
         best = self.short_put.ranking.best

@@ -45,8 +45,11 @@ UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2027-01-15 180 call cannot be pri
 
 - A ROLL ticket for a cash-secured put's short put closes the held put at its ask first, then opens the one the
   owner names at its bid, judged under `[roll]`; its cash note gives what each put secures.
-- Every other replacement is NOT_APPLICABLE with its reason. Replacing a collar's legs as a unit or a vertical is
-  planned for Stage 2 (not in this release).
+- A collar's ROLL ticket replaces both legs as a unit: `--new-strike` names the new put, `--new-call-strike` the
+  new call, one expiration. Its four legs open the new put, close the held put, close the held call and open the new
+  call, so the shares stay protected and covered at every step; its checks add the roll's net per share.
+- Every other replacement is NOT_APPLICABLE with its reason. A vertical's other choices are planned for Stage 2 (not
+  in this release).
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 --desk-root /workspace/aegis-desk

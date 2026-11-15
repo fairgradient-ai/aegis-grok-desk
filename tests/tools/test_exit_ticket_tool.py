@@ -802,6 +802,60 @@ class QuietTest(DeskCase):
         self.assertEqual([[1, "close_option", 0], [2, "open_short_put", 1]],
                          [[step["step"], step["kind"], step["level"]] for step in payload["steps"]])
 
+    def test_a_collars_roll_ticket_replaces_both_legs(self) -> None:
+        put_row = "SPY261218P00620000,1,,,,Roth IRA,AG-20261028-03,2026-10-28,1130.00,,11.30,open,,,,,protective put"
+        call_row = ("option,SPY,SPY261218C00660000,-1,,,,Roth IRA,AG-20261028-03,2026-10-28,-940.00,,9.40,open,,,,,"
+                    "collar call")
+        with open(self.paths.positions_csv, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(self.paths.positions_csv, "w", encoding="utf-8") as handle:
+            handle.write(text.replace(put_row, put_row + "\n" + call_row))
+        quotes = {"quotes": {
+            "SPY261218C00660000": {"ap": 9.7, "as": 40, "ax": "Z", "bp": 9.4, "bs": 40, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"},
+            "SPY261218P00620000": {"ap": 10.1, "as": 75, "ax": "Z", "bp": 9.8, "bs": 60, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"}}}
+        with open(os.path.join(self.root, "fixtures", "alpaca", "regular",
+                               "option_quotes__SPY261218C00660000,SPY261218P00620000.json"), "w") as handle:
+            json.dump(quotes, handle)
+        self.ack(now="2026-11-03T19:49:30Z")
+        roll = ("--new-expiration", "2027-03-19", "--new-strike", "610", "--new-call-strike", "680")
+        code, out = self.run_text(SPY, "ROLL", *roll)
+        self.assertEqual(0, code, out)
+        lines = out.split("\n")
+        self.assertEqual("### TICKET AG-20261028-03 | SPY collar: a roll of the collar's put and call (action ROLL)",
+                         lines[0])
+        self.assertEqual(["- leg 1 of 4: opens a new long 1 x SPY 2027-03-19 610 put | bid 22.90, ask 23.10, mid 23.00 | "
+                          "quote grade A",
+                          "- leg 2 of 4: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | "
+                          "quote grade B",
+                          "- leg 3 of 4: closes your short 1 x SPY 2026-12-18 660 call | bid 9.40, ask 9.70, mid 9.55 | "
+                          "quote grade B",
+                          "- leg 4 of 4: opens a new short 1 x SPY 2027-03-19 680 call | bid 26.40, ask 26.60, mid 26.50 "
+                          "| quote grade A"], [line for line in lines if line.startswith("- leg ")])
+        self.assertIn("- **net cash** +340.00 at the conservative prices, +390.00 at the mids", lines)
+        self.assertIn("- **net of the roll per share** credit 3.40 (340.00 in all)", lines)
+        self.assertIn("**Checks for the new collar**", lines)
+        code, body = self.run_json(SPY, "ROLL", *roll)
+        payload = body["payload"]
+        self.assertEqual(("TICKET", "replacement_collar", "collar", "SPY270319P00610000+SPY270319C00680000"),
+                         (payload["verdict"], payload["replacement"]["kind"], payload["replacement"]["section"],
+                          payload["replacement"]["candidate"]["id"]))
+        self.assertEqual([[1, "open_long", 2], [2, "close_option", 0], [3, "close_option", 0],
+                          [4, "open_covered_call", 1]],
+                         [[step["step"], step["kind"], step["level"]] for step in payload["steps"]])
+        self.assertEqual(2, len(payload["realized"]))
+        # a collar's ROLL names both strikes, and only a collar's takes the call's
+        code, body = self.run_json(SPY, "ROLL", "--new-expiration", "2027-03-19", "--new-strike", "610")
+        self.assertEqual(2, code)
+        self.assertIn("--new-call-strike", body["error"]["message"])
+        code, body = self.run_json(WMT, "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115",
+                                   "--new-call-strike", "120")
+        self.assertEqual(2, code)
+        self.assertIn("a collar's ROLL only", body["error"]["message"])
+        code, body = self.run_json(SPY, "MONETIZE_PUT", "--new-call-strike", "680")
+        self.assertEqual(2, code)
+
     def test_config_unacknowledged_comes_first(self) -> None:
         with open(self.paths.structuring_toml, "a", encoding="utf-8") as handle:
             handle.write("# an edit\n")

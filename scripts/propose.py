@@ -178,6 +178,7 @@ OUTPUT: Dict[str, Any] = {
                 "collar, sha256} | null (no criteria file)",
     "spot": "{symbol, bid, ask, mid, grade, as_of} | null",
     "held": "null (a proposal replaces no held leg)",
+    "held_call": "null (a proposal replaces no held leg)",
     "before": "{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)",
     "shares": "decimal string | null (the group's open shares)",
     "contracts": "integer | null (floor(shares / 100))",

@@ -22,8 +22,8 @@ Counsel has not signed this wording yet ([RELEASE.md](RELEASE.md), step 4).
 | a ticket that closes the shares and every option leg (`--action UNWIND_STOCK`) | `exit_ticket.py` | a group that holds shares |
 | what happens if a short option is left to expiry (`--action LET_ASSIGN`) | `exit_ticket.py` | short options only |
 | a ticket that closes the long put for its value (`--action MONETIZE_PUT`) | `exit_ticket.py` | protective put and collar groups |
-| a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, the long put of a protective put, and the short put of a cash-secured put |
-| the replacement candidates for a covered call's short call, a protective put's long put or a cash-secured put's short put | `roll_analysis.py` | covered call, protective put and cash-secured put groups |
+| a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, the long put of a protective put, the short put of a cash-secured put, and a collar's two legs together (`--new-call-strike`) |
+| the replacement candidates for a covered call's short call, a protective put's long put, a cash-secured put's short put or a collar's two legs | `roll_analysis.py` | covered call, protective put, cash-secured put and collar groups |
 | a covered call, a protective put or a collar on shares you hold (`--structure`) | `propose.py` | groups that hold shares only |
 
 The commands, with the trade ids of the synthetic fixture:
@@ -48,10 +48,12 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 What the desk never does: it proposes no new symbol, no spread, no uncovered short option and no cash-secured put. A
 group that already holds an option leg, or fewer than 100 shares, or whose shares a short call of another group in the
 same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index underlyings are NOT_APPLICABLE, because
-the data source cannot quote index options. The roll analysis of collars, weekly
-expirations, American pricing, scenario and iv_snapshot, a cash-balance check and per-account approval levels are
-planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
-ROLL of either collar leg is NOT_APPLICABLE.
+the data source cannot quote index options. A collar's two legs are replaced as a unit: its roll analysis ranks new
+pairs of one later expiration under `[collar]`, and its ROLL ticket takes `--new-call-strike` beside `--new-strike`
+(the new put's), opening the new put, closing the held put, closing the held call and opening the new call, so the
+shares stay protected and covered at every step. A vertical's other choices, weekly expirations, American pricing,
+scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for Stage 2 (not in this
+release).
 
 ## Only when you ask
 
@@ -773,11 +775,11 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
 
 ### Answers without a candidate
 
-- NOT_APPLICABLE names the reason, for example the roll analysis of a collar (synthetic: the fixture's SPY group
-  with a short 2026-12-18 680 call added):
+- NOT_APPLICABLE names the reason, for example the roll analysis of a call credit vertical (synthetic: a short
+  2026-12-18 110 and a long 2026-12-18 115 WMT call added to the fixture as AG-20261101-06):
 
   ```text
-  NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call, the long put of a protective put and the short put of a cash-secured put; the roll analysis of a collar is planned for Stage 2 (not in this release)
+  NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's other choices are planned for Stage 2 (not in this release)
 
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
   ```

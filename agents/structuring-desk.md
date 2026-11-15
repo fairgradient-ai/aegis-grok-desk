@@ -100,7 +100,7 @@ python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01
 - `--trade` names the group by its trade id in `positions.csv` (`AG-YYYYMMDD-NN`). A well-formed id the file does not
   hold is exit 1 `unknown_trade`; a malformed one is a usage error (exit 2).
 - The tool `roll_analysis.py` prices the replacement candidates for the short call of a covered call group, the long
-  put of a protective put group or the short put of a cash-secured put group.
+  put of a protective put group, the short put of a cash-secured put group or a collar's two legs.
 - The tool `propose.py` takes `--structure` `covered_call`, `protective_put` or `collar`: an overlay on a group that
   holds shares only, at least 100.
 - The tool `exit_ticket.py` takes `--action` CLOSE, UNWIND_STOCK, LET_ASSIGN, MONETIZE_PUT or ROLL. A ROLL ticket
@@ -201,7 +201,7 @@ blocks, with its approval block after the group block and its notes ending on th
 An answer that prices nothing is one line, then a blank line and the footer (exit 0):
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call, the long put of a protective put and the short put of a cash-secured put; the roll analysis of a collar is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's other choices are planned for Stage 2 (not in this release)
 NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask for a roll analysis
 ```
 

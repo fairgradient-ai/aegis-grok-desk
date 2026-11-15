@@ -162,10 +162,11 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
 }
 OUTPUT: Dict[str, Any] = {
     "tool": "roll_analysis", "kind": ("replacement_call | replacement_put (a protective put's long put) | "
-                                      "replacement_short_put (a cash-secured put's short put)"),
+                                      "replacement_short_put (a cash-secured put's short put) | replacement_collar (a "
+                                      "collar's two legs)"),
     "trade_id": "AG-YYYYMMDD-NN",
     "group_id": "string | null", "structure": "the group's structure | null", "structure_requested": "null",
-    "section": "roll | protective_put (the structuring.toml section the candidates are judged under)",
+    "section": "roll | protective_put | collar (the structuring.toml section the candidates are judged under)",
     "underlying": "string | null", "account": "the positions.csv account (JSON only; the text never prints it) | null",
     "account_type": "cash | margin | ira | null (desk.toml [[owner.accounts]])",
     "verdict": " | ".join(VERDICTS),
@@ -184,7 +185,9 @@ OUTPUT: Dict[str, Any] = {
     "held": ("{row_number, occ, root, right, side, contracts, strike, expiration, last_trading_day, bid, ask, mid, "
              "spread_pct, grade, quote_status, quote_age_min, as_of, iv, delta, entry_price_per_share, "
              "remaining_cost_basis, close_price, close_side, note, realized} | null (the short call every candidate "
-             "closes, at its fresh ask, the long put, at its fresh bid, or the short put, at its fresh ask)"),
+             "closes, at its fresh ask, the long put, at its fresh bid, or the short put, at its fresh ask; for a collar, its held "
+             "put)"),
+    "held_call": "{... as held} | null (a collar's held short call, closed at its fresh ask; null for any other group)",
     "before": "{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)",
     "shares": "decimal string | null (the group's open shares)", "contracts": "integer | null",
     "stress": "null", "expirations": "{listed_in_window: [YYYY-MM-DD], evaluated: [YYYY-MM-DD], not_evaluated: "
@@ -340,6 +343,8 @@ def roll_legs(group: Any) -> Optional[List[approval.Leg]]:
     """The roll's legs in the S7 order: close the held short call, then open the new one; for a protective put, open
     the new long put, then close the held one; for a cash-secured put, close the held short put, then open the new
     one. ``None`` when the group holds that leg on other than exactly one row (the analysis answers that itself)."""
+    if group.structure == structuring.grouping.STRUCTURE_COLLAR:
+        return collar_legs(group)
     put = group.structure == structuring.grouping.STRUCTURE_PROTECTIVE_PUT
     short_put = group.structure == structuring.grouping.STRUCTURE_CASH_SECURED_PUT
     rows = [row for row in group.open_legs if row.is_option and row.right == ("PUT" if put or short_put else "CALL")
@@ -357,6 +362,24 @@ def roll_legs(group: Any) -> Optional[List[approval.Leg]]:
         return [approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, contracts),
                 approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, contracts)]
     return [approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts),
+            approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts)]
+
+
+def collar_legs(group: Any) -> Optional[List[approval.Leg]]:
+    """A collar's roll in the S7 order: open the new long put, close the held put, close the held short call, then
+    open the new call (covered and protected at every step); ``None`` unless the collar holds one put row and one call
+    row of the same whole size (the analysis answers that itself)."""
+    puts = [row for row in group.open_legs if row.is_option and row.right == "PUT" and not row.is_short]
+    calls = [row for row in group.open_legs if row.is_option and row.right == "CALL" and row.is_short]
+    if len(puts) != 1 or len(calls) != 1:
+        return None
+    quantity = abs(puts[0].open_quantity)
+    if quantity != abs(calls[0].open_quantity) or quantity != quantity.to_integral_value() or quantity <= 0:
+        return None
+    contracts = int(quantity)
+    return [approval.Leg(approval.EFFECT_OPEN, approval.SIDE_LONG, approval.INSTRUMENT_PUT, contracts),
+            approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_LONG, approval.INSTRUMENT_PUT, contracts),
+            approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts),
             approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts)]
 
 

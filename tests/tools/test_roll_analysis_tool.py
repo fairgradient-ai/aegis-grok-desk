@@ -551,6 +551,33 @@ class GoldenTest(DeskCopy):
                                                                payload["requests"]["made"],
                                                                payload["approval"]["refusal_step"]))
 
+    def test_a_collars_two_legs_are_analysed_as_a_unit(self) -> None:
+        put_row = "SPY261218P00620000,1,,,,Roth IRA,AG-20261028-03,2026-10-28,1130.00,,11.30,open,,,,,protective put"
+        call_row = ("option,SPY,SPY261218C00660000,-1,,,,Roth IRA,AG-20261028-03,2026-10-28,-940.00,,9.40,open,,,,,"
+                    "collar call")
+        self.edit("positions.csv", put_row, put_row + " #assign-ok\n" + call_row)
+        quotes = {"quotes": {
+            "SPY261218C00660000": {"ap": 9.7, "as": 40, "ax": "Z", "bp": 9.4, "bs": 40, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"},
+            "SPY261218P00620000": {"ap": 10.1, "as": 75, "ax": "Z", "bp": 9.8, "bs": 60, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"}}}
+        with open(os.path.join(self.root, "fixtures", "alpaca", "regular",
+                               "option_quotes__SPY261218C00660000,SPY261218P00620000.json"), "w") as handle:
+            json.dump(quotes, handle)
+        self.ack()
+        text = self.run_text(SPY)
+        self.assertEqual("### STRUCTURING AG-20261028-03 | SPY collar: the roll analysis of the collar's 2026-12-18 620 "
+                         "put and 2026-12-18 660 call", text[0])
+        payload = self.run_json(SPY)["payload"]
+        self.assertEqual(("BEST", "replacement_collar", "collar", "collar"),
+                         (payload["verdict"], payload["kind"], payload["section"], payload["structure"]))
+        self.assertEqual(("SPY261218P00620000", "SPY261218C00660000", "ask"),
+                         (payload["held"]["occ"], payload["held_call"]["occ"], payload["held_call"]["close_side"]))
+        self.assertEqual([[1, "open_long", 2], [2, "close_option", 0], [3, "close_option", 0],
+                          [4, "open_covered_call", 1]],
+                         [[step["index"], step["kind"], step["level"]] for step in payload["approval"]["steps"]])
+        self.assertEqual({"ok": True, "problems": []}, {k: payload["lint"][k] for k in ("ok", "problems")})
+
     def test_a_protective_put_with_its_section_disabled_is_not_applicable_without_a_request(self) -> None:
         self.edit("structuring.toml", "[protective_put]\nenabled = true", "[protective_put]\nenabled = false")
         self.ack()
