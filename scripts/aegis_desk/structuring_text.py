@@ -80,6 +80,9 @@ absent when every expiration kept the calendar's dividend rate."""
 CAVEAT_LINE: str = "the score ranks the candidates only on the objective you chose; it is not a forecast"
 POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                      "and strike")
+COLLAR_POINTER_LINE: str = ("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
+                            "and both strikes")
+"""A collar's roll analysis points at a ROLL ticket that names the new put's and the new call's strike."""
 NONE_QUALIFIES_LINE: str = "no candidate passed every criterion: the desk names no best candidate"
 NO_MID_WORDS: str = "no mid: a quote side is stale"
 """What the cash block says for the mids when a leg has no mid."""
@@ -89,7 +92,7 @@ LEGS_CAPTION: str = "**The legs**"
 FAILURES_CAPTION: str = "**Why each one fails**"
 """The caption over the reasons the shown candidates fail, when none passed (a list of its own under the candidates)."""
 FIXED_LINES: Tuple[str, ...] = (LIMIT_LINE, ACT_LINE, AFTER_FILL_LINE, AFTER_EXPIRY_LINE, MODEL_LINE, CAVEAT_LINE,
-                                POINTER_LINE, NONE_QUALIFIES_LINE, "**%s**" % NONE_QUALIFIES_LINE, CASH_BALANCE_LINE,
+                                POINTER_LINE, COLLAR_POINTER_LINE, NONE_QUALIFIES_LINE, "**%s**" % NONE_QUALIFIES_LINE, CASH_BALANCE_LINE,
                                 LEGS_CAPTION, FAILURES_CAPTION)
 ITEM: str = "- "
 """The list mark of an item under a block's first line (the legs, the notes, the reasons none passed)."""
@@ -103,6 +106,10 @@ ACTION_WORDS: Dict[str, str] = {
 }
 """The ticket header's words per action; a long put's ROLL reads :data:`ROLL_PUT_WORDS`."""
 ROLL_PUT_WORDS: str = "a roll of the long put"
+ROLL_SHORT_PUT_WORDS: str = "a roll of the short put"
+ROLL_COLLAR_WORDS: str = "a roll of the collar's put and call"
+"""A collar's ROLL header words: both legs replaced as a unit (roadmap step 2.4)."""
+"""A cash-secured put's ROLL header words (roadmap step 2.4)."""
 WHAT_WORDS: Tuple[str, ...] = ("roll analysis", "covered call proposal", "protective put proposal", "collar proposal",
                                "CLOSE ticket", "UNWIND_STOCK ticket", "LET_ASSIGN ticket", "MONETIZE_PUT ticket",
                                "ROLL ticket")
@@ -407,7 +414,7 @@ def ticket_header(w: Writer, trade_id: str, underlying: str, structure: str, act
     if action not in ACTION_WORDS:
         raise ValueError("unknown action %r" % (action,))
     words = action_words or ACTION_WORDS[action]
-    if words not in tuple(ACTION_WORDS.values()) + (ROLL_PUT_WORDS,):
+    if words not in tuple(ACTION_WORDS.values()) + (ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS):
         raise ValueError("unknown action words %r" % (words,))
     return "### TICKET %s | %s %s: %s (action %s)" % (w.trade_id(trade_id), _root(underlying),
                                                      structure_words(structure), words, action)
@@ -425,14 +432,25 @@ def validity_line(w: Writer, until: datetime.datetime) -> str:
 
 
 def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, expiration: datetime.date,
-                strike: Decimal, right: str = "CALL") -> str:
+                strike: Decimal, right: str = "CALL", side: Optional[str] = None) -> str:
     """``### STRUCTURING <trade_id> | <UNDERLYING> <structure words>: the roll analysis of the short <date> <strike>
     call`` (or ``of the long <date> <strike> put`` for a protective put's long put; never ``roll`` at a segment start:
     the lint reads it as an imperative)."""
-    side = "long" if right == "PUT" else "short"
+    side = side or ("long" if right == "PUT" else "short")
+    if side not in ("long", "short"):
+        raise ValueError("side must be long or short, got %r" % (side,))
     return "### STRUCTURING %s | %s %s: the roll analysis of the %s %s %s %s" % (
         w.trade_id(trade_id), _root(underlying), structure_words(structure), side, w.date(expiration),
         w.strike(strike), _right(right))
+
+
+def collar_roll_header(w: Writer, trade_id: str, underlying: str, structure: str, put: "structuring.HeldLeg",
+                       call: "structuring.HeldLeg") -> str:
+    """``### STRUCTURING <trade_id> | SPY collar: the roll analysis of the collar's 2026-12-18 620 put and 2026-12-18
+    660 call`` (roadmap step 2.4: both legs replaced as a unit)."""
+    return "### STRUCTURING %s | %s %s: the roll analysis of the collar's %s %s put and %s %s call" % (
+        w.trade_id(trade_id), _root(underlying), structure_words(structure), w.date(put.expiration), w.strike(put.strike),
+        w.date(call.expiration), w.strike(call.strike))
 
 
 def proposal_header(w: Writer, trade_id: str, symbol: str, structure: str, shares: Decimal) -> str:
@@ -531,8 +549,22 @@ _UNPRICED_WORDS: Dict[str, str] = structuring.UNPRICED_WORDS
 """The UNPRICED words: one source, :data:`aegis_desk.structuring.UNPRICED_WORDS`."""
 
 
-def _life(replacement: bool) -> str:
+REPLACEMENT_PUT_LIFE = "put"
+"""The ``replacement`` value that makes the event words read ``the new put's`` (a short put's replacement)."""
+
+
+def _life(replacement: Any) -> str:
+    if replacement == REPLACEMENT_PUT_LIFE:
+        return "the new put's"
     return "the new call's" if replacement else "the call's"
+
+
+def _replacement_of(kind: str) -> Any:
+    """The ``replacement`` value of a candidate kind for the event words: ``the new call's``, ``the new put's`` or
+    ``the call's``."""
+    if kind == structuring.KIND_REPLACEMENT_SHORT_PUT:
+        return REPLACEMENT_PUT_LIFE
+    return kind in (structuring.KIND_REPLACEMENT_CALL, structuring.KIND_REPLACEMENT_COLLAR)
 
 
 def _band_words(w: Writer, band: Sequence[Any]) -> str:
@@ -714,7 +746,7 @@ def net_time_value_words(w: Writer, value: Decimal, held: Optional["structuring.
     the held call's half-spread, so the owner sees when the quotes cannot tell it from zero."""
     words = "adds %s" % w.price(value) if value >= 0 else "gives up %s" % w.price(-value)
     if held is not None and held.bid is not None and held.ask is not None and abs(value) < (held.ask - held.bid) / 2:
-        words += " (within the held call's own quote spread)"
+        words += " (within the held %s's own quote spread)" % _right(held.right)
     return words
 
 
@@ -757,6 +789,20 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
         rows.append(["bid", bid, "at least %s" % w.plain(section.min_credit), status(structuring.KEY_MIN_CREDIT)])
         rows.append(days)
         rows.append(["spread", _pct_or_none(w, leg.spread_pct), spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
+    elif kind == structuring.KIND_REPLACEMENT_SHORT_PUT:
+        net = net_words(w, candidate.net_credit, candidate.net_credit_total)
+        rule = section.roll_rule()
+        rows.append(["net per share", net, "credit only", status(structuring.KEY_CREDIT_ONLY)]
+                    if rule == structuring.structuring_config.ROLL_TEST_CREDIT else ["net per share", net, "", ""])
+        if rule == structuring.structuring_config.ROLL_TEST_NET_TIME_VALUE and candidate.net_time_value is not None:
+            rows.append(["net time value per share", net_time_value_words(w, candidate.net_time_value, held),
+                         "at least 0", status(structuring.KEY_ROLL_TEST)])
+        rows.append(["absolute delta", "none" if leg.abs_delta is None else w.plain(leg.abs_delta),
+                     _band_words(w, section.abs_delta), status(structuring.KEY_ABS_DELTA)])
+        rows.append(["bid", w.price(leg.bid), "at least %s" % w.plain(section.min_credit),
+                     status(structuring.KEY_MIN_CREDIT)])
+        rows.append(days)
+        rows.append(["spread", _pct_or_none(w, leg.spread_pct), spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
     elif kind in (structuring.KIND_PROTECTIVE_PUT, structuring.KIND_REPLACEMENT_PUT):
         rows.append(["floor", "%s below" % w.pct(candidate.floor_pct), "%s %%" % _band_words(w, section.floor_pct),
                      status(structuring.KEY_FLOOR_PCT)])
@@ -774,13 +820,17 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
             status(structuring.KEY_STRESS_DROP_PCT)])
         rows.append(days)
         rows.append(["spread", _pct_or_none(w, leg.spread_pct), spread_band, status(structuring.KEY_MAX_SPREAD_PCT)])
-    elif kind == structuring.KIND_COLLAR:
+    elif kind in (structuring.KIND_COLLAR, structuring.KIND_REPLACEMENT_COLLAR):
         put, call = candidate.legs
+        if kind == structuring.KIND_REPLACEMENT_COLLAR and candidate.net_credit is not None:
+            rows.append(["net of the roll per share", net_words(w, candidate.net_credit, candidate.net_credit_total),
+                         "", ""])
         rows.append(["floor", "%s below" % w.pct(candidate.floor_pct), "%s %%" % _band_words(w, section.floor_pct),
                      status(structuring.KEY_FLOOR_PCT)])
         rows.append(["cap", "%s above" % w.pct(candidate.cap_pct), "%s %%" % _band_words(w, section.cap_pct),
                      status(structuring.KEY_CAP_PCT)])
-        rows.append(["net per share", net_words(w, -candidate.net_debit, -candidate.net_debit_total),
+        rows.append(["new collar net per share" if kind == structuring.KIND_REPLACEMENT_COLLAR else "net per share",
+                     net_words(w, -candidate.net_debit, -candidate.net_debit_total),
                      "net debit at most %s" % w.plain(section.max_net_debit), status(structuring.KEY_MAX_NET_DEBIT)])
         if section.strike_floor == "cost_basis":
             rows.append(["call strike", w.strike(call.strike), "at or above your cost %s" % cost,
@@ -794,7 +844,7 @@ def check_rows(w: Writer, candidate: "structuring.Candidate", section: Any, max_
                 half * structuring.CONTRACT_SIZE * candidate.contracts)), "", ""])
     else:
         raise ValueError("unknown candidate kind %r" % (kind,))
-    rows.extend(_event_rows(w, candidate, kind == structuring.KIND_REPLACEMENT_CALL))
+    rows.extend(_event_rows(w, candidate, _replacement_of(kind)))
     return rows
 
 
@@ -858,13 +908,13 @@ def candidate_items(w: Writer, candidates: Sequence["structuring.Candidate"], ob
     for candidate in candidates:
         leg = candidate.legs[0]
         parts: List[Optional[str]] = ["%s %s" % (bold(w.count(candidate.rank)), w.date(candidate.expiration))]
-        if kind == structuring.KIND_COLLAR:
+        if kind in (structuring.KIND_COLLAR, structuring.KIND_REPLACEMENT_COLLAR):
             put, call = candidate.legs
             parts += ["put %s / call %s" % (w.strike(put.strike), w.strike(call.strike)),
                       _metric(w, "floor", candidate.floor_pct, "pct"), _metric(w, "cap", candidate.cap_pct, "pct"),
                       None if candidate.net_debit is None else net_words(w, -candidate.net_debit)]
-        elif kind == structuring.KIND_REPLACEMENT_CALL:
-            parts += ["new call %s" % w.strike(leg.strike),
+        elif kind in (structuring.KIND_REPLACEMENT_CALL, structuring.KIND_REPLACEMENT_SHORT_PUT):
+            parts += ["new %s %s" % (_right(leg.right), w.strike(leg.strike)),
                       None if candidate.net_credit is None else net_words(w, candidate.net_credit),
                       _metric(w, objective, candidate.score, "score")]
         elif kind == structuring.KIND_COVERED_CALL:
@@ -971,6 +1021,8 @@ def american_line(w: Writer, candidate: "structuring.Candidate",
     """The American caveat of a candidate that carries one (designer Q's D4): early exercise may matter and the
     European model does not price it."""
     put = next((leg for leg in candidate.legs if leg.right == "PUT"), None)
+    if candidate.kind == structuring.KIND_REPLACEMENT_SHORT_PUT:
+        return short_put_line(w, candidate, pricing)
     if put is not None and put.abs_delta is not None and put.abs_delta >= structuring.AMERICAN_PUT_ABS_DELTA:
         return ("american-style note: %s is deep in the money (absolute delta %s); early exercise can be worth more "
                 "than the European model prices" % (contract_words(w, put.expiration, put.strike, "PUT"),
@@ -984,6 +1036,34 @@ def american_line(w: Writer, candidate: "structuring.Candidate",
     return ("american-style note: %s is in the money and its bid's time value is below the dividend before its last "
             "trading day, so an early exercise before the ex-date is possible; the European model does not price it"
             % contract_words(w, call.expiration, call.strike, "CALL"))
+
+
+def cash_secured_line(w: Writer, candidate: "structuring.Candidate", held: "structuring.HeldLeg") -> str:
+    """``cash: the new put is secured by 62,500.00 and the held put by 62,000.00 (each its strike times the shares it
+    can deliver); the desk does not see your cash balance``: what a short put's replacement ties up beside what the
+    held one did (roadmap step 2.4; the cash-balance check is planned separately)."""
+    new = candidate.legs[0].strike * structuring.CONTRACT_SIZE * candidate.contracts
+    old = held.strike * structuring.CONTRACT_SIZE * held.contracts
+    return ("cash: the new put is secured by %s and the held put by %s (each its strike times the shares it can "
+            "deliver); %s" % (w.amount(new), w.amount(old), CASH_BALANCE_LINE))
+
+
+def short_put_line(w: Writer, candidate: "structuring.Candidate",
+                   pricing: Optional["structuring.PricingContext"] = None) -> str:
+    """The early-assignment note of a short put (roadmap step 2.4; ``structuring.short_put_caveat``): on the same two
+    tests as a long put's caveat, the holder may exercise early, so the owner who is short the put may be assigned
+    before expiry, and the European model does not price it."""
+    put = candidate.legs[0]
+    words = contract_words(w, put.expiration, put.strike, "PUT")
+    if put.abs_delta is not None and put.abs_delta >= structuring.AMERICAN_PUT_ABS_DELTA:
+        return ("early-assignment note: %s is deep in the money (absolute delta %s); a short put this deep can be "
+                "assigned before expiry, and the European model does not price that" % (words, w.plain(put.abs_delta)))
+    pair = None if pricing is None else structuring.put_exercise_carry(put, pricing)
+    if pair is None or pair[0] >= pair[1]:
+        raise ValueError("the candidate carries no early-assignment note")
+    return ("early-assignment note: %s is in the money and its time value at the mid, %s, is below the interest on its "
+            "strike to expiry, %s; a short put can then be assigned before expiry, and the European model does not "
+            "price that" % (words, w.money(pair[0]), w.money(pair[1])))
 
 
 # --------------------------------------------------------------------------------------------
@@ -1034,14 +1114,16 @@ def unavailable_line(w: Writer, subject: str, what: str, reason: str) -> str:
     return "UNAVAILABLE | %s %s | %s" % (w.trade_id(subject), _what(what), w.words(reason))
 
 
-def held_line(w: Writer, held: "structuring.HeldLeg") -> str:
+def held_line(w: Writer, held: "structuring.HeldLeg", lead: Optional[str] = None) -> str:
     """``the net credits close the held 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old``: the conservative
     side a roll analysis with no best candidate prices the close at (the grade E note follows when it applies). A held
-    long put reads ``the net costs close the held 2026-12-18 620 put | bid ...``."""
+    long put reads ``the net costs close the held 2026-12-18 620 put | bid ...``; a held short put reads ``the net
+    credits close the held ... put | ask ...``."""
     if held.close_price is None or held.grade is None:
         raise ValueError("the held leg has no conservative side")
-    return "the net %s close the held %s %s %s | %s" % (
-        "costs" if held.right == "PUT" else "credits", w.date(held.expiration), w.strike(held.strike), _right(held.right),
+    head = lead if lead is not None else "the net %s close" % ("costs" if held.side == "long" else "credits")
+    return "%s the held %s %s %s | %s" % (
+        head, w.date(held.expiration), w.strike(held.strike), _right(held.right),
         side_segment(w, held.close_side, held.close_price, held.grade, held.quote_age_min, held.note))
 
 
@@ -1176,14 +1258,17 @@ def quotes_cell(w: Writer, as_of: datetime.datetime, delay_min: int = FEED_DELAY
     return "%s, %s" % (w.clock(as_of), w._emit("%d-min delayed" % delay_min))
 
 
-def context_line(w: Writer, account: str, symbol: str, mid: Decimal, cost: Decimal, as_of: datetime.datetime,
+def context_line(w: Writer, account: str, symbol: str, mid: Decimal, cost: Optional[Decimal], as_of: datetime.datetime,
                  delay_min: int = FEED_DELAY_MIN) -> str:
     """The context strip under an analysis's title, one italic line: ``*account 2 of desk.toml (ira) | SPY mid 648.12 |
-    your cost 632.40 | quotes 19:31 UTC, 15-min delayed*``."""
+    your cost 632.40 | quotes 19:31 UTC, 15-min delayed*``; a group that holds no shares (``cost`` ``None``) has no
+    cost segment."""
     if not isinstance(symbol, str) or not _SYMBOL_RE.match(symbol):
         raise ValueError("%r is not a share symbol" % (symbol,))
-    return strip_line([("account", account), ("%s mid" % symbol, w.price(mid)), ("your cost", w.price(cost)),
-                       ("quotes", quotes_cell(w, as_of, delay_min))])
+    cells = [("account", account), ("%s mid" % symbol, w.price(mid))]
+    if cost is not None:
+        cells.append(("your cost", w.price(cost)))
+    return strip_line(cells + [("quotes", quotes_cell(w, as_of, delay_min))])
 
 
 def spot_bar_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
@@ -1233,6 +1318,23 @@ def _best_legs_roll(w: Writer, answer: "structuring.Answer", best: "structuring.
     leg = best.legs[0]
     assert leg.grade is not None
     held_side = side_segment(w, held.close_side, held.close_price, held.grade, held.quote_age_min, held.note)
+    if best.kind == structuring.KIND_REPLACEMENT_COLLAR:
+        call_held = answer.held_call
+        assert call_held is not None and call_held.close_price is not None and call_held.grade is not None
+        put, call = best.legs
+        assert put.ask is not None and put.grade is not None and call.bid is not None and call.grade is not None
+        return [
+            leg_line(w, 1, 4, "open", "long", best.contracts, put.root, put.expiration, put.strike, put.right,
+                     side_segment(w, "ask", put.ask, put.grade, put.quote_age_min, None)),
+            leg_line(w, 2, 4, "close", "long", held.contracts, held.root, held.expiration, held.strike, held.right,
+                     held_side),
+            leg_line(w, 3, 4, "close", "short", call_held.contracts, call_held.root, call_held.expiration,
+                     call_held.strike, call_held.right,
+                     side_segment(w, call_held.close_side, call_held.close_price, call_held.grade,
+                                  call_held.quote_age_min, call_held.note)),
+            leg_line(w, 4, 4, "open", "short", best.contracts, call.root, call.expiration, call.strike, call.right,
+                     side_segment(w, "bid", call.bid, call.grade, call.quote_age_min, None)),
+        ]
     if best.kind == structuring.KIND_REPLACEMENT_PUT:
         assert leg.ask is not None
         return [
@@ -1291,6 +1393,8 @@ def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.dat
     items.extend(carry_lines(w, answer))
     if best is not None and best.american_caveat:
         items.append(american_line(w, best, answer.pricing))
+    if best is not None and best.kind == structuring.KIND_REPLACEMENT_SHORT_PUT and answer.held is not None:
+        items.append(cash_secured_line(w, best, answer.held))
     items.append(criteria_line(w, answer.criteria.sha256))
     return items
 
@@ -1304,12 +1408,13 @@ def _candidates_section(w: Writer, answer: "structuring.Answer", best: Optional[
                             ranking.failure_counts, replacement)]
     lines.extend(candidate_items(w, shown, ranking.objective.id))
     if best is None:
-        lines.extend(["", FAILURES_CAPTION] + failure_lines(w, shown, replacement))
+        lines.extend(["", FAILURES_CAPTION] + failure_lines(w, shown, _replacement_of(shown[0].kind) or replacement))
     outside = answer.outside_bands
     if outside is not None and (outside.get("puts", 0) or outside.get("calls", 0)):
         lines.extend(["", outside_bands_line(w, outside)])
     if replacement:
-        lines.extend(["", POINTER_LINE])
+        collar = bool(ranking.candidates) and ranking.candidates[0].kind == structuring.KIND_REPLACEMENT_COLLAR
+        lines.extend(["", COLLAR_POINTER_LINE if collar else POINTER_LINE])
     return lines
 
 
@@ -1329,9 +1434,14 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     assert target is not None and target.group is not None and ranking is not None and held is not None
     assert group is not None and answer.pricing is not None and answer.pricing.spot_mid is not None
     account = account_cell(w, group.account, target.market.cfg.owner.accounts, held.row_number)
-    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike, held.right)]
-    lines.extend([context_line(w, account, group.underlying, answer.pricing.spot_mid,
-                               structuring.payoff.quantize_price(group.s0), as_of), ""])
+    held_call = answer.held_call
+    if held_call is not None:
+        lines = [collar_roll_header(w, subject, group.underlying, group.structure, held, held_call)]
+    else:
+        lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike, held.right,
+                             held.side)]
+    cost = structuring.payoff.quantize_price(group.s0) if group.shares > 0 else None
+    lines.extend([context_line(w, account, group.underlying, answer.pricing.spot_mid, cost, as_of), ""])
     best = ranking.best
     if best is not None:
         lines.extend(_best_block(w, answer, best, _best_legs_roll(w, answer, best)))
@@ -1340,7 +1450,10 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
                                   held=held))
         lines.append("")
         assert best.after is not None
-        lines.extend(group_block(w, best.after, answer.before, 2))
+        lines.extend(group_block(w, best.after, answer.before, 4 if held_call is not None else 2))
+    elif held_call is not None:
+        lead = "the roll's net closes"
+        lines.extend([bold(NONE_QUALIFIES_LINE), ITEM + held_line(w, held, lead), ITEM + held_line(w, held_call, lead)])
     else:
         lines.extend([bold(NONE_QUALIFIES_LINE), ITEM + held_line(w, held)])
     lines.append("")
@@ -1408,12 +1521,13 @@ def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     group = answer.group_context
     if candidate is None or group is None or answer.pricing is None:
         raise ValueError("the answer priced no named replacement")
-    subject = "the new put" if candidate.kind == structuring.KIND_REPLACEMENT_PUT else "the new call"
+    collar = candidate.kind == structuring.KIND_REPLACEMENT_COLLAR
+    subject = "the new collar" if collar else "the new %s" % _right(candidate.legs[0].right)
     held_strike = None if answer.held is None else answer.held.strike
     lines = checks_block(w, candidate, answer.section, answer.pricing.max_spread_pct, group.s0, held_strike, subject,
                          held=answer.held)
     if candidate.after is not None:
-        lines.extend([""] + group_block(w, candidate.after, answer.before, 2))
+        lines.extend([""] + group_block(w, candidate.after, answer.before, 4 if collar else 2))
     return lines
 
 
@@ -1466,7 +1580,7 @@ def _words_of(*texts: str) -> List[str]:
 
 _LEXICON_SOURCES: Tuple[str, ...] = (
     _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, CENTRE_SETTINGS_LINE, *alerts.STRUCTURE_WORDS.values(),
-    *ACTION_WORDS.values(), ROLL_PUT_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
+    *ACTION_WORDS.values(), ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
     *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
     *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),
     structuring.structuring_config.DISABLED_REASON)

@@ -157,8 +157,10 @@ command; the expiry and assignment skill has the protocol.
   the roll analysis of a covered call's short call (`aegis-roll-decision-framework`), a CLOSE, UNWIND_STOCK, LET_ASSIGN
   or ROLL ticket (`aegis-ticket-and-unwind-order`), and a covered call on shares held alone
   (`aegis-overlay-proposals`). The Exit Sentinel never prices them.
-- A cash-secured put is outside the structuring scope: the desk proposes none, and a short put's replacement is
-  planned for Stage 2 (not in this release). A CLOSE ticket covers it.
+- The desk proposes no new cash-secured put. For one the owner holds, and only when asked, the Aegis Structuring
+  Desk prices a roll analysis of the short put and a ROLL ticket for the put the owner names, judged under
+  `[roll]` (`aegis-roll-decision-framework`), with an `early-assignment note:` when the put is deep in the money or
+  its time value is below the interest on its strike. A CLOSE ticket covers it too.
 - The early-exercise test is the European extrinsic-versus-dividend test above. American pricing is
   planned for Stage 2 (not in this release).
 - The desk checks no cash reserve. No alert reads the approval level: only the structuring tools check `desk.toml`'s

@@ -51,6 +51,9 @@ EXPIRY_DAY_NOW = "2026-11-20T19:50:00Z"
 WMT = "AG-20261020-01"
 NVDA = "AG-20261022-02"
 SPY = "AG-20261028-03"
+CSP = "AG-20261101-05"
+CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,open,,,,,"
+           "cash-secured put")
 UTC = datetime.timezone.utc
 
 
@@ -509,6 +512,71 @@ class GoldenTest(DeskCopy):
         payload = self.run_json(SPY)["payload"]
         self.assertEqual(("NONE_QUALIFIES", None, 0), (payload["verdict"], payload["best"], payload["passed"]))
         self.assertEqual("floor_pct", payload["candidates"][0]["reasons"][0]["key"])
+
+    def add_short_put(self) -> None:
+        """A cash-secured put on SPY in the margin account, its [roll] window on the recorded 2027-03-19 chain."""
+        self.edit("positions.csv", "closed early", "closed early\n" + CSP_ROW)
+        self.edit("structuring.toml", "[roll]\nenabled = true\ndte = [40, 75]", "[roll]\nenabled = true\ndte = [130, 140]")
+        self.ack()
+
+    def test_a_cash_secured_puts_short_put_is_best_under_roll(self) -> None:
+        self.add_short_put()
+        text = self.run_text(CSP)
+        self.assertEqual("### STRUCTURING AG-20261101-05 | SPY cash-secured put: the roll analysis of the short "
+                         "2026-12-18 620 put", text[0])
+        self.assertIn("**BEST CANDIDATE 1 of 12** by your objective extrinsic_per_day: **0.0305**, the highest among "
+                      "the 6 candidates that passed every criterion", text)
+        self.assertIn("- \U0001F7E2 **net per share** credit 16.75 (1,675.00 in all) | your criteria: credit only", text)
+        self.assertIn("> - cash: the new put is secured by 62,500.00 and the held put by 62,000.00 (each its strike "
+                      "times the shares it can deliver); the desk does not see your cash balance", text)
+        self.assertEqual(footer("19:31"), text[-1])
+        payload = self.run_json(CSP)["payload"]
+        self.assertEqual(("BEST", "replacement_short_put", "roll", "cash_secured_put", "SPY270319P00625000", 6, 6),
+                         (payload["verdict"], payload["kind"], payload["section"], payload["structure"],
+                          payload["best"], payload["passed"], payload["failed"]))
+        self.assertEqual(("short", "10.10", "ask"), (payload["held"]["side"], payload["held"]["close_price"],
+                                                     payload["held"]["close_side"]))
+        self.assertEqual([[1, "close_option", 0], [2, "open_short_put", 1]],
+                         [[step["index"], step["kind"], step["level"]] for step in payload["approval"]["steps"]])
+        self.assertEqual({"ok": True, "problems": []}, {k: payload["lint"][k] for k in ("ok", "problems")})
+
+    def test_a_short_put_roll_is_refused_at_level_0_before_any_request(self) -> None:
+        self.edit("desk.toml", "approval_level = 2 ", "approval_level = 0 ")
+        self.add_short_put()
+        text = self.run_text(CSP, expected=20)
+        self.assertTrue(text[0].startswith("REFUSED AG-20261101-05 | SPY cash-secured put | opening 1 new short put "
+                                           "(cash-secured; the desk does not see your cash) needs level 1"), text[0])
+        payload = self.run_json(CSP, expected=20)["payload"]
+        self.assertEqual(("REFUSED", "approval_level", 0, 2), (payload["verdict"], payload["cause"],
+                                                               payload["requests"]["made"],
+                                                               payload["approval"]["refusal_step"]))
+
+    def test_a_collars_two_legs_are_analysed_as_a_unit(self) -> None:
+        put_row = "SPY261218P00620000,1,,,,Roth IRA,AG-20261028-03,2026-10-28,1130.00,,11.30,open,,,,,protective put"
+        call_row = ("option,SPY,SPY261218C00660000,-1,,,,Roth IRA,AG-20261028-03,2026-10-28,-940.00,,9.40,open,,,,,"
+                    "collar call")
+        self.edit("positions.csv", put_row, put_row + " #assign-ok\n" + call_row)
+        quotes = {"quotes": {
+            "SPY261218C00660000": {"ap": 9.7, "as": 40, "ax": "Z", "bp": 9.4, "bs": 40, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"},
+            "SPY261218P00620000": {"ap": 10.1, "as": 75, "ax": "Z", "bp": 9.8, "bs": 60, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"}}}
+        with open(os.path.join(self.root, "fixtures", "alpaca", "regular",
+                               "option_quotes__SPY261218C00660000,SPY261218P00620000.json"), "w") as handle:
+            json.dump(quotes, handle)
+        self.ack()
+        text = self.run_text(SPY)
+        self.assertEqual("### STRUCTURING AG-20261028-03 | SPY collar: the roll analysis of the collar's 2026-12-18 620 "
+                         "put and 2026-12-18 660 call", text[0])
+        payload = self.run_json(SPY)["payload"]
+        self.assertEqual(("BEST", "replacement_collar", "collar", "collar"),
+                         (payload["verdict"], payload["kind"], payload["section"], payload["structure"]))
+        self.assertEqual(("SPY261218P00620000", "SPY261218C00660000", "ask"),
+                         (payload["held"]["occ"], payload["held_call"]["occ"], payload["held_call"]["close_side"]))
+        self.assertEqual([[1, "open_long", 2], [2, "close_option", 0], [3, "close_option", 0],
+                          [4, "open_covered_call", 1]],
+                         [[step["index"], step["kind"], step["level"]] for step in payload["approval"]["steps"]])
+        self.assertEqual({"ok": True, "problems": []}, {k: payload["lint"][k] for k in ("ok", "problems")})
 
     def test_a_protective_put_with_its_section_disabled_is_not_applicable_without_a_request(self) -> None:
         self.edit("structuring.toml", "[protective_put]\nenabled = true", "[protective_put]\nenabled = false")

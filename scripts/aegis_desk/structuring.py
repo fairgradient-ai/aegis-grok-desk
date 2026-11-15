@@ -153,11 +153,20 @@ KIND_REPLACEMENT_CALL: str = "replacement_call"
 KIND_PROTECTIVE_PUT: str = "protective_put"
 KIND_REPLACEMENT_PUT: str = "replacement_put"
 KIND_COLLAR: str = "collar"
-KINDS: Tuple[str, ...] = (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL, KIND_PROTECTIVE_PUT, KIND_REPLACEMENT_PUT, KIND_COLLAR)
+KIND_REPLACEMENT_SHORT_PUT: str = "replacement_short_put"
+"""The replacement of a cash-secured put's short put under ``[roll]`` (roadmap step 2.4): the held put closed at its
+ask, the new one opened at its bid."""
+KIND_REPLACEMENT_COLLAR: str = "replacement_collar"
+"""A collar's two legs replaced as a unit under ``[collar]`` (roadmap step 2.4): a new put and call of one later
+expiration, the held put closed at its bid and the held call at its ask."""
+KINDS: Tuple[str, ...] = (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL, KIND_PROTECTIVE_PUT, KIND_REPLACEMENT_PUT, KIND_COLLAR,
+                          KIND_REPLACEMENT_SHORT_PUT, KIND_REPLACEMENT_COLLAR)
 KIND_SECTIONS: Dict[str, str] = {KIND_COVERED_CALL: "covered_call", KIND_REPLACEMENT_CALL: "roll",
                                  KIND_PROTECTIVE_PUT: "protective_put", KIND_REPLACEMENT_PUT: "protective_put",
-                                 KIND_COLLAR: "collar"}
-"""The ``structuring.toml`` section each kind of candidate is judged under."""
+                                 KIND_COLLAR: "collar", KIND_REPLACEMENT_SHORT_PUT: "roll",
+                                 KIND_REPLACEMENT_COLLAR: "collar"}
+"""The ``structuring.toml`` section each kind of candidate is judged under: a short put's replacement shares ``[roll]``
+with a short call's (the section that judges rolling a short option)."""
 PROPOSAL_STRUCTURES: Tuple[str, ...] = ("covered_call", "protective_put", "collar")
 PROPOSAL_KINDS: Dict[str, str] = {"covered_call": KIND_COVERED_CALL, "protective_put": KIND_PROTECTIVE_PUT,
                                   "collar": KIND_COLLAR}
@@ -339,8 +348,11 @@ TIE_BREAKS: Dict[str, Tuple[str, ...]] = {
     KIND_PROTECTIVE_PUT: ("strike", "expiration", "contract"),
     KIND_REPLACEMENT_PUT: ("strike", "expiration", "contract"),
     KIND_COLLAR: ("put_strike", "net_debit", "expiration", "contract"),
+    KIND_REPLACEMENT_SHORT_PUT: ("net_credit", "abs_delta", "expiration", "strike", "contract"),
+    KIND_REPLACEMENT_COLLAR: ("put_strike", "net_debit", "expiration", "contract"),
 }
-"""The tie-breaks after the objective, in order (designer Q's D5, D7 and D8)."""
+"""The tie-breaks after the objective, in order (designer Q's D5, D7 and D8; a short put's replacement as a short
+call's, the lower strike first: the further from the money)."""
 _ASCENDING, _DESCENDING = 1, -1
 TIE_BREAK_DIRECTIONS: Dict[str, Dict[str, int]] = {
     KIND_COVERED_CALL: {"abs_delta": _ASCENDING, "expiration": _ASCENDING, "strike": _DESCENDING, "contract": _ASCENDING},
@@ -349,6 +361,10 @@ TIE_BREAK_DIRECTIONS: Dict[str, Dict[str, int]] = {
     KIND_PROTECTIVE_PUT: {"strike": _DESCENDING, "expiration": _DESCENDING, "contract": _ASCENDING},
     KIND_REPLACEMENT_PUT: {"strike": _DESCENDING, "expiration": _DESCENDING, "contract": _ASCENDING},
     KIND_COLLAR: {"put_strike": _DESCENDING, "net_debit": _ASCENDING, "expiration": _DESCENDING, "contract": _ASCENDING},
+    KIND_REPLACEMENT_SHORT_PUT: {"net_credit": _DESCENDING, "abs_delta": _ASCENDING, "expiration": _ASCENDING,
+                                 "strike": _ASCENDING, "contract": _ASCENDING},
+    KIND_REPLACEMENT_COLLAR: {"put_strike": _DESCENDING, "net_debit": _ASCENDING, "expiration": _DESCENDING,
+                              "contract": _ASCENDING},
 }
 """``1`` ascending (lower or earlier first, contracts in symbol order), ``-1`` descending (higher or later first)."""
 _OBJ = structuring_config
@@ -357,9 +373,12 @@ TIE_BREAKS_BY_OBJECTIVE: Dict[Tuple[str, str], Tuple[str, ...]] = {
                                                       "contract"),
     (KIND_REPLACEMENT_CALL, _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY): ("net_credit", "abs_delta", "expiration",
                                                                           "strike", "contract"),
+    (KIND_REPLACEMENT_SHORT_PUT, _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY): ("net_credit", "abs_delta", "expiration",
+                                                                               "strike", "contract"),
     (KIND_PROTECTIVE_PUT, _OBJ.OBJECTIVE_BAND_CENTRE): ("stress_cost_per_day", "strike", "expiration", "contract"),
     (KIND_REPLACEMENT_PUT, _OBJ.OBJECTIVE_BAND_CENTRE): ("stress_cost_per_day", "strike", "expiration", "contract"),
     (KIND_COLLAR, _OBJ.OBJECTIVE_BAND_CENTRE): ("net_debit", "put_strike", "expiration", "contract"),
+    (KIND_REPLACEMENT_COLLAR, _OBJ.OBJECTIVE_BAND_CENTRE): ("net_debit", "put_strike", "expiration", "contract"),
 }
 """The tie-breaks of an objective other than the kind's release-1 one (:data:`TIE_BREAKS` otherwise)."""
 TIE_BREAK_EXTRA_DIRECTIONS: Dict[str, int] = {"extrinsic_per_day": _DESCENDING, "net_extrinsic_per_added_day": _DESCENDING,
@@ -671,19 +690,20 @@ def leg_spot(leg: "PricedLeg", fallback: Decimal) -> Decimal:
     return fallback if leg.spot_used is None else leg.spot_used
 
 
-def extrinsic(bid: Decimal, spot: Decimal, strike: Decimal) -> Decimal:
-    """The bid's time value of a call: ``bid - max(0, S - K)`` (negative when the bid is below intrinsic)."""
+def extrinsic(bid: Decimal, spot: Decimal, strike: Decimal, right: str = "CALL") -> Decimal:
+    """The bid's time value of a call: ``bid - max(0, S - K)``; of a put (``right="PUT"``): ``bid - max(0, K - S)``
+    (negative when the bid is below intrinsic)."""
     with localcontext(_DECIMAL_CONTEXT):
-        return bid - max(_ZERO, spot - strike)
+        return bid - max(_ZERO, (strike - spot) if right == "PUT" else (spot - strike))
 
 
-def net_time_value(new_bid: Decimal, held_ask: Decimal, spot: Decimal, new_strike: Decimal, held_strike: Decimal
-                   ) -> Decimal:
+def net_time_value(new_bid: Decimal, held_ask: Decimal, spot: Decimal, new_strike: Decimal, held_strike: Decimal,
+                   right: str = "CALL") -> Decimal:
     """``N = E_new - E_held`` per share: the time value a roll sells (the new call's bid less its intrinsic value) less
     the time value it buys back (the held call's ask less its intrinsic value). A held call in the money carries the
     owner's own share gain as intrinsic value, which the roll does not give up."""
     with localcontext(_DECIMAL_CONTEXT):
-        return extrinsic(new_bid, spot, new_strike) - extrinsic(held_ask, spot, held_strike)
+        return extrinsic(new_bid, spot, new_strike, right) - extrinsic(held_ask, spot, held_strike, right)
 
 
 def incremental_cost_per_day(new_ask: Decimal, held_bid: Decimal, spot: Decimal, new_days: int, held_days: int
@@ -698,12 +718,13 @@ def incremental_cost_per_day(new_ask: Decimal, held_bid: Decimal, spot: Decimal,
             SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
-def extrinsic_per_day(bid: Decimal, spot: Decimal, strike: Decimal, days: int) -> Decimal:
-    """``extrinsic_per_day``: ``E / S / T_c x 100`` quantized 0.0001 half-even (higher is better)."""
+def extrinsic_per_day(bid: Decimal, spot: Decimal, strike: Decimal, days: int, right: str = "CALL") -> Decimal:
+    """``extrinsic_per_day``: ``E / S / T_c x 100`` quantized 0.0001 half-even (higher is better); ``E`` of a put when
+    ``right="PUT"``."""
     if days <= 0 or spot <= 0:
         raise ValueError("extrinsic_per_day needs a positive spot and a positive day count")
     with localcontext(_DECIMAL_CONTEXT):
-        return (extrinsic(bid, spot, strike) / spot / Decimal(days) * _HUNDRED).quantize(SCORE_QUANTUM,
+        return (extrinsic(bid, spot, strike, right) / spot / Decimal(days) * _HUNDRED).quantize(SCORE_QUANTUM,
                                                                                         rounding=ROUND_HALF_EVEN)
 
 
@@ -738,7 +759,7 @@ def cap_pct(spot: Decimal, strike: Decimal) -> Decimal:
 
 
 def net_extrinsic_per_added_day(new_bid: Decimal, held_close: Decimal, spot: Decimal, new_strike: Decimal,
-                                held_strike: Decimal, new_days: int, held_days: int) -> Decimal:
+                                held_strike: Decimal, new_days: int, held_days: int, right: str = "CALL") -> Decimal:
     """``net_extrinsic_per_added_day`` of a replacement call, with ``N = E_new - E_held``, ``E_new = bid - max(0, S -
     K_new)`` and ``E_held = held close - max(0, S - K_held)`` (the held call's time value bought back at its conservative
     side): ``N / S / (T_new - T_held) x 100`` when ``N >= 0``, else ``N / S x 100`` (a roll that gives up time value is
@@ -750,7 +771,7 @@ def net_extrinsic_per_added_day(new_bid: Decimal, held_close: Decimal, spot: Dec
     if added <= 0 or spot <= 0:
         raise ValueError("net_extrinsic_per_added_day needs a positive spot and a later new expiration")
     with localcontext(_DECIMAL_CONTEXT):
-        net = extrinsic(new_bid, spot, new_strike) - extrinsic(held_close, spot, held_strike)
+        net = extrinsic(new_bid, spot, new_strike, right) - extrinsic(held_close, spot, held_strike, right)
         per = Decimal(added) if net >= 0 else Decimal(1)
         return (net / spot / per * _HUNDRED).quantize(NET_SCORE_QUANTUM, rounding=ROUND_HALF_EVEN)
 
@@ -1192,12 +1213,15 @@ def _profile(shares: Decimal, options: Sequence[Tuple[str, Decimal, int]],
 
 
 def after_state(group: GroupContext, contracts: int, new_legs: Sequence[Tuple[PricedLeg, int, Decimal]],
-                held: Optional[HeldLeg]) -> AfterState:
+                held: Optional[HeldLeg], also: Sequence[HeldLeg] = ()) -> AfterState:
     """The group after opening ``new_legs`` (``(leg, signed contracts, fill price)``: a short call ``-c`` at its bid,
-    a long put ``+c`` at its ask) and closing ``held`` at its conservative side (module notes, "After-state")."""
+    a long put ``+c`` at its ask) and closing ``held`` (and ``also``: a collar's other held leg) at its conservative
+    side (module notes, "After-state")."""
+    closed = ([] if held is None else [held]) + list(also)
+    realized_parts = [leg.realized for leg in closed]
     with localcontext(_DECIMAL_CONTEXT):
         premiums = sum((Decimal(count) * _MULTIPLIER * price for _leg, count, price in new_legs), _ZERO)
-        realized = held.realized if held is not None and held.realized is not None else _ZERO
+        realized = sum((part for part in realized_parts if part is not None), _ZERO)
         economic = group.stock_cost + premiums - realized
         options = [(leg.right, leg.strike, count) for leg, count, _price in new_legs]
         max_loss, max_profit, breakevens, unbounded_up = _profile(group.shares, options, economic)
@@ -1210,9 +1234,13 @@ def after_state(group: GroupContext, contracts: int, new_legs: Sequence[Tuple[Pr
     change = None
     if delta is not None and group.before.group_delta is not None:
         change = delta - group.before.group_delta
+    on_close: Optional[Decimal] = None
+    if closed:
+        on_close = None if any(part is None for part in realized_parts) else _money(
+            sum((part for part in realized_parts if part is not None), _ZERO))
     return AfterState(group_delta=delta, delta_change=change, max_loss=max_loss, max_profit=max_profit,
                       breakevens=breakevens, unbounded_up=unbounded_up,
-                      realized_on_close=None if held is None else held.realized)
+                      realized_on_close=on_close)
 
 
 def _short_call_caveat(leg: PricedLeg, spot: Decimal, events: EventContext) -> bool:
@@ -1247,6 +1275,27 @@ def _put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
         return True
     pair = put_exercise_carry(leg, ctx)
     return pair is not None and pair[0] < pair[1]
+
+
+def short_put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
+    """The early-assignment note of a short put (roadmap step 2.4): the same two tests as a long put's American caveat
+    (:func:`_put_caveat`: absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with a time value
+    at the mid below the interest on its strike to expiry). Where the holder of the put may do better exercising it
+    than holding it, the owner who is short it may be assigned before expiry, which the European model does not
+    price."""
+    return _put_caveat(leg, ctx)
+
+
+def short_put_event_reasons(ctx: EventContext, *, new_expiration: datetime.date,
+                            held_expiration: datetime.date) -> List[Reason]:
+    """The earnings label of a short put's replacement: an earnings release inside the new put's life beyond the held
+    put's (as :func:`short_call_event_reasons` reads it for a call). A short put has no ex-dividend label: a dividend
+    raises a put's value and is no reason to exercise it early."""
+    extra = ctx.extra_holidays
+    end = market_clock.exercise_cutoff_utc(new_expiration, False, None, extra)
+    start = market_clock.exercise_cutoff_utc(held_expiration, False, None, extra)
+    earnings = _earnings_reason(ctx, start, end)
+    return [] if earnings is None else [earnings]
 
 
 # --------------------------------------------------------------------------------------------
@@ -1367,6 +1416,49 @@ def replacement_call_candidate(leg: PricedLeg, ctx: PricingContext, group: Group
                    objective_scores=scores)
 
 
+def replacement_short_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, held: HeldLeg,
+                                    section: Any, events: EventContext) -> Candidate:
+    """A replacement for the held short put of a cash-secured put under ``[roll]`` (roadmap step 2.4): the held put
+    closed at its fresh ask, this one opened at its fresh bid, ``|held contracts|`` each (S7: the held put first). The
+    bands, the minimum credit and the roll test read ``[roll]`` as for a short call, with a put's time value
+    (``bid - max(0, K - S)``); ``strike_floor`` and ``ex_dividend`` are call rules and are not read."""
+    contracts = held.contracts
+    if leg.unpriced is not None:
+        return _unpriced(KIND_REPLACEMENT_SHORT_PUT, [leg], contracts, leg.unpriced)
+    spot = ctx.spot_mid
+    assert spot is not None and leg.bid is not None and leg.dte_calendar is not None and held.close_price is not None
+    reasons: List[Reason] = []
+    _call_bands(reasons, leg, section, ctx)
+    net = leg.bid - held.close_price
+    net_tv = net_time_value(leg.bid, held.close_price, spot, leg.strike, held.strike, "PUT")
+    rule = section.roll_rule() if hasattr(section, "roll_rule") else ("credit" if section.credit_only else "none")
+    if rule == structuring_config.ROLL_TEST_CREDIT and net < 0:
+        reasons.append(Reason(KEY_CREDIT_ONLY, CODE_DEBIT_ROLL, net, _ZERO))
+    if rule == structuring_config.ROLL_TEST_NET_TIME_VALUE and net_tv < 0:
+        reasons.append(Reason(KEY_ROLL_TEST, CODE_GIVES_UP_TIME_VALUE, net_tv, _ZERO))
+    kept, accepted = split_accepted(short_put_event_reasons(events, new_expiration=leg.expiration,
+                                                            held_expiration=held.expiration),
+                                    earnings_ok=group.earnings_ok, assign_ok=group.assign_ok,
+                                    earnings_policy=section.earnings, ex_dividend_policy=section.ex_dividend)
+    after = after_state(group, contracts, [(leg, -contracts, leg.bid)], held)
+    own_spot = leg_spot(leg, spot)
+    epd = extrinsic_per_day(leg.bid, own_spot, leg.strike, leg.dte_calendar, "PUT")
+    held_days = market_clock.dte(held.expiration, ctx.today, market_clock.UNIT_CALENDAR, False, ctx.extra_holidays)
+    net_e = net_extrinsic_per_added_day(leg.bid, held.close_price, spot, leg.strike, held.strike, leg.dte_calendar,
+                                        held_days, "PUT")
+    net_e_mid = (None if leg.mid is None or held.mid is None else
+                 net_extrinsic_per_added_day(leg.mid, held.mid, spot, leg.strike, held.strike, leg.dte_calendar,
+                                             held_days, "PUT"))
+    epd_mid = (None if leg.mid is None else
+               extrinsic_per_day(leg.mid, own_spot, leg.strike, leg.dte_calendar, "PUT"))
+    scores = {_OBJ.OBJECTIVE_EXTRINSIC_PER_DAY: (epd, epd_mid),
+              _OBJ.OBJECTIVE_NET_EXTRINSIC_PER_ADDED_DAY: (net_e, net_e_mid)}
+    return _finish(KIND_REPLACEMENT_SHORT_PUT, [leg], contracts, epd, reasons + kept, accepted,
+                   short_put_caveat(leg, ctx), after, extrinsic_bid=extrinsic(leg.bid, own_spot, leg.strike, "PUT"),
+                   net_credit=net, net_credit_total=_money(net * _MULTIPLIER * contracts), net_time_value=net_tv,
+                   objective_scores=scores)
+
+
 def _put_parts(leg: PricedLeg, ctx: PricingContext, section: Any, contracts: int,
                reasons: List[Reason]) -> Tuple[Optional[Decimal], Dict[str, Any]]:
     spot = ctx.spot_mid
@@ -1423,10 +1515,12 @@ def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupC
 
 
 def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any,
-                     events: EventContext) -> Candidate:
-    """A collar on the group's shares (a long put and a short call of one expiration, ``floor(n / 100)`` each) under
-    ``[collar]``: net debit ``D = put ask - call bid``, score the cap ``U`` (designer Q's D8)."""
-    contracts = group.contracts
+                     events: EventContext, held_call: Optional[HeldLeg] = None,
+                     contracts: Optional[int] = None) -> Candidate:
+    """A collar on the group's shares (a long put and a short call of one expiration, ``floor(n / 100)`` each, or
+    ``contracts``) under ``[collar]``: net debit ``D = put ask - call bid``, score the cap ``U`` (designer Q's D8). A
+    collar's replacement passes the held call, so the call's events count only beyond its life."""
+    contracts = group.contracts if contracts is None else contracts
     spot = ctx.spot_mid
     assert spot is not None
     floor, cap = floor_pct(spot, put.strike), cap_pct(spot, call.strike)
@@ -1445,7 +1539,7 @@ def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group
         reasons.append(Reason(KEY_MAX_NET_DEBIT, CODE_NET_DEBIT_ABOVE_BUDGET, debit, section.max_net_debit))
     if section.strike_floor == "cost_basis" and call.strike < group.s0:
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST, call.strike, payoff.quantize_price(group.s0)))
-    kept, accepted = _call_events(call, group, section, events, None)
+    kept, accepted = _call_events(call, group, section, events, held_call)
     after = after_state(group, contracts, [(put, contracts, put.ask), (call, -contracts, call.bid)], None)
     caveat = _put_caveat(put, ctx) or _short_call_caveat(call, spot, events)
     scores = {_OBJ.OBJECTIVE_CAP_WITHIN_BUDGET: (cap, None),
@@ -1456,6 +1550,27 @@ def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group
     return _finish(KIND_COLLAR, [put, call], contracts, cap, reasons + kept, accepted, caveat, after, floor_pct=floor,
                    cap_pct=cap, net_debit=debit, net_debit_total=_money(debit * _MULTIPLIER * contracts),
                    objective_scores=scores)
+
+
+def replacement_collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group: GroupContext,
+                                 section: Any, events: EventContext, held_put: HeldLeg,
+                                 held_call: HeldLeg) -> Candidate:
+    """A collar's two legs replaced as a unit under ``[collar]`` (roadmap step 2.4): the new pair judged as a fresh
+    collar is (floor, cap, its own net debit against ``max_net_debit``, strike floor, events beyond the held call's
+    life), ``|held contracts|`` each, ranked by the section's objective; the after-state and the roll's net per share
+    also close the held put at its bid and the held call at its ask."""
+    contracts = held_put.contracts
+    base = collar_candidate(put, call, ctx, group, section, events, held_call, contracts)
+    if base.status == STATUS_UNPRICED:
+        return replace(base, kind=KIND_REPLACEMENT_COLLAR)
+    assert put.ask is not None and call.bid is not None
+    assert held_put.close_price is not None and held_call.close_price is not None
+    after = after_state(group, contracts, [(put, contracts, put.ask), (call, -contracts, call.bid)], held_put,
+                        (held_call,))
+    with localcontext(_DECIMAL_CONTEXT):
+        net = (call.bid - put.ask) + (held_put.close_price - held_call.close_price)
+    return replace(base, kind=KIND_REPLACEMENT_COLLAR, after=after, net_credit=net,
+                   net_credit_total=_money(net * _MULTIPLIER * contracts))
 
 
 @dataclass(frozen=True)
@@ -1517,7 +1632,8 @@ def _priced_options(chains: Mapping[datetime.date, Sequence[Quote]], right: str,
 
 
 def candidates_for(kind: str, chains: Mapping[datetime.date, Sequence[Quote]], ctx: PricingContext, group: GroupContext,
-                   section: Any, events: EventContext, *, held: Optional[HeldLeg] = None) -> CandidateSet:
+                   section: Any, events: EventContext, *, held: Optional[HeldLeg] = None,
+                   held_call: Optional[HeldLeg] = None) -> CandidateSet:
     """Every candidate of ``kind`` in the evaluated ``chains`` (pure; order-independent: ranking sorts them)."""
     if kind == KIND_COVERED_CALL:
         return CandidateSet([covered_call_candidate(leg, ctx, group, section, events)
@@ -1535,22 +1651,35 @@ def candidates_for(kind: str, chains: Mapping[datetime.date, Sequence[Quote]], c
             raise ValueError("a replacement put needs the held put")
         return CandidateSet([replacement_put_candidate(leg, ctx, group, held, section)
                              for leg in _priced_options(chains, "PUT", ctx)])
-    if kind != KIND_COLLAR:
+    if kind == KIND_REPLACEMENT_SHORT_PUT:
+        if held is None:
+            raise ValueError("a replacement short put needs the held put")
+        return CandidateSet([replacement_short_put_candidate(leg, ctx, group, held, section, events)
+                             for leg in _priced_options(chains, "PUT", ctx)])
+    if kind not in (KIND_COLLAR, KIND_REPLACEMENT_COLLAR):
         raise ValueError("unknown candidate kind %r" % (kind,))
+    if kind == KIND_REPLACEMENT_COLLAR and (held is None or held_call is None):
+        raise ValueError("a collar's replacement needs the held put and the held call")
+
+    def pair(put: PricedLeg, call: PricedLeg) -> Candidate:
+        if kind == KIND_REPLACEMENT_COLLAR:
+            assert held is not None and held_call is not None
+            return replacement_collar_candidate(put, call, ctx, group, section, events, held, held_call)
+        return collar_candidate(put, call, ctx, group, section, events)
+
     spot = ctx.spot_mid
     assert spot is not None
     puts = _priced_options(chains, "PUT", ctx)
     calls = _priced_options(chains, "CALL", ctx)
     in_puts = [leg for leg in puts if section.floor_pct[0] <= floor_pct(spot, leg.strike) <= section.floor_pct[1]]
     in_calls = [leg for leg in calls if section.cap_pct[0] <= cap_pct(spot, leg.strike) <= section.cap_pct[1]]
-    pairs = [collar_candidate(put, call, ctx, group, section, events) for put in in_puts for call in in_calls
-             if put.expiration == call.expiration]
+    pairs = [pair(put, call) for put in in_puts for call in in_calls if put.expiration == call.expiration]
     low, high = spot * (1 - SWITCH_REACH), spot * (1 + SWITCH_REACH)
     near_puts = [leg for leg in puts if leg not in in_puts and _reaches(floor_pct(low, leg.strike),
                                                                         floor_pct(high, leg.strike), section.floor_pct)]
     near_calls = [leg for leg in calls if leg not in in_calls and _reaches(cap_pct(high, leg.strike),
                                                                            cap_pct(low, leg.strike), section.cap_pct)]
-    extra = tuple(collar_candidate(put, call, ctx, group, section, events)
+    extra = tuple(pair(put, call)
                   for put, call in [(p, c) for p in near_puts + in_puts for c in near_calls + in_calls]
                   if put.expiration == call.expiration and (put in near_puts or call in near_calls))
     return CandidateSet(pairs, {"puts": len(puts) - len(in_puts), "calls": len(calls) - len(in_calls)}, extra)
@@ -1884,26 +2013,31 @@ def _open_shares(group: PositionGroup) -> Decimal:
 
 
 ROLL_SECTIONS: Dict[str, str] = {grouping.STRUCTURE_COVERED_CALL: "roll",
-                                 grouping.STRUCTURE_PROTECTIVE_PUT: "protective_put"}
+                                 grouping.STRUCTURE_PROTECTIVE_PUT: "protective_put",
+                                 grouping.STRUCTURE_CASH_SECURED_PUT: "roll", grouping.STRUCTURE_COLLAR: "collar"}
 """The structures a roll analysis covers and the ``structuring.toml`` section each is judged under: a covered call's
-short call under ``[roll]``, a protective put's long put under ``[protective_put]`` (roadmap step 2.4)."""
+short call and a cash-secured put's short put under ``[roll]``, a protective put's long put under
+``[protective_put]``, a collar's two legs under ``[collar]`` (roadmap step 2.4)."""
 ROLL_KINDS: Dict[str, str] = {grouping.STRUCTURE_COVERED_CALL: KIND_REPLACEMENT_CALL,
-                              grouping.STRUCTURE_PROTECTIVE_PUT: KIND_REPLACEMENT_PUT}
+                              grouping.STRUCTURE_PROTECTIVE_PUT: KIND_REPLACEMENT_PUT,
+                              grouping.STRUCTURE_CASH_SECURED_PUT: KIND_REPLACEMENT_SHORT_PUT,
+                              grouping.STRUCTURE_COLLAR: KIND_REPLACEMENT_COLLAR}
 """The candidate kind of each structure's roll analysis."""
 
 
 def roll_applicability(group: PositionGroup, criteria: StructuringConfig) -> Optional[Applicability]:
-    """``None`` when a roll analysis applies: the open short call of a ``covered_call`` group (S1) or the open long put
-    of a ``protective_put`` group (roadmap step 2.4); otherwise NOT_APPLICABLE with its reason (an index underlying, no
-    open leg, another structure, the structure's section disabled: ``[roll]`` or ``[protective_put]``)."""
+    """``None`` when a roll analysis applies: the open short call of a ``covered_call`` group (S1), the open long put
+    of a ``protective_put`` group, the open short put of a ``cash_secured_put`` group or both legs of a ``collar``
+    group (roadmap step 2.4); otherwise NOT_APPLICABLE with its reason (an index underlying, no open leg, another
+    structure, the structure's section disabled: ``[roll]``, ``[protective_put]`` or ``[collar]``)."""
     for answer in (_index(group), _no_open_legs(group)):
         if answer is not None:
             return answer
     if group.structure not in ROLL_SECTIONS:
         return Applicability(VERDICT_NOT_APPLICABLE, NA_STRUCTURE, "%s is a %s: the roll analysis covers the short "
-                             "call of a covered call and the long put of a protective put; the roll analysis of a "
-                             "short put or a collar is planned for Stage 2 (not in this release)"
-                             % (_subject(group), _words(group)))
+                             "call of a covered call, the long put of a protective put, the short put of a "
+                             "cash-secured put and the two legs of a collar; a vertical's other choices are planned "
+                             "for Stage 2 (not in this release)" % (_subject(group), _words(group)))
     return _disabled(criteria, ROLL_SECTIONS[group.structure])
 
 
@@ -1941,8 +2075,8 @@ def proposal_applicability(group: PositionGroup, structure: str, criteria: Struc
 def ticket_applicability(group: PositionGroup, action: str,
                          criteria: Optional[StructuringConfig] = None) -> Optional[Applicability]:
     """``None`` when ``action`` applies to the group (S1); otherwise NOT_APPLICABLE with its reason. ROLL reads
-    ``[roll]`` (a covered call's short call) or ``[protective_put]`` (a protective put's long put) when ``criteria``
-    is given."""
+    ``[roll]`` (a covered call's short call, a cash-secured put's short put) or ``[protective_put]`` (a protective
+    put's long put) when ``criteria`` is given."""
     if action not in ACTIONS:
         raise ValueError("action must be one of %s, got %r" % (", ".join(ACTIONS), action))
     for answer in (_index(group), _no_open_legs(group)):
@@ -1970,12 +2104,13 @@ def ticket_applicability(group: PositionGroup, action: str,
             return None if criteria is None else _disabled(criteria, "roll")
         if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
             return None if criteria is None else _disabled(criteria, "protective_put")
+        if group.structure == grouping.STRUCTURE_CASH_SECURED_PUT:
+            return None if criteria is None else _disabled(criteria, "roll")
         if group.structure == grouping.STRUCTURE_COLLAR:
-            return refuse(NA_STRUCTURE, "%s is a collar: a collar's legs are replaced as a unit, which is planned for "
-                          "Stage 2 (not in this release)" % subject)
-        return refuse(NA_STRUCTURE, "%s is a %s: a ROLL ticket replaces the short call of a covered call or the long put "
-                      "of a protective put; other replacements are planned for Stage 2 (not in this release)"
-                      % (subject, _words(group)))
+            return None if criteria is None else _disabled(criteria, "collar")
+        return refuse(NA_STRUCTURE, "%s is a %s: a ROLL ticket replaces the short call of a covered call, the long put "
+                      "of a protective put, the short put of a cash-secured put or the two legs of a collar; a "
+                      "vertical's other choices are planned for Stage 2 (not in this release)" % (subject, _words(group)))
     return None
 
 
@@ -2195,7 +2330,8 @@ def valid_until(now: datetime.datetime, session: SessionInfo,
 
 ANSWER_KEYS: Tuple[str, ...] = (
     "tool", "kind", "trade_id", "group_id", "structure", "structure_requested", "section", "underlying", "account",
-    "account_type", "verdict", "cause", "reason", "objective", "criteria", "spot", "held", "before", "shares",
+    "account_type", "verdict", "cause", "reason", "objective", "criteria", "spot", "held", "held_call", "before",
+    "shares",
     "contracts", "stress", "expirations", "candidates", "best", "tie_break", "passed", "failed", "unpriced",
     "failure_counts", "outside_bands", "after", "model_note", "carry", "requests", "warnings",
 )
@@ -2225,6 +2361,8 @@ class Answer:
     pricing: Optional[PricingContext] = None
     events: Optional[EventContext] = None
     held: Optional[HeldLeg] = None
+    held_call: Optional[HeldLeg] = None
+    """A collar's held short call (its held put is :attr:`held`); ``None`` otherwise."""
     section: Any = None
     objective: Optional[Objective] = None
     expirations: Optional[ExpirationsBlock] = None
@@ -2286,6 +2424,7 @@ class Answer:
             "verdict": self.verdict, "cause": self.cause, "reason": self.reason,
             "objective": None if self.objective is None else objective_dict(self.objective),
             "criteria": self.criteria.as_dict(), "spot": spot, "held": None if self.held is None else self.held.as_dict(),
+            "held_call": None if self.held_call is None else self.held_call.as_dict(),
             "before": None if self.before is None else self.before.as_dict(),
             "shares": None if self.group_context is None else self.group_context.shares, "contracts": self.contracts,
             "stress": self.stress, "expirations": None if self.expirations is None else self.expirations.as_dict(),
@@ -2546,14 +2685,14 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     attach_chain_carry(answer, chains)
     assert answer.events is not None and answer.pricing is not None and answer.group_context is not None
     built = candidates_for(answer.kind, chains, answer.pricing, answer.group_context, answer.section, answer.events,
-                           held=answer.held)
+                           held=answer.held, held_call=answer.held_call)
     answer.outside_bands = built.outside_bands
     answer.ranking = rank_candidates(built.candidates, answer.kind, answer.objective)
     if answer.ranking.best is not None and answer.objective.id == structuring_config.OBJECTIVE_BAND_CENTRE:
         answer.ranking = replace(answer.ranking, switches=band_centre_switches(answer.ranking.candidates, answer.kind,
                                                                                answer.objective, answer.section,
                                                                                answer.pricing, built.switch_pool))
-    if answer.ranking.priced == 0 and (built.candidates or answer.kind != KIND_COLLAR):
+    if answer.ranking.priced == 0 and (built.candidates or answer.kind not in (KIND_COLLAR, KIND_REPLACEMENT_COLLAR)):
         return _unavailable(answer, CAUSE_NO_CANDIDATE_PRICED, no_candidate_words(built.candidates))
     return _close(answer, answer.ranking.verdict)
 
@@ -2587,7 +2726,8 @@ def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringCo
     """``roll_analysis.py``: every replacement short call of a later standard monthly inside ``[roll] dte`` for the
     short call of a ``covered_call`` group, ranked by the ``[roll]`` objective; for the long put of a
     ``protective_put`` group, every replacement long put of a later standard monthly inside ``[protective_put] dte``,
-    labelled and ranked under ``[protective_put]`` (roadmap step 2.4; module notes)."""
+    labelled and ranked under ``[protective_put]``; for the short put of a ``cash_secured_put`` group, every
+    replacement short put inside ``[roll] dte``, under ``[roll]`` (roadmap step 2.4; module notes)."""
     answer = Answer(tool=TOOL_ROLL_ANALYSIS, kind=KIND_REPLACEMENT_CALL, trade_id=trade_id, section_name="roll",
                     criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL, criteria))
     stopped = _start(answer, market)
@@ -2596,14 +2736,28 @@ def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringCo
     group = answer.target.group if answer.target is not None else None
     assert group is not None
     put = group.structure == grouping.STRUCTURE_PROTECTIVE_PUT
+    short_put = group.structure == grouping.STRUCTURE_CASH_SECURED_PUT
+    collar = group.structure == grouping.STRUCTURE_COLLAR
+    if collar:  # judged under [collar], both legs together
+        answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_COLLAR, "collar", criteria.collar
+        answer.objective = kind_objective(KIND_REPLACEMENT_COLLAR, criteria)
     if put:  # judged under [protective_put], which also names the section a disabled answer reports
         answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_PUT, "protective_put", criteria.protective_put
         answer.objective = kind_objective(KIND_REPLACEMENT_PUT, criteria)
+    elif short_put:  # judged under [roll], as a short call's roll
+        answer.kind = KIND_REPLACEMENT_SHORT_PUT
+        answer.objective = kind_objective(KIND_REPLACEMENT_SHORT_PUT, criteria)
     applicability = roll_applicability(group, criteria)
     if applicability is not None:
         return _close(answer, applicability.verdict, applicability.code, applicability.reason)
-    row, held_words = (_option_row(group, "PUT", False), "long put") if put else (_option_row(group, "CALL", True),
-                                                                                  "short call")
+    if collar:
+        return _collar_roll(answer, group)
+    if put:
+        row, held_words = _option_row(group, "PUT", False), "long put"
+    elif short_put:
+        row, held_words = _option_row(group, "PUT", True), "short put"
+    else:
+        row, held_words = _option_row(group, "CALL", True), "short call"
     if row is None:  # the group holds its one option leg on several rows (lots)
         return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (trade_id, held_words))
     stopped = _priced_context(answer) or _held(answer, row)
@@ -2612,6 +2766,46 @@ def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringCo
     assert answer.held is not None
     answer.contracts = answer.held.contracts
     return _evaluate(answer, answer.held.expiration)
+
+
+NA_COLLAR_SIZES_WORDS: str = ("%s holds %s long put%s and %s short call%s: a collar's legs are replaced as a unit, one "
+                              "put per call")
+"""The NOT_APPLICABLE reason of a collar whose two legs differ in size."""
+
+
+def _collar_legs(answer: Answer, group: PositionGroup) -> Optional[Answer]:
+    """Load a collar's held put (:attr:`Answer.held`) and held call (:attr:`Answer.held_call`); NOT_APPLICABLE when
+    either is on more than one row or the two differ in size, UNAVAILABLE when either quote is unusable."""
+    put_row, call_row = _option_row(group, "PUT", False), _option_row(group, "CALL", True)
+    if put_row is None:
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (answer.trade_id, "long put"))
+    if call_row is None:
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (answer.trade_id, "short call"))
+    puts, calls = abs(put_row.open_quantity), abs(call_row.open_quantity)
+    if puts != calls:
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_COLLAR_SIZES_WORDS % (
+            answer.trade_id, _plain(puts), "" if puts == 1 else "s", _plain(calls), "" if calls == 1 else "s"))
+    stopped = _priced_context(answer) or _held(answer, put_row)
+    if stopped is not None:
+        return stopped
+    target, group_book = answer.target, answer.book
+    assert target is not None and group_book is not None
+    answer.held_call = held_leg(call_row, group_book.verdicts.get(call_row.compact_symbol),
+                                group_book.leg_records.get(call_row.row_number), target.extra_holidays)
+    if not answer.held_call.usable:
+        return _unavailable(answer, CAUSE_HELD_LEG_UNUSABLE)
+    return None
+
+
+def _collar_roll(answer: Answer, group: PositionGroup) -> Answer:
+    """The roll analysis of a collar: both legs replaced as a unit by a pair of one standard monthly after both held
+    legs, inside ``[collar] dte`` (roadmap step 2.4)."""
+    stopped = _collar_legs(answer, group)
+    if stopped is not None:
+        return stopped
+    assert answer.held is not None and answer.held_call is not None
+    answer.contracts = answer.held.contracts
+    return _evaluate(answer, max(answer.held.expiration, answer.held_call.expiration))
 
 
 def _free_shares(target: Optional[Target], group: PositionGroup, structure: str) -> Optional[Applicability]:
@@ -2674,11 +2868,14 @@ def run_proposal(market: MarketData, trade_id: str, structure: str, criteria: St
 
 
 def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date, strike: Decimal,
-                    criteria: StructuringConfig, *, require_live: bool = True) -> Answer:
+                    criteria: StructuringConfig, *, require_live: bool = True,
+                    call_strike: Optional[Decimal] = None) -> Answer:
     """``exit_ticket.py --action ROLL``: the one replacement the owner names (the held leg's root and right, the given
-    expiration and strike), priced and labelled through the same code path: a short call under ``[roll]`` or a long
-    put under ``[protective_put]`` (S1, S2). ``ValueError`` when ``expiration`` is not after the held leg's (a usage
-    error in the tool). A ticket needs a live session (``require_live``: S5)."""
+    expiration and strike), priced and labelled through the same code path: a short call or a cash-secured put's short
+    put under ``[roll]``, a long put under ``[protective_put]``, or a collar's two legs under ``[collar]``, the new put
+    at ``strike`` and the new call at ``call_strike`` (S1, S2; roadmap step 2.4). ``ValueError`` when ``expiration`` is
+    not after the held legs', or when ``call_strike`` is missing for a collar or given for anything else (a usage error
+    in the tool). A ticket needs a live session (``require_live``: S5)."""
     answer = Answer(tool=TOOL_EXIT_TICKET, kind=KIND_REPLACEMENT_CALL, trade_id=trade_id, section_name="roll",
                     criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL, criteria))
     stopped = _start(answer, market)
@@ -2690,14 +2887,25 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     applicability = ticket_applicability(group, ACTION_ROLL, criteria)
     if applicability is not None:
         return _close(answer, applicability.verdict, applicability.code, applicability.reason)
+    if group.structure == grouping.STRUCTURE_COLLAR:
+        if call_strike is None:
+            raise ValueError("a collar's replacement needs the new call's strike as well as the new put's")
+        return _collar_replacement(answer, group, expiration, strike, call_strike, criteria, require_live)
+    if call_strike is not None:
+        raise ValueError("a second strike applies to a collar's replacement only")
     if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_PUT, "protective_put", criteria.protective_put
         answer.objective = kind_objective(KIND_REPLACEMENT_PUT, criteria)
         row = _option_row(group, "PUT", False)
+    elif group.structure == grouping.STRUCTURE_CASH_SECURED_PUT:
+        answer.kind = KIND_REPLACEMENT_SHORT_PUT
+        answer.objective = kind_objective(KIND_REPLACEMENT_SHORT_PUT, criteria)
+        row = _option_row(group, "PUT", True)
     else:
         row = _option_row(group, "CALL", True)
     if row is None or row.occ is None:
-        held_words = "long put" if answer.kind == KIND_REPLACEMENT_PUT else "short call"
+        held_words = {KIND_REPLACEMENT_PUT: "long put", KIND_REPLACEMENT_SHORT_PUT: "short put"}.get(answer.kind,
+                                                                                                    "short call")
         return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (trade_id, held_words))
     if expiration <= row.occ.expiration:
         raise ValueError("the replacement's expiration %s must be later than the held leg's %s"
@@ -2732,9 +2940,66 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     leg = price_listed(entries[0][0], entries[0][1], answer.pricing)
     if answer.kind == KIND_REPLACEMENT_PUT:
         candidate = replacement_put_candidate(leg, answer.pricing, answer.group_context, answer.held, answer.section)
+    elif answer.kind == KIND_REPLACEMENT_SHORT_PUT:
+        candidate = replacement_short_put_candidate(leg, answer.pricing, answer.group_context, answer.held,
+                                                    answer.section, answer.events)
     else:
         candidate = replacement_call_candidate(leg, answer.pricing, answer.group_context, answer.held, answer.section,
                                                answer.events)
+    answer.ranking = rank_candidates([candidate], answer.kind, answer.objective)
+    return _close(answer, VERDICT_PRICED)
+
+
+def _listed_one(chain: Sequence[Quote], right: str, strike: Decimal, expiration: datetime.date,
+                root: str) -> List[Quote]:
+    wanted = expiry.plain_decimal(Decimal(strike))
+    return [q for q in chain if (q.option_type or "").upper() == right and q.strike is not None
+            and expiry.plain_decimal(q.strike) == wanted and q.expiration_date == expiration
+            and (q.root_symbol or root).strip().upper() == root]
+
+
+def _collar_replacement(answer: Answer, group: PositionGroup, expiration: datetime.date, put_strike: Decimal,
+                        call_strike: Decimal, criteria: StructuringConfig, require_live: bool) -> Answer:
+    """A collar's ROLL ticket: the new put and call the owner names, of one expiration after both held legs, priced
+    and labelled as one :func:`replacement_collar_candidate` under ``[collar]`` (roadmap step 2.4)."""
+    answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_COLLAR, "collar", criteria.collar
+    answer.objective = kind_objective(KIND_REPLACEMENT_COLLAR, criteria)
+    target = answer.target
+    assert target is not None
+    put_row, call_row = _option_row(group, "PUT", False), _option_row(group, "CALL", True)
+    for row in (put_row, call_row):
+        if row is not None and row.occ is not None and expiration <= row.occ.expiration:
+            raise ValueError("the replacement's expiration %s must be later than the held leg's %s"
+                             % (expiration.isoformat(), row.occ.expiration.isoformat()))
+    if require_live and put_row is not None and call_row is not None and not ticket_session_live(target.session):
+        return _unavailable(answer, CAUSE_MARKET_CLOSED, TICKET_CLOSED_WORDS)
+    stopped = _collar_legs(answer, group)
+    if stopped is not None:
+        return stopped
+    assert answer.held is not None and answer.held_call is not None and put_row is not None and call_row is not None
+    assert put_row.occ is not None and call_row.occ is not None
+    answer.contracts = answer.held.contracts
+    chains, block, warnings = load_chains(target, [expiration])
+    answer.warnings.extend(warnings)
+    answer.expirations = block
+    if block.not_evaluated:
+        return _unavailable(answer, CAUSE_CHAIN_NOT_SERVED)
+    stopped = align_spot(answer, chains)
+    if stopped is not None:
+        return stopped
+    attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
+    assert answer.pricing is not None and answer.group_context is not None and answer.events is not None
+    puts = _listed_one(chains[expiration], "PUT", put_strike, expiration, put_row.occ.root)
+    calls = _listed_one(chains[expiration], "CALL", call_strike, expiration, call_row.occ.root)
+    answer.chains = {expiration: puts + calls}
+    put_entries, call_entries = listed_options({expiration: puts}, "PUT"), listed_options({expiration: calls}, "CALL")
+    if not put_entries or not call_entries:
+        return _unavailable(answer, CAUSE_REPLACEMENT_NOT_LISTED)
+    put = price_listed(put_entries[0][0], put_entries[0][1], answer.pricing)
+    call = price_listed(call_entries[0][0], call_entries[0][1], answer.pricing)
+    candidate = replacement_collar_candidate(put, call, answer.pricing, answer.group_context, answer.section,
+                                             answer.events, answer.held, answer.held_call)
     answer.ranking = rank_candidates([candidate], answer.kind, answer.objective)
     return _close(answer, VERDICT_PRICED)
 
@@ -2746,7 +3011,9 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
 
 def approval_legs(answer: Answer, candidate: Candidate) -> List[approval.Leg]:
     """The candidate's legs in the S7 order: a short-call roll closes the held call, then opens the new one; a long-put
-    roll opens the new put, then closes the held one; a collar opens the put, then the call; a covered call or a
+    roll opens the new put, then closes the held one; a short-put roll closes the held put, then opens the new one; a
+    collar's roll opens the new put, closes the held put, closes the held call, then opens the new call (protected
+    and covered at every step); a collar opens the put, then the call; a covered call or a
     protective put is its one opening leg."""
     count = candidate.contracts
     legs: List[approval.Leg] = []
@@ -2760,6 +3027,15 @@ def approval_legs(answer: Answer, candidate: Candidate) -> List[approval.Leg]:
     elif candidate.kind == KIND_REPLACEMENT_PUT and held is not None:
         legs.extend(opening)
         legs.append(approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_LONG, approval.INSTRUMENT_PUT, held.contracts))
+    elif candidate.kind == KIND_REPLACEMENT_COLLAR and held is not None and answer.held_call is not None:
+        legs.append(opening[0])
+        legs.append(approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_LONG, approval.INSTRUMENT_PUT, held.contracts))
+        legs.append(approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_CALL,
+                                 answer.held_call.contracts))
+        legs.append(opening[1])
+    elif candidate.kind == KIND_REPLACEMENT_SHORT_PUT and held is not None:
+        legs.append(approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, held.contracts))
+        legs.append(approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, count))
     else:
         legs.extend(opening)
     return legs

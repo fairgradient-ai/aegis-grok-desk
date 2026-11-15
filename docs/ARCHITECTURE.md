@@ -191,7 +191,7 @@ step's engine, the American lattice `scripts/aegis_desk/lattice.py`, is in the t
 
 - The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with American pricing,
   scenario and event stress, volatility context and a decision calendar, are planned for Stage 2 (not in this release).
-- For the Aegis Structuring Desk, the roll analysis of short puts and collars, weekly expirations, a
+- For the Aegis Structuring Desk, the roll analysis of collars, weekly expirations, a
   cash-balance check and per-account approval levels are planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).

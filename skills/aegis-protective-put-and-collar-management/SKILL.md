@@ -121,10 +121,10 @@ unavailable: your rule FLOOR: underlying SPY: no usable mark (quote grade F)
   in a proposal the owner asks for.
 - Only when the owner asks, the Aegis Structuring Desk prices a hedge's choices: a CLOSE, MONETIZE_PUT or
   UNWIND_STOCK ticket, a roll analysis of a protective put's long put (`aegis-roll-decision-framework`), a ROLL
-  ticket for the long put the owner names, and a protective put or a collar on shares held alone
-  (`aegis-ticket-and-unwind-order`, `aegis-overlay-proposals`).
-- A collar's legs are replaced as a unit, and a roll analysis of a collar, and stress tests of a hedge through an
-  event, are planned for Stage 2 (not in this release).
+  ticket for the long put the owner names, a roll analysis and a ROLL ticket for a collar's two legs replaced as a
+  unit, and a protective put or a collar on shares held alone (`aegis-ticket-and-unwind-order`,
+  `aegis-overlay-proposals`).
+- Stress tests of a hedge through an event are planned for Stage 2 (not in this release).
 - The example rules read absolute delta; none of them reads a signed delta.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.
