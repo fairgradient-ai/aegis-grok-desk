@@ -853,7 +853,7 @@ Payload (`--json` envelope key `payload`):
 - script: `scripts/roll_analysis.py`
 - tool version: 1.0.0
 - mode: read-only
-- description: on the owner's request only: the replacement candidates for the short call of a covered call, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
+- description: on the owner's request only: the replacement candidates for the short call of a covered call or the long put of a protective put, priced from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its declared objective; names one best candidate when one passes every criterion; never in a routine
 - network access: GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and /v1beta1/options/snapshots/<UNDERLYING>, and https://paper-api.alpaca.markets/v2/options/contracts (expirations and chain listings) only, through the quote cache (no new fetch once a run has made 40 requests; at most 4 chains a run); none with --offline
 
 | Flag | Value | Help |
@@ -865,7 +865,7 @@ Payload (`--json` envelope key `payload`):
 | `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
 | `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
-| `--trade` | `AG-YYYYMMDD-NN` | the trade id of a covered call group in positions.csv (required) |
+| `--trade` | `AG-YYYYMMDD-NN` | the trade id of a covered call or protective put group in positions.csv (required) |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
@@ -888,18 +888,18 @@ Payload (`--json` envelope key `payload`):
 - `failure_counts`: `"{structuring.toml key: n} | null (the failing candidates; the unpriced apart)"`
 - `files`: `"{json: reports/rolls/<trade_id>-<YYYYMMDDTHHMMSSZ>.json, md: ....md, written: boolean (false: the same bytes were already there)} | null (written only for BEST and NONE_QUALIFIES, a complete evaluation)"`
 - `group_id`: `"string | null"`
-- `held`: `"{row_number, occ, root, right, side, contracts, strike, expiration, last_trading_day, bid, ask, mid, spread_pct, grade, quote_status, quote_age_min, as_of, iv, delta, entry_price_per_share, remaining_cost_basis, close_price, close_side, note, realized} | null (the short call every candidate closes, at its fresh ask)"`
+- `held`: `"{row_number, occ, root, right, side, contracts, strike, expiration, last_trading_day, bid, ask, mid, spread_pct, grade, quote_status, quote_age_min, as_of, iv, delta, entry_price_per_share, remaining_cost_basis, close_price, close_side, note, realized} | null (the short call every candidate closes, at its fresh ask, or the long put, at its fresh bid)"`
 - `journal`: `"journal/structuring.jsonl | null (one record per printed text: exit 0 or 20)"`
-- `kind`: `"replacement_call"`
+- `kind`: `"replacement_call | replacement_put (a protective put's long put)"`
 - `lint`: `{"numbers_checked": "integer", "ok": "boolean (false: exit 1 lint_failed)", "problems": ["string"]}`
 - `message`: `"string: the text exactly as printed (the WITHHELD line and the footer when the lint fails)"`
 - `model_note`: `"string (European Black-Scholes-Merton; early exercise not modelled)"`
-- `objective`: `{"direction": "higher | lower", "formula": "string", "id": "extrinsic_per_day", "unit": "string", "words": "string"}`
+- `objective`: `{"direction": "higher | lower", "formula": "string", "id": "the section's objective (extrinsic_per_day by default for a call, stress_cost_per_day for a put)", "unit": "string", "words": "string"}`
 - `outside_bands`: `"null"`
 - `passed`: `"integer | null"`
 - `reason`: `"string | null (the desk's own words for a verdict that prices nothing)"`
 - `requests`: `"{made, chains, per_run_max_requests, per_run_max_chains, budget_left} | null (no market data opened)"`
-- `section`: `"roll (the structuring.toml section the candidates are judged under)"`
+- `section`: `"roll | protective_put (the structuring.toml section the candidates are judged under)"`
 - `shares`: `"decimal string | null (the group's open shares)"`
 - `spot`: `"{symbol, bid, ask, mid, grade, as_of} | null"`
 - `stress`: `"null"`

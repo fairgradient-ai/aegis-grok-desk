@@ -120,9 +120,10 @@ unavailable: your rule FLOOR: underlying SPY: no usable mark (quote grade F)
   `stress_cost_per_day` ranks new puts by their ask per day per 100 of loss covered at the owner's stress drop, only
   in a proposal the owner asks for.
 - Only when the owner asks, the Aegis Structuring Desk prices a hedge's choices: a CLOSE, MONETIZE_PUT or
-  UNWIND_STOCK ticket, a ROLL ticket for a protective put's long put the owner names, and a protective put or a
-  collar on shares held alone (`aegis-ticket-and-unwind-order`, `aegis-overlay-proposals`).
-- A collar's legs are replaced as a unit, and a roll analysis of a hedge, and stress tests of a hedge through an
+  UNWIND_STOCK ticket, a roll analysis of a protective put's long put (`aegis-roll-decision-framework`), a ROLL
+  ticket for the long put the owner names, and a protective put or a collar on shares held alone
+  (`aegis-ticket-and-unwind-order`, `aegis-overlay-proposals`).
+- A collar's legs are replaced as a unit, and a roll analysis of a collar, and stress tests of a hedge through an
   event, are planned for Stage 2 (not in this release).
 - The example rules read absolute delta; none of them reads a signed delta.
 

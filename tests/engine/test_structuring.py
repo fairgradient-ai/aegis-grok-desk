@@ -33,8 +33,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import (alpaca_client, calendar_events, greeks, grouping, iv, market_clock, payoff, pnl, positions_csv,
-                        quote_cache, quote_qc, structuring, structuring_config, units)
+from aegis_desk import (alpaca_client, approval, calendar_events, greeks, grouping, iv, market_clock, payoff, pnl,
+                        positions_csv, quote_cache, quote_qc, structuring, structuring_config, units)
 from aegis_desk import market_types
 from aegis_desk.market_types import Quote
 
@@ -576,17 +576,27 @@ CLOSED_CALL = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-202611
 
 
 class ApplicabilityTest(unittest.TestCase):
-    def test_roll_analysis_covers_the_short_call_of_a_covered_call_only(self) -> None:
+    def test_roll_analysis_covers_a_covered_calls_short_call_and_a_protective_puts_long_put(self) -> None:
         self.assertIsNone(S.roll_applicability(group_of(SHARES, CALL), CRITERIA))
-        for rows, words in (((SHARES, PUT), "protective put"), ((SHARES, PUT, CALL), "collar"),
-                            ((SHORT_PUT,), "cash-secured put"), ((SHARES,), "long stock"),
+        self.assertIsNone(S.roll_applicability(group_of(SHARES, PUT), CRITERIA))
+        for rows, words in (((SHARES, PUT, CALL), "collar"), ((SHORT_PUT,), "cash-secured put"),
+                            ((SHARES,), "long stock"), ((PUT,), "long put"),
                             ((CALL.replace("-2,", "-1,").replace("-560.00", "-280.00"),
                               LONG_CALL.replace(",2,", ",1,").replace("240.00", "120.00")), "call credit vertical")):
             with self.subTest(words=words):
                 answer = S.roll_applicability(group_of(*rows), CRITERIA)
                 self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_STRUCTURE), (answer.verdict, answer.code))
-                self.assertIn(words, answer.reason)
-                self.assertEqual(words == "protective put", "a ROLL ticket" in answer.reason)
+                self.assertIn("is a %s:" % words, answer.reason)
+                self.assertIn("the short call of a covered call and the long put of a protective put", answer.reason)
+                self.assertNotIn("a ROLL ticket", answer.reason)
+        put_off = dataclasses.replace(CRITERIA, protective_put=dataclasses.replace(CRITERIA.protective_put,
+                                                                                   enabled=False))
+        answer = S.roll_applicability(group_of(SHARES, PUT), put_off)
+        self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_DISABLED), (answer.verdict, answer.code))
+        self.assertIsNone(S.roll_applicability(group_of(SHARES, CALL), put_off))
+        self.assertEqual({"covered_call": "roll", "protective_put": "protective_put"}, S.ROLL_SECTIONS)
+        self.assertEqual({"covered_call": S.KIND_REPLACEMENT_CALL, "protective_put": S.KIND_REPLACEMENT_PUT},
+                         S.ROLL_KINDS)
         index = S.roll_applicability(group_of(INDEX_PUT), CRITERIA)
         self.assertEqual(S.NA_INDEX, index.code)
         closed = S.roll_applicability(group_of(CLOSED_SHARES, CLOSED_CALL), CRITERIA)
@@ -1121,10 +1131,31 @@ class UnavailableTest(unittest.TestCase):
         self.assertEqual(S.ERROR_UNKNOWN_TRADE, caught.exception.code)
 
     def test_not_applicable_makes_no_request(self) -> None:
-        answer = S.run_roll_analysis(Desk(self).market(), "AG-20261028-03", CRITERIA)
-        self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_STRUCTURE, 0),
+        put_off = dataclasses.replace(CRITERIA, protective_put=dataclasses.replace(CRITERIA.protective_put,
+                                                                                   enabled=False))
+        answer = S.run_roll_analysis(Desk(self).market(), "AG-20261028-03", put_off)
+        self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_DISABLED, 0),
                          (answer.verdict, answer.cause, answer.requests["made"]))
-        self.assertIn("protective put", answer.reason)
+
+    def test_a_protective_puts_long_put_is_analysed_under_its_section(self) -> None:
+        answer = S.run_roll_analysis(Desk(self).market(), "AG-20261028-03", CRITERIA)
+        self.assertEqual((S.VERDICT_BEST, S.KIND_REPLACEMENT_PUT, "protective_put", "stress_cost_per_day"),
+                         (answer.verdict, answer.kind, answer.section_name, answer.objective.id))
+        self.assertIs(CRITERIA.protective_put, answer.section)
+        self.assertEqual(("SPY261218P00620000", "long", "bid", D("9.80"), 1),
+                         (answer.held.occ, answer.held.side, answer.held.close_side, answer.held.close_price,
+                          answer.held.contracts))
+        best = answer.ranking.best
+        self.assertEqual(("SPY270319P00610000", D("0.1856"), 1, 91), (best.id, best.score, best.contracts,
+                                                                      best.days_added))
+        # every candidate is a put of a later expiration than the held one, inside [protective_put] dte
+        self.assertTrue(all(c.legs[0].right == "PUT" and c.expiration > answer.held.expiration
+                            for c in answer.ranking.candidates))
+        # S7: the new put is opened first, then the held put closed
+        self.assertEqual([(approval.EFFECT_OPEN, approval.SIDE_LONG, approval.INSTRUMENT_PUT, 1),
+                          (approval.EFFECT_CLOSE, approval.SIDE_LONG, approval.INSTRUMENT_PUT, 1)],
+                         [(leg.effect, leg.side, leg.instrument, leg.quantity)
+                          for leg in S.approval_legs(answer, best)])
 
 
 class EdgeAnswerTest(unittest.TestCase):

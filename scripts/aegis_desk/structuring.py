@@ -1883,19 +1883,28 @@ def _open_shares(group: PositionGroup) -> Decimal:
     return sum((row.open_quantity for row in group.open_legs if row.is_stock_like), _ZERO)
 
 
+ROLL_SECTIONS: Dict[str, str] = {grouping.STRUCTURE_COVERED_CALL: "roll",
+                                 grouping.STRUCTURE_PROTECTIVE_PUT: "protective_put"}
+"""The structures a roll analysis covers and the ``structuring.toml`` section each is judged under: a covered call's
+short call under ``[roll]``, a protective put's long put under ``[protective_put]`` (roadmap step 2.4)."""
+ROLL_KINDS: Dict[str, str] = {grouping.STRUCTURE_COVERED_CALL: KIND_REPLACEMENT_CALL,
+                              grouping.STRUCTURE_PROTECTIVE_PUT: KIND_REPLACEMENT_PUT}
+"""The candidate kind of each structure's roll analysis."""
+
+
 def roll_applicability(group: PositionGroup, criteria: StructuringConfig) -> Optional[Applicability]:
-    """``None`` when a roll analysis applies: the open short call of a ``covered_call`` group (S1); otherwise
-    NOT_APPLICABLE with its reason (an index underlying, no open leg, another structure, ``[roll] enabled = false``)."""
+    """``None`` when a roll analysis applies: the open short call of a ``covered_call`` group (S1) or the open long put
+    of a ``protective_put`` group (roadmap step 2.4); otherwise NOT_APPLICABLE with its reason (an index underlying, no
+    open leg, another structure, the structure's section disabled: ``[roll]`` or ``[protective_put]``)."""
     for answer in (_index(group), _no_open_legs(group)):
         if answer is not None:
             return answer
-    if group.structure != grouping.STRUCTURE_COVERED_CALL:
-        ticket = ("; a ROLL ticket prices the replacement of its long put that you name"
-                  if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT else "")
+    if group.structure not in ROLL_SECTIONS:
         return Applicability(VERDICT_NOT_APPLICABLE, NA_STRUCTURE, "%s is a %s: the roll analysis covers the short "
-                             "call of a covered call%s; the roll analysis of a long put, a short put or a collar is "
-                             "planned for Stage 2 (not in this release)" % (_subject(group), _words(group), ticket))
-    return _disabled(criteria, "roll")
+                             "call of a covered call and the long put of a protective put; the roll analysis of a "
+                             "short put or a collar is planned for Stage 2 (not in this release)"
+                             % (_subject(group), _words(group)))
+    return _disabled(criteria, ROLL_SECTIONS[group.structure])
 
 
 def proposal_applicability(group: PositionGroup, structure: str, criteria: StructuringConfig) -> Optional[Applicability]:
@@ -2576,7 +2585,9 @@ def _option_row(group: PositionGroup, right: str, short: bool) -> Optional[Posit
 
 def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringConfig) -> Answer:
     """``roll_analysis.py``: every replacement short call of a later standard monthly inside ``[roll] dte`` for the
-    short call of a ``covered_call`` group, ranked by ``extrinsic_per_day`` (module notes)."""
+    short call of a ``covered_call`` group, ranked by the ``[roll]`` objective; for the long put of a
+    ``protective_put`` group, every replacement long put of a later standard monthly inside ``[protective_put] dte``,
+    labelled and ranked under ``[protective_put]`` (roadmap step 2.4; module notes)."""
     answer = Answer(tool=TOOL_ROLL_ANALYSIS, kind=KIND_REPLACEMENT_CALL, trade_id=trade_id, section_name="roll",
                     criteria=criteria, section=criteria.roll, objective=kind_objective(KIND_REPLACEMENT_CALL, criteria))
     stopped = _start(answer, market)
@@ -2584,12 +2595,17 @@ def run_roll_analysis(market: MarketData, trade_id: str, criteria: StructuringCo
         return stopped
     group = answer.target.group if answer.target is not None else None
     assert group is not None
+    put = group.structure == grouping.STRUCTURE_PROTECTIVE_PUT
+    if put:  # judged under [protective_put], which also names the section a disabled answer reports
+        answer.kind, answer.section_name, answer.section = KIND_REPLACEMENT_PUT, "protective_put", criteria.protective_put
+        answer.objective = kind_objective(KIND_REPLACEMENT_PUT, criteria)
     applicability = roll_applicability(group, criteria)
     if applicability is not None:
         return _close(answer, applicability.verdict, applicability.code, applicability.reason)
-    row = _option_row(group, "CALL", True)
-    if row is None:  # a covered_call group holds one short call leg, possibly on several rows (lots)
-        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (trade_id, "short call"))
+    row, held_words = (_option_row(group, "PUT", False), "long put") if put else (_option_row(group, "CALL", True),
+                                                                                  "short call")
+    if row is None:  # the group holds its one option leg on several rows (lots)
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (trade_id, held_words))
     stopped = _priced_context(answer) or _held(answer, row)
     if stopped is not None:
         return stopped

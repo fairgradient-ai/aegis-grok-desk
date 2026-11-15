@@ -482,9 +482,44 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 """ + FOOTER
 
-SPY_ROLL_NA = """NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a protective put: the roll analysis covers the short call of a covered call; a ROLL ticket prices the replacement of its long put that you name; the roll analysis of a long put, a short put or a collar is planned for Stage 2 (not in this release)
+SPY_ROLL = """### STRUCTURING AG-20261028-03 | SPY protective put: the roll analysis of the long 2026-12-18 620 put
+*account 2 of desk.toml (ira) | SPY mid 648.12 | your cost 632.40 | quotes 19:31 UTC, 15-min delayed*
 
-""" + FOOTER_NOW
+**BEST CANDIDATE 1 of 12** by your objective stress_cost_per_day: **0.1856**, the lowest among the 5 candidates that passed every criterion
+- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | ask 23.10 | quote grade A, 18 min old
+- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old
+
+> the score ranks the candidates only on the objective you chose; it is not a forecast
+
+**Checks for this candidate**
+- 🟢 **floor** 5.88 % below | your criteria: 3 to 10 %
+- **cost** ask 23.10 (2,310.00 in all)
+- **net cost per day added** 0.0226 % of the share price (ask 23.10 less the held put's bid 9.80, over 91 days added)
+- 🟢 **covered at your stress drop** 91.504 per share (9,150.40 in all) | your criteria: drop 20 % (stressed price 518.496)
+- 🟢 **calendar days** 136 | your criteria: 120 to 210
+- 🟢 **spread** 0.87 % | your criteria: at most 25 %
+
+**The group, now and after both legs**
+- **max loss** 2,370.00 now, 4,700.00 after
+- **max profit** unbounded now, unbounded after
+- **breakeven** 643.70 now, 657.00 after
+- **group delta** 72.52 now, 70.17 after
+
+**Replacement candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
+- 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
+- 🟢 **2** 2027-03-19 | strike 620 | floor 4.34 % | ask 25.65 | stress_cost_per_day 0.1858
+- 🟢 **3** 2027-03-19 | strike 625 | floor 3.57 % | ask 27.05 | stress_cost_per_day 0.1868
+
+a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration and strike
+
+> - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
+> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
+> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
+> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
+> - criteria: your structuring.toml (sha 5155427c)
+
+""" + FOOTER
 
 PUT_NOTHING = """NOTHING_TO_PROPOSE | AG-20261028-03 protective put proposal | the 100 SPY shares already carry 1 long put
 
@@ -655,7 +690,7 @@ class GoldenTextTest(unittest.TestCase):
         cls.put = S.run_proposal(spy.market(), "AG-20261028-03", "protective_put", CRITERIA)
         cls.collar = S.run_proposal(tagged.market(), "AG-20261028-03", "collar", CRITERIA)
         cls.replacement = S.run_replacement(main.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
-        cls.na = S.run_roll_analysis(main.market(), "AG-20261028-03", CRITERIA)
+        cls.spy_roll = S.run_roll_analysis(main.market(), "AG-20261028-03", CRITERIA)
         cls.nothing = S.run_proposal(main.market(), "AG-20261028-03", "protective_put", CRITERIA)
         expiry_now = datetime.datetime(2026, 11, 20, 19, 50, tzinfo=UTC)
         cls.expiry_day = S.run_roll_analysis(DeskCopy(cls).market("expiry_day", expiry_now), "AG-20261020-01", CRITERIA)
@@ -687,6 +722,22 @@ class GoldenTextTest(unittest.TestCase):
         self.assertIn("- 1, 2, 3 fail ex_dividend: the ex-dividend date 2026-12-03 (cum 2026-12-02) falls inside the new "
                       "call's life", lines)
 
+    def test_a_protective_puts_roll_reads_as_a_long_put(self) -> None:
+        # the header names the long put, the new put opens first at its ask and the held put closes at its bid (S7)
+        lines = self.render(T.roll_analysis_lines, self.spy_roll).text.split("\n")
+        self.assertEqual("### STRUCTURING AG-20261028-03 | SPY protective put: the roll analysis of the long "
+                         "2026-12-18 620 put", lines[0])
+        self.assertEqual(["- leg 1 of 2: opens a new long 1 x SPY 2027-03-19 610 put | ask 23.10 | quote grade A, "
+                          "18 min old",
+                          "- leg 2 of 2: closes your long 1 x SPY 2026-12-18 620 put | bid 9.80 | quote grade B, "
+                          "18 min old"], [line for line in lines if line.startswith("- leg ")])
+        # with no best candidate, the held put's close is quoted at its bid, as the net costs price it
+        w = T.Writer()
+        self.assertEqual("the net costs close the held 2026-12-18 620 put | bid 9.80 | quote grade B, 18 min old",
+                         T.held_line(w, self.spy_roll.held))
+        self.assertEqual("the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
+                         T.held_line(w, self.nvda.held))
+
     def test_a_disabled_section_is_named_by_words_the_lint_passes(self) -> None:
         # "roll: disabled ..." starts a segment with an imperative the structuring lint refuses; the section is named
         # as "the <section> section is disabled in your structuring.toml", the words the tools print.
@@ -717,7 +768,7 @@ class GoldenTextTest(unittest.TestCase):
         self.assertTrue(relay.check(rendered.text).ok)
 
     def test_golden_texts(self) -> None:
-        cases = [(T.roll_analysis_lines, self.nvda, {}, NVDA_ROLL), (T.roll_analysis_lines, self.na, {}, SPY_ROLL_NA),
+        cases = [(T.roll_analysis_lines, self.nvda, {}, NVDA_ROLL), (T.roll_analysis_lines, self.spy_roll, {}, SPY_ROLL),
                  (T.proposal_lines, self.nothing, {"owner_level": 2}, PUT_NOTHING),
                  (T.proposal_lines, self.call, {"owner_level": 2}, WMT_CALL),
                  (T.proposal_lines, self.put, {"owner_level": 2}, SPY_PUT),
@@ -888,7 +939,7 @@ class FixerTextTest(unittest.TestCase):
         # an account named after any word the desk itself prints must not withhold the text: every lower-case word
         # of four letters or more in the golden texts is in the desk's lexicon
         missing = set()
-        for text in (WMT_ROLL, NVDA_ROLL, SPY_ROLL_NA, PUT_NOTHING, WMT_CALL, SPY_PUT, SPY_COLLAR, EXPIRY_DAY):
+        for text in (WMT_ROLL, NVDA_ROLL, SPY_ROLL, PUT_NOTHING, WMT_CALL, SPY_PUT, SPY_COLLAR, EXPIRY_DAY):
             for word in __import__("re").findall(r"(?<![A-Za-z_])[a-z]{4,}(?![A-Za-z_])", text):
                 if word not in T.DESK_LEXICON:
                     missing.add(word)

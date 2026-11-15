@@ -425,11 +425,14 @@ def validity_line(w: Writer, until: datetime.datetime) -> str:
 
 
 def roll_header(w: Writer, trade_id: str, underlying: str, structure: str, expiration: datetime.date,
-                strike: Decimal) -> str:
+                strike: Decimal, right: str = "CALL") -> str:
     """``### STRUCTURING <trade_id> | <UNDERLYING> <structure words>: the roll analysis of the short <date> <strike>
-    call`` (never ``roll`` at a segment start: the lint reads it as an imperative)."""
-    return "### STRUCTURING %s | %s %s: the roll analysis of the short %s %s call" % (
-        w.trade_id(trade_id), _root(underlying), structure_words(structure), w.date(expiration), w.strike(strike))
+    call`` (or ``of the long <date> <strike> put`` for a protective put's long put; never ``roll`` at a segment start:
+    the lint reads it as an imperative)."""
+    side = "long" if right == "PUT" else "short"
+    return "### STRUCTURING %s | %s %s: the roll analysis of the %s %s %s %s" % (
+        w.trade_id(trade_id), _root(underlying), structure_words(structure), side, w.date(expiration),
+        w.strike(strike), _right(right))
 
 
 def proposal_header(w: Writer, trade_id: str, symbol: str, structure: str, shares: Decimal) -> str:
@@ -1033,11 +1036,12 @@ def unavailable_line(w: Writer, subject: str, what: str, reason: str) -> str:
 
 def held_line(w: Writer, held: "structuring.HeldLeg") -> str:
     """``the net credits close the held 2026-11-20 105 call | ask 3.50 | quote grade B, 18 min old``: the conservative
-    side a roll analysis with no best candidate prices the close at (the grade E note follows when it applies)."""
+    side a roll analysis with no best candidate prices the close at (the grade E note follows when it applies). A held
+    long put reads ``the net costs close the held 2026-12-18 620 put | bid ...``."""
     if held.close_price is None or held.grade is None:
         raise ValueError("the held leg has no conservative side")
-    return "the net credits close the held %s %s %s | %s" % (
-        w.date(held.expiration), w.strike(held.strike), _right(held.right),
+    return "the net %s close the held %s %s %s | %s" % (
+        "costs" if held.right == "PUT" else "credits", w.date(held.expiration), w.strike(held.strike), _right(held.right),
         side_segment(w, held.close_side, held.close_price, held.grade, held.quote_age_min, held.note))
 
 
@@ -1222,10 +1226,22 @@ def notes_block(items: Sequence[str]) -> List[str]:
 
 
 def _best_legs_roll(w: Writer, answer: "structuring.Answer", best: "structuring.Candidate") -> List[str]:
+    """The roll's two legs in the S7 order: close the held short call, then open the new one at its bid; for a long
+    put, open the new put at its ask, then close the held one at its bid."""
     held = answer.held
     assert held is not None and held.close_price is not None and held.grade is not None
     leg = best.legs[0]
-    assert leg.bid is not None and leg.grade is not None
+    assert leg.grade is not None
+    held_side = side_segment(w, held.close_side, held.close_price, held.grade, held.quote_age_min, held.note)
+    if best.kind == structuring.KIND_REPLACEMENT_PUT:
+        assert leg.ask is not None
+        return [
+            leg_line(w, 1, 2, "open", "long", best.contracts, leg.root, leg.expiration, leg.strike, leg.right,
+                     side_segment(w, "ask", leg.ask, leg.grade, leg.quote_age_min, None)),
+            leg_line(w, 2, 2, "close", "long", held.contracts, held.root, held.expiration, held.strike, held.right,
+                     held_side),
+        ]
+    assert leg.bid is not None
     return [
         leg_line(w, 1, 2, "close", "short", held.contracts, held.root, held.expiration, held.strike, held.right,
                  side_segment(w, held.close_side, held.close_price, held.grade, held.quote_age_min, held.note)),
@@ -1313,7 +1329,7 @@ def roll_analysis_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     assert target is not None and target.group is not None and ranking is not None and held is not None
     assert group is not None and answer.pricing is not None and answer.pricing.spot_mid is not None
     account = account_cell(w, group.account, target.market.cfg.owner.accounts, held.row_number)
-    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike)]
+    lines = [roll_header(w, subject, group.underlying, group.structure, held.expiration, held.strike, held.right)]
     lines.extend([context_line(w, account, group.underlying, answer.pricing.spot_mid,
                                structuring.payoff.quantize_price(group.s0), as_of), ""])
     best = ranking.best
@@ -1425,7 +1441,7 @@ _TEMPLATE_WORDS: str = (
     "last later least leaves left legs less level levels lies life limit line lines lint list listed "
     "lists live loaded long loss lower lowest made margin market maximum mids minimum missing model modelled "
     "money monthly more most multi multiplier must name named names need needed needs negative never next none "
-    "note nothing number objective once only open opening opens option options order other otherwise outside "
+    "note nothing number objective once only open opening opens option options order other otherwise outside over "
     "overlay overlays overwrites owner paired part passed passes plain plan planned plus positions positive "
     "possible post prefix price priced prices print prints problems profit proposal proposals propose proposes "
     "protective puts quantity quarantined quote quotes rank ranks reads realized reason reasons receive records "
