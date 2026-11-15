@@ -89,16 +89,16 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | Step | What lands | Needs | Status |
 | --- | --- | --- | --- |
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
-| 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | proposed |
-| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule; 2.2 for any early-exercise line that reads a dividend | planned |
+| 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
+| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | planned, next |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
-| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget | planned |
-| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash | planned |
-| 2.7 | Exposures and limits: beta-weighted delta and limit messages | your decision on the limits | planned |
-| 2.8 | Scenario and event stress | nothing; after 2.3, by choice | planned |
+| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
+| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
+| 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | planned |
+| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
 | 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
-| 2.11 | Sourced events and the decision calendar | your decision on a data source | planned |
+| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | planned |
 | 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | planned |
 
 ### 2.1 The American early-exercise lattice (landed, not wired)
@@ -127,23 +127,17 @@ context, sourced dates) and widens the Structuring Desk's scope.
   is still European. The lines that say early exercise is not modelled, that the tiers are European-only, or that
   American pricing, American Greeks or early-exercise analysis are planned stay true until 2.3.
 
-### 2.2 Discrete cash dividends in the lattice (proposed here)
+### 2.2 Discrete cash dividends in the lattice (dropped by your decision)
 
-- **Why it is proposed.** No line in the tree plans it. A short call is most likely to be assigned early the evening
-  before an ex-dividend date, and a continuous yield spreads that dividend over the year. The ex-dividend test of
-  [the covered-call skill](../skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md) is the European
-  extrinsic-versus-dividend bound today.
-- **What would land.** `lattice.american` takes an optional schedule of cash dividends, each a time in years from now
-  and an amount per share, priced as known cash amounts on a tree that still recombines. Engine only: the caller
-  passes the schedule, and nothing reads a file.
-- **Whether it is needed.** It is a hard prerequisite of any early-exercise line in 2.3 that reads a dividend (the
-  line that would say a short call is likely to be assigned before an ex-date): on a continuous yield the lattice
-  cannot see that dividend (see 2.3). For prices and Greeks it is needed only if your answer to
-  [open question 3](#open-questions-for-the-owner) uses cash amounts. If you want no dividend-aware line and choose
-  the continuous yield or UNAVAILABLE for prices, this step can wait or be dropped.
-- **Gate.** An empty schedule reproduces step 2.1's results bit for bit; goldens for a call before and after an
-  ex-date; the QuantLib oracle extended with the same schedule (QuantLib's `FdBlackScholesVanillaEngine` accepts a
-  `DividendVector`, checked with QuantLib 1.43).
+- **What it would have been.** An optional schedule of cash dividends in `lattice.american`, so that a model line could
+  see the exercise the evening before an ex-date. No line in the tree planned it; this page proposed it.
+- **Why it is dropped (open question 3).** The dividend tier of `assignment_watch.py` already tests that risk from the
+  quoted extrinsic value on the bid, with no model, and it stays exactly as it is. Prices and Greeks keep the
+  continuous yield, made a sourced fact (2.3), and the two blind spots of a yield are closed without a second model:
+  a dividend note on every leg whose life spans an ex-date, and the long put's wait line. So no model-based line reads
+  a cash dividend, and no event stress models a jump the size of the dividend (2.8).
+- **Revisit if** you later want a line that says a short call is likely to be assigned before an ex-date. That needs
+  this step and a calendar with a list of ex-dates, together, as a new decision.
 
 ### 2.3 The lattice wired in
 
@@ -161,24 +155,74 @@ context, sourced dates) and widens the Structuring Desk's scope.
   1.5 %, sigma = 25 % comes out as a hold (`exercise_now` and `near_boundary` both false; price 40.197, so the model
   extrinsic is about 0.20). With a bid at that value, an ex-date tomorrow and a stated $0.235 dividend, the dividend
   tier reads HIGH (an extrinsic of 0.20 is below the dividend). Such deep in-the-money short calls are the legs most
-  likely to be assigned. So an early-exercise line that reads a dividend
-  needs step 2.2 and the dividend's cash amount; without them the line says it does not see the cash dividend, and
-  the dividend tier stays the test for that risk.
+  likely to be assigned. An early-exercise line that read a dividend would need step 2.2, which is dropped, so the
+  yield note says the line does not see the cash dividend, and the dividend tier stays the test for that risk.
 - **The boundary band, read by side.** For a long leg, `exercise_now` gives an exercise note and `near_boundary` a
   line that says the leg is near the early-exercise boundary, never an exercise signal and never a hold signal. For a
   short leg, where a missed warning is the costly error, `exercise_now` and `near_boundary` both give an
-  early-assignment warning. In the band, delta, gamma and theta are marked approximate, repriced with more steps, or
-  UNAVAILABLE, as you decide ([open question 2](#open-questions-for-the-owner)).
+  early-assignment warning.
 - **Proposed here: one tree.** `carry.early_exercise_gap` runs its own tree (`carry._tree`, `carry.TREE_STEPS`) inside
   every structuring answer. Making it call `lattice.american` would give the desk one tree; `CarryAgreementTest`
   holds the two within 1e-9 until then. No line in the tree plans this, so it is optional.
-- **Owner decisions.** The model of record: which answers switch, and whether the European value is printed beside
-  the American one. The band (above). The dividend schedule (open question 3).
+- **The model of record (your answer to open question 2).** Everything switches to American, at
+  `lattice.DEFAULT_STEPS` (200), and each leg shows one value; no European value is printed beside it.
+  - Book IV is solved by inverting the lattice price from the mid; a mid below intrinsic has no solution, so that leg
+    is UNAVAILABLE. Delta, gamma and theta come from the lattice; vega and rho are central bumps of the same lattice
+    price (sigma ± 0.01 per vol point, r ± 0.01 per 1 %). The structuring prices, IV and `abs_delta` band move with it.
+  - `book.json` gains two fields per leg, `model = "american_crr_200"` and `early_exercise_premium` (American minus
+    European, from the same tree). Neither appears in the text.
+  - One early-exercise line per leg, beside the two expiry tiers, read by side as above, with the dividend note and
+    the put wait line below.
+  - The long-put `american-style note:` is retired: its only job was to warn that a European price can understate an
+    American put. `structuring.short_put_caveat` stays with its tests: it warns at |delta| 0.80, the lattice flags
+    start near |delta| 0.95, and for a short leg a missed warning is the costly error.
+  - `vol_context` compares only days priced with the same `model`; a snapshot without the field counts as
+    `european_bsm`, so the context is UNAVAILABLE until 5 American days are recorded.
+  - Exit rules that read `abs_delta` read American delta from the day this step lands; the rulebook does not change,
+    and `rules_replay` (3.2) replays each day's recorded delta, never recomputing it.
+- **The boundary band (your answer to open question 2).** For a leg with `near_boundary` true:
+  - the price as computed (its measured bound, 1.5e-3 of `max(price, 1)`, holds in the band too);
+  - delta shown with the ASCII mark `approx` in the text and `"greeks_quality": "near_boundary"` in JSON, within
+    `lattice.BAND_DELTA_TOL = 0.05`. That is a bound the QuantLib oracle tests (about 1.8 times the measured worst,
+    0.028), not a proof; if an oracle run ever exceeds it the gate fails, and band delta becomes UNAVAILABLE until you
+    decide again;
+  - gamma and theta UNAVAILABLE (the measured band gamma error reaches 0.33 per $1^2); vega and rho as computed;
+  - no repricing pass with more steps.
+  - When an `abs_delta` condition's threshold lies within `BAND_DELTA_TOL` of a band delta, that observation reads
+    UNAVAILABLE; any other threshold is decided as usual.
+  - Net Greeks become per-Greek: a group's net delta includes the approximate delta and is marked `approx`, while net
+    gamma and net theta are `None` for that group. Today one missing Greek blanks the group's whole `net_greeks`.
+- **The dividend schedule (your answer to open question 3).** Prices and Greeks keep the continuous yield, and the
+  yield becomes a sourced, dated fact; 2.2 is dropped.
+  - The yield moves into the symbol's `ex_dividend` entry in `research/calendar.toml` (schema version 2), sharing its
+    `source`, `checked_utc` and STALE check: `ex_dividend = { date = ..., amount = ..., yield = 0.0090, status =
+    "confirmed", source = ..., checked_utc = ... }`. `yield` is a fraction in [0, 1), allowed with status
+    `confirmed`, `estimated` or `unknown`; status `none` takes no yield and means q = 0. Version 2 refuses a top-level
+    `dividend_yield`; the reader still loads version 1, and a bare version-1 yield counts as unknown.
+  - An unknown yield is never zero: with no usable yield and a status other than `none`, the leg's IV and Greeks are
+    UNAVAILABLE with `iv_status = "dividend_unknown"`, replacing today's q = 0 warning in the book and the structuring
+    tools. `calendar_events.freshness` gains the finding `NO_YIELD` for every held symbol, and `desk_init.py` asks for
+    the yield with the ex-dividend date.
+  - The yield note, on any leg, call or put, whose life contains the known ex-date, whose dividend status is
+    `unknown`, or whose last trading day is 80 or more calendar days after the known ex-date: the dividend is priced as
+    a continuous yield, so the drop on the ex-date is not seen here. For calls the dividend tier stays the test.
+  - The put wait line: for a long put whose lattice line says `exercise_now` and whose life contains a known ex-date
+    with a stated cash amount D, when D > K × (e^{r·d} − 1) (K the strike, r the desk rate, d the years to the
+    ex-date), the exercise note gives way to a line that says exercise is not flagged because the stated dividend
+    exceeds the interest on the strike until then. Holding just past the ex-date is worth at least
+    e^{−rd}(K + D) − S against K − S now, so the test needs no model. With no stated amount the exercise note keeps
+    the yield note. Short puts keep their early-assignment warning.
+  - **Before this step lands** you restate each held dividend payer's yield inside its `ex_dividend` entry, or set
+    its status to `none`; `calendar_check` lists every gap as `NO_YIELD`.
 - **Gate.** The command journeys and the structuring goldens re-pinned with the lattice; every dividend-tier and
   pin-tier result identical before and after the step; a journey for the deep in-the-money short call above, whose
-  dividend tier stays HIGH; journeys for a long leg and a short leg in the band; the doctor's selftest gains an
-  American check; every "early exercise is not modelled", "European-only in Stage 1", "American pricing is planned",
-  "American Greeks are planned" and "early-exercise analysis is planned" line rewritten.
+  dividend tier stays HIGH; journeys for a long leg and a short leg in the band, a band leg with `approx` delta,
+  UNAVAILABLE gamma and theta and a portfolio net delta still present, and an `abs_delta` rule within 0.05 of a band
+  delta reading UNAVAILABLE; the oracle asserting band delta within `BAND_DELTA_TOL` and every price within its
+  relative bound; a `dividend_unknown` journey; a journey for a long put the evening before an ex-date (the wait
+  line); the doctor's selftest gains an American check; every "early exercise is not modelled", "European-only in
+  Stage 1", "American pricing is planned", "American Greeks are planned" and "early-exercise analysis is planned"
+  line rewritten; counsel signs the new `MODEL_LINE`, `MODEL_NOTE`, early-exercise, yield-note and wait-line wording.
 
 ### 2.4 The Structuring Desk's wider scope
 
@@ -220,46 +264,83 @@ context, sourced dates) and widens the Structuring Desk's scope.
 ### 2.5 Weekly expirations
 
 - **What lands.** The structuring tools list weekly expirations as well as the standard monthly ones.
-- **The decision first: the chain budget.** One chain is one expiration (`quote_cache.get_chain(symbol, expiration,
-  ...)`), and `load_chains` fetches one per candidate expiration. A run may fetch at most 4 chains and 40 requests
-  (`PER_RUN_MAX_CHAINS`, `PER_RUN_MAX_REQUESTS` in `scripts/aegis_desk/quote_cache.py`), inside the desk-wide 200
-  requests per minute. That cap holds today only because expirations are monthly: a `dte` window of at most 90 days
-  holds at most four monthlies ([the structuring page](STRUCTURING.md), "Expirations"). With weeklies the same window
-  holds about thirteen. So this step needs your choice ([open question 8](#open-questions-for-the-owner)): raise the
-  chain cap and the request budget (and show the run cost), keep four chains and sample the window (for example the
-  monthlies plus the nearest weeklies, said in the text), or narrow the window when weeklies are on.
-- **Gate.** Fixture chains with weekly expirations; the budget tests for the chosen rule, including a window that
-  would exceed it; the expiry arithmetic for a weekly last trading day in the holiday table.
+- **The chain budget (your answer to open question 8): narrow the window, keep the cap.** One chain is one
+  expiration, and a run may fetch at most 4 chains and 40 requests (`PER_RUN_MAX_CHAINS`, `PER_RUN_MAX_REQUESTS` in
+  `scripts/aegis_desk/quote_cache.py`); neither changes.
+  - Each structure section of `structuring.toml` gets an optional schema-version-2 key `expirations = "monthly" |
+    "weekly"` (in `V2_KEYS`), default `"monthly"`.
+  - "Weekly" means a listed expiration on the last trading day of its week: Friday, or Thursday when Friday is a
+    holiday in the holiday table. Standard monthlies count, because they also end a week. Daily expirations are not
+    listed.
+  - With `"weekly"`, the reader requires `hi - lo <= 21` in `dte`, beside `7 <= lo < hi <= 400`. Five consecutive
+    week-ends span at least 27 days, so the window holds at most four expirations and the cap holds by arithmetic. A
+    chain the run cannot get still makes the answer UNAVAILABLE.
+  - The text names the mode, for example `expirations: weekly and monthly in your 30 to 51 day window`.
+- **Gate.** Fixture chains that include weeklies; the reader refusing a `weekly` section with `dte = [40, 75]`; a week
+  whose Friday is a holiday, so the weekly falls on Thursday; a listing that would still exceed 4 chains answering
+  UNAVAILABLE.
 
 ### 2.6 A cash-balance check and per-account approval levels
 
 - **Constraint.** The desk has no brokerage API and does not see your cash. A cash figure can only be one you state,
   per account, in `desk.toml`, with its date, and acknowledged like every other owner value.
 - **What lands.** An `approval_level` on each `[[owner.accounts]]` entry (each already has a `name` and a `type`),
-  read before the desk-wide `[owner] approval_level`, and a cash check on a ticket or proposal that needs cash. A cash
-  figure older than a stated age makes the check UNAVAILABLE, not passed.
-- **Gate.** The approval-level check's tests for each account; the `desk_init.py` intake; the acknowledgement set;
-  counsel's sign-off on the new lines.
+  read before the desk-wide `[owner] approval_level`, and a cash check on every ticket and proposal.
+- **Stated cash (your answer to open question 5).** Two optional keys per account, given together or not at all:
+  `cash` (free cash not already securing open short puts; `Decimal >= 0`) and `cash_as_of` (a TOML local date).
+  - The check compares the peak cash out while the ticket's legs are worked in the desk's fixed order: the maximum
+    over steps k of the sum over legs 1..k of (buy at ask − sell at bid) × 100 × contracts, plus strike × 100 ×
+    contracts secured by a short put opened, less that released by one closed. Credit rolls included: the WMT roll's
+    leg 1 pays $700 before leg 2's credit arrives, so the need is $700, not the net credit of $10.
+  - UNAVAILABLE when the keys are absent, a leg lacks a usable quote on the side it needs, `cash_as_of` is in the
+    future, or it is more than `CASH_MAX_AGE_TRADING_DAYS = 5` trading days before today's ET date (by the holiday
+    table). Otherwise the line states both figures and the age; a shortfall is a red check item, never a REFUSED.
+  - A margin account is compared with the stated cash only; the desk does not model margin, and never infers cash
+    from `positions.csv`.
+- **The recorded values retired here (open question 7).** This pull request already changes `desk_config.py`, the
+  intake and the acknowledgement set, so it also makes `attention_thresholds`, `chatty_or_quiet` and `engagement` optional
+  (see [Values recorded for later stages](#values-recorded-for-later-stages)).
+- **Gate.** The approval-level check's tests for each account; the peak-cash goldens, the WMT credit roll among them;
+  every UNAVAILABLE case; the `desk_init.py` intake; the acknowledgement set; counsel's sign-off on the cash line.
 
 ### 2.7 Exposures and limits
 
 - **What lands.** `beta_weighted_delta`, today always `{"value": null, "r2_flag": "unavailable"}` in `book.json`,
-  computed from daily bars the client already reads, with the fit's quality as `r2_flag`; exposures by underlying;
-  limit messages against limits you state.
-- **The limits are your decision.** The tree names no limit values: `desk.toml` has no exposure or Greek limit today.
-  Its `attention_thresholds` (`pl_day_pct` and `pl_trade_abs`) are profit-and-loss thresholds, recorded for later
-  stages with no stage named, and this page does not assign them to limits. New limit keys go through the
-  `desk_init.py` intake and the acknowledgement set ([open question 4](#open-questions-for-the-owner)).
-- **Gate.** Beta goldens on fixture bars; UNAVAILABLE when bars are missing; the limit message linted, with its chat
-  assigned in the charter's message table; a `midday-limits` routine within the `routine_audit.py --budget` limits.
+  filled in dollars with its `r2_flag`, and two new rule metrics.
+- **The limits (your answer to open question 4): two metrics in the exit rulebook.** Limits live where `CONC` and
+  `DAILY` already live, as `role = "portfolio"` or `"underlying"` rules adopted with `rules_adopt.py`, your typed
+  phrase and your tap, with `WATCH` verdicts and `plan = "hold_review"`. `desk.toml` gets no `[limits]` section and no
+  new routine (`midday-limits` is dropped; `book_check` already evaluates the rulebook four times a day).
+  - `beta_weighted_delta_pct` (portfolio): the sum over underlyings of net delta shares × spot × beta, over
+    `declared_equity`, × 100. `delta_exposure_pct` (underlying, `any_underlying`): net delta shares × spot over
+    `declared_equity`, × 100. Either is UNAVAILABLE when an open leg in its scope lacks a delta or its beta is
+    UNAVAILABLE.
+  - Beta: OLS of daily simple returns against SPY over the 252 closes ending the previous trading day, on daily bars
+    from `history` with a new keyword `adjustment="split"` used only here (the default stays `"raw"`; the same GET
+    path, its new parameter reviewed with its tests). UNAVAILABLE when there are fewer than 126 returns or any daily
+    return in either series lies beyond ±40 %. `r2_flag` is `"ok"` at r² ≥ 0.30, else `"low"`, printed with the
+    message, beside a source line naming the feed. Closed bars are fetched once a day.
+  - New example rules in `rules/examples/`, each `owner_must_set = true`: `BWD` (`beta_weighted_delta_pct >= 100`)
+    and `UDELTA` (`delta_exposure_pct >= 20` on `any_underlying`); a net-short book adds a mirrored `<=` rule.
+  - Gamma, vega and theta limits and a P/L limit beyond `DAILY` are out for now; each can be added later as one more
+    rule metric.
+- **Gate.** Beta goldens on fixture bars; a fixture with a 10:1 split where raw bars trip the ±40 % guard and
+  split-adjusted bars fit; UNAVAILABLE when bars are missing; the example rules passing the lint; counsel's sign-off on
+  the two metric names, the beta source line and the WATCH wording.
 
 ### 2.8 Scenario and event stress
 
 - **What lands.** A scenario tool (not yet in the tree) that re-prices the book under spot and volatility moves, and an
   event stress of a position through an earnings or ex-dividend date, including a hedge through an event. Every price
   comes from the engine; a scenario is labelled as a computation, not a forecast.
-- **Order.** Nothing in the tree requires 2.3 first. This page puts 2.8 after 2.3 so that a stressed price uses the
-  same model of record as the book it stresses.
+- **Order.** After 2.3, by your choice. The scenario tool picks no model of its own: it calls the
+  leg-pricing function the book uses, so a stressed price always uses the book's model of record.
+- **Event stresses on that model.** An earnings stress applies the grid's spot and volatility moves at a horizon of
+  one trading day after the earnings date. An ex-dividend stress prices the book one trading day after the ex-date,
+  with spot moved only by the grid: spot is never cut by the cash amount, because the continuous yield already lowers
+  the forward and a cut would count the dividend twice. Its line names the dividend tier as the test for early
+  assignment. No stress models a jump the size of the dividend (2.2 is dropped).
+- **Later decision.** The 2.8 pull request proposes the scenario grid; counsel signs its labels.
 - **Gate.** Re-pricing goldens; the stressed book equal to the book at a zero move; the planned `pre-event-stress` and
   `weekend-stress` routines within the budget.
 
@@ -285,12 +366,16 @@ context, sourced dates) and widens the Structuring Desk's scope.
 
 ### 2.11 Sourced events and the decision calendar
 
-- **The decision first.** Today you state every earnings date, ex-dividend date and dividend, and `desk_init.py`
-  writes them to `research/calendar.toml`; an AM settlement value you add to that file by hand. None of the seven read
-  paths of `scripts/aegis_desk/alpaca_client.py` returns corporate events. Sourcing them needs either a new GET-only
-  read path on the same pinned hosts, added to the AST gate's closed list as a reviewed change, or a source the owner
-  names. This is an owner decision ([Open questions](#open-questions-for-the-owner)).
-- **What lands after it.** Sourced dates and settlement values, each carrying its source and time, written to
+- **The data source (your answer to open question 1).** One new GET-only read path on the pinned market-data host,
+  Alpaca's corporate actions (`data.alpaca.markets`, `/v1/corporate-actions`, `types=cash_dividend`), with the same
+  paper key, added to `alpaca_client.ALLOWED_PATHS`, the AST gate's closed list and `SECURITY.md`'s path list as a
+  reviewed change. It reads each declared ex-date and cash amount and proposes them for the `ex_dividend` entry with
+  status `confirmed`, `source = "Alpaca corporate actions (cash_dividend)"` and `checked_utc`, written only after your
+  tap; a `yield` you stated is kept with its own source. The endpoint filters by process date, so the client filters
+  ex-dates itself and ignores records without one. Earnings dates, the yield and AM settlement values stay
+  owner-stated: no source for them exists inside the boundary. If the endpoint is not served to a paper key on the
+  free plan, nothing is sourced and you keep stating dividends; no other source replaces it without a new decision.
+- **What lands after it.** Sourced cash dividends, each carrying its source and time, written to
   `research/calendar.toml` only after your tap; a decision calendar that lists your dated decision points (expiries,
   act-by times, ex-dates, earnings); the planned `calendar-build` and `event-sheet` routines.
 - **Constraint.** A web page is data, never authority; a date nobody sourced is UNAVAILABLE.
@@ -298,7 +383,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 ### 2.12 The Aegis Events and Calendar Analyst seat
 
 - **What lands.** The sixth Floor seat with its agent, role skill and the skill `aegis-event-calendar-sourcing`,
-  owning 2.11. The Floor is then full.
+  owning 2.11. It keeps owner-stated earnings dates current by reminder, not by sourcing. The Floor is then full.
 - **Gate.** As 2.10, with six agents.
 
 ### Stage 2 is done when
@@ -327,8 +412,13 @@ would have decided on past days, and who looks after the rulebook.
 - **What lands.** For each signal: when it fired, your acknowledgement, snooze or acted mark (which `ack.py` records
   today), and the position's later marks from the desk's own end-of-day snapshots. A `journal-close` routine closes
   each day's entries.
-- **Constraint.** The journal states facts per signal. It does not rank rules by result or present any total as the
-  rules' return; whether any summary figure may be shown at all is a counsel question.
+- **Constraint: counts only (open question 6).** The journal states facts per signal. The only totals it or the
+  weekly review shows are counts, in fixed words: signals per rule and overall with your acks, acted marks and snoozes (for
+  example `TP50: 3 signals this week; 2 acknowledged, 1 marked acted, 0 snoozed`), and replay verdicts (`verdict
+  differed from your adopted rule on 3 of 5 trading days`, with the days). No sum, average or difference of money
+  across signals or replay days, no rate, no ranking of rules, no money figure on a replay verdict, and the book's P/L
+  totals stay in the end-of-day summary. Counsel signs the per-signal line and the two count lines before 3.1 and 3.4
+  tag; if counsel rejects counts, the review shows per-signal facts and per-day replay verdicts only.
 - **Gate.** Journal goldens from fixture histories; a torn or missing snapshot is UNAVAILABLE for that day.
 
 ### 3.2 Rules replay
@@ -353,6 +443,10 @@ would have decided on past days, and who looks after the rulebook.
 
 - **What lands.** A direct-message seat that posts the weekly review from the journal and the replay, its skill
   `aegis-signal-journal-and-review`, and the planned `weekly-review` routine.
+- **Constraint: counts only (open question 6).** As 3.1. The alert lint's review mode refuses a currency amount on any
+  line that is not a per-signal fact line, and the phrases return, performance, win rate, hit rate, success rate,
+  saved, avoided, outperform and total P/L. "Would have" is allowed: rule 6 lets a replay report what happened to your
+  rules.
 - **Gate.** Review goldens; the alert lint over the review text; counsel's sign-off.
 
 ### Stage 3 is done when
@@ -363,18 +457,18 @@ would have decided on past days, and who looks after the rulebook.
 
 ## Planned routines
 
-`tests/engine/test_routines.py` checks that the Auto-review allow text still fits seventeen routine ids: the six Stage
-1 routines and eleven planned ones. The planned roll-window routine was dropped (PR 3b decision S14), because the
-Structuring Desk never posts alerts. The test records only the names; this page places the eleven by their names,
-which is an inference, not a statement of the tree.
+`tests/engine/test_routines.py` checks that the Auto-review allow text still fits fifteen routine ids: the six Stage
+1 routines and nine planned ones. The planned roll-window routine was dropped (PR 3b decision S14), because the
+Structuring Desk never posts alerts. Your answer to open question 7 dropped two more: `t1-call`, because the T-1
+PREVIEW already runs in `final-call` (`expiry_checklist --tomorrow`, 15:20 ET), and `midday-limits`, because limits are exit rules that
+`book_check` already evaluates (2.7). The test records only the names; this page places the nine by their names, which
+is an inference, not a statement of the tree.
 
 | Routine id | Step |
 | --- | --- |
 | `opening-marks` | 2.10 |
-| `midday-limits` | 2.7 |
 | `pre-event-stress`, `weekend-stress` | 2.8 |
 | `calendar-build`, `event-sheet` | 2.11 |
-| `t1-call` | not placed: its purpose is not written down anywhere in the tree |
 | `journal-close` | 3.1 |
 | `rules-sanity`, `rulebook-memo` | 3.3 |
 | `weekly-review` | 3.4 |
@@ -383,9 +477,18 @@ Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts
 
 ## Values recorded for later stages
 
-`desk.toml` already records four owner values that no tool reads: `attention_thresholds` (`pl_day_pct` and
-`pl_trade_abs`), `chatty_or_quiet`, `engagement` and `disclosures_acknowledged`. The tree says only "later stages" for
-all four, so no step on this page claims any of them ([open question 7](#open-questions-for-the-owner)).
+`desk.toml` records four owner values that no tool reads. Your answer to open question 7 settled each:
+
+| Value | Fate |
+| --- | --- |
+| `attention_thresholds` (`pl_day_pct`, `pl_trade_abs`) | retired: `DAILY` already states a day-loss line, and limits are rules (2.7) |
+| `chatty_or_quiet` | retired: each routine's quiet rule and the `cadence_profile` already decide what is posted |
+| `engagement` | retired: nothing needs it |
+| `disclosures_acknowledged` | kept as a required record; no stage gates behaviour on it |
+
+Retired means the key becomes optional in `desk_config.py`, so existing files still parse under the strict reader;
+nothing reads it, `desk_init.py` stops asking for it and writing it, and the charter and Desk Lead lines say so. This
+lands with 2.6. Counsel decides whether any later owner-facing text must check `disclosures_acknowledged` first.
 
 ## Not on the roadmap
 
@@ -393,28 +496,32 @@ all four, so no step on this page claims any of them ([open question 7](#open-qu
 - A live brokerage key, a brokerage login or reading a brokerage account.
 - A trading strategy of the desk's own, a candidate symbol you do not hold, or a return claim.
 - Alerts outside the Grok Bot chats.
-- A roll-window routine (dropped in PR 3b).
+- A roll-window routine (dropped in PR 3b), and the `t1-call` and `midday-limits` routines (dropped by your answer to open question 7).
+- Discrete cash dividends in the lattice (2.2, dropped by your decision; revisit only with a list of ex-dates).
+- A second data vendor, scraping, or a sourced earnings date (your answer to open question 1).
 
 ## Open questions for the owner
 
-1. **Event data (2.11).** Which source, if any, may the desk read corporate events from, and does it fit the one-key,
-   GET-only, pinned-host boundary? Until you decide, you keep stating dates.
-2. **The model of record and the band (2.3).** When the lattice is wired, which answers switch to American values,
-   is the European value printed beside them, and what does a leg near the early-exercise boundary show for its
-   Greeks: approximate values, values repriced with more steps, or UNAVAILABLE?
-3. **The dividend schedule (2.3; 2.2 if needed).** The calendar holds one next ex-dividend per symbol (`ex_dividend`
-   in `research/calendar.toml`, schema version 1). For a leg whose life spans more: a calendar with a list of
-   ex-dates (a schema change, with `desk_init.py` intake and counsel), the stated dividend as a cash amount and the
-   yield after it (this needs 2.2), the continuous yield as today with a note on the leg, or UNAVAILABLE? An unknown
-   dividend is never zero. Whatever you choose for prices, the dividend tier keeps its quoted-extrinsic test, and an
-   early-exercise line that reads a dividend needs 2.2.
-4. **Limits (2.7).** Which exposure or Greek limits do you want messages for, and where do you state them?
-5. **Cash (2.6).** Do you want to state a cash figure per account, and how old may it be before the check is
-   UNAVAILABLE?
-6. **The journal (3.1).** May the journal or the review show any total at all, and in which words (with counsel)?
-7. **`t1-call` and the four recorded `desk.toml` values.** Which stage, if any, uses them?
-8. **The chain budget for weeklies (2.5).** Raise the four-chain cap and the request budget, sample the window, or
-   narrow it when weeklies are on?
+All nine are answered. The full reasoning behind answers 1 to 8 and the timing of 2.8 (after 2.3) was recorded with
+the owner's acceptance on 2026-11-15; each step above carries the decision it needs.
+
+1. **Event data (2.11). Answered:** one GET-only path for cash dividends on the pinned Alpaca data host with the same
+   key; earnings dates, yields and settlement values stay owner-stated.
+2. **The model of record and the band (2.3). Answered:** American everywhere, one value per leg, no European value
+   printed; in the band delta is `approx` within `BAND_DELTA_TOL = 0.05`, gamma and theta UNAVAILABLE, nothing
+   repriced.
+3. **The dividend schedule (2.3). Answered:** the continuous yield, moved into the sourced `ex_dividend` entry; an
+   unknown yield makes IV and Greeks UNAVAILABLE; a dividend note on every leg spanning an ex-date and the long put's
+   wait line; 2.2 dropped.
+4. **Limits (2.7). Answered:** two rule metrics in the exit rulebook (`beta_weighted_delta_pct`,
+   `delta_exposure_pct`), beta on split-adjusted bars with a ±40 % guard; no `[limits]` section, no new routine.
+5. **Cash (2.6). Answered:** optional `cash` and `cash_as_of` per account, checked at the peak cash out over the
+   ticket's legs, UNAVAILABLE when older than 5 trading days.
+6. **The journal (3.1). Answered:** counts only, in fixed words, with counsel.
+7. **`t1-call` and the four recorded `desk.toml` values. Answered:** `t1-call` and `midday-limits` dropped; three
+   values retired; `disclosures_acknowledged` kept as a record.
+8. **The chain budget for weeklies (2.5). Answered:** narrow the window to at most 21 days when weeklies are on; the
+   four-chain cap stays.
 9. **A vertical's choices (2.4). Answered:** a ROLL ticket of both legs to a later expiration at the same width, and
    a long call of the same expiry counts as a short call's cover (a defined-risk spread, level 3). The convention's
    new step is counsel-signed text like the rest.

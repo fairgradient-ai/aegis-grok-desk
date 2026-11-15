@@ -2,6 +2,15 @@
 
 ## 1.0.0 (unreleased)
 
+- **The owner's answers to the roadmap's open questions 1 to 8** (`docs/ROADMAP.md`). Step 2.3 comes next and 2.8
+  after it. The model of record is American everywhere, one value per leg; in the early-exercise band delta is marked
+  `approx` within a tested 0.05, and gamma and theta are UNAVAILABLE. The dividend stays a continuous yield, moved into
+  the sourced `ex_dividend` entry, with a note on every leg spanning an ex-date and a long put's wait line; step 2.2
+  (discrete dividends) is dropped. Weeklies narrow the `dte` window to 21 days under the same four-chain cap. Cash is
+  optional per account, checked at the peak cash out and UNAVAILABLE after 5 trading days. Limits are two rule metrics
+  in the exit rulebook. One GET-only path reads cash dividends. Journal and review totals are counts only. The planned
+  `t1-call` and `midday-limits` routines are dropped (`tests/engine/test_routines.py` now fits fifteen ids), and
+  three recorded `desk.toml` values are retired with step 2.6.
 - **Volatility context** (roadmap step 2.9). The new read-only tool `vol_context.py` (`aegis_desk.vol_context`) reads
   the desk's own end-of-day book snapshots: a symbol's value for a day is the median implied volatility of its open
   option legs with `iv_status` ok (never the vendor's Greeks), and the context places the latest day's value among
