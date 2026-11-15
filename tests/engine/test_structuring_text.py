@@ -52,6 +52,10 @@ def closed(writer: "T.Writer", lines: List[str], as_of: datetime.datetime = STAM
     return "\n".join(list(lines) + [writer.footer(as_of)])
 
 
+CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,open,,,,,"
+           "cash-secured put")
+
+
 class DeskCopy:
     def __init__(self, owner, drop_row=None, replace=None) -> None:
         tmp = tempfile.mkdtemp(prefix="aegis-structuring-text-")
@@ -691,6 +695,9 @@ class GoldenTextTest(unittest.TestCase):
         cls.collar = S.run_proposal(tagged.market(), "AG-20261028-03", "collar", CRITERIA)
         cls.replacement = S.run_replacement(main.market(), "AG-20261020-01", JAN15, D("115"), CRITERIA)
         cls.spy_roll = S.run_roll_analysis(main.market(), "AG-20261028-03", CRITERIA)
+        csp = DeskCopy(cls, replace=("closed early", "closed early\n" + CSP_ROW))
+        wide_roll = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, dte=(130, 140)))
+        cls.short_put = S.run_roll_analysis(csp.market(), "AG-20261101-05", wide_roll)
         cls.nothing = S.run_proposal(main.market(), "AG-20261028-03", "protective_put", CRITERIA)
         expiry_now = datetime.datetime(2026, 11, 20, 19, 50, tzinfo=UTC)
         cls.expiry_day = S.run_roll_analysis(DeskCopy(cls).market("expiry_day", expiry_now), "AG-20261020-01", CRITERIA)
@@ -737,6 +744,48 @@ class GoldenTextTest(unittest.TestCase):
                          T.held_line(w, self.spy_roll.held))
         self.assertEqual("the net credits close the held 2026-11-20 150 call | ask 3.30 | quote grade C, 18 min old",
                          T.held_line(w, self.nvda.held))
+
+    def test_a_cash_secured_puts_roll_reads_as_a_short_put(self) -> None:
+        lines = self.render(T.roll_analysis_lines, self.short_put).text.split("\n")
+        self.assertEqual("### STRUCTURING AG-20261101-05 | SPY cash-secured put: the roll analysis of the short "
+                         "2026-12-18 620 put", lines[0])
+        # a group that holds no shares has no cost segment
+        self.assertEqual("*account 1 of desk.toml (margin) | SPY mid 648.12 | quotes 19:31 UTC, 15-min delayed*",
+                         lines[1])
+        self.assertEqual(["- leg 1 of 2: closes your short 1 x SPY 2026-12-18 620 put | ask 10.10 | quote grade B, "
+                          "18 min old",
+                          "- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 625 put | bid 26.85 | quote grade A, "
+                          "18 min old"], [line for line in lines if line.startswith("- leg ")])
+        self.assertIn("- \U0001F7E2 **1** 2027-03-19 | new put 625 | credit 16.75 | extrinsic_per_day 0.0305", lines)
+        self.assertIn("> - cash: the new put is secured by 62,500.00 and the held put by 62,000.00 (each its strike "
+                      "times the shares it can deliver); the desk does not see your cash balance", lines)
+        # a short put has no strike floor: no strike check under the candidate
+        self.assertFalse(any("**strike**" in line for line in lines))
+        w = T.Writer()
+        self.assertEqual("the net credits close the held 2026-12-18 620 put | ask 10.10 | quote grade B, 18 min old",
+                         T.held_line(w, self.short_put.held))
+
+    def test_a_short_puts_early_assignment_note(self) -> None:
+        best = self.short_put.ranking.best
+        leg = best.legs[0]
+        w = T.Writer()
+        deep = dataclasses.replace(best, legs=(dataclasses.replace(leg, abs_delta=D("0.85")),), american_caveat=True)
+        self.assertEqual("early-assignment note: the 2027-03-19 625 put is deep in the money (absolute delta 0.85); a "
+                         "short put this deep can be assigned before expiry, and the European model does not price "
+                         "that", T.american_line(w, deep, self.short_put.pricing))
+        carry_leg = dataclasses.replace(leg, strike=D("700"), mid=D("52.00"), abs_delta=D("0.70"))
+        itm = dataclasses.replace(best, legs=(carry_leg,), american_caveat=True)
+        line = T.american_line(w, itm, self.short_put.pricing)
+        self.assertTrue(line.startswith("early-assignment note: the 2027-03-19 700 put is in the money and its time "
+                                        "value at the mid, "), line)
+        self.assertTrue(line.endswith("; a short put can then be assigned before expiry, and the European model does "
+                                      "not price that"), line)
+        with self.assertRaises(ValueError):  # an out-of-the-money put carries no note
+            T.short_put_line(w, best, self.short_put.pricing)
+        # the note passes the structuring lint inside a full answer
+        noted = dataclasses.replace(self.short_put, ranking=dataclasses.replace(self.short_put.ranking, best=deep))
+        rendered = self.render(T.roll_analysis_lines, noted)
+        self.assertIn("> - early-assignment note: the 2027-03-19 625 put is deep in the money", rendered.text)
 
     def test_a_disabled_section_is_named_by_words_the_lint_passes(self) -> None:
         # "roll: disabled ..." starts a segment with an imperative the structuring lint refuses; the section is named

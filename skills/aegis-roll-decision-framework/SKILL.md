@@ -1,6 +1,6 @@
 ---
 name: aegis-roll-decision-framework
-description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call, the long put of a protective put) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
+description: How to read and relay a roll analysis of roll_analysis.py, for the Aegis Structuring Desk. A roll is a close plus an open, judged as a fresh trade; what the analysis covers (the short call of a covered call, the long put of a protective put, the short put of a cash-secured put) and what is planned; the replacement set; the objective, its score and its tie-breaks; the statuses and the FAILS_CRITERION labels (credit_only for a net debit, strike_floor below the stock cost, earnings and ex_dividend inside the new call's life, the bands, unpriced quotes) and how the owner's row tags and criteria accept them; the approval-level check; why no candidate passing is a complete answer and CLOSE or LET_ASSIGN remain choices; the link to the Exit Sentinel's plan words; and why it never runs in a routine. The desk never places anything; the owner decides and acts in the brokerage account.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -43,13 +43,22 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
 - The open long put of a `protective_put` group, judged under `[protective_put]`: every put of a later standard
   monthly inside its `dte`, ranked by its objective (`stress_cost_per_day` by default). The best candidate opens the
   new put at its ask first, then closes the held put at its bid, and each check reads the net cost per day added.
-- Any other structure is NOT_APPLICABLE with its reason. The roll analysis of short puts and collars, weekly
-  expirations and American pricing are planned for Stage 2 (not in this release).
+- The open short put of a `cash_secured_put` group, judged under `[roll]` as a short call's roll is: the bands, the
+  minimum credit and the roll test, with a put's time value (`bid - max(0, K - S)`). `strike_floor` and
+  `ex_dividend` are call rules and are not read; earnings inside the new put's life still count. The best candidate
+  closes the held put at its ask first, then opens the new one at its bid, and a note gives the cash each put
+  secures (the desk does not see the cash balance).
+- Where a short put's holder may do better exercising it than holding it (the long put's two tests: absolute delta
+  0.80 or more, or in the money with a time value below the interest on its strike), the answer carries an
+  `early-assignment note:`: the short put can be assigned before expiry, and the European model does not price that.
+- Any other structure is NOT_APPLICABLE with its reason. The roll analysis of collars, weekly expirations and
+  American pricing are planned for Stage 2 (not in this release).
 - An index underlying (the data source cannot quote index options) and the structure's section disabled
-  (`[roll] enabled = false`, or `[protective_put] enabled = false`) are NOT_APPLICABLE too.
+  (`[roll] enabled = false` for a covered call or a cash-secured put, `[protective_put] enabled = false` for a
+  protective put) are NOT_APPLICABLE too.
 
 ```text
-NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call and the long put of a protective put; the roll analysis of a short put or a collar is planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261028-03 roll analysis | AG-20261028-03 is a collar: the roll analysis covers the short call of a covered call, the long put of a protective put and the short put of a cash-secured put; the roll analysis of a collar is planned for Stage 2 (not in this release)
 ```
 
 ## The replacement set

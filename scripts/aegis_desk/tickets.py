@@ -16,7 +16,8 @@ One :class:`PlanLeg` per open row (a lot keeps its own cost), rows in file order
 * ``LET_ASSIGN``: no leg (the short options are left to expiry; :class:`LetAssignLeg` per short option);
 * ``ROLL``: the held leg :func:`replaced_row` names and the owner's :class:`Replacement` (the held leg's root and
   right, the owner's expiration and strike, as many contracts): a covered call's short call closes the old call, then
-  opens the new one; a protective put's long put opens the new put, then closes the old one.
+  opens the new one; a protective put's long put opens the new put, then closes the old one; a cash-secured put's
+  short put closes the old put, then opens the new one (roadmap step 2.4).
 
 Approval and exposure (S5, S7): :func:`check_plan` runs ``aegis_desk.approval.check_legs`` over the plan from the
 account's holdings of the underlying (``approval.holdings_of``: every open row of the account, whatever the group), so
@@ -204,12 +205,14 @@ def _row_leg(step: int, intent: str, row: PositionRow) -> PlanLeg:
 
 
 def replaced_row(group: PositionGroup) -> Optional[PositionRow]:
-    """The held leg a ROLL replaces: the short call of a covered call or the long put of a protective put, when the
-    group holds it on exactly one row; else ``None``."""
+    """The held leg a ROLL replaces: the short call of a covered call, the long put of a protective put or the short
+    put of a cash-secured put, when the group holds it on exactly one row; else ``None``."""
     if group.structure == grouping.STRUCTURE_COVERED_CALL:
         rows = [row for row in group.open_legs if row.is_option and row.is_call and row.is_short]
     elif group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         rows = [row for row in group.open_legs if row.is_option and row.is_put and row.is_long]
+    elif group.structure == grouping.STRUCTURE_CASH_SECURED_PUT:
+        rows = [row for row in group.open_legs if row.is_option and row.is_put and row.is_short]
     else:
         return None
     return rows[0] if len(rows) == 1 else None
@@ -239,7 +242,8 @@ def plan_legs(group: PositionGroup, action: str, replacement: Optional[Replaceme
         if replacement is None or held is None:
             raise ValueError("a ROLL needs the held leg it replaces and the replacement")
         if held.is_short:
-            new = PlanLeg(2, INTENT_OPEN_SHORT, approval.INSTRUMENT_CALL, replacement.contracts, None, None,
+            instrument = approval.INSTRUMENT_PUT if held.is_put else approval.INSTRUMENT_CALL
+            new = PlanLeg(2, INTENT_OPEN_SHORT, instrument, replacement.contracts, None, None,
                           replacement.root, replacement.right, replacement.strike, replacement.expiration, held.multiplier)
             return [_row_leg(1, INTENT_CLOSE_SHORT, held), new]
         new = PlanLeg(1, INTENT_OPEN_LONG, approval.INSTRUMENT_PUT, replacement.contracts, None, None, replacement.root,
@@ -696,7 +700,8 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
     if action == structuring.ACTION_ROLL:
         held = replaced_row(group)
         if held is None or held.occ is None:
-            words = "long put" if group.structure == grouping.STRUCTURE_PROTECTIVE_PUT else "short call"
+            words = {grouping.STRUCTURE_PROTECTIVE_PUT: "long put",
+                     grouping.STRUCTURE_CASH_SECURED_PUT: "short put"}.get(group.structure, "short call")
             return _close(ticket, market, VERDICT_NOT_APPLICABLE, structuring.NA_STRUCTURE,
                           structuring.NA_TWO_ROWS_WORDS % (trade_id, words))
         assert new_expiration is not None and new_strike is not None
@@ -1002,6 +1007,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     words = None
     if ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_PROTECTIVE_PUT:
         words = structuring_text.ROLL_PUT_WORDS
+    elif ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_CASH_SECURED_PUT:
+        words = structuring_text.ROLL_SHORT_PUT_WORDS
     as_of = ticket_as_of(ticket)
     lines.append(structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
                                                 words))
@@ -1034,8 +1041,11 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     lines.extend(approval.approval_lines(ticket.holdings, approval_legs(ticket.plan), ticket.owner_level,
                                          group.underlying, w.emitted))
     lines.append("")
-    notes.extend([structuring_text.CASH_BALANCE_LINE, structuring_text.AFTER_FILL_LINE, structuring_text.LIMIT_LINE,
-                  structuring_text.ACT_LINE])
+    short_put = (replacement is not None and replacement.candidate is not None and replacement.held is not None
+                 and replacement.candidate.kind == structuring.KIND_REPLACEMENT_SHORT_PUT)
+    cash_line = (structuring_text.cash_secured_line(w, replacement.candidate, replacement.held) if short_put
+                 else structuring_text.CASH_BALANCE_LINE)
+    notes.extend([cash_line, structuring_text.AFTER_FILL_LINE, structuring_text.LIMIT_LINE, structuring_text.ACT_LINE])
     return lines + structuring_text.notes_block(notes)
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""roll_analysis.py: the replacement candidates for the short call of a covered call or the long put of a protective put,
-on the owner's request only.
+"""roll_analysis.py: the replacement candidates for the short call of a covered call, the long put of a protective put or
+the short put of a cash-secured put, on the owner's request only.
 
 Usage::
 
@@ -14,9 +14,10 @@ when the owner's own message asks; it is refused as a routine step (``aegis_desk
 never fires an alert. For the open short call of a ``covered_call`` group in ``positions.csv`` it prices every call of
 the later standard monthly expirations inside ``[roll] dte`` of the owner's ``structuring.toml``, labels each against
 the owner's criteria and ranks them by the declared objective (``aegis_desk.structuring.run_roll_analysis``). For the
-open long put of a ``protective_put`` group it does the same with every put, under ``[protective_put]`` (roadmap step
-2.4). Any other structure, an index underlying or the structure's section disabled is NOT_APPLICABLE with its reason
-(the roll analysis of short puts and collars is planned for Stage 2).
+open long put of a ``protective_put`` group it does the same with every put, under ``[protective_put]``, and for the
+open short put of a ``cash_secured_put`` group with every put, under ``[roll]`` (roadmap step 2.4). Any other
+structure, an index underlying or the structure's section disabled is NOT_APPLICABLE with its reason (the roll
+analysis of collars is planned for Stage 2).
 
 The order of designer C's D3.6, each step before the next:
 
@@ -27,8 +28,8 @@ The order of designer C's D3.6, each step before the next:
    ``structuring_invalid`` (exit 1).
 3. ``desk.toml`` (the acknowledged one; ``owner.approval_level`` is the owner's self-attested level), ``positions.csv``
    and the calendar, then the approval-level check (``aegis_desk.approval``) of the roll's legs in the S7 order (close
-   the held call, then open the new one; for a long put, open the new put, then close the held one) on the account's
-   holdings: a refusal prints the REFUSED line (exit 20) before
+   the held call, then open the new one; for a long put, open the new put, then close the held one; for a short
+   put, close the held put, then open the new one) on the account's holdings: a refusal prints the REFUSED line (exit 20) before
    any market data is requested.
 4. Market data through ``aegis_desk.quote_cache`` only: one group-scoped quotes batch, the underlying's expirations, the
    in-window chains (at most four; ``requests`` reports them and the desk-wide ``budget_left``). The best candidate is
@@ -83,8 +84,8 @@ TOOL = structuring.TOOL_ROLL_ANALYSIS
 KIND = structuring.KIND_REPLACEMENT_CALL
 SECTION = "roll"
 WHAT = "roll analysis"
-DESCRIPTION = ("on the owner's request only: the replacement candidates for the short call of a covered call or the "
-               "long put of a protective put, priced "
+DESCRIPTION = ("on the owner's request only: the replacement candidates for the short call of a covered call, the "
+               "long put of a protective put or the short put of a cash-secured put, priced "
                "from that underlying's own chains, labelled against the owner's structuring.toml and ranked by its "
                "declared objective; names one best candidate when one passes every criterion; never in a routine")
 NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest, /v1beta1/options/quotes/latest and "
@@ -160,7 +161,8 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "legs": [dict(_LEG_SHAPE)], "after": "{...} | null (as after)",
 }
 OUTPUT: Dict[str, Any] = {
-    "tool": "roll_analysis", "kind": "replacement_call | replacement_put (a protective put's long put)",
+    "tool": "roll_analysis", "kind": ("replacement_call | replacement_put (a protective put's long put) | "
+                                      "replacement_short_put (a cash-secured put's short put)"),
     "trade_id": "AG-YYYYMMDD-NN",
     "group_id": "string | null", "structure": "the group's structure | null", "structure_requested": "null",
     "section": "roll | protective_put (the structuring.toml section the candidates are judged under)",
@@ -182,7 +184,7 @@ OUTPUT: Dict[str, Any] = {
     "held": ("{row_number, occ, root, right, side, contracts, strike, expiration, last_trading_day, bid, ask, mid, "
              "spread_pct, grade, quote_status, quote_age_min, as_of, iv, delta, entry_price_per_share, "
              "remaining_cost_basis, close_price, close_side, note, realized} | null (the short call every candidate "
-             "closes, at its fresh ask, or the long put, at its fresh bid)"),
+             "closes, at its fresh ask, the long put, at its fresh bid, or the short put, at its fresh ask)"),
     "before": "{group_delta, max_loss, max_profit, breakeven, unbounded_up} | null (the group-scoped book)",
     "shares": "decimal string | null (the group's open shares)", "contracts": "integer | null",
     "stress": "null", "expirations": "{listed_in_window: [YYYY-MM-DD], evaluated: [YYYY-MM-DD], not_evaluated: "
@@ -260,7 +262,8 @@ def user_agent(version: str) -> str:
 def build_parser(version: str) -> contract.ReadOnlyParser:
     parser = contract.ReadOnlyParser(tool=TOOL, tool_version=version, description=DESCRIPTION)
     parser.add_argument("--trade", metavar="AG-YYYYMMDD-NN", default=None,
-                        help="the trade id of a covered call or protective put group in positions.csv (required)")
+                        help="the trade id of a covered call, protective put or cash-secured put group in "
+                             "positions.csv (required)")
     parser.add_argument("--fixture-set", metavar="NAME", default=None,
                         help="recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only)")
     return parser
@@ -335,10 +338,11 @@ def approval_dict(result: approval.ApprovalResult, stage: str) -> Dict[str, Any]
 
 def roll_legs(group: Any) -> Optional[List[approval.Leg]]:
     """The roll's legs in the S7 order: close the held short call, then open the new one; for a protective put, open
-    the new long put, then close the held one. ``None`` when the group holds that leg on other than exactly one row
-    (the analysis answers that itself)."""
+    the new long put, then close the held one; for a cash-secured put, close the held short put, then open the new
+    one. ``None`` when the group holds that leg on other than exactly one row (the analysis answers that itself)."""
     put = group.structure == structuring.grouping.STRUCTURE_PROTECTIVE_PUT
-    rows = [row for row in group.open_legs if row.is_option and row.right == ("PUT" if put else "CALL")
+    short_put = group.structure == structuring.grouping.STRUCTURE_CASH_SECURED_PUT
+    rows = [row for row in group.open_legs if row.is_option and row.right == ("PUT" if put or short_put else "CALL")
             and row.is_short != put]
     if len(rows) != 1:
         return None
@@ -349,6 +353,9 @@ def roll_legs(group: Any) -> Optional[List[approval.Leg]]:
     if put:
         return [approval.Leg(approval.EFFECT_OPEN, approval.SIDE_LONG, approval.INSTRUMENT_PUT, contracts),
                 approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_LONG, approval.INSTRUMENT_PUT, contracts)]
+    if short_put:
+        return [approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, contracts),
+                approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, contracts)]
     return [approval.Leg(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts),
             approval.Leg(approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_CALL, contracts)]
 

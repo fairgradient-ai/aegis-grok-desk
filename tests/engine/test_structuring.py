@@ -570,33 +570,40 @@ LONG_CALL = "option,WMT,WMT261218C00120000,2,,,,Brokerage (margin),AG-20261101-0
 PUT = "option,WMT,WMT261218P00090000,2,,,,Brokerage (margin),AG-20261101-01,2026-10-20,300.00,,,open,,,,,"
 SHORT_PUT = "option,WMT,WMT261218P00090000,-1,,,,Brokerage (margin),AG-20261101-01,2026-10-20,-150.00,,,open,,,,,"
 INDEX_PUT = "option,SPX,SPX261218P05000000,1,,,,Brokerage (margin),AG-20261101-01,2026-10-20,3000.00,,,open,,,,,"
+CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,open,,,,,"
+           "cash-secured put")
 CLOSED_SHARES = "equity,WMT,,200,,,,Brokerage (margin),AG-20261101-01,2026-10-20,,98.50,,closed,2026-10-30,200,99.00,,"
 CLOSED_CALL = ("option,WMT,WMT261218C00110000,-2,,,,Brokerage (margin),AG-20261101-01,2026-10-20,-560.00,,,closed,"
                "2026-10-30,2,1.00,,")
 
 
 class ApplicabilityTest(unittest.TestCase):
-    def test_roll_analysis_covers_a_covered_calls_short_call_and_a_protective_puts_long_put(self) -> None:
+    def test_roll_analysis_covers_a_short_call_a_protective_puts_long_put_and_a_short_put(self) -> None:
         self.assertIsNone(S.roll_applicability(group_of(SHARES, CALL), CRITERIA))
         self.assertIsNone(S.roll_applicability(group_of(SHARES, PUT), CRITERIA))
-        for rows, words in (((SHARES, PUT, CALL), "collar"), ((SHORT_PUT,), "cash-secured put"),
-                            ((SHARES,), "long stock"), ((PUT,), "long put"),
+        self.assertIsNone(S.roll_applicability(group_of(SHORT_PUT), CRITERIA))
+        for rows, words in (((SHARES, PUT, CALL), "collar"), ((SHARES,), "long stock"), ((PUT,), "long put"),
                             ((CALL.replace("-2,", "-1,").replace("-560.00", "-280.00"),
                               LONG_CALL.replace(",2,", ",1,").replace("240.00", "120.00")), "call credit vertical")):
             with self.subTest(words=words):
                 answer = S.roll_applicability(group_of(*rows), CRITERIA)
                 self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_STRUCTURE), (answer.verdict, answer.code))
                 self.assertIn("is a %s:" % words, answer.reason)
-                self.assertIn("the short call of a covered call and the long put of a protective put", answer.reason)
+                self.assertIn("the short call of a covered call, the long put of a protective put and the short put "
+                              "of a cash-secured put", answer.reason)
                 self.assertNotIn("a ROLL ticket", answer.reason)
         put_off = dataclasses.replace(CRITERIA, protective_put=dataclasses.replace(CRITERIA.protective_put,
                                                                                    enabled=False))
         answer = S.roll_applicability(group_of(SHARES, PUT), put_off)
         self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_DISABLED), (answer.verdict, answer.code))
         self.assertIsNone(S.roll_applicability(group_of(SHARES, CALL), put_off))
-        self.assertEqual({"covered_call": "roll", "protective_put": "protective_put"}, S.ROLL_SECTIONS)
-        self.assertEqual({"covered_call": S.KIND_REPLACEMENT_CALL, "protective_put": S.KIND_REPLACEMENT_PUT},
-                         S.ROLL_KINDS)
+        roll_off = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, enabled=False))
+        self.assertEqual(S.NA_DISABLED, S.roll_applicability(group_of(SHORT_PUT), roll_off).code)
+        self.assertEqual({"covered_call": "roll", "protective_put": "protective_put", "cash_secured_put": "roll"},
+                         S.ROLL_SECTIONS)
+        self.assertEqual({"covered_call": S.KIND_REPLACEMENT_CALL, "protective_put": S.KIND_REPLACEMENT_PUT,
+                          "cash_secured_put": S.KIND_REPLACEMENT_SHORT_PUT}, S.ROLL_KINDS)
+        self.assertEqual("roll", S.KIND_SECTIONS[S.KIND_REPLACEMENT_SHORT_PUT])
         index = S.roll_applicability(group_of(INDEX_PUT), CRITERIA)
         self.assertEqual(S.NA_INDEX, index.code)
         closed = S.roll_applicability(group_of(CLOSED_SHARES, CLOSED_CALL), CRITERIA)
@@ -632,7 +639,7 @@ class ApplicabilityTest(unittest.TestCase):
             ("UNWIND_STOCK", short_put, S.NA_ACTION), ("LET_ASSIGN", covered, None), ("LET_ASSIGN", short_put, None),
             ("LET_ASSIGN", protective, S.NA_ACTION), ("MONETIZE_PUT", protective, None), ("MONETIZE_PUT", collar, None),
             ("MONETIZE_PUT", covered, S.NA_ACTION), ("ROLL", covered, None), ("ROLL", protective, None),
-            ("ROLL", collar, S.NA_STRUCTURE), ("ROLL", short_put, S.NA_STRUCTURE), ("ROLL", shares, S.NA_STRUCTURE),
+            ("ROLL", collar, S.NA_STRUCTURE), ("ROLL", short_put, None), ("ROLL", shares, S.NA_STRUCTURE),
         ]
         for action, group, expected in expectations:
             with self.subTest(action=action, structure=group.structure):
@@ -641,6 +648,7 @@ class ApplicabilityTest(unittest.TestCase):
         self.assertEqual(S.NA_INDEX, S.ticket_applicability(group_of(INDEX_PUT), "CLOSE", CRITERIA).code)
         disabled = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, enabled=False))
         self.assertEqual(S.NA_DISABLED, S.ticket_applicability(covered, "ROLL", disabled).code)
+        self.assertEqual(S.NA_DISABLED, S.ticket_applicability(short_put, "ROLL", disabled).code)
         self.assertIsNone(S.ticket_applicability(covered, "CLOSE", disabled))
         self.assertEqual(("CLOSE", "UNWIND_STOCK", "LET_ASSIGN", "MONETIZE_PUT", "ROLL"), S.ACTIONS)
         with self.assertRaises(ValueError):
@@ -673,6 +681,62 @@ class AmericanCaveatTest(unittest.TestCase):
         self.assertGreaterEqual(deep.abs_delta, D("0.80"))
         self.assertEqual([True, False], [S.protective_put_candidate(leg, ctx, group, section).american_caveat
                                          for leg in (deep, near)])
+
+
+    def test_short_put_early_assignment_note_reads_the_long_puts_two_tests(self) -> None:
+        # roadmap step 2.4: a short put carries the note where a long put of the same quote carries its caveat
+        ctx = pricing("ZZZ", spot=spot_qc("ZZZ", "99.99", "100.01"), q=None)
+        deep = S.price_contract(option("ZZZ", MAR19, "put", "150", "50.40", "50.60"), ctx)
+        near = S.price_contract(option("ZZZ", MAR19, "put", "95", "3.95", "4.05"), ctx)
+        self.assertGreaterEqual(deep.abs_delta, D("0.80"))
+        self.assertEqual([True, False], [S.short_put_caveat(leg, ctx) for leg in (deep, near)])
+        # in the money, below 0.80, with a time value at the mid under the interest on the strike: the second test
+        itm = dataclasses.replace(near, strike=D("104"), mid=D("4.05"), abs_delta=D("0.70"))
+        time_value, carry = S.put_exercise_carry(itm, ctx)
+        self.assertLess(time_value, carry)
+        self.assertTrue(S.short_put_caveat(itm, ctx))
+        self.assertEqual([S._put_caveat(leg, ctx) for leg in (deep, near, itm)],
+                         [S.short_put_caveat(leg, ctx) for leg in (deep, near, itm)])
+
+
+class ShortPutHelpersTest(unittest.TestCase):
+    def test_a_puts_time_value_reads_its_own_intrinsic(self) -> None:
+        self.assertEqual(D("2.00"), S.extrinsic(D("2.00"), D("100"), D("95"), "PUT"))   # out of the money
+        self.assertEqual(D("1.00"), S.extrinsic(D("6.00"), D("100"), D("105"), "PUT"))  # in: 6.00 - 5
+        self.assertEqual(D("1.00"), S.extrinsic(D("6.00"), D("100"), D("95")))          # a call, unchanged
+        self.assertEqual(D("-1.00"), S.net_time_value(D("2.00"), D("6.00"), D("100"), D("95"), D("103"), "PUT"))
+        self.assertEqual(D("0.0200"), S.extrinsic_per_day(D("2.00"), D("100"), D("95"), 100, "PUT"))
+        # gives up 1.00 of time value: charged whole, not spread over the days added
+        self.assertEqual(D("-1.000000"), S.net_extrinsic_per_added_day(D("2.00"), D("6.00"), D("100"), D("95"),
+                                                                       D("103"), 100, 40, "PUT"))
+
+    def test_a_cash_secured_puts_short_put_is_analysed_and_ticketed_under_roll(self) -> None:
+        desk = Desk(self, replace=("closed early", "closed early\n" + CSP_ROW))
+        criteria = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, dte=(130, 140)))
+        answer = S.run_roll_analysis(desk.market(), "AG-20261101-05", criteria)
+        self.assertEqual((S.VERDICT_BEST, S.KIND_REPLACEMENT_SHORT_PUT, "roll", "extrinsic_per_day"),
+                         (answer.verdict, answer.kind, answer.section_name, answer.objective.id))
+        self.assertEqual(("SPY261218P00620000", "short", "ask", D("10.10")),
+                         (answer.held.occ, answer.held.side, answer.held.close_side, answer.held.close_price))
+        best = answer.ranking.best
+        self.assertEqual(("SPY270319P00625000", D("0.0305"), D("16.75"), D("1675.00"), False),
+                         (best.id, best.score, best.net_credit, best.net_credit_total, best.american_caveat))
+        self.assertTrue(all(c.legs[0].right == "PUT" and c.kind == S.KIND_REPLACEMENT_SHORT_PUT
+                            for c in answer.ranking.candidates))
+        # no strike floor and no ex-dividend label for a short put: every failure is a band
+        self.assertEqual({"abs_delta": 6}, dict(answer.ranking.failure_counts))
+        self.assertEqual([(approval.EFFECT_CLOSE, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, 1),
+                          (approval.EFFECT_OPEN, approval.SIDE_SHORT, approval.INSTRUMENT_PUT, 1)],
+                         [(leg.effect, leg.side, leg.instrument, leg.quantity) for leg in S.approval_legs(answer, best)])
+        ticket = S.run_replacement(desk.market(), "AG-20261101-05", MAR19, D("600"), criteria)
+        self.assertEqual((S.VERDICT_PRICED, S.KIND_REPLACEMENT_SHORT_PUT, "SPY270319P00600000", D("10.50")),
+                         (ticket.verdict, ticket.kind, ticket.candidate.id, ticket.candidate.net_credit))
+
+    def test_the_tie_breaks_put_the_lower_strike_first(self) -> None:
+        self.assertEqual(("net_credit", "abs_delta", "expiration", "strike", "contract"),
+                         S.TIE_BREAKS[S.KIND_REPLACEMENT_SHORT_PUT])
+        self.assertEqual(-1, S.TIE_BREAK_DIRECTIONS[S.KIND_REPLACEMENT_CALL]["strike"])
+        self.assertEqual(1, S.TIE_BREAK_DIRECTIONS[S.KIND_REPLACEMENT_SHORT_PUT]["strike"])
 
 
 # ------------------------------------------------------------------------------------------------

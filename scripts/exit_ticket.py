@@ -211,7 +211,8 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
     parser.add_argument("--action", choices=structuring.ACTIONS, default=None,
                         help="CLOSE (the option legs), UNWIND_STOCK (the shares and every option leg), LET_ASSIGN (the "
                              "short option left to expiry), MONETIZE_PUT (the long put of a protective put or a collar) "
-                             "or ROLL (a covered call's short call or a protective put's long put replaced) (required)")
+                             "or ROLL (a covered call's short call, a protective put's long put or a cash-secured put's "
+                             "short put replaced) (required)")
     parser.add_argument("--new-expiration", metavar="YYYY-MM-DD", default=None,
                         help="ROLL only, with --new-strike: the replacement's expiration, later than the held leg's")
     parser.add_argument("--new-strike", metavar="K", default=None,

@@ -43,8 +43,10 @@ UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2026-12-18 180 call cannot be pri
 UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2027-01-15 180 call cannot be priced: the spread is wider than the quote grades allow
 ```
 
-- Every other replacement is NOT_APPLICABLE with its reason. Replacing a collar's legs as a unit, a short put or a
-  vertical is planned for Stage 2 (not in this release).
+- A ROLL ticket for a cash-secured put's short put closes the held put at its ask first, then opens the one the
+  owner names at its bid, judged under `[roll]`; its cash note gives what each put secures.
+- Every other replacement is NOT_APPLICABLE with its reason. Replacing a collar's legs as a unit or a vertical is
+  planned for Stage 2 (not in this release).
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 --desk-root /workspace/aegis-desk

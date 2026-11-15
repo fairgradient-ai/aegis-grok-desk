@@ -772,6 +772,36 @@ class QuietTest(DeskCase):
         self.assertEqual(0, code)  # a closing ticket needs no level
         self.assertEqual("approval_level", self.journal()[-2]["refused_code"])
 
+    def test_a_cash_secured_puts_short_put_roll_ticket(self) -> None:
+        # roadmap step 2.4: a ROLL ticket for a short put, judged under [roll]
+        row = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,"
+               "open,,,,,cash-secured put")
+        with open(self.paths.positions_csv, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(self.paths.positions_csv, "w", encoding="utf-8") as handle:
+            handle.write(text.replace("closed early", "closed early\n" + row))
+        self.ack(now="2026-11-03T19:49:30Z")
+        code, out = self.run_text("AG-20261101-05", "ROLL", "--new-expiration", "2027-03-19", "--new-strike", "600")
+        self.assertEqual(0, code, out)
+        lines = out.split("\n")
+        self.assertEqual("### TICKET AG-20261101-05 | SPY cash-secured put: a roll of the short put (action ROLL)",
+                         lines[0])
+        self.assertEqual(["- leg 1 of 2: closes your short 1 x SPY 2026-12-18 620 put | bid 9.80, ask 10.10, mid 9.95 | "
+                          "quote grade B",
+                          "- leg 2 of 2: opens a new short 1 x SPY 2027-03-19 600 put | bid 20.60, ask 20.80, mid 20.70 "
+                          "| quote grade A"], [line for line in lines if line.startswith("- leg ")])
+        self.assertIn("**Checks for the new put**", lines)
+        self.assertIn("> - cash: the new put is secured by 60,000.00 and the held put by 62,000.00 (each its strike "
+                      "times the shares it can deliver); the desk does not see your cash balance", lines)
+        self.assertNotIn("> - the desk does not see your cash balance", lines)
+        code, body = self.run_json("AG-20261101-05", "ROLL", "--new-expiration", "2027-03-19", "--new-strike", "600")
+        payload = body["payload"]
+        self.assertEqual(("TICKET", "cash_secured_put", "replacement_short_put", "roll", "SPY270319P00600000"),
+                         (payload["verdict"], payload["structure"], payload["replacement"]["kind"],
+                          payload["replacement"]["section"], payload["replacement"]["candidate"]["id"]))
+        self.assertEqual([[1, "close_option", 0], [2, "open_short_put", 1]],
+                         [[step["step"], step["kind"], step["level"]] for step in payload["steps"]])
+
     def test_config_unacknowledged_comes_first(self) -> None:
         with open(self.paths.structuring_toml, "a", encoding="utf-8") as handle:
             handle.write("# an edit\n")

@@ -2,6 +2,20 @@
 
 ## 1.0.0 (unreleased)
 
+- **A cash-secured put's short put: its roll analysis, a ROLL ticket and the early-assignment note** (roadmap step
+  2.4). `roll_analysis.py --trade` on a `cash_secured_put` group ranks every put of a later standard monthly inside
+  `[roll] dte`, and `exit_ticket.py --action ROLL` prices the one the owner names; both judge it under `[roll]` as a
+  short call's roll is (the bands, `min_credit`, the roll test), with a put's time value `bid - max(0, K - S)` and the
+  lower strike first among ties. `strike_floor` and `ex_dividend` are call rules and are not read; an earnings release
+  inside the new put's life still counts. The held put closes at its ask first, then the new one opens at its bid
+  (`close_option` level 0, `open_short_put` level 1), and the cash note says what each put secures
+  (`cash: the new put is secured by ... and the held put by ...; the desk does not see your cash balance`). The kind
+  is `replacement_short_put`, the header `the roll analysis of the short <date> <strike> put` and the ticket's
+  `a roll of the short put`. `structuring.short_put_caveat` reads a long put's two tests (absolute delta 0.80 or more,
+  or in the money with a time value at the mid below the interest on its strike) and prints `early-assignment note:
+  ... can be assigned before expiry, and the European model does not price that`. An analysis of a group that holds no
+  shares drops the `your cost` segment, and a ROLL ticket's checks caption names the new leg's right. Collars and
+  verticals stay NOT_APPLICABLE.
 - **The roll analysis of a protective put's long put** (roadmap step 2.4, its first part). `roll_analysis.py --trade`
   on a `protective_put` group ranks every put of a later standard monthly inside `[protective_put] dte`, labelled
   against that section's criteria and ranked by its objective (`stress_cost_per_day` by default), with the same
