@@ -33,7 +33,7 @@ A book check at 14:05 ET, as `routine.py` runs it:
 ```text
 Grok routine (14:05 ET)
   -> python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 14:05
-     1. pin check: is the checkout the clean commit of tag v0.3.0?   no -> INCIDENT line, no step runs
+     1. pin check: is the checkout the clean commit of tag v1.0.0?   no -> INCIDENT line, no step runs
      2. the slot and its chain (routines/manifest.toml); a closed day -> quiet
      3. step: book_check --post, in the same process
           positions.csv --+
@@ -132,7 +132,11 @@ Without `--desk-root` a tool reads the current directory; `routine.py` alone def
 - **Implied volatility.** `iv.py`: a bracketed Brent solver with arbitrage bounds. A failure is a status (`expired`,
   `below_intrinsic`, `above_bound`, `no_root`), never a number.
 - **Greeks.** `greeks.py`, in desk units: theta per calendar day, vega per volatility point, rho per rate point. In
-  Stage 1 they are European; an early-exercise model is planned for Stage 2 (not in this release).
+  Stage 1 they are European; American Greeks are planned for Stage 2 (not in this release).
+- **The American lattice.** `lattice.py`: a Cox-Ross-Rubinstein tree with the continuous dividend yield, giving an
+  American value, its early-exercise premium and tree Greeks. It is the engine of [ROADMAP.md](ROADMAP.md) step 2.1:
+  no tool reads it yet, so every answer is still European. It is tested against the American put Hull prints, and the
+  CI oracle compares it with QuantLib's finite-difference American engine.
 - **The market clock.** `market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed
   from the NYSE hours calendar, with the America/New_York daylight-saving rule (no `tzdata` needed). The table expires
   on 2027-12-31; the doctor's check 3 fails 60 days before that.
@@ -182,7 +186,10 @@ The owner's decisions behind the design (2026-10-30):
 
 ## Later stages (planned)
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with an American early-exercise lattice,
+[ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. The first
+step's engine, the American lattice `scripts/aegis_desk/lattice.py`, is in the tree, but no tool reads it yet.
+
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with American pricing,
   scenario and event stress, volatility context and a decision calendar, are planned for Stage 2 (not in this release).
 - For the Aegis Structuring Desk, the roll analysis of long puts, short puts and collars, weekly expirations, a
   cash-balance check and per-account approval levels are planned for Stage 2 (not in this release).

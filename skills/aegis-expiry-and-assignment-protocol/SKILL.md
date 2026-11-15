@@ -12,7 +12,7 @@ metadata:
 
 Expiration is the one event that changes the book without a trade. Aegis Position Control owns it from the first
 docket line to the Monday reconciliation. Every time, tier and outcome below is computed by a tool; the Bot quotes it.
-The analysis is European-only in Stage 1: an early-exercise model is planned for Stage 2 (not in this release).
+The analysis is European-only in Stage 1: early-exercise analysis is planned for Stage 2 (not in this release).
 
 ## Exercise by exception and the one-cent rule
 

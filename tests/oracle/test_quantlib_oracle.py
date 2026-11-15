@@ -27,6 +27,17 @@ engine counts whole days, so the comparison uses the time-homogeneous rescaling 
 expiry one Actual/365 year away and ``sigma' = sigma sqrt(tau)``, ``r' = r tau``, ``q' = q tau``, the discount and
 dividend factors and the total variance are those of the leg, so the price, delta and gamma are invariant, vega scales
 by ``sqrt(tau)`` (per vol point x 0.01) and QuantLib's own solver recovers ``sigma = sigma' / sqrt(tau)`` from the mid.
+
+The American lattice (step 2.1 of ``docs/ROADMAP.md``): ``aegis_desk.lattice.american`` at its default steps
+against QuantLib's finite-difference American engine (``FdBlackScholesVanillaEngine``, 2000 time by 2000 space steps),
+on a whole-day grid and on spots placed a quarter of a node spacing apart across the exercise boundary of 24
+contracts, which the grid seldom reaches. Both sides are discretisations, so the tolerances are measured, not
+analytic. Measured worst over both: price 1.5e-3 of ``max(price, 1)``; away from the lattice's boundary band
+(``near_boundary``) delta 1.4e-3 and gamma 9.4e-4 per $1^2; inside the band delta 0.028 and gamma 0.33, which is why
+the band is flagged and only its price is bounded. ``exercise_now`` was never true where QuantLib holds. The bounds
+below are about twice the measured worst. A Leisen-Reimer tree was rejected as the reference: on an out-of-the-money put at zero rate, which
+is never exercised early and so equals the European closed form, it missed by 2.9e-3 while the lattice and the
+finite-difference engine agreed with the closed form.
 """
 
 from __future__ import annotations
@@ -42,7 +53,7 @@ import shutil
 import tempfile
 import unittest
 
-from aegis_desk import bsm, greeks, iv, quote_cache, structuring, structuring_config
+from aegis_desk import bsm, greeks, iv, lattice, quote_cache, structuring, structuring_config
 from aegis_desk.units import DAYS_PER_YEAR, RATE_POINT, VOL_POINT
 
 try:  # pragma: no cover - exercised only on the CI oracle job
@@ -375,6 +386,117 @@ class StructuringLegsOracleTest(unittest.TestCase):
                 settings.evaluationDate = previous
             with self.subTest(leg=label):
                 self.assertTrue(_approx(sigma, float(ql_sigma) / math.sqrt(tau), 0.0, 1e-7), (label, sigma, ql_sigma))
+
+
+AMERICAN_PRICE_REL = 3e-3
+"""A lattice price within this fraction of ``max(QuantLib's price, 1.0)``, everywhere (measured worst 1.5e-3)."""
+AMERICAN_DELTA_ABS = 3e-3
+"""Delta within this away from the exercise boundary band (measured worst 1.4e-3, just outside the band)."""
+AMERICAN_GAMMA_ABS = 2e-3
+"""Gamma within this, per $1^2, away from the band (measured worst 9.4e-4)."""
+AMERICAN_EXERCISED = 1e-6
+"""QuantLib's value less the intrinsic value, as a fraction of the strike, below which QuantLib exercises."""
+_AMERICAN_MONEYNESS = (0.8, 0.9, 1.0, 1.1, 1.25)
+_AMERICAN_DAYS = (14, 45, 182, 365)
+_AMERICAN_RATES = (0.0, 0.045)
+_AMERICAN_DIVIDENDS = (0.0, 0.03)
+_AMERICAN_SIGMAS = (0.15, 0.35, 0.7)
+
+
+def _american_engine(right: str, m: dict, days: int) -> dict:
+    """QuantLib's finite-difference American value, delta and gamma; restores the evaluation date."""
+    today = ql.Date(1, 1, 2020)
+    settings = ql.Settings.instance()
+    previous = settings.evaluationDate
+    try:
+        settings.evaluationDate = today
+        day_count = ql.Actual365Fixed()
+        process = ql.BlackScholesMertonProcess(
+            ql.QuoteHandle(ql.SimpleQuote(m["S"])),
+            ql.YieldTermStructureHandle(ql.FlatForward(today, m["q"], day_count)),
+            ql.YieldTermStructureHandle(ql.FlatForward(today, m["r"], day_count)),
+            ql.BlackVolTermStructureHandle(ql.BlackConstantVol(today, ql.NullCalendar(), m["sigma"], day_count)),
+        )
+        option = ql.VanillaOption(ql.PlainVanillaPayoff(_ql_type(right), m["K"]),
+                                  ql.AmericanExercise(today, today + int(days)))
+        option.setPricingEngine(ql.FdBlackScholesVanillaEngine(process, 2000, 2000))
+        return {"price": float(option.NPV()), "delta": float(option.delta()), "gamma": float(option.gamma())}
+    finally:
+        settings.evaluationDate = previous
+
+
+def _boundary_spots(right: str, m: dict, days: int) -> list:
+    """Spots a quarter of a node spacing apart, from two spacings beyond one edge of the lattice's band
+    (``near_boundary``) to two beyond the other: the region where a tree's exercise decision and Greeks are hardest."""
+    tau = days / DAYS_PER_YEAR
+    band = []
+    for n in range(1, 400):
+        spot = m["K"] * 0.005 * n
+        if lattice.american(right, spot, m["K"], tau, m["r"], m["q"], m["sigma"]).near_boundary:
+            band.append(spot)
+    if not band:
+        return []
+    spacing = min(band) * m["sigma"] * math.sqrt(tau / lattice.DEFAULT_STEPS)
+    low, high = min(band) - 2.0 * spacing, max(band) + 2.0 * spacing
+    count = int((high - low) / (0.25 * spacing)) + 1
+    return [low + 0.25 * spacing * k for k in range(count)]
+
+
+@unittest.skipUnless(HAVE_QUANTLIB, "QuantLib (Python bindings) not installed; CI oracle job only")
+class AmericanLatticeOracleTest(unittest.TestCase):
+    """``aegis_desk.lattice`` against QuantLib's finite-difference American engine (module notes)."""
+
+    def check(self, right: str, m: dict, days: int, counts: dict) -> None:
+        theirs = _american_engine(right, m, days)
+        ours = lattice.american(right, m["S"], m["K"], days / DAYS_PER_YEAR, m["r"], m["q"], m["sigma"])
+        intrinsic = bsm.intrinsic(right, m["S"], m["K"])
+        counts["exercise" if ours.exercise_now else "band" if ours.near_boundary else "hold"] += 1
+        with self.subTest(right=right, days=days, **m):
+            self.assertTrue(_approx(ours.price, theirs["price"], 0.0, AMERICAN_PRICE_REL * max(theirs["price"], 1.0)),
+                            (ours.price, theirs["price"]))
+            if ours.exercise_now:
+                self.assertLess(theirs["price"] - intrinsic, AMERICAN_EXERCISED * m["K"], (ours, theirs))
+            if not ours.near_boundary:
+                self.assertTrue(_approx(ours.delta, theirs["delta"], 0.0, AMERICAN_DELTA_ABS),
+                                (ours.delta, theirs["delta"]))
+                self.assertTrue(_approx(ours.gamma, theirs["gamma"], 0.0, AMERICAN_GAMMA_ABS),
+                                (ours.gamma, theirs["gamma"]))
+
+    def test_price_delta_gamma_on_the_grid(self) -> None:
+        counts = {"exercise": 0, "band": 0, "hold": 0}
+        for right in bsm.RIGHTS:
+            for moneyness in _AMERICAN_MONEYNESS:
+                for days in _AMERICAN_DAYS:
+                    for r in _AMERICAN_RATES:
+                        for q in _AMERICAN_DIVIDENDS:
+                            for sigma in _AMERICAN_SIGMAS:
+                                m = {"S": 100.0, "K": 100.0 * moneyness, "r": r, "q": q, "sigma": sigma}
+                                self.check(right, m, days, counts)
+        self.assertEqual(480, sum(counts.values()))
+
+    def test_across_the_exercise_boundary(self) -> None:
+        # Puts at a positive rate and calls at a yield above the rate have an exercise boundary; the whole-day grid
+        # above seldom lands near it, so these spots are placed around it on purpose.
+        counts = {"exercise": 0, "band": 0, "hold": 0}
+        contracts = [(bsm.PUT, days, r, q, sigma) for days in (45, 365) for r in (0.045, 0.10) for q in (0.0, 0.03)
+                     for sigma in (0.15, 0.35)]
+        contracts += [(bsm.CALL, days, r, 0.08, sigma) for days in (45, 365) for r in (0.01, 0.045)
+                      for sigma in (0.15, 0.35)]
+        for right, days, r, q, sigma in contracts:
+            base = {"K": 100.0, "r": r, "q": q, "sigma": sigma}
+            spots = _boundary_spots(right, dict(base, S=100.0), days)
+            self.assertTrue(spots, (right, days, r, q, sigma))
+            for spot in spots:
+                self.check(right, dict(base, S=spot), days, counts)
+        self.assertGreater(min(counts.values()), 100, counts)
+
+    def test_hull_put_converges_to_the_finite_difference_value(self) -> None:
+        # Hull's put has a fractional maturity (five months); 152 days is the nearest whole-day maturity, so both
+        # engines price S = K = 50, r = 10 %, sigma = 40 % at tau = 152 / 365.
+        m = {"S": 50.0, "K": 50.0, "r": 0.10, "q": 0.0, "sigma": 0.40}
+        theirs = _american_engine(bsm.PUT, m, 152)
+        ours = lattice.american(bsm.PUT, 50.0, 50.0, 152 / DAYS_PER_YEAR, 0.10, 0.0, 0.40, 2000)
+        self.assertTrue(_approx(ours.price, theirs["price"], 0.0, 1e-3), (ours.price, theirs["price"]))
 
 
 if __name__ == "__main__":  # pragma: no cover

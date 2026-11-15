@@ -49,7 +49,7 @@ What the desk never does: it proposes no new symbol, no spread, no uncovered sho
 group that already holds an option leg, or fewer than 100 shares, or whose shares a short call of another group in the
 same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index underlyings are NOT_APPLICABLE, because
 the data source cannot quote index options. The roll analysis of long puts, short puts and collars, weekly
-expirations, the American lattice, scenario and iv_snapshot, a cash-balance check and per-account approval levels are
+expirations, American pricing, scenario and iv_snapshot, a cash-balance check and per-account approval levels are
 planned for Stage 2 (not in this release). A collar's two legs are replaced as a unit, which is also planned for Stage 2 (not in this release); a
 ROLL of either collar leg is NOT_APPLICABLE.
 
@@ -856,7 +856,8 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
 
 - **Pricing.** European Black-Scholes-Merton with a continuous dividend yield, on the quotes' mids. US equity options
   are American-style, and early exercise is not modelled; the `american-style note:` line marks the cases where it can
-  matter. The American lattice is planned for Stage 2 (not in this release).
+  matter. American pricing is planned for Stage 2 (not in this release). Its engine, the lattice
+  `scripts/aegis_desk/lattice.py`, is in the tree, and no tool reads it yet ([the roadmap](ROADMAP.md), step 2.1).
 - **Data.** Alpaca's free feed: IEX stock quotes (real time, IEX only) and indicative option quotes, delayed 15
   minutes and approximate (not exchange quotes), so every option price a structuring text names is approximate; the
   desk treats every quote as 15 minutes delayed. A ticket is computed only while the session is open, and it

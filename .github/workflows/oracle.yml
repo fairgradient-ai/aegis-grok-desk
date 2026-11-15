@@ -1,5 +1,5 @@
 # Aegis Desk oracle: the one job allowed a third-party package. QuantLib cross-checks the
-# stdlib pricing engine (European and, later, American goldens). The desk itself never
+# stdlib pricing engine (European goldens and the American lattice). The desk itself never
 # imports it; tests/oracle/test_quantlib_oracle.py skips when QuantLib is absent, so this job is
 # where the cross-check actually runs.
 name: QuantLib oracle

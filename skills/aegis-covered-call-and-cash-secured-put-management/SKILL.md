@@ -159,7 +159,7 @@ command; the expiry and assignment skill has the protocol.
   (`aegis-overlay-proposals`). The Exit Sentinel never prices them.
 - A cash-secured put is outside the structuring scope: the desk proposes none, and a short put's replacement is
   planned for Stage 2 (not in this release). A CLOSE ticket covers it.
-- The early-exercise test is the European extrinsic-versus-dividend test above. An American lattice is
+- The early-exercise test is the European extrinsic-versus-dividend test above. American pricing is
   planned for Stage 2 (not in this release).
 - The desk checks no cash reserve. No alert reads the approval level: only the structuring tools check `desk.toml`'s
   self-attested `approval_level`, on their own answers (a covered call needs level 1 by the desk's convention).

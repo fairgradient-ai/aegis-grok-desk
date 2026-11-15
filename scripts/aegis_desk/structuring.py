@@ -329,8 +329,8 @@ AMERICAN_PUT_ABS_DELTA: Decimal = Decimal("0.80")
 TICKET_MINUTES: int = 30
 GRADE_E_NOTE: str = "quote grade E: the conservative side stands"
 MODEL_NOTE: str = ("European Black-Scholes-Merton with a continuous dividend yield on the quotes' mids; US equity "
-                   "options are American and early exercise is not modelled; the American lattice is planned for Stage "
-                   "2 (not in this release)")
+                   "options are American and early exercise is not modelled; American pricing is planned for Stage 2 "
+                   "(not in this release)")
 WARNING_Q_ZERO: str = book.WARNING_Q_ZERO
 
 TIE_BREAKS: Dict[str, Tuple[str, ...]] = {
