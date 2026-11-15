@@ -2,7 +2,8 @@
 
 Step 2.1 of ``docs/ROADMAP.md``. This module is the engine only: no tool, routine, Greek in ``book.json`` or
 structuring answer reads it yet, and the European closed form of :mod:`aegis_desk.bsm` stays the model of record until
-the wiring step lands with its own tests. Pure and synchronous: floats in, floats out; no I/O, no clock, no global
+the wiring step (2.3) lands with its own tests. :mod:`aegis_desk.american`, the leg pricer that step wires in, turns a
+result into desk units, adds vega and rho and inverts the price for an implied volatility. Pure and synchronous: floats in, floats out; no I/O, no clock, no global
 state.
 
 Conventions are those of :mod:`aegis_desk.bsm` (``right`` is ``"CALL"`` or ``"PUT"``; ``S``, ``K`` > 0; ``tau`` in
@@ -47,7 +48,7 @@ What a result reports (:class:`LatticeResult`)
   differences straddle the boundary's kink. ``exercise_now`` is false there, the price is still the control-variate
   estimate, and delta, gamma and theta are reported but coarse (limits below). A caller that needs them there either
   marks them approximate or prices again with more steps, which narrows the band in proportion to
-  ``1 / sqrt(steps)``. ``exercise_now`` and ``near_boundary`` are never both true; at ``r = 0`` and ``q = 0`` both are
+  ``1 / sqrt(steps)``; the owner chose the first (:data:`BAND_DELTA_TOL`, :mod:`aegis_desk.american`). ``exercise_now`` and ``near_boundary`` are never both true; at ``r = 0`` and ``q = 0`` both are
   false.
 * ``price``: the control-variate estimate ``european_closed + early_exercise_premium`` (Hull's control variate for an
   American option on a tree), floored at the intrinsic value; when ``exercise_now`` it is the intrinsic value itself,
@@ -102,6 +103,13 @@ EXERCISE_MARGIN: float = 1e-12
 """How much more than the continuation value, as a fraction of ``max(S, K)``, immediate exercise must pay at a node
 before the node counts as exercising (``exercise_now``, ``near_boundary``). A rounding tie is a few units in the last place, about 1e-14 of ``max(S, K)``; a real
 exercise advantage of a dollar-scale option is many orders larger."""
+
+
+BAND_DELTA_TOL: float = 0.05
+"""How far a ``near_boundary`` delta may be from the reference value: the tolerance the QuantLib oracle asserts in the
+band (``tests/oracle/test_quantlib_oracle.py``), about 1.8 times the measured worst (0.028). A tested bound, not a proof:
+if an oracle run ever exceeds it, the gate fails, and band delta becomes UNAVAILABLE until the owner decides again. The
+exit rules read the same constant: an ``abs_delta`` threshold within it of a band delta is UNAVAILABLE (roadmap 2.3)."""
 
 
 @dataclass(frozen=True)
@@ -246,6 +254,7 @@ def american(right: str, S: float, K: float, tau: float, r: float, q: float, sig
 
 
 __all__ = [
+    "BAND_DELTA_TOL",
     "DEFAULT_STEPS",
     "EXERCISE_MARGIN",
     "MAX_STEPS",

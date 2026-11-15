@@ -2,6 +2,14 @@
 
 ## 1.0.0 (unreleased)
 
+- **The American leg pricer** (roadmap step 2.3, first part; engine only, not wired). `aegis_desk.american` prices
+  one leg on the owner's model of record: the lattice's price, delta, gamma and theta in desk units, vega and rho as
+  central differences of the lattice price, the early-exercise premium and `model = "american_crr_200"`. A leg in the
+  boundary band keeps its price, vega, rho and an approximate delta (`lattice.BAND_DELTA_TOL = 0.05`); its gamma and
+  theta are `None`. `american.implied_vol` inverts the lattice price (bounds: the undiscounted intrinsic value and the
+  spot or strike; a quote on the intrinsic value has no single volatility), starting from the European volatility,
+  which it never exceeds. The QuantLib oracle now asserts band delta within the tolerance, and the new pricer's vega,
+  rho and implied volatility against QuantLib's finite-difference engine.
 - **The owner's answers to the roadmap's open questions 1 to 8** (`docs/ROADMAP.md`). Step 2.3 comes next and 2.8
   after it. The model of record is American everywhere, one value per leg; in the early-exercise band delta is marked
   `approx` within a tested 0.05, and gamma and theta are UNAVAILABLE. The dividend stays a continuous yield, moved into

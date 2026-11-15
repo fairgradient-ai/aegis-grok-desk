@@ -34,8 +34,11 @@ on a whole-day grid and on spots placed a quarter of a node spacing apart across
 contracts, which the grid seldom reaches. Both sides are discretisations, so the tolerances are measured, not
 analytic. Measured worst over both: price 1.5e-3 of ``max(price, 1)``; away from the lattice's boundary band
 (``near_boundary``) delta 1.4e-3 and gamma 9.4e-4 per $1^2; inside the band delta 0.028 and gamma 0.33, which is why
-the band is flagged and only its price is bounded. ``exercise_now`` was never true where QuantLib holds. The bounds
-below are about twice the measured worst. A Leisen-Reimer tree was rejected as the reference: on an out-of-the-money put at zero rate, which
+the band is flagged: there its price is bounded and its delta within ``lattice.BAND_DELTA_TOL`` (0.05, the owner's band
+rule of roadmap 2.3), and its gamma is not. ``exercise_now`` was never true where QuantLib holds. The bounds below are
+about twice the measured worst. The leg pricer of the model of record (``aegis_desk.american``) is checked the same way:
+its vega and rho (central differences of the lattice price) within 6e-3 of QuantLib's (measured worst 3.1e-3 and
+2.6e-3), and the implied volatility it solves from QuantLib's price repricing to that price within the price bound. A Leisen-Reimer tree was rejected as the reference: on an out-of-the-money put at zero rate, which
 is never exercised early and so equals the European closed form, it missed by 2.9e-3 while the lattice and the
 finite-difference engine agreed with the closed form.
 """
@@ -53,7 +56,7 @@ import shutil
 import tempfile
 import unittest
 
-from aegis_desk import bsm, greeks, iv, lattice, quote_cache, structuring, structuring_config
+from aegis_desk import american, bsm, greeks, iv, lattice, quote_cache, structuring, structuring_config
 from aegis_desk.units import DAYS_PER_YEAR, RATE_POINT, VOL_POINT
 
 try:  # pragma: no cover - exercised only on the CI oracle job
@@ -461,6 +464,9 @@ class AmericanLatticeOracleTest(unittest.TestCase):
                                 (ours.delta, theirs["delta"]))
                 self.assertTrue(_approx(ours.gamma, theirs["gamma"], 0.0, AMERICAN_GAMMA_ABS),
                                 (ours.gamma, theirs["gamma"]))
+            else:  # the owner's band rule (roadmap 2.3): delta shown as approximate within the tested tolerance
+                self.assertTrue(_approx(ours.delta, theirs["delta"], 0.0, lattice.BAND_DELTA_TOL),
+                                (ours.delta, theirs["delta"]))
 
     def test_price_delta_gamma_on_the_grid(self) -> None:
         counts = {"exercise": 0, "band": 0, "hold": 0}
@@ -497,6 +503,53 @@ class AmericanLatticeOracleTest(unittest.TestCase):
         theirs = _american_engine(bsm.PUT, m, 152)
         ours = lattice.american(bsm.PUT, 50.0, 50.0, 152 / DAYS_PER_YEAR, 0.10, 0.0, 0.40, 2000)
         self.assertTrue(_approx(ours.price, theirs["price"], 0.0, 1e-3), (ours.price, theirs["price"]))
+
+
+AMERICAN_VEGA_ABS = 6e-3
+"""``aegis_desk.american`` vega, per vol point, within this of QuantLib's central difference (measured worst 3.1e-3)."""
+AMERICAN_RHO_ABS = 6e-3
+"""``aegis_desk.american`` rho, per 1 % of rate, within this of QuantLib's central difference (measured worst 2.6e-3)."""
+
+
+@unittest.skipUnless(HAVE_QUANTLIB, "QuantLib (Python bindings) not installed; CI oracle job only")
+class AmericanLegOracleTest(unittest.TestCase):
+    """``aegis_desk.american`` (the model of record of roadmap 2.3) against QuantLib's finite-difference American
+    engine: vega and rho as differences of the price, and the implied volatility of QuantLib's price, repriced by
+    QuantLib, within the price bound. Legs in the band or exercised now are left out (their Greeks are bounded above)."""
+
+    def legs(self):
+        for right in bsm.RIGHTS:
+            for moneyness in (0.9, 1.0, 1.1):
+                for days in (45, 182):
+                    for q in (0.0, 0.03):
+                        for sigma in (0.2, 0.45):
+                            m = {"S": 100.0, "K": 100.0 * moneyness, "r": 0.045, "q": q, "sigma": sigma}
+                            ours = american.value(right, m["S"], m["K"], days / DAYS_PER_YEAR, m["r"], q, sigma)
+                            if not (ours.exercise_now or ours.near_boundary):
+                                yield right, m, days, ours
+
+    def test_vega_and_rho(self) -> None:
+        count = 0
+        for right, m, days, ours in self.legs():
+            count += 1
+            vega = (_american_engine(right, dict(m, sigma=m["sigma"] + 0.01), days)["price"]
+                    - _american_engine(right, dict(m, sigma=m["sigma"] - 0.01), days)["price"]) / 2.0
+            rho = (_american_engine(right, dict(m, r=m["r"] + 0.01), days)["price"]
+                   - _american_engine(right, dict(m, r=m["r"] - 0.01), days)["price"]) / 2.0
+            with self.subTest(right=right, days=days, **m):
+                self.assertTrue(_approx(ours.vega, vega, 0.0, AMERICAN_VEGA_ABS), (ours.vega, vega))
+                self.assertTrue(_approx(ours.rho, rho, 0.0, AMERICAN_RHO_ABS), (ours.rho, rho))
+        self.assertGreater(count, 30)
+
+    def test_the_implied_volatility_of_quantlib_s_price(self) -> None:
+        for right, m, days, _ours in self.legs():
+            theirs = _american_engine(right, m, days)["price"]
+            solved = american.implied_vol(theirs, right, m["S"], m["K"], days / DAYS_PER_YEAR, m["r"], m["q"])
+            with self.subTest(right=right, days=days, **m):
+                self.assertEqual(iv.STATUS_OK, solved.status)
+                assert solved.sigma is not None
+                again = _american_engine(right, dict(m, sigma=solved.sigma), days)["price"]
+                self.assertTrue(_approx(again, theirs, 0.0, AMERICAN_PRICE_REL * max(theirs, 1.0)), (again, theirs))
 
 
 if __name__ == "__main__":  # pragma: no cover
