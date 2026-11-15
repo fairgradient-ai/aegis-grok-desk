@@ -64,11 +64,13 @@ import routine_audit
 import rules_adopt
 import rules_diff
 import trigger_levels
+import vol_context
 
 TOOL_MODULES = (
     ack, alert_lint, assignment_watch, book, book_check, calendar_check, csv_recon, desk_doctor, desk_init,
     eod_summary, exit_check, exit_ticket, expiry_checklist, heartbeat, market_clock, opening_bell, positions_check,
     propose, quote_cache, quote_qc, roll_analysis, routine, routine_audit, rules_adopt, rules_diff, trigger_levels,
+    vol_context,
 )
 """Every desk tool (a ``scripts/*.py`` with ``build_parser`` and ``main``), sorted by name."""
 

@@ -96,7 +96,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash | planned |
 | 2.7 | Exposures and limits: beta-weighted delta and limit messages | your decision on the limits | planned |
 | 2.8 | Scenario and event stress | nothing; after 2.3, by choice | planned |
-| 2.9 | Volatility context | nothing | planned |
+| 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
 | 2.11 | Sourced events and the decision calendar | your decision on a data source | planned |
 | 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | planned |
@@ -265,11 +265,15 @@ context, sourced dates) and widens the Structuring Desk's scope.
 
 ### 2.9 Volatility context
 
-- **What lands.** An `iv_snapshot` record (not yet in the tree) of the desk's own implied volatility per symbol, and
-  context that compares today's value with the recorded history.
+- **What landed.** `scripts/vol_context.py` and `aegis_desk.vol_context`. The record is the desk's own end-of-day
+  book snapshots, which already hold each leg's implied volatility: a symbol's value for a day is the median of its
+  open option legs with a solved volatility (`iv_status` ok), never the vendor's Greeks. The context places the
+  latest day's value among the earlier recorded days (how many were lower, the range, since when); fewer than 5
+  earlier days, or no value on the latest day, is UNAVAILABLE. A separate `iv_snapshot` file was not needed. The
+  skill `aegis-vol-context` and the seat that relays the context come with 2.10.
 - **Constraint.** Volatility context never changes a verdict.
-- **Gate.** A test that every verdict is identical with and without the context; history from the desk's own
-  snapshots only, never the vendor's Greeks.
+- **Gate.** `tests/engine/test_vol_context.py`: no module but the tool (and the doc generator) imports the context,
+  so no verdict can read it; the history comes from the book snapshots only; the tool writes nothing.
 
 ### 2.10 The Aegis Book & Risk Analyst seat
 

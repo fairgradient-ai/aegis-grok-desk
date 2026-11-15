@@ -56,7 +56,7 @@ the same width: `--new-strike` names the new short leg and the long leg keeps th
 new long leg, closes the held short, closes the held long and opens the new short, which the new long call covers (a
 defined-risk spread, level 3 by the desk's convention); no `structuring.toml` section judges it, so it prints the new
 vertical's width and net and the roll's net in place of checks. A vertical has no roll analysis. Weekly expirations,
-American pricing, scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for
+American pricing, scenario, a cash-balance check and per-account approval levels are planned for
 Stage 2 (not in this release).
 
 ## Only when you ask

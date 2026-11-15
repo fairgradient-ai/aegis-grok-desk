@@ -336,6 +336,9 @@ JOURNEYS: Tuple[Journey, ...] = (
                  {"status": "ok", "tool": "calendar_check", "payload.verdict": "clean"}),
     tool_journey("calendar_check --max-age-days 1 -> UNAVAILABLE (STALE)", ("calendar_check.py", "--max-age-days", "1"), 20,
                  {"status": "unavailable", "payload.verdict": "unavailable", "payload.counts.STALE": 6}),
+    tool_journey("vol_context on a desk with no book snapshot -> UNAVAILABLE (no_snapshots)", ("vol_context.py",), 20,
+                 {"status": "unavailable", "tool": "vol_context", "payload.verdict": "unavailable",
+                  "payload.snapshots": 0, "payload.contexts.0.reason": "no_snapshots"}),
     tool_journey("assignment_watch regular -> quiet", ("assignment_watch.py", "--fixture-set", "regular"), 0,
                  {"status": "ok", "tool": "assignment_watch", "payload.verdict": "quiet"}),
     # The WMT call expires Fri 2026-11-20 and the WMT ex-dividend Tue 2026-11-24 has its last cum-dividend day on

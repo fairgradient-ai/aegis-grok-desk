@@ -2,6 +2,14 @@
 
 ## 1.0.0 (unreleased)
 
+- **Volatility context** (roadmap step 2.9). The new read-only tool `vol_context.py` (`aegis_desk.vol_context`) reads
+  the desk's own end-of-day book snapshots: a symbol's value for a day is the median implied volatility of its open
+  option legs with `iv_status` ok (never the vendor's Greeks), and the context places the latest day's value among
+  the earlier recorded days (`VOL CONTEXT | SPY | implied volatility 17.0 % on ... | 2 of 6 earlier days lower (33 %)
+  | range ...`). Fewer than 5 earlier days, no value on the latest day or no snapshot is UNAVAILABLE (exit 20). It is
+  information only: a test proves no module but the tool and the doc generator imports it, so no rule, alert, ticket
+  or ranking can read it. No network, nothing written; a journey and `docs/TOOLS.md` cover it. `docs/ARCHITECTURE.md`
+  no longer lists the collar's roll analysis as planned (it landed in step 2.4).
 - **A vertical's roll and call-spread coverage** (roadmap step 2.4, the owner's answer to open question 9).
   `exit_ticket.py --action ROLL` on a vertical moves both legs to a later expiration at the same width:
   `--new-strike` names the new short leg and the long leg keeps the held distance. The four legs open the new long,

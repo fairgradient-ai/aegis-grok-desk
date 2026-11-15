@@ -1131,3 +1131,32 @@ Payload (`--json` envelope key `payload`):
 - `text`: `"string (the sheet, the content of levels/<D>.md)"`
 - `warnings`: `["string"]`
 - `written`: `["desk-root relative paths written (none when the lock was busy)"]`
+
+## vol_context
+
+- script: `scripts/vol_context.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: information only: the desk's own implied volatility per symbol from its end-of-day book snapshots, against the earlier recorded days (how many were lower, the range); changes no verdict; no network, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--symbol` | `SYM` | one symbol (default: every symbol the latest snapshot holds an option leg on) |
+
+Payload (`--json` envelope key `payload`):
+
+- `contexts`: `[{"as_of": "YYYY-MM-DD | null", "first_day": "YYYY-MM-DD | null", "high": "float | null", "history_days": "integer (earlier days holding a value)", "iv": "float | null (median of the day's legs, a fraction: 0.18 is 18 %)", "low": "float | null", "lower_days": "integer | null", "rank_pct": "float | null (percent of the earlier days lower)", "reason": "null | no_snapshots | no_value | short_history", "status": "ok | unavailable", "symbol": "string"}]`
+- `exit_code`: `"0 | 20"`
+- `latest`: `"YYYY-MM-DD | null (the latest snapshot's ET date)"`
+- `min_history_days`: `"integer"`
+- `skipped`: `["data/book/<file> (a snapshot that could not be read)"]`
+- `snapshots`: `"integer (readable book snapshots)"`
+- `verdict`: `"ok | unavailable"`

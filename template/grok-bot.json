@@ -6,7 +6,7 @@
   "source": {"repository": "https://github.com/fairgradient-ai/aegis-grok-desk", "release": "1.0.0"},
   "templateSkillNames": ["aegis-desk-bootstrap-and-onboarding"],
   "skills": {
-    "aegis-book-marking-and-greeks-honesty": "8b32dbac093763dc96d5e5030306698e00c8c957d75a95a14a2588d9abcef6e4",
+    "aegis-book-marking-and-greeks-honesty": "7126b603048a13815d2102fa1c82521a1316f26f7141446fc2ce1e939a8d3d81",
     "aegis-compliance-voice-and-number-discipline": "c7e6d79d6bff23d7f638b15d8d9d20e979124b595ac0e720d1e6fff7d7a806f2",
     "aegis-covered-call-and-cash-secured-put-management": "167cfc19fb0394a8890edbb774fd7df8d29758cea8b1fc4c3ccf66a29b2724c3",
     "aegis-desk-bootstrap-and-onboarding": "85fb8c58e56e30e471778445e5258a475a6e2e65c6d085ab72461fe6c599188b",

@@ -190,8 +190,9 @@ The owner's decisions behind the design (2026-10-30):
 step's engine, the American lattice `scripts/aegis_desk/lattice.py`, is in the tree, but no tool reads it yet.
 
 - The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with American pricing,
-  scenario and event stress, volatility context and a decision calendar, are planned for Stage 2 (not in this release).
-- For the Aegis Structuring Desk, the roll analysis of collars, weekly expirations, a
-  cash-balance check and per-account approval levels are planned for Stage 2 (not in this release).
+  scenario and event stress and a decision calendar, are planned for Stage 2 (not in this release). Volatility
+  context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
+- For the Aegis Structuring Desk, weekly expirations, a cash-balance check and per-account approval levels are
+  planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).
