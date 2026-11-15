@@ -2,6 +2,26 @@
 
 ## 1.0.0 (unreleased)
 
+- **Volatility context** (roadmap step 2.9). The new read-only tool `vol_context.py` (`aegis_desk.vol_context`) reads
+  the desk's own end-of-day book snapshots: a symbol's value for a day is the median implied volatility of its open
+  option legs with `iv_status` ok (never the vendor's Greeks), and the context places the latest day's value among
+  the earlier recorded days (`VOL CONTEXT | SPY | implied volatility 17.0 % on ... | 2 of 6 earlier days lower (33 %)
+  | range ...`). Fewer than 5 earlier days, no value on the latest day or no snapshot is UNAVAILABLE (exit 20). It is
+  information only: a test proves no module but the tool and the doc generator imports it, so no rule, alert, ticket
+  or ranking can read it. No network, nothing written; a journey and `docs/TOOLS.md` cover it. `docs/ARCHITECTURE.md`
+  no longer lists the collar's roll analysis as planned (it landed in step 2.4).
+- **A vertical's roll and call-spread coverage** (roadmap step 2.4, the owner's answer to open question 9).
+  `exit_ticket.py --action ROLL` on a vertical moves both legs to a later expiration at the same width:
+  `--new-strike` names the new short leg and the long leg keeps the held distance. The four legs open the new long,
+  close the held short, close the held long and open the new short. The approval convention gains the step
+  `open_spread_call` (level 3): `open a short call covered by a long call of the same expiry (a defined-risk spread)`.
+  `approval.Holdings.spread_calls` counts short calls a same-expiry long call covers after the shares have covered
+  what they can (`holdings_of` pairs them per expiry), `approval.Leg.spread` marks a spread's short call (opening, or
+  closing so that its spread goes with it), and closing a spread's long call first is `close_uncovers` (level 4). The
+  kind is `replacement_vertical`, judged under no `structuring.toml` section: the ticket's `**The new vertical**` block
+  gives the width, the new vertical's net and the roll's net per share in place of checks, and the payload's
+  `replacement.held_other` carries a vertical's held long leg (or a collar's held call). A vertical has no roll
+  analysis; its NOT_APPLICABLE reason says that a vertical's roll is a ROLL ticket you name.
 - **A collar's two legs replaced as a unit** (roadmap step 2.4). `roll_analysis.py --trade` on a `collar` group ranks
   every pair of a later standard monthly inside `[collar] dte` and the floor and cap bands, judged as a fresh collar
   (its own net debit against `max_net_debit`, the strike floor, the call's events beyond the held call's life) and

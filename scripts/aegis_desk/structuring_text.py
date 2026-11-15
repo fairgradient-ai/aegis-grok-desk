@@ -108,6 +108,8 @@ ACTION_WORDS: Dict[str, str] = {
 ROLL_PUT_WORDS: str = "a roll of the long put"
 ROLL_SHORT_PUT_WORDS: str = "a roll of the short put"
 ROLL_COLLAR_WORDS: str = "a roll of the collar's put and call"
+ROLL_VERTICAL_WORDS: str = "a roll of the vertical's two legs at the same width"
+"""A vertical's ROLL header words (roadmap step 2.4, open question 9)."""
 """A collar's ROLL header words: both legs replaced as a unit (roadmap step 2.4)."""
 """A cash-secured put's ROLL header words (roadmap step 2.4)."""
 WHAT_WORDS: Tuple[str, ...] = ("roll analysis", "covered call proposal", "protective put proposal", "collar proposal",
@@ -414,7 +416,8 @@ def ticket_header(w: Writer, trade_id: str, underlying: str, structure: str, act
     if action not in ACTION_WORDS:
         raise ValueError("unknown action %r" % (action,))
     words = action_words or ACTION_WORDS[action]
-    if words not in tuple(ACTION_WORDS.values()) + (ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS):
+    if words not in tuple(ACTION_WORDS.values()) + (ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS,
+                                                    ROLL_VERTICAL_WORDS):
         raise ValueError("unknown action words %r" % (words,))
     return "### TICKET %s | %s %s: %s (action %s)" % (w.trade_id(trade_id), _root(underlying),
                                                      structure_words(structure), words, action)
@@ -1513,6 +1516,26 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
     return lines + [""] + notes_block(notes)
 
 
+def vertical_lines(w: Writer, answer: "structuring.Answer", candidate: "structuring.Candidate") -> List[str]:
+    """A vertical's ROLL in the desk view (roadmap step 2.4): no ``structuring.toml`` section judges it, so in place of
+    checks it gives the new vertical (its width and its own net) and the roll's net per share, then the group after
+    the four legs."""
+    long, short = candidate.legs
+    assert answer.group_context is not None
+    rows = [["width", "%s between the %s %s and %s %ss" % (w.strike(abs(long.strike - short.strike)),
+                                                          w.date(short.expiration), w.strike(short.strike),
+                                                          w.strike(long.strike), _right(short.right))]]
+    if candidate.net_debit is not None:
+        rows.append(["new vertical net per share", net_words(w, -candidate.net_debit, -candidate.net_debit_total)])
+    if candidate.net_credit is not None:
+        rows.append(["net of the roll per share", net_words(w, candidate.net_credit, candidate.net_credit_total)])
+    rows.append(["criteria", "no structuring.toml section judges a vertical; the width is the held one"])
+    lines = [bold("The new vertical")] + labelled_items(rows)
+    if candidate.after is not None:
+        lines.extend([""] + group_block(w, candidate.after, answer.before, 4))
+    return lines
+
+
 def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     """A ROLL ticket's named replacement in the desk view (S5, S11): its checks (``the new call`` or ``the new
     put``; a failing criterion still prints: the owner named the contract) and, a blank line apart, the group
@@ -1521,6 +1544,8 @@ def replacement_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
     group = answer.group_context
     if candidate is None or group is None or answer.pricing is None:
         raise ValueError("the answer priced no named replacement")
+    if candidate.kind == structuring.KIND_REPLACEMENT_VERTICAL:
+        return vertical_lines(w, answer, candidate)
     collar = candidate.kind == structuring.KIND_REPLACEMENT_COLLAR
     subject = "the new collar" if collar else "the new %s" % _right(candidate.legs[0].right)
     held_strike = None if answer.held is None else answer.held.strike
@@ -1580,7 +1605,7 @@ def _words_of(*texts: str) -> List[str]:
 
 _LEXICON_SOURCES: Tuple[str, ...] = (
     _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, CENTRE_SETTINGS_LINE, *alerts.STRUCTURE_WORDS.values(),
-    *ACTION_WORDS.values(), ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
+    *ACTION_WORDS.values(), ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS, ROLL_VERTICAL_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
     *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
     *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),
     structuring.structuring_config.DISABLED_REASON)

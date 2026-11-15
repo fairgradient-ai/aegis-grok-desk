@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: bee17bba5a004c5a6a455718422e12d1043a3d4e5bda90d12bad268899847a66
+  source_sha256: 3156c669b66d36c622a8b865367ddfb944738885f556049e7d238d1f661ede8e
 ---
 
 # Aegis Structuring Desk: role skill
@@ -185,7 +185,7 @@ blocks, with its approval block after the group block and its notes ending on th
 An answer that prices nothing is one line, then a blank line and the footer (exit 0):
 
 ```text
-NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's other choices are planned for Stage 2 (not in this release)
+NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's roll is a ROLL ticket you name, at the same width
 NOTHING_TO_PROPOSE | AG-20261020-01 covered call proposal | AG-20261020-01 is a covered call: ask for a roll analysis
 ```
 

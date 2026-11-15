@@ -90,6 +90,7 @@ STEP_CLOSE_UNCOVERS: str = "close_uncovers"
 STEP_OPEN_COVERED_CALL: str = "open_covered_call"
 STEP_OPEN_UNCOVERED_CALL: str = "open_uncovered_call"
 STEP_OPEN_SHORT_PUT: str = "open_short_put"
+STEP_OPEN_SPREAD_CALL: str = "open_spread_call"
 STEP_OPEN_LONG: str = "open_long"
 STEP_TABLE: Tuple[Tuple[str, str, int], ...] = (
     (STEP_CLOSE_OPTION, "close a short or long option you hold", 0),
@@ -100,6 +101,7 @@ STEP_TABLE: Tuple[Tuple[str, str, int], ...] = (
     (STEP_OPEN_UNCOVERED_CALL, "open a short call without enough free shares", 4),
     (STEP_OPEN_SHORT_PUT, "open a short put (cash-secured; the desk does not see your cash)", 1),
     (STEP_OPEN_LONG, "open a long call or long put", 2),
+    (STEP_OPEN_SPREAD_CALL, "open a short call covered by a long call of the same expiry (a defined-risk spread)", 3),
 )
 """``(kind, the convention's words, level)`` of every step, in the order the docs print the table."""
 STEP_LEVELS: Dict[str, int] = {kind: level for kind, _words, level in STEP_TABLE}
@@ -224,21 +226,28 @@ class Holdings:
     short_calls: int = 0
     long_puts: int = 0
     short_puts: int = 0
+    spread_calls: int = 0
+    """Short calls covered by a long call of the same expiry (a defined-risk spread; roadmap step 2.4): never more
+    than the short calls or the long calls held."""
 
     def __post_init__(self) -> None:
         _shares(self.shares, "Holdings.shares")
-        for name in ("long_calls", "short_calls", "long_puts", "short_puts"):
+        for name in ("long_calls", "short_calls", "long_puts", "short_puts", "spread_calls"):
             _count(getattr(self, name), "Holdings.%s" % name)
+        if self.spread_calls > min(self.short_calls, self.long_calls):
+            raise ValueError("Holdings.spread_calls (%d) cannot exceed the short calls (%d) or the long calls (%d)"
+                             % (self.spread_calls, self.short_calls, self.long_calls))
 
     @property
     def uncovered_calls(self) -> int:
-        """Short calls beyond what the shares cover (100 whole shares per contract)."""
-        return max(0, self.short_calls - int(self.shares // SHARES_PER_CONTRACT))
+        """Short calls beyond what the shares (100 whole shares per contract) and the spreads' long calls cover."""
+        return max(0, self.short_calls - self.spread_calls - int(self.shares // SHARES_PER_CONTRACT))
 
     @property
     def free_shares(self) -> Any:
-        """``shares - 100 x short calls already open`` (never below zero): what a new short call may be covered by."""
-        free = self.shares - SHARES_PER_CONTRACT * self.short_calls
+        """``shares - 100 x short calls already open that no spread covers`` (never below zero): what a new short call
+        may be covered by."""
+        free = self.shares - SHARES_PER_CONTRACT * (self.short_calls - self.spread_calls)
         return free if free > 0 else 0
 
     def apply(self, leg: "Leg") -> "Holdings":
@@ -251,8 +260,18 @@ class Holdings:
                 raise ValueError("the leg closes %s %s but %s %s held" % (
                     _share_text(leg.quantity), _leg_noun(leg, leg.quantity), _share_text(held),
                     "is" if held == 1 else "are"))
-            return replace(self, **{name: _whole_if_integral(held - leg.quantity)})
-        return replace(self, **{name: _whole_if_integral(held + leg.quantity)})
+            remaining = _whole_if_integral(held - leg.quantity)
+            # closing either side of a spread leaves at most as many spreads as the side that remains
+            spreads = self.spread_calls
+            if leg.spread:  # the closed short call was a spread's short leg: its spread goes with it
+                spreads = max(0, spreads - leg.quantity)
+            if name in ("short_calls", "long_calls"):
+                spreads = min(spreads, remaining)
+            return replace(self, **{name: remaining, "spread_calls": spreads})
+        after = replace(self, **{name: _whole_if_integral(held + leg.quantity)})
+        if leg.spread and self.long_calls - self.spread_calls >= leg.quantity:
+            after = replace(after, spread_calls=self.spread_calls + leg.quantity)
+        return after
 
 
 @dataclass(frozen=True)
@@ -265,6 +284,10 @@ class Leg:
     side: str
     instrument: str
     quantity: Any
+    spread: bool = False
+    """A spread's short call: opening, one the plan covers with a long call of the same expiry it opened (or holds)
+    first (:data:`STEP_OPEN_SPREAD_CALL`, when enough long calls are free); closing, one a spread covered, so its
+    spread goes with it."""
 
     def __post_init__(self) -> None:
         if self.effect not in EFFECTS:
@@ -279,6 +302,8 @@ class Leg:
             _count(self.quantity, "a leg's quantity", positive=True)
         if self.instrument == INSTRUMENT_SHARES and (self.effect != EFFECT_CLOSE or self.side != SIDE_LONG):
             raise ValueError("a shares leg only closes long shares: the desk opens no shares and holds no short shares")
+        if self.spread and (self.side, self.instrument) != (SIDE_SHORT, INSTRUMENT_CALL):
+            raise ValueError("only a short call can be a spread's short leg")
 
 
 def _leg_noun(leg: Leg, count: int) -> str:
@@ -292,6 +317,7 @@ def holdings_of(rows: Iterable[Any], account: str, underlying: str) -> Holdings:
     its group): the exact share quantity (positions.csv accepts fractional shares; coverage reads whole hundreds)
     and whole contracts. ``ValueError`` for short shares or an option quantity that is not whole."""
     counts: Dict[str, Any] = {"long_calls": 0, "short_calls": 0, "long_puts": 0, "short_puts": 0}
+    by_expiry: Dict[Any, List[int]] = {}
     shares = Decimal(0)
     for row in rows:
         if not row.is_open or row.account != account or row.underlying != underlying:
@@ -307,7 +333,13 @@ def holdings_of(rows: Iterable[Any], account: str, underlying: str) -> Holdings:
                                  % (row.row_number, row.open_quantity))
             side = SIDE_LONG if row.is_long else SIDE_SHORT
             counts[_FIELDS[(side, INSTRUMENT_CALL if row.is_call else INSTRUMENT_PUT)]] += int(quantity)
+            if row.is_call and row.occ is not None:
+                pair = by_expiry.setdefault(row.occ.expiration, [0, 0])
+                pair[0 if row.is_long else 1] += int(quantity)
     counts["shares"] = _whole_if_integral(shares)
+    # the shares cover first; a long call covers a short call of the same expiry among those left (a spread)
+    spreads = sum(min(longs, shorts) for longs, shorts in by_expiry.values())
+    counts["spread_calls"] = min(spreads, max(0, counts["short_calls"] - int(shares // SHARES_PER_CONTRACT)))
     return Holdings(**counts)
 
 
@@ -365,7 +397,9 @@ def _step_kind(leg: Leg, before: Holdings, after: Holdings) -> str:
         return STEP_OPEN_LONG
     if leg.instrument == INSTRUMENT_PUT:
         return STEP_OPEN_SHORT_PUT
-    if before.shares - SHARES_PER_CONTRACT * before.short_calls >= SHARES_PER_CONTRACT * leg.quantity:
+    if leg.spread and after.spread_calls - before.spread_calls == leg.quantity:
+        return STEP_OPEN_SPREAD_CALL
+    if before.free_shares >= SHARES_PER_CONTRACT * leg.quantity:
         return STEP_OPEN_COVERED_CALL
     return STEP_OPEN_UNCOVERED_CALL
 
@@ -385,6 +419,9 @@ def step_words(step: StepLevel, emitted: Optional[List[str]] = None) -> str:
         words = "opening %s new short %s without enough free shares (%s free, %s needed)" % (
             _emit(emitted, quantity), _plural(quantity, "call"), _emit(emitted, step.before.free_shares),
             _emit(emitted, SHARES_PER_CONTRACT * quantity))
+    elif step.kind == STEP_OPEN_SPREAD_CALL:
+        words = "opening %s new short %s, covered by %s long %s of the same expiry (a defined-risk spread)" % (
+            _emit(emitted, quantity), _plural(quantity, "call"), _emit(emitted, quantity), _plural(quantity, "call"))
     elif step.kind == STEP_OPEN_SHORT_PUT:
         words = "opening %s new short %s (cash-secured; the desk does not see your cash)" % (
             _emit(emitted, quantity), _plural(quantity, "put"))
@@ -614,6 +651,7 @@ __all__ = [
     "STEP_OPEN_COVERED_CALL",
     "STEP_OPEN_LONG",
     "STEP_OPEN_SHORT_PUT",
+    "STEP_OPEN_SPREAD_CALL",
     "STEP_OPEN_UNCOVERED_CALL",
     "STEP_TABLE",
     "STRUCTURE_LEVELS",

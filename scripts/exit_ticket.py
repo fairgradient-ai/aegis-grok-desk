@@ -162,11 +162,15 @@ OUTPUT: Dict[str, Any] = {
     "puts": [{"row_number": "integer", "strike": "decimal string", "expiration": "YYYY-MM-DD",
               "spot_mid": "decimal string", "bid": "decimal string", "itm": "boolean (the one-cent rule)",
               "intrinsic": "decimal string", "time_value": "decimal string"}],
-    "replacement": {"kind": "replacement_call | replacement_put", "section": "roll | protective_put",
-                    "objective": {"id": "string", "words": "string", "formula": "string", "unit": "string",
-                                  "direction": "higher | lower"},
+    "replacement": {"kind": ("replacement_call | replacement_put | replacement_short_put | replacement_collar | "
+                             "replacement_vertical"),
+                    "section": "roll | protective_put | collar | null (a vertical: no section judges it)",
+                    "objective": ("{id: string, words: string, formula: string, unit: string, direction: higher | "
+                                  "lower} | null (a vertical)"),
                     "candidate": "structuring.Candidate.as_dict (status, reasons, accepted, after, ...)",
-                    "held": "structuring.HeldLeg.as_dict", "before": "structuring.BeforeState.as_dict | null"},
+                    "held": "structuring.HeldLeg.as_dict (a collar's put; a vertical's short leg)",
+                    "held_other": "structuring.HeldLeg.as_dict | null (a collar's call; a vertical's long leg)",
+                    "before": "structuring.BeforeState.as_dict | null"},
     "spot": {"symbol": "string", "bid": "decimal string | null", "ask": "decimal string | null",
              "mid": "decimal string | null", "grade": "A-F", "as_of": "ISO-8601 UTC | null"},
     "model_note": "the European model's note (ROLL) | null",
@@ -213,12 +217,14 @@ def build_parser(version: str) -> contract.ReadOnlyParser:
                         help="CLOSE (the option legs), UNWIND_STOCK (the shares and every option leg), LET_ASSIGN (the "
                              "short option left to expiry), MONETIZE_PUT (the long put of a protective put or a collar) "
                              "or ROLL (a covered call's short call, a protective put's long put, a cash-secured put's "
-                             "short put, or a collar's two legs together, replaced) (required)")
+                             "short put, a collar's two legs together, or a vertical's two legs at the same width, "
+                             "replaced) (required)")
     parser.add_argument("--new-expiration", metavar="YYYY-MM-DD", default=None,
                         help="ROLL only, with --new-strike: the replacement's expiration, later than the held leg's")
     parser.add_argument("--new-strike", metavar="K", default=None,
                         help="ROLL only, with --new-expiration: the replacement's strike (its root and right are the "
-                             "held leg's)")
+                             "held leg's; a collar's new put; a vertical's new short leg, the long leg at the held "
+                             "width)")
     parser.add_argument("--new-call-strike", metavar="K", default=None,
                         help="a collar's ROLL only, with --new-expiration and --new-strike (the new put's): the new "
                              "call's strike; both legs are replaced as a unit")

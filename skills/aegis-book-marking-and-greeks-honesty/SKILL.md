@@ -97,8 +97,11 @@ unavailable)`.
 - A group's `net_greeks` adds one delta per share of stock to its option legs, and is empty when any open option leg
   has no Greeks.
 - The portfolio's `net_delta` is set only when every open group has Greeks: a partial total is worse than none.
-- `beta_weighted_delta` is always `{"value": null, "r2_flag": "unavailable"}` in Stage 1. Beta-weighted delta,
-  exposures and volatility context are planned for Stage 2 (not in this release).
+- `beta_weighted_delta` is always `{"value": null, "r2_flag": "unavailable"}` in Stage 1. Beta-weighted delta and
+  exposures are planned for Stage 2 (not in this release).
+- `vol_context.py` places a symbol's implied volatility on the latest end-of-day snapshot (the median of its solved
+  option legs, never the vendor's Greeks) among the earlier recorded days. It is information only: no rule, alert,
+  ticket or ranking reads it, and fewer than 5 earlier days is UNAVAILABLE, never a guess.
 
 ## P/L: unrealized, realized and day
 
