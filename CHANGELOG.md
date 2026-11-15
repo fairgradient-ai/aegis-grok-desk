@@ -2,6 +2,18 @@
 
 ## 1.0.0 (unreleased)
 
+- **A vertical's roll and call-spread coverage** (roadmap step 2.4, the owner's answer to open question 9).
+  `exit_ticket.py --action ROLL` on a vertical moves both legs to a later expiration at the same width:
+  `--new-strike` names the new short leg and the long leg keeps the held distance. The four legs open the new long,
+  close the held short, close the held long and open the new short. The approval convention gains the step
+  `open_spread_call` (level 3): `open a short call covered by a long call of the same expiry (a defined-risk spread)`.
+  `approval.Holdings.spread_calls` counts short calls a same-expiry long call covers after the shares have covered
+  what they can (`holdings_of` pairs them per expiry), `approval.Leg.spread` marks a spread's short call (opening, or
+  closing so that its spread goes with it), and closing a spread's long call first is `close_uncovers` (level 4). The
+  kind is `replacement_vertical`, judged under no `structuring.toml` section: the ticket's `**The new vertical**` block
+  gives the width, the new vertical's net and the roll's net per share in place of checks, and the payload's
+  `replacement.held_other` carries a vertical's held long leg (or a collar's held call). A vertical has no roll
+  analysis; its NOT_APPLICABLE reason says that a vertical's roll is a ROLL ticket you name.
 - **A collar's two legs replaced as a unit** (roadmap step 2.4). `roll_analysis.py --trade` on a `collar` group ranks
   every pair of a later standard monthly inside `[collar] dte` and the floor and cap bands, judged as a fresh collar
   (its own net debit against `max_net_debit`, the strike floor, the call's events beyond the held call's life) and

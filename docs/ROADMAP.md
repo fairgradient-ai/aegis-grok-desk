@@ -91,7 +91,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | proposed |
 | 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule; 2.2 for any early-exercise line that reads a dividend | planned |
-| 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval | in progress: long puts, short puts and collars landed; verticals wait on open question 9 |
+| 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget | planned |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash | planned |
 | 2.7 | Exposures and limits: beta-weighted delta and limit messages | your decision on the limits | planned |
@@ -199,11 +199,13 @@ context, sourced dates) and widens the Structuring Desk's scope.
   `--new-call-strike` beside `--new-strike`. The four legs open the new put, close the held put, close the held call
   and open the new call, so the shares stay protected and covered at every step. The answer carries the held call
   as `held_call` beside `held`.
-- **What still lands: a vertical's other choices.** A vertical answers NOT_APPLICABLE with "planned for Stage 2 (not
-  in this release)" (`scripts/aegis_desk/structuring.py`). It needs your decision first
-  ([open question 9](#open-questions-for-the-owner)): the approval convention counts only shares as a short call's
-  cover, so a roll that opens a vertical's new short call reads as an uncovered call (level 4), and the intermediate
-  exposure rule refuses it at every level. The tree also does not say which choices a vertical gets.
+- **Last, a vertical's roll (your answer to open question 9).** A vertical's ROLL ticket moves both legs to a later
+  expiration at the same width (`--new-strike` names the new short leg). Its four legs open the new long, close the
+  held short, close the held long and open the new short. The approval convention now counts a long call of the same
+  expiry as a short call's cover, a defined-risk spread at level 3 (`approval.STEP_OPEN_SPREAD_CALL`,
+  `Holdings.spread_calls`), so the new short call is not an uncovered one. No `structuring.toml` section judges a
+  vertical, so the ticket gives the new vertical's width and net and the roll's net in place of checks, and a
+  vertical has no roll analysis.
 - **The landed parts needed nothing, with one new caveat.** The tree names no prerequisite. A long put priced on the European model
   already carries the `american-style note:` (`_put_caveat` in `scripts/aegis_desk/structuring.py`: an absolute delta
   of 0.80 or more, or in the money with a time value below the interest on its strike). That caveat covers long puts
@@ -409,10 +411,9 @@ all four, so no step on this page claims any of them ([open question 7](#open-qu
 7. **`t1-call` and the four recorded `desk.toml` values.** Which stage, if any, uses them?
 8. **The chain budget for weeklies (2.5).** Raise the four-chain cap and the request budget, sample the window, or
    narrow it when weeklies are on?
-9. **A vertical's choices (2.4).** Which choices beyond the CLOSE ticket should a vertical get (for example a roll of
-   both legs to a later expiration at the same width), and may the approval convention count a long option of the
-   same right and expiry as a short one's cover (a defined-risk spread at level 3, as the convention's table already
-   says) instead of only shares? The convention is counsel-signed text.
+9. **A vertical's choices (2.4). Answered:** a ROLL ticket of both legs to a later expiration at the same width, and
+   a long call of the same expiry counts as a short call's cover (a defined-risk spread, level 3). The convention's
+   new step is counsel-signed text like the rest.
 
 ## Where each item is mentioned today
 
@@ -426,8 +427,8 @@ only the files that do.
 | --- | --- | --- |
 | American pricing: the desk's prices and Greeks, and early-exercise analysis beside the expiry tiers | 2.3 (2.1 rewrote the lines that named the lattice or an early-exercise model) | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `docs/PROVENANCE.md`, `docs/STRUCTURING.md`, `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `scripts/aegis_desk/structuring.py` (`MODEL_NOTE`, `_put_caveat`), `scripts/aegis_desk/structuring_text.py` (`MODEL_LINE`), `scripts/aegis_desk/bsm.py` and `scripts/aegis_desk/iv.py` (module notes), `tests/engine/test_lattice.py` (the `MODEL_NOTE` assertion) |
 | The parity-carry bound's own tree (proposed here) | 2.3 | `scripts/aegis_desk/carry.py` (`_tree`, `early_exercise_gap`, `TREE_STEPS`), `docs/STRUCTURING.md` (the carry of each expiration) |
-| Roll analysis of a vertical (a long put's, a short put's and a collar's landed) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
-| A vertical's other choices (a short put's and a collar's replacements landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
+| Roll analyses (a long put's, a short put's and a collar's landed; a vertical rolls by ticket) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
+| Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
 | Weekly expirations | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
 | Cash-balance check, per-account approval levels | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
 | Beta-weighted delta, exposures, limits and limit messages | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
@@ -454,14 +455,13 @@ both counts reach zero.
 | --- | --- | --- |
 | `agents/desk-lead.md` | 3 | 3 |
 | `agents/position-control.md` | 2 | 0 |
-| `agents/structuring-desk.md` | 1 | 0 |
 | `docs/ARCHITECTURE.md` | 3 | 1 |
 | `docs/FAQ.md` | 2 | 0 |
 | `docs/PROVENANCE.md` | 1 | 0 |
-| `docs/STRUCTURING.md` | 4 | 0 |
+| `docs/STRUCTURING.md` | 3 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `scripts/aegis_desk/book.py` | 1 | 0 |
-| `scripts/aegis_desk/structuring.py` | 3 | 0 |
+| `scripts/aegis_desk/structuring.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 2 | 0 |
 | `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md` | 1 | 0 |
@@ -472,10 +472,6 @@ both counts reach zero.
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
 | `skills/aegis-role-position-control/SKILL.md` | 2 | 0 |
-| `skills/aegis-role-structuring-desk/SKILL.md` | 1 | 0 |
-| `skills/aegis-roll-decision-framework/SKILL.md` | 2 | 0 |
+| `skills/aegis-roll-decision-framework/SKILL.md` | 1 | 0 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |
-| `skills/aegis-ticket-and-unwind-order/SKILL.md` | 1 | 0 |
-| `skills/aegis-vertical-spread-management/SKILL.md` | 1 | 0 |
 | `tests/engine/test_lattice.py` | 1 | 0 |
-| `tests/engine/test_structuring.py` | 1 | 0 |

@@ -22,7 +22,7 @@ Counsel has not signed this wording yet ([RELEASE.md](RELEASE.md), step 4).
 | a ticket that closes the shares and every option leg (`--action UNWIND_STOCK`) | `exit_ticket.py` | a group that holds shares |
 | what happens if a short option is left to expiry (`--action LET_ASSIGN`) | `exit_ticket.py` | short options only |
 | a ticket that closes the long put for its value (`--action MONETIZE_PUT`) | `exit_ticket.py` | protective put and collar groups |
-| a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, the long put of a protective put, the short put of a cash-secured put, and a collar's two legs together (`--new-call-strike`) |
+| a ticket that replaces a held leg with one you name (`--action ROLL`) | `exit_ticket.py` | the short call of a covered call, the long put of a protective put, the short put of a cash-secured put, a collar's two legs together (`--new-call-strike`), and a vertical's two legs at the same width |
 | the replacement candidates for a covered call's short call, a protective put's long put, a cash-secured put's short put or a collar's two legs | `roll_analysis.py` | covered call, protective put, cash-secured put and collar groups |
 | a covered call, a protective put or a collar on shares you hold (`--structure`) | `propose.py` | groups that hold shares only |
 
@@ -51,9 +51,13 @@ same account partly relies on, gets NOTHING_TO_PROPOSE with its reason; index un
 the data source cannot quote index options. A collar's two legs are replaced as a unit: its roll analysis ranks new
 pairs of one later expiration under `[collar]`, and its ROLL ticket takes `--new-call-strike` beside `--new-strike`
 (the new put's), opening the new put, closing the held put, closing the held call and opening the new call, so the
-shares stay protected and covered at every step. A vertical's other choices, weekly expirations, American pricing,
-scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for Stage 2 (not in this
-release).
+shares stay protected and covered at every step. A vertical's ROLL ticket moves both legs to a later expiration at
+the same width: `--new-strike` names the new short leg and the long leg keeps the held distance from it. It opens the
+new long leg, closes the held short, closes the held long and opens the new short, which the new long call covers (a
+defined-risk spread, level 3 by the desk's convention); no `structuring.toml` section judges it, so it prints the new
+vertical's width and net and the roll's net in place of checks. A vertical has no roll analysis. Weekly expirations,
+American pricing, scenario and iv_snapshot, a cash-balance check and per-account approval levels are planned for
+Stage 2 (not in this release).
 
 ## Only when you ask
 
@@ -428,6 +432,7 @@ By the desk's convention, a closing transaction needs no approval (level 0); the
   | a step that opens a short call without enough free shares | 4 |
   | a step that opens a short put (cash-secured; the desk does not see your cash) | 1 |
   | a step that opens a long call or a long put | 2 |
+  | a step that opens a short call covered by a long call of the same expiry (a defined-risk spread) | 3 |
 
 - The leg order is fixed so that no step opens or uncovers a short option. A CLOSE ticket closes the shorts, then the
   longs. UNWIND_STOCK closes the shorts, then the shares, then the longs, so the protection goes last. A replacement
@@ -779,7 +784,7 @@ computed by the desk's tools from your criteria · posted by an AI assistant · 
   2026-12-18 110 and a long 2026-12-18 115 WMT call added to the fixture as AG-20261101-06):
 
   ```text
-  NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's other choices are planned for Stage 2 (not in this release)
+  NOT_APPLICABLE | AG-20261101-06 roll analysis | AG-20261101-06 is a call credit vertical: the roll analysis covers the short call of a covered call, the long put of a protective put, the short put of a cash-secured put and the two legs of a collar; a vertical's roll is a ROLL ticket you name, at the same width
 
   computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:50 UTC
   ```

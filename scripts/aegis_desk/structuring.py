@@ -159,8 +159,11 @@ ask, the new one opened at its bid."""
 KIND_REPLACEMENT_COLLAR: str = "replacement_collar"
 """A collar's two legs replaced as a unit under ``[collar]`` (roadmap step 2.4): a new put and call of one later
 expiration, the held put closed at its bid and the held call at its ask."""
+KIND_REPLACEMENT_VERTICAL: str = "replacement_vertical"
+"""A vertical's two legs moved to a later expiration at the same width (roadmap step 2.4, open question 9): a ROLL
+ticket only, judged under no ``structuring.toml`` section (the owner names the new short strike)."""
 KINDS: Tuple[str, ...] = (KIND_COVERED_CALL, KIND_REPLACEMENT_CALL, KIND_PROTECTIVE_PUT, KIND_REPLACEMENT_PUT, KIND_COLLAR,
-                          KIND_REPLACEMENT_SHORT_PUT, KIND_REPLACEMENT_COLLAR)
+                          KIND_REPLACEMENT_SHORT_PUT, KIND_REPLACEMENT_COLLAR, KIND_REPLACEMENT_VERTICAL)
 KIND_SECTIONS: Dict[str, str] = {KIND_COVERED_CALL: "covered_call", KIND_REPLACEMENT_CALL: "roll",
                                  KIND_PROTECTIVE_PUT: "protective_put", KIND_REPLACEMENT_PUT: "protective_put",
                                  KIND_COLLAR: "collar", KIND_REPLACEMENT_SHORT_PUT: "roll",
@@ -1728,7 +1731,8 @@ class Ranking:
         return {"candidates": [candidate.as_dict() for candidate in self.candidates],
                 "best": None if self.best is None else self.best.id, "verdict": self.verdict,
                 "tie_break": self.tie_break, "passed": self.passed, "failed": self.failed, "unpriced": self.unpriced,
-                "failure_counts": dict(self.failure_counts), "objective": objective_dict(self.objective),
+                "failure_counts": dict(self.failure_counts),
+                "objective": None if self.objective is None else objective_dict(self.objective),
                 "near_best": list(self.near_best),
                 "switches": [None if item is None else item.as_dict() for item in self.switches]}
 
@@ -2036,8 +2040,8 @@ def roll_applicability(group: PositionGroup, criteria: StructuringConfig) -> Opt
     if group.structure not in ROLL_SECTIONS:
         return Applicability(VERDICT_NOT_APPLICABLE, NA_STRUCTURE, "%s is a %s: the roll analysis covers the short "
                              "call of a covered call, the long put of a protective put, the short put of a "
-                             "cash-secured put and the two legs of a collar; a vertical's other choices are planned "
-                             "for Stage 2 (not in this release)" % (_subject(group), _words(group)))
+                             "cash-secured put and the two legs of a collar; a vertical's roll is a ROLL ticket you "
+                             "name, at the same width" % (_subject(group), _words(group)))
     return _disabled(criteria, ROLL_SECTIONS[group.structure])
 
 
@@ -2108,9 +2112,11 @@ def ticket_applicability(group: PositionGroup, action: str,
             return None if criteria is None else _disabled(criteria, "roll")
         if group.structure == grouping.STRUCTURE_COLLAR:
             return None if criteria is None else _disabled(criteria, "collar")
+        if group.structure in grouping.VERTICAL_STRUCTURES:
+            return None  # judged under no section: the owner names the new short strike, the width is kept
         return refuse(NA_STRUCTURE, "%s is a %s: a ROLL ticket replaces the short call of a covered call, the long put "
-                      "of a protective put, the short put of a cash-secured put or the two legs of a collar; a "
-                      "vertical's other choices are planned for Stage 2 (not in this release)" % (subject, _words(group)))
+                      "of a protective put, the short put of a cash-secured put, the two legs of a collar or the two "
+                      "legs of a vertical" % (subject, _words(group)))
     return None
 
 
@@ -2363,6 +2369,9 @@ class Answer:
     held: Optional[HeldLeg] = None
     held_call: Optional[HeldLeg] = None
     """A collar's held short call (its held put is :attr:`held`); ``None`` otherwise."""
+    held_long: Optional[HeldLeg] = None
+    """A vertical's held long leg (its held short leg is :attr:`held`); ``None`` otherwise (not a payload key: the
+    ROLL ticket reports it)."""
     section: Any = None
     objective: Optional[Objective] = None
     expirations: Optional[ExpirationsBlock] = None
@@ -2950,6 +2959,32 @@ def run_replacement(market: MarketData, trade_id: str, expiration: datetime.date
     return _close(answer, VERDICT_PRICED)
 
 
+def replacement_vertical_candidate(long: PricedLeg, short: PricedLeg, ctx: PricingContext, group: GroupContext,
+                                   held_short: HeldLeg, held_long: HeldLeg, events: EventContext) -> Candidate:
+    """A vertical's two legs moved to a later expiration at the same width (roadmap step 2.4): the new long leg opened
+    at its ask, the new short leg at its bid, the held short closed at its ask and the held long at its bid,
+    ``|held contracts|`` each. No ``structuring.toml`` section judges it, so it carries no criteria reasons; the short
+    leg's early-assignment risk is noted (a put on the long put's tests, a call on the dividend test)."""
+    contracts = held_short.contracts
+    legs = [long, short]
+    for leg in legs:
+        if leg.unpriced is not None:
+            return _unpriced(KIND_REPLACEMENT_VERTICAL, legs, contracts, leg.unpriced)
+    spot = ctx.spot_mid
+    assert spot is not None and long.ask is not None and short.bid is not None
+    assert held_short.close_price is not None and held_long.close_price is not None
+    after = after_state(group, contracts, [(long, contracts, long.ask), (short, -contracts, short.bid)], held_short,
+                        (held_long,))
+    with localcontext(_DECIMAL_CONTEXT):
+        new_net = short.bid - long.ask
+        net = new_net + (held_long.close_price - held_short.close_price)
+    caveat = (short_put_caveat(short, ctx) if short.right == "PUT"
+              else _short_call_caveat(short, leg_spot(short, spot), events))
+    return _finish(KIND_REPLACEMENT_VERTICAL, legs, contracts, None, [], (), caveat, after, net_credit=net,
+                   net_credit_total=_money(net * _MULTIPLIER * contracts), net_debit=-new_net,
+                   net_debit_total=_money(-new_net * _MULTIPLIER * contracts))
+
+
 def _listed_one(chain: Sequence[Quote], right: str, strike: Decimal, expiration: datetime.date,
                 root: str) -> List[Quote]:
     wanted = expiry.plain_decimal(Decimal(strike))
@@ -3001,6 +3036,83 @@ def _collar_replacement(answer: Answer, group: PositionGroup, expiration: dateti
     candidate = replacement_collar_candidate(put, call, answer.pricing, answer.group_context, answer.section,
                                              answer.events, answer.held, answer.held_call)
     answer.ranking = rank_candidates([candidate], answer.kind, answer.objective)
+    return _close(answer, VERDICT_PRICED)
+
+
+def vertical_rows(group: PositionGroup) -> Tuple[Optional[PositionRow], Optional[PositionRow]]:
+    """A vertical's held short and long legs, each when the group holds it on exactly one row."""
+    shorts = [row for row in group.open_legs if row.is_option and row.is_short]
+    longs = [row for row in group.open_legs if row.is_option and not row.is_short]
+    return (shorts[0] if len(shorts) == 1 else None), (longs[0] if len(longs) == 1 else None)
+
+
+def run_vertical_replacement(market: MarketData, trade_id: str, expiration: datetime.date, short_strike: Decimal,
+                             criteria: StructuringConfig, *, require_live: bool = True) -> Answer:
+    """``exit_ticket.py --action ROLL`` on a vertical (roadmap step 2.4, open question 9): both legs moved to
+    ``expiration`` at the same width, the new short leg at ``short_strike`` and the new long leg as far from it as the
+    held long is from the held short, priced as one :func:`replacement_vertical_candidate`. ``ValueError`` when
+    ``expiration`` is not after the held legs' (a usage error in the tool). A ticket needs a live session."""
+    answer = Answer(tool=TOOL_EXIT_TICKET, kind=KIND_REPLACEMENT_VERTICAL, trade_id=trade_id, section_name=None,
+                    criteria=criteria, section=None, objective=None)
+    stopped = _start(answer, market)
+    if stopped is not None:
+        return stopped
+    target = answer.target
+    assert target is not None and target.group is not None
+    group = target.group
+    if group.structure not in grouping.VERTICAL_STRUCTURES:
+        raise ValueError("%s is not a vertical" % trade_id)
+    applicability = ticket_applicability(group, ACTION_ROLL, criteria)
+    if applicability is not None:
+        return _close(answer, applicability.verdict, applicability.code, applicability.reason)
+    short_row, long_row = vertical_rows(group)
+    if short_row is None or long_row is None or short_row.occ is None or long_row.occ is None:
+        missing = "short leg" if short_row is None else "long leg"
+        return _close(answer, VERDICT_NOT_APPLICABLE, NA_STRUCTURE, NA_TWO_ROWS_WORDS % (trade_id, missing))
+    latest = max(short_row.occ.expiration, long_row.occ.expiration)
+    if expiration <= latest:
+        raise ValueError("the replacement's expiration %s must be later than the held leg's %s"
+                         % (expiration.isoformat(), latest.isoformat()))
+    if require_live and not ticket_session_live(target.session):
+        return _unavailable(answer, CAUSE_MARKET_CLOSED, TICKET_CLOSED_WORDS)
+    stopped = _priced_context(answer) or _held(answer, short_row)
+    if stopped is not None:
+        return stopped
+    group_book = answer.book
+    assert group_book is not None and answer.held is not None
+    answer.held_long = held_leg(long_row, group_book.verdicts.get(long_row.compact_symbol),
+                                group_book.leg_records.get(long_row.row_number), target.extra_holidays)
+    if not answer.held_long.usable:
+        return _unavailable(answer, CAUSE_HELD_LEG_UNUSABLE)
+    answer.contracts = answer.held.contracts
+    width = expiry.plain_decimal(long_row.occ.strike) - expiry.plain_decimal(short_row.occ.strike)
+    long_strike = expiry.plain_decimal(Decimal(short_strike)) + width
+    chains, block, warnings = load_chains(target, [expiration])
+    answer.warnings.extend(warnings)
+    answer.expirations = block
+    if block.not_evaluated:
+        return _unavailable(answer, CAUSE_CHAIN_NOT_SERVED)
+    stopped = align_spot(answer, chains)
+    if stopped is not None:
+        return stopped
+    attach_spot_bars(answer, chains)
+    attach_chain_carry(answer, chains)
+    assert answer.pricing is not None and answer.group_context is not None and answer.events is not None
+    right = short_row.occ.right
+    shorts = _listed_one(chains[expiration], right, short_strike, expiration, short_row.occ.root)
+    longs = _listed_one(chains[expiration], right, long_strike, expiration, long_row.occ.root)
+    answer.chains = {expiration: longs + shorts}
+    long_entries, short_entries = listed_options({expiration: longs}, right), listed_options({expiration: shorts}, right)
+    if not long_entries or not short_entries:
+        return _unavailable(answer, CAUSE_REPLACEMENT_NOT_LISTED)
+    long = price_listed(long_entries[0][0], long_entries[0][1], answer.pricing)
+    short = price_listed(short_entries[0][0], short_entries[0][1], answer.pricing)
+    candidate = replacement_vertical_candidate(long, short, answer.pricing, answer.group_context, answer.held,
+                                               answer.held_long, answer.events)
+    answer.ranking = Ranking(candidates=(replace(candidate, rank=1),), best=None, verdict=VERDICT_PRICED,
+                             tie_break=None, passed=0 if candidate.status == STATUS_UNPRICED else 1, failed=0,
+                             failure_counts={}, objective=None,  # type: ignore[arg-type]
+                             unpriced=1 if candidate.status == STATUS_UNPRICED else 0)
     return _close(answer, VERDICT_PRICED)
 
 

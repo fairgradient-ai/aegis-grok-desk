@@ -580,6 +580,25 @@ COLLAR_QUOTES = {"quotes": {
                            "t": "2026-11-03T19:31:12Z"}}}
 
 
+VERTICAL_ROWS = ("option,WMT,WMT261218C00110000,-1,,,,Brokerage (margin),AG-20261101-06,2026-11-01,-150.00,,1.50,open,,,,,"
+                 "call credit vertical\n"
+                 "option,WMT,WMT261218C00115000,1,,,,Brokerage (margin),AG-20261101-06,2026-11-01,60.00,,0.60,open,,,,,"
+                 "call credit vertical")
+VERTICAL_QUOTES = {"quotes": {
+    "WMT261218C00110000": {"ap": 3.75, "as": 38, "ax": "Z", "bp": 3.65, "bs": 56, "bx": "Z", "c": "A",
+                           "t": "2026-11-03T19:31:12Z"},
+    "WMT261218C00115000": {"ap": 2.2, "as": 43, "ax": "Z", "bp": 2.1, "bs": 24, "bx": "Z", "c": "A",
+                           "t": "2026-11-03T19:31:12Z"}}}
+
+
+def write_quotes(root: str, quotes: Dict[str, Any], symbols: str) -> None:
+    """A quotes batch written into a desk copy's regular set (synthetic, as every fixture quote is; the values are the
+    recorded snapshots' for these contracts)."""
+    path = os.path.join(root, "fixtures", "alpaca", "regular", "option_quotes__%s.json" % symbols)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(quotes, handle)
+
+
 def write_collar_call_quotes(root: str) -> None:
     """The quotes batch of a SPY collar (the fixture's SPY put plus a short 2026-12-18 660 call), written into a desk
     copy's regular set (synthetic, as every fixture quote is)."""
@@ -607,9 +626,9 @@ class ApplicabilityTest(unittest.TestCase):
                 self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_STRUCTURE), (answer.verdict, answer.code))
                 self.assertIn("is a %s:" % words, answer.reason)
                 self.assertIn("the short call of a covered call, the long put of a protective put, the short put of "
-                              "a cash-secured put and the two legs of a collar; a vertical's other choices are planned "
-                              "for Stage 2 (not in this release)", answer.reason)
-                self.assertNotIn("a ROLL ticket", answer.reason)
+                              "a cash-secured put and the two legs of a collar; a vertical's roll is a ROLL ticket you "
+                              "name, at the same width", answer.reason)
+                self.assertNotIn("a ROLL ticket prices", answer.reason)
         put_off = dataclasses.replace(CRITERIA, protective_put=dataclasses.replace(CRITERIA.protective_put,
                                                                                    enabled=False))
         answer = S.roll_applicability(group_of(SHARES, PUT), put_off)
@@ -796,6 +815,25 @@ class ShortPutHelpersTest(unittest.TestCase):
         self.assertEqual((S.VERDICT_NOT_APPLICABLE, S.NA_STRUCTURE, 0), (answer.verdict, answer.cause,
                                                                           answer.requests["made"]))
         self.assertIn("holds 1 long put and 2 short calls: a collar's legs are replaced as a unit", answer.reason)
+
+    def test_a_verticals_two_legs_move_to_a_later_expiration_at_the_same_width(self) -> None:
+        desk = Desk(self, replace=("closed early", "closed early\n" + VERTICAL_ROWS))
+        write_quotes(desk.root, VERTICAL_QUOTES, "WMT261218C00110000,WMT261218C00115000")
+        rows = VERTICAL_ROWS.replace("AG-20261101-06", "AG-20261101-01").split("\n")
+        self.assertIsNone(S.ticket_applicability(group_of(*rows), "ROLL", CRITERIA))
+        answer = S.run_vertical_replacement(desk.market(), "AG-20261101-06", JAN15, D("115"), CRITERIA)
+        self.assertEqual((S.VERDICT_PRICED, S.KIND_REPLACEMENT_VERTICAL, None, None),
+                         (answer.verdict, answer.kind, answer.section_name, answer.objective))
+        self.assertEqual(("WMT261218C00110000", "WMT261218C00115000"), (answer.held.occ, answer.held_long.occ))
+        candidate = answer.candidate
+        long, short = candidate.legs
+        # the width is the held one: the new long 5 above the new short
+        self.assertEqual(("WMT270115C00120000", "WMT270115C00115000"), (long.occ, short.occ))
+        self.assertEqual((D("-1.20"), D("-0.45"), (), S.STATUS_ELIGIBLE),
+                         (candidate.net_debit, candidate.net_credit, candidate.reasons, candidate.status))
+        self.assertEqual(answer.held.realized + answer.held_long.realized, candidate.after.realized_on_close)
+        with self.assertRaises(ValueError):  # the new expiration must come after the held legs'
+            S.run_vertical_replacement(desk.market(), "AG-20261101-06", DEC18, D("115"), CRITERIA)
 
     def test_the_tie_breaks_put_the_lower_strike_first(self) -> None:
         self.assertEqual(("net_credit", "abs_delta", "expiration", "strike", "contract"),

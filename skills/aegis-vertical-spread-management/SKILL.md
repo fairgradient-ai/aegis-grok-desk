@@ -120,10 +120,12 @@ The 60 % of VTP is the example's documented default. Any other value is the owne
 
 - Whether to keep a vertical, end it or adjust it is the owner's decision. The plan words in a message are the owner's
   own plan, never the desk's instruction.
-- Verticals stay outside the structuring scope in this release. On the owner's request the Aegis Structuring Desk
-  prints a CLOSE ticket for a vertical, its short leg first; it proposes no spread and prices no replacement. A
-  vertical's other choices are planned for Stage 2 (not in this release).
+- On the owner's request the Aegis Structuring Desk prints a CLOSE ticket for a vertical, its short leg first, or a
+  ROLL ticket that moves both legs to a later expiration at the same width (the owner names the new short strike;
+  `aegis-ticket-and-unwind-order`). It proposes no new spread, and no `structuring.toml` section judges a vertical's
+  roll.
 - No alert reads the approval level. Only the structuring tools check `desk.toml`'s self-attested `approval_level`,
-  on their own answers; a vertical is level 3 by the desk's convention.
+  on their own answers; a vertical is level 3 by the desk's convention, and a short call covered by a long call of
+  the same expiry counts as a defined-risk spread (level 3), not an uncovered call.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

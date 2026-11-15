@@ -48,8 +48,12 @@ UNAVAILABLE | AG-20261022-02 ROLL ticket | the 2027-01-15 180 call cannot be pri
 - A collar's ROLL ticket replaces both legs as a unit: `--new-strike` names the new put, `--new-call-strike` the
   new call, one expiration. Its four legs open the new put, close the held put, close the held call and open the new
   call, so the shares stay protected and covered at every step; its checks add the roll's net per share.
-- Every other replacement is NOT_APPLICABLE with its reason. A vertical's other choices are planned for Stage 2 (not
-  in this release).
+- A vertical's ROLL ticket moves both legs to a later expiration at the same width: `--new-strike` names the new
+  short leg, and the long leg keeps the held distance from it. Its four legs open the new long, close the held short,
+  close the held long and open the new short; a new short call is covered by the new long call of the same expiry (a
+  defined-risk spread, level 3). No `structuring.toml` section judges it: in place of checks it gives the new
+  vertical's width and net and the roll's net per share.
+- Every other replacement is NOT_APPLICABLE with its reason.
 
 ```text
 python3 /workspace/aegis-grok-desk/scripts/exit_ticket.py --trade AG-20261020-01 --action ROLL --new-expiration 2027-01-15 --new-strike 115 --desk-root /workspace/aegis-desk
@@ -176,6 +180,8 @@ The level of each step, on the state before it:
 - Opening a short call covered by free shares in the same account: level 1; without enough free shares: level 4.
 - Opening a short put (cash-secured; the desk does not see your cash): level 1.
 - Opening a long call or a long put: level 2.
+- Opening a short call covered by a long call of the same expiry (a defined-risk spread): level 3. Positions count a
+  long call against a short call of the same expiry once the shares have covered what they can.
 
 The ticket needs the highest step's level. Above the owner's level, the ticket is refused before any quote is fetched.
 A copy whose `desk.toml` says level 0, asked for the same ROLL:

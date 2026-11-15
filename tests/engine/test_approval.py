@@ -92,7 +92,8 @@ class ConventionTest(unittest.TestCase):
 
     def test_the_step_table(self) -> None:
         self.assertEqual({"close_option": 0, "close_shares": 0, "close_uncovers": 4, "open_covered_call": 1,
-                          "open_uncovered_call": 4, "open_short_put": 1, "open_long": 2}, approval.STEP_LEVELS)
+                          "open_uncovered_call": 4, "open_short_put": 1, "open_long": 2, "open_spread_call": 3},
+                         approval.STEP_LEVELS)
         self.assertEqual((
             ("close_option", "close a short or long option you hold", 0),
             ("close_shares", "close shares that no remaining short call needs", 0),
@@ -102,6 +103,8 @@ class ConventionTest(unittest.TestCase):
             ("open_uncovered_call", "open a short call without enough free shares", 4),
             ("open_short_put", "open a short put (cash-secured; the desk does not see your cash)", 1),
             ("open_long", "open a long call or long put", 2),
+            ("open_spread_call", "open a short call covered by a long call of the same expiry (a defined-risk spread)",
+             3),
         ), approval.STEP_TABLE)
         self.assertEqual(list(approval.STEP_LEVELS), [kind for kind, _words, _level in approval.STEP_TABLE])
         self.assertEqual(approval.STEP_LEVELS, {kind: level for kind, _words, level in approval.STEP_TABLE})
@@ -128,7 +131,7 @@ class ConventionTest(unittest.TestCase):
 class HoldingsAndLegsTest(unittest.TestCase):
     def test_holdings_count_whole_shares_and_contracts(self) -> None:
         self.assertEqual(H(0, 0, 0, 0, 0), H())
-        self.assertEqual(("shares", "long_calls", "short_calls", "long_puts", "short_puts"),
+        self.assertEqual(("shares", "long_calls", "short_calls", "long_puts", "short_puts", "spread_calls"),
                          tuple(field.name for field in dataclasses.fields(H)))
         self.assertEqual(0, WMT.uncovered_calls)
         self.assertEqual(2, H(shares=200, short_calls=4).uncovered_calls)
@@ -174,6 +177,76 @@ class HoldingsAndLegsTest(unittest.TestCase):
         self.assertEqual(SPY, approval.holdings_of(rows, "Roth IRA", "SPY"), "the closed cash-secured put is not held")
         self.assertEqual(H(), approval.holdings_of(rows, "Roth IRA", "WMT"), "shares in another account never count")
         self.assertEqual(H(), approval.holdings_of(rows, "Brokerage (margin)", "SPY"))
+
+
+class SpreadCoverTest(unittest.TestCase):
+    """Roadmap step 2.4 (open question 9, the owner's decision): a long call of the same expiry covers a short call as a
+    defined-risk spread, level 3."""
+
+    def test_a_spread_covers_a_short_call_the_shares_do_not(self) -> None:
+        self.assertEqual(0, H(long_calls=1, short_calls=1, spread_calls=1).uncovered_calls)
+        self.assertEqual(1, H(long_calls=1, short_calls=2, spread_calls=1).uncovered_calls)
+        self.assertEqual(0, H(shares=100, long_calls=1, short_calls=2, spread_calls=1).uncovered_calls)
+        self.assertEqual(100, H(shares=100, long_calls=1, short_calls=1, spread_calls=1).free_shares)
+        for bad in (dict(short_calls=1, spread_calls=1), dict(long_calls=1, spread_calls=1)):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                H(**bad)
+        with self.assertRaises(ValueError):  # only a short call is a spread's short leg
+            approval.Leg("open", "long", "call", 1, spread=True)
+
+    def test_a_vertical_roll_beside_a_covered_call_still_reads_as_a_spread(self) -> None:
+        # 200 shares cover 2 short calls; the vertical's short call is covered by its long call of the same expiry
+        held = H(shares=200, long_calls=1, short_calls=3, spread_calls=1)
+        legs = [approval.Leg("open", "long", "call", 1), approval.Leg("close", "short", "call", 1, spread=True),
+                approval.Leg("close", "long", "call", 1), approval.Leg("open", "short", "call", 1, spread=True)]
+        result = approval.check_legs(held, legs, 3)
+        self.assertEqual(["open_long", "close_option", "close_option", "open_spread_call"],
+                         [step.kind for step in result.steps])
+        self.assertEqual((3, None, 0), (result.required_level, result.exposure_step, result.steps[-1].after.uncovered_calls))
+
+    def test_a_vertical_roll_is_level_3_and_never_uncovered(self) -> None:
+        held = H(long_calls=1, short_calls=1, spread_calls=1)
+        legs = [approval.Leg("open", "long", "call", 1), approval.Leg("close", "short", "call", 1, spread=True),
+                approval.Leg("close", "long", "call", 1), approval.Leg("open", "short", "call", 1, spread=True)]
+        result = approval.check_legs(held, legs, 3)
+        self.assertEqual([("open_long", 2), ("close_option", 0), ("close_option", 0), ("open_spread_call", 3)],
+                         [(step.kind, step.level) for step in result.steps])
+        self.assertEqual((True, 3, None), (result.ok, result.required_level, result.exposure_step))
+        self.assertEqual("opening 1 new short call, covered by 1 long call of the same expiry (a defined-risk spread)",
+                         result.steps[3].words)
+        self.assertFalse(approval.check_legs(held, legs, 2).ok)
+        # without the spread mark the same short call is uncovered, level 4, and leaves an exposure
+        bare = legs[:3] + [approval.Leg("open", "short", "call", 1)]
+        result = approval.check_legs(held, bare, 5)
+        self.assertEqual(("open_uncovered_call", 4, 4), (result.steps[3].kind, result.steps[3].level,
+                                                         result.exposure_step))
+
+    def test_closing_a_spreads_long_call_first_uncovers_its_short(self) -> None:
+        held = H(long_calls=1, short_calls=1, spread_calls=1)
+        result = approval.check_legs(held, [approval.Leg("close", "long", "call", 1)], 5)
+        self.assertEqual(("close_uncovers", 4, 1), (result.steps[0].kind, result.steps[0].level, result.exposure_step))
+
+    def test_holdings_of_pairs_calls_of_the_same_expiry_after_the_shares(self) -> None:
+        class Row:
+            def __init__(self, right, signed, expiration, stock=False):
+                self.is_open, self.account, self.underlying = True, "A", "WMT"
+                self.open_quantity, self.is_stock_like, self.is_option = Decimal(signed), stock, not stock
+                self.is_short, self.is_long = signed < 0, signed > 0
+                self.is_call = right == "CALL"
+                self.row_number = 2
+                self.occ = None if stock else type("Occ", (), {"expiration": expiration})()
+
+        dec, jan = datetime.date(2026, 12, 18), datetime.date(2027, 1, 15)
+        vertical = [Row("CALL", -1, dec), Row("CALL", 1, dec)]
+        self.assertEqual((1, 1, 1, 0), self.summary(approval.holdings_of(vertical, "A", "WMT")))
+        calendar = [Row("CALL", -1, dec), Row("CALL", 1, jan)]  # different expiries: no spread
+        self.assertEqual((1, 1, 0, 1), self.summary(approval.holdings_of(calendar, "A", "WMT")))
+        covered = [Row(None, 100, None, stock=True), Row("CALL", -1, dec), Row("CALL", 1, dec)]
+        self.assertEqual((1, 1, 0, 0), self.summary(approval.holdings_of(covered, "A", "WMT")))
+
+    @staticmethod
+    def summary(holdings: "approval.Holdings") -> tuple:
+        return (holdings.long_calls, holdings.short_calls, holdings.spread_calls, holdings.uncovered_calls)
 
 
 class GoldensTest(unittest.TestCase):

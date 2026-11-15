@@ -141,6 +141,8 @@ class Replacement:
     contracts: int
     call_strike: Optional[Decimal] = None
     """A collar's ROLL only: the new call's strike (``strike`` is then the new put's; roadmap step 2.4)."""
+    long_strike: Optional[Decimal] = None
+    """A vertical's ROLL only: the new long leg's strike, at the held width from ``strike`` (the new short leg's)."""
 
 
 @dataclass(frozen=True)
@@ -161,6 +163,8 @@ class PlanLeg:
     strike: Optional[Decimal]
     expiration: Optional[datetime.date]
     multiplier: int
+    spread: bool = False
+    """A vertical's new short call: covered by the new long call of the same expiry opened first (level 3)."""
 
     @property
     def effect(self) -> str:
@@ -172,7 +176,7 @@ class PlanLeg:
 
     @property
     def approval_leg(self) -> approval.Leg:
-        return approval.Leg(self.effect, self.side, self.instrument, self.quantity)
+        return approval.Leg(self.effect, self.side, self.instrument, self.quantity, spread=self.spread)
 
     def as_dict(self) -> Dict[str, Any]:
         return {"step": self.step, "intent": self.intent, "effect": self.effect, "side": self.side,
@@ -257,6 +261,18 @@ def plan_legs(group: PositionGroup, action: str, replacement: Optional[Replaceme
                            held_call.occ.root if held_call.occ is not None else replacement.root, "CALL",
                            replacement.call_strike, replacement.expiration, held_call.multiplier)
         return [new_put, _row_leg(2, INTENT_CLOSE_LONG, held_put), _row_leg(3, INTENT_CLOSE_SHORT, held_call), new_call]
+    elif action == structuring.ACTION_ROLL and group.structure in grouping.VERTICAL_STRUCTURES:
+        held_short, held_long = structuring.vertical_rows(group)
+        if replacement is None or held_short is None or held_long is None or replacement.long_strike is None:
+            raise ValueError("a vertical's ROLL needs its held short and long legs and the new short strike")
+        instrument = approval.INSTRUMENT_PUT if held_short.is_put else approval.INSTRUMENT_CALL
+        new_long = PlanLeg(1, INTENT_OPEN_LONG, instrument, replacement.contracts, None, None, replacement.root,
+                           replacement.right, replacement.long_strike, replacement.expiration, held_long.multiplier)
+        new_short = PlanLeg(4, INTENT_OPEN_SHORT, instrument, replacement.contracts, None, None, replacement.root,
+                            replacement.right, replacement.strike, replacement.expiration, held_short.multiplier,
+                            spread=instrument == approval.INSTRUMENT_CALL)
+        closed_short = replace(_row_leg(2, INTENT_CLOSE_SHORT, held_short), spread=instrument == approval.INSTRUMENT_CALL)
+        return [new_long, closed_short, _row_leg(3, INTENT_CLOSE_LONG, held_long), new_short]
     elif action == structuring.ACTION_ROLL:
         held = replaced_row(group)
         if replacement is None or held is None:
@@ -636,6 +652,8 @@ class Ticket:
         """The ``structuring.toml`` section a ROLL is judged under (``roll``, ``protective_put`` or ``collar``)."""
         if self.action != structuring.ACTION_ROLL or self.group is None:
             return None
+        if self.group.structure in grouping.VERTICAL_STRUCTURES:
+            return None  # a vertical's roll is judged under no section
         return {grouping.STRUCTURE_PROTECTIVE_PUT: "protective_put",
                 grouping.STRUCTURE_COLLAR: "collar"}.get(self.group.structure, "roll")
 
@@ -657,6 +675,8 @@ class Ticket:
             replacement = {"kind": answer.kind, "section": answer.section_name,
                            "objective": None if answer.objective is None else structuring.objective_dict(answer.objective),
                            "candidate": answer.candidate.as_dict(), "held": None if answer.held is None else answer.held.as_dict(),
+                           "held_other": (answer.held_call.as_dict() if answer.held_call is not None else
+                                          answer.held_long.as_dict() if answer.held_long is not None else None),
                            "before": None if answer.before is None else answer.before.as_dict()}
         return {
             "ticket_id": self.ticket_id, "trade_id": self.trade_id,
@@ -725,6 +745,7 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
         return _close(ticket, market, applicability.verdict, applicability.code, applicability.reason)
     replacement: Optional[Replacement] = None
     collar = group.structure == grouping.STRUCTURE_COLLAR
+    vertical = group.structure in grouping.VERTICAL_STRUCTURES
     if action == structuring.ACTION_ROLL and collar != (new_call_strike is not None):
         raise TicketUsageError("a collar's ROLL needs --new-call-strike (the new call; --new-strike is the new put)"
                                if collar else "--new-call-strike applies to a collar's ROLL only")
@@ -752,6 +773,28 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
             raise structuring.StructuringError(structuring.ERROR_POSITIONS_INVALID, str(exc)) from None
         replacement = Replacement(held_put.occ.root, "PUT", expiry.plain_decimal(new_strike), new_expiration, contracts,
                                   expiry.plain_decimal(new_call_strike))
+    elif action == structuring.ACTION_ROLL and vertical:
+        held_short, held_long = structuring.vertical_rows(group)
+        if held_short is None or held_long is None or held_short.occ is None or held_long.occ is None:
+            missing = "short leg" if held_short is None else "long leg"
+            return _close(ticket, market, VERDICT_NOT_APPLICABLE, structuring.NA_STRUCTURE,
+                          structuring.NA_TWO_ROWS_WORDS % (trade_id, missing))
+        assert new_expiration is not None and new_strike is not None
+        latest = max(held_short.occ.expiration, held_long.occ.expiration)
+        if new_expiration <= latest:
+            raise TicketUsageError("--new-expiration %s must be later than the held legs' expiration %s"
+                                   % (new_expiration.isoformat(), latest.isoformat()))
+        try:
+            contracts = _whole(held_short.open_quantity, held_short)
+        except ValueError as exc:
+            raise structuring.StructuringError(structuring.ERROR_POSITIONS_INVALID, str(exc)) from None
+        width = expiry.plain_decimal(held_long.occ.strike) - expiry.plain_decimal(held_short.occ.strike)
+        short_strike = expiry.plain_decimal(new_strike)
+        if short_strike + width <= 0:
+            raise TicketUsageError("--new-strike %s leaves the long leg at the held width below zero"
+                                   % expiry.plain(short_strike))
+        replacement = Replacement(held_short.occ.root, held_short.occ.right, short_strike, new_expiration, contracts,
+                                  long_strike=short_strike + width)
     elif action == structuring.ACTION_ROLL:
         held = replaced_row(group)
         if held is None or held.occ is None:
@@ -849,13 +892,17 @@ def _held_ticket(ticket: Ticket, market: MarketData) -> Ticket:
 
 
 def _roll(ticket: Ticket, market: MarketData, replacement: Replacement) -> Ticket:
-    answer = structuring.run_replacement(market, ticket.trade_id, replacement.expiration, replacement.strike,
-                                         ticket.criteria, require_live=True, call_strike=replacement.call_strike)
+    if replacement.long_strike is not None:
+        answer = structuring.run_vertical_replacement(market, ticket.trade_id, replacement.expiration,
+                                                      replacement.strike, ticket.criteria, require_live=True)
+    else:
+        answer = structuring.run_replacement(market, ticket.trade_id, replacement.expiration, replacement.strike,
+                                             ticket.criteria, require_live=True, call_strike=replacement.call_strike)
     ticket.replacement = answer
     ticket.warnings.extend(answer.warnings)
     if answer.verdict != structuring.VERDICT_PRICED or answer.candidate is None or answer.held is None:
         return _close(ticket, market, answer.verdict, answer.cause, answer.reason)
-    new_legs = {leg.right: leg for leg in answer.candidate.legs}
+    new_legs = list(answer.candidate.legs)  # one leg, or (the long, the short): a collar's put and call, a vertical's
     for new in answer.candidate.legs:
         if new.unpriced is not None:
             words = "%s cannot be priced: %s" % (
@@ -863,7 +910,7 @@ def _roll(ticket: Ticket, market: MarketData, replacement: Replacement) -> Ticke
                 structuring_text.reason_words(structuring_text.Writer(), new.unpriced))
             return _close(ticket, market, VERDICT_UNAVAILABLE, CAUSE_REPLACEMENT_UNPRICED, words)
     held_quotes: Dict[int, LegQuote] = {}
-    for held in (answer.held, answer.held_call):
+    for held in (answer.held, answer.held_call, answer.held_long):
         if held is None:
             continue
         quote = quote_of_held(held)
@@ -874,7 +921,7 @@ def _roll(ticket: Ticket, market: MarketData, replacement: Replacement) -> Ticke
     priced: List[PlanLeg] = []
     for plan in ticket.plan:
         if plan.row_number is None:
-            new = new_legs[plan.right]
+            new = new_legs[0] if len(new_legs) == 1 or plan.intent == INTENT_OPEN_LONG else new_legs[1]
             plan = replace(plan, symbol=new.occ)
             ticket.legs.append(_priced(ticket, plan, quote_of_new(new, plan.intent), market))
         else:
@@ -1074,6 +1121,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
         words = structuring_text.ROLL_SHORT_PUT_WORDS
     elif ticket.action == structuring.ACTION_ROLL and group.structure == grouping.STRUCTURE_COLLAR:
         words = structuring_text.ROLL_COLLAR_WORDS
+    elif ticket.action == structuring.ACTION_ROLL and group.structure in grouping.VERTICAL_STRUCTURES:
+        words = structuring_text.ROLL_VERTICAL_WORDS
     as_of = ticket_as_of(ticket)
     lines.append(structuring_text.ticket_header(w, ticket.trade_id, group.underlying, group.structure, ticket.action,
                                                 words))

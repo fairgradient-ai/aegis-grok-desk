@@ -856,6 +856,73 @@ class QuietTest(DeskCase):
         code, body = self.run_json(SPY, "MONETIZE_PUT", "--new-call-strike", "680")
         self.assertEqual(2, code)
 
+    def add_vertical(self, level: int) -> None:
+        rows = ("option,WMT,WMT261218C00110000,-1,,,,Brokerage (margin),AG-20261101-06,2026-11-01,-150.00,,1.50,open,,,,,"
+                "call credit vertical\n"
+                "option,WMT,WMT261218C00115000,1,,,,Brokerage (margin),AG-20261101-06,2026-11-01,60.00,,0.60,open,,,,,"
+                "call credit vertical")
+        with open(self.paths.positions_csv, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(self.paths.positions_csv, "w", encoding="utf-8") as handle:
+            handle.write(text.replace("closed early", "closed early\n" + rows))
+        with open(self.paths.desk_toml, encoding="utf-8") as handle:
+            text = handle.read()
+        with open(self.paths.desk_toml, "w", encoding="utf-8") as handle:
+            handle.write(text.replace("approval_level = 2 ", "approval_level = %d " % level))
+        quotes = {"quotes": {
+            "WMT261218C00110000": {"ap": 3.75, "as": 38, "ax": "Z", "bp": 3.65, "bs": 56, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"},
+            "WMT261218C00115000": {"ap": 2.2, "as": 43, "ax": "Z", "bp": 2.1, "bs": 24, "bx": "Z", "c": "A",
+                                   "t": "2026-11-03T19:31:12Z"}}}
+        with open(os.path.join(self.root, "fixtures", "alpaca", "regular",
+                               "option_quotes__WMT261218C00110000,WMT261218C00115000.json"), "w") as handle:
+            json.dump(quotes, handle)
+        self.ack(now="2026-11-03T19:49:30Z")
+
+    def test_a_verticals_roll_ticket_at_the_same_width(self) -> None:
+        # roadmap step 2.4, open question 9: both legs to a later expiration at the held width, the new short call
+        # covered by the new long call of the same expiry (a defined-risk spread, level 3)
+        self.add_vertical(3)
+        roll = ("--new-expiration", "2027-01-15", "--new-strike", "115")
+        code, out = self.run_text("AG-20261101-06", "ROLL", *roll)
+        self.assertEqual(0, code, out)
+        lines = out.split("\n")
+        self.assertEqual("### TICKET AG-20261101-06 | WMT call credit vertical: a roll of the vertical's two legs at the "
+                         "same width (action ROLL)", lines[0])
+        self.assertEqual(["- leg 1 of 4: opens a new long 1 x WMT 2027-01-15 120 call | bid 2.25, ask 2.35, mid 2.30 | "
+                          "quote grade B",
+                          "- leg 2 of 4: closes your short 1 x WMT 2026-12-18 110 call | bid 3.65, ask 3.75, mid 3.70 | "
+                          "quote grade B",
+                          "- leg 3 of 4: closes your long 1 x WMT 2026-12-18 115 call | bid 2.10, ask 2.20, mid 2.15 | "
+                          "quote grade B",
+                          "- leg 4 of 4: opens a new short 1 x WMT 2027-01-15 115 call | bid 3.55, ask 3.65, mid 3.60 | "
+                          "quote grade B"], [line for line in lines if line.startswith("- leg ")])
+        for line in ("**The new vertical**", "- **width** 5 between the 2027-01-15 115 and 120 calls",
+                     "- **new vertical net per share** credit 1.20 (120.00 in all)",
+                     "- **net of the roll per share** debit 0.45 (45.00 in all)",
+                     "- after leg 4: you hold 200 WMT shares, 1 long call, 3 short calls | level 3"):
+            self.assertIn(line, lines)
+        code, body = self.run_json("AG-20261101-06", "ROLL", *roll)
+        payload = body["payload"]
+        self.assertEqual(("TICKET", "replacement_vertical", None, "WMT270115C00120000+WMT270115C00115000",
+                          "WMT261218C00115000"),
+                         (payload["verdict"], payload["replacement"]["kind"], payload["replacement"]["section"],
+                          payload["replacement"]["candidate"]["id"], payload["replacement"]["held_other"]["occ"]))
+        self.assertEqual([[1, "open_long", 2], [2, "close_option", 0], [3, "close_option", 0],
+                          [4, "open_spread_call", 3]],
+                         [[step["step"], step["kind"], step["level"]] for step in payload["steps"]])
+        self.assertEqual([0, 0, 0, 0], [step["uncovered_calls"] for step in payload["steps"]])
+
+    def test_a_verticals_roll_is_refused_below_level_3_before_any_request(self) -> None:
+        self.add_vertical(2)
+        code, out = self.run_text("AG-20261101-06", "ROLL", "--new-expiration", "2027-01-15", "--new-strike", "115")
+        self.assertEqual(20, code)
+        self.assertTrue(out.startswith("REFUSED AG-20261101-06 | WMT call credit vertical | opening 1 new short call, "
+                                       "covered by 1 long call of the same expiry (a defined-risk spread) needs level 3 "
+                                       "by the desk's convention"), out)
+        code, body = self.run_json("AG-20261101-06", "ROLL", "--new-expiration", "2026-12-18", "--new-strike", "115")
+        self.assertEqual(2, code)  # the new expiration must come after the held legs'
+
     def test_config_unacknowledged_comes_first(self) -> None:
         with open(self.paths.structuring_toml, "a", encoding="utf-8") as handle:
             handle.write("# an edit\n")
