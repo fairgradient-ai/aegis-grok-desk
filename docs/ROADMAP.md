@@ -90,7 +90,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | --- | --- | --- | --- |
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
-| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | in progress: the leg pricer and the sourced yield landed, not wired |
+| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | in progress: the book is wired; the structuring tools are next |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
@@ -152,6 +152,12 @@ context, sourced dates) and widens the Structuring Desk's scope.
   `ex_dividend` entry, a top-level `dividend_yield` refused, version 1 still loaded), `calendar_events.sourced_yield`,
   the `NO_YIELD` finding of `calendar_check.py` and the `yield` of the `desk_init.py` intake. The book and the
   structuring tools still read whichever yield the file holds until they are wired.
+- **What landed third: the book.** The book's IV and Greeks come from the leg pricer, with `model`,
+  `early_exercise_premium`, `greeks_quality`, `exercise_now` and `near_boundary` per leg, per-Greek net Greeks with a
+  group `greeks_quality`, `dividend_unknown` for a leg without a sourced yield, the exit rules' band guard on
+  `abs_delta`, trigger levels on the lattice delta, and `vol_context` on American days only. Still to land: the
+  structuring prices, the early-exercise lines with the yield note and the put wait line, the journeys and the
+  doctor's American check.
 - **What lands.** The book's Greeks and implied volatility and the Structuring Desk's prices move to the lattice.
   `book.json` names the model each leg was priced with, and `docs/TOOLS.md` is regenerated. The structuring
   `american-style note:`, the `MODEL_LINE` and the `MODEL_NOTE` change with it, and counsel signs the new wording.
@@ -585,7 +591,7 @@ both counts reach zero.
 | `scripts/aegis_desk/book.py` | 1 | 0 |
 | `scripts/aegis_desk/structuring.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
-| `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 2 | 0 |
+| `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 1 | 0 |
 | `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |

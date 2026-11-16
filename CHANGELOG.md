@@ -2,6 +2,17 @@
 
 ## 1.0.0 (unreleased)
 
+- **The book on the American model of record** (roadmap step 2.3, third part; the owner's answers to open questions 2
+  and 3). Every option leg's IV inverts the American lattice price from its mid, and its Greeks come from the lattice
+  (`aegis_desk.american`). Each leg gains `model` (`american_crr_200`), `early_exercise_premium`, `greeks_quality`,
+  `exercise_now` and `near_boundary`. A leg in the boundary band keeps an approximate delta and has null gamma and
+  theta. A group's `net_greeks` go Greek by Greek and gain a `greeks_quality`, so one band leg no longer blanks a net
+  delta. A leg without a sourced yield is `iv_status = "dividend_unknown"` (no IV, no Greeks), which replaces the q = 0
+  warning in the book. An `abs_delta` rule threshold within 0.05 of a band delta reads UNAVAILABLE. Trigger levels'
+  model levels solve the lattice delta with the sourced yield, and `vol_context` counts only days priced on the
+  American model. The exit rules still read snapshots written before this change. The fixture book's American values
+  move a few goldens: SPY's put IV 24.68 % to 24.59 %, net delta 278.84 to 278.67, and the MONETIZE level 572.79 to
+  575.48. The structuring tools still price European until the last part lands.
 - **The dividend yield as a sourced fact** (roadmap step 2.3, second part; the owner's answer to open question 3).
   `research/calendar.toml` is schema version 2: the yield is the `yield` of the symbol's `ex_dividend` entry
   (`ex_dividend = { date = ..., amount = ..., yield = 0.0090, status = ..., source = ..., checked_utc = ... }`), so

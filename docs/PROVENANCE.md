@@ -38,13 +38,20 @@ The rules are cited by name, as their sources are; this page adds no study or pa
   relative and Greeks within 1e-6 relative, against QuantLib's own formulas and solver.
 - Implied volatility (`iv.py`) is a bracketed Brent solver with the arbitrage bounds of the price; a failure is a
   status, never a number.
-- Greeks (`greeks.py`) are European, in desk units: theta per calendar day, vega per volatility point, rho per rate
-  point. The dividend yield is the symbol's yield in `research/calendar.toml` (the `yield` of its `ex_dividend` entry
-  in schema version 2, or `dividend_yield` in version 1), else 0 with a warning on the leg. This European approximation is the Stage-1 model; American pricing is planned for Stage 2 (not in this release).
-- The American lattice (`lattice.py`, a Cox-Ross-Rubinstein tree), the engine for that step, is in the tree, and no
-  tool reads it yet. `tests/engine/test_lattice.py` reproduces the American put Hull prints in *Options, Futures, and Other
-  Derivatives* (S = K = 50, r = 10 %, sigma = 40 %, five months: 4.49 at 5 steps; 4.263, 4.272, 4.278 and 4.283 at 30,
-  50, 100 and 500), and the CI oracle compares it with QuantLib's finite-difference American engine.
+- The book's model of record is American: the American lattice (`lattice.py`, a Cox-Ross-Rubinstein tree, 200 steps)
+  through `american.py`. Each leg's IV inverts the lattice price from its mid, its delta, gamma and theta come from the
+  tree, and its vega and rho are central differences of the lattice price, in desk units: theta per calendar day, vega
+  per volatility point, rho per rate point. Near the early-exercise boundary the delta is approximate within 0.05
+  (`lattice.BAND_DELTA_TOL`, a bound the oracle tests) and gamma and theta are UNAVAILABLE. The dividend yield is the
+  symbol's sourced yield in `research/calendar.toml` (the `yield` of its `ex_dividend` entry, or zero for status
+  `none`); without one the leg's IV and Greeks are UNAVAILABLE. The trigger levels' model levels use the same delta.
+  The structuring tools still price on the European closed form (`greeks.py`); their American pricing is planned for
+  Stage 2 (not in this release).
+- `tests/engine/test_lattice.py` reproduces the American put Hull prints in *Options, Futures, and Other Derivatives*
+  (S = K = 50, r = 10 %, sigma = 40 %, five months: 4.49 at 5 steps; 4.263, 4.272, 4.278 and 4.283 at 30, 50, 100 and
+  500). The CI oracle compares the lattice with QuantLib's finite-difference American engine (price, delta and gamma,
+  band delta within 0.05), and `american.py`'s vega, rho and implied volatility with differences and repricing of the
+  same engine.
 - The risk-free rate is yours: `desk.toml [rates]`, with its source and date.
 
 ## Expected move: two definitions

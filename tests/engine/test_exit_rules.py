@@ -657,7 +657,7 @@ class CreditStructureTest(unittest.TestCase):
         for rule_id in ("DELTA_WATCH", "DELTA_SIGNAL"):
             result = result_of(evaluation, "AG-20261101-12", rule_id)
             self.assertEqual(("fired", expected), (result.result, result.value), rule_id)
-        self.assertEqual(Decimal("0.86"), expected)
+        self.assertEqual(Decimal("0.90"), expected)  # American (roadmap 2.3); the European delta was 0.86
         far = Scenario([option("WMT", "WMT261218P00080000", -1, "AG-20261101-13", "0.50")],
                        {"WMT": ("104.20", "104.26"), "WMT261218P00080000": ("0.10", "0.12")}).evaluate()
         self.assertEqual(("clear", Decimal("0.02")), (result_of(far, "AG-20261101-13", "DELTA_WATCH").result,
@@ -847,17 +847,31 @@ class HedgeAndCollarTest(unittest.TestCase):
         self.assertEqual(("fired", 11), (result_of(evaluation, "AG-20261101-62", "LAPSE14").result,
                                          result_of(evaluation, "AG-20261101-62", "LAPSE14").value))
         self.assertEqual("fired", result_of(evaluation, "AG-20261101-62", "ROLL30").result)
-        near = Scenario(lines, {"SPY": ("600.00", "600.04"), self.SPY_PUT: ("21.00", "21.40")})
+        # American delta (roadmap 2.3): an in-the-money put's |delta| is larger than the European one (0.753 at 600)
+        near = Scenario(lines, {"SPY": ("605.00", "605.04"), self.SPY_PUT: ("17.60", "18.00")})
         monetize = result_of(near.evaluate(), "AG-20261101-62", "MONETIZE")
         delta = near.leg(self.SPY_PUT)["greeks"]["delta"]
-        self.assertEqual(("clear", Decimal(repr(abs(delta))).quantize(Decimal("0.01")), Decimal("0.75")),
-                         (monetize.result, monetize.value, monetize.value), "|delta| 0.753 is below 0.80")
-        self.assertEqual("fired", result_of(near.evaluate(), "AG-20261101-62", "FLOOR").result, "600.02 <= 619.99")
-        deep = Scenario(lines, {"SPY": ("590.00", "590.04"), self.SPY_PUT: ("30.60", "31.00")})
+        self.assertEqual(("clear", Decimal(repr(abs(delta))).quantize(Decimal("0.01")), Decimal("0.72")),
+                         (monetize.result, monetize.value, monetize.value), "|delta| 0.720 is below 0.80")
+        self.assertEqual("fired", result_of(near.evaluate(), "AG-20261101-62", "FLOOR").result, "605.02 <= 619.99")
+        deep = Scenario(lines, {"SPY": ("600.00", "600.04"), self.SPY_PUT: ("21.00", "21.40")})
         monetize = result_of(deep.evaluate(), "AG-20261101-62", "MONETIZE")
         delta = deep.leg(self.SPY_PUT)["greeks"]["delta"]
-        self.assertEqual(("fired", Decimal(repr(abs(delta))).quantize(Decimal("0.01")), Decimal("0.81")),
-                         (monetize.result, monetize.value, monetize.value), "|delta| 0.807 rounds to 0.81 >= 0.80")
+        self.assertEqual(("fired", Decimal(repr(abs(delta))).quantize(Decimal("0.01")), Decimal("0.82")),
+                         (monetize.result, monetize.value, monetize.value), "|delta| 0.818 rounds to 0.82 >= 0.80")
+        # roadmap 2.3: a band leg's |delta| is approximate within lattice.BAND_DELTA_TOL, so a threshold that close
+        # cannot be decided; one farther away is
+        band = Scenario(lines, {"SPY": ("569.98", "570.02"), self.SPY_PUT: ("50.00", "50.10")})
+        self.assertEqual("near_boundary", band.leg(self.SPY_PUT)["greeks_quality"])
+        self.assertEqual(Decimal("0.05"), exit_rules.BAND_DELTA_TOL)
+        rule = '{ metric = "abs_delta", op = ">=", value = 0.80, unit = "delta" },'
+        close = result_of(band.evaluate(adopted_variant((rule, rule.replace("0.80", "0.95")))), "AG-20261101-62",
+                          "MONETIZE")
+        self.assertEqual(("unavailable", None), (close.result, close.value))
+        self.assertIn("approximate near the early-exercise boundary", close.reason)
+        self.assertEqual(("fired", Decimal("0.98")),
+                         (result_of(band.evaluate(), "AG-20261101-62", "MONETIZE").result,
+                          result_of(band.evaluate(), "AG-20261101-62", "MONETIZE").value), "0.80 is decided")
         stale = Scenario(lines, {"SPY": ("590.00", "590.04"), self.SPY_PUT: ("30.60", "31.00")},
                          stamps={self.SPY_PUT: NOW - datetime.timedelta(minutes=40)})
         self.assertEqual("unavailable", result_of(stale.evaluate(), "AG-20261101-62", "MONETIZE").result)
@@ -1037,7 +1051,7 @@ class SuppressionTest(unittest.TestCase):
                           {"WMT": ("104.20", "104.26"), "WMT261218P00120000": ("16.00", "16.20")})
         evaluation = tagged.evaluate()
         delta = result_of(evaluation, "AG-20261101-12", "DELTA_SIGNAL")
-        self.assertEqual(("suppressed", Decimal("0.86")), (delta.result, delta.value))
+        self.assertEqual(("suppressed", Decimal("0.90")), (delta.result, delta.value))
         self.assertIn("#assign-ok", delta.reason)
         self.assertEqual("HOLD", verdict_of(evaluation, "AG-20261101-12").verdict)
         self.assertNotIn("AG-20261101-12|DELTA_SIGNAL", {update["key"] for update in evaluation.state_updates})
@@ -1120,7 +1134,7 @@ class RegularInstantTest(FixtureCopy):
         self.assertEqual(("HOLD", []), (spy.verdict, ids(spy.fired + spy.pending + spy.unavailable)))
         self.assertEqual(["AUTOEX", "FLOOR", "LAPSE14", "MONETIZE", "ROLL30", "USTOP"], ids(spy.clear))
         self.assertEqual(45, result_of(evaluation, SPY_GROUP, "ROLL30").value)
-        self.assertEqual(Decimal("0.27"), result_of(evaluation, SPY_GROUP, "MONETIZE").value)
+        self.assertEqual(Decimal("0.28"), result_of(evaluation, SPY_GROUP, "MONETIZE").value)
         conc = result_of(evaluation, "portfolio", "CONC")
         self.assertEqual(("fired", Decimal("26.32"), Decimal("25")), (conc.result, conc.value, conc.threshold))
         self.assertEqual("no_history", result_of(evaluation, "portfolio", "DAILY").result)

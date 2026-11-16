@@ -43,7 +43,7 @@ REGULAR_VIEW = [
     "  - *open positions +$4,097.00, closed this year +$425.00 (today $0.00, this month $0.00) | the % is of the "
     "open positions' cost $111,016.00*",
     "- \U0001F7E1 **Today** unavailable: no snapshot for 2026-11-02 (the desk's first day?)",
-    "- **Net delta** 278.84 share-equivalents",
+    "- **Net delta** 278.67 share-equivalents",
     "",
     "#### WMT covered call",
     "*AG-20261020-01 | account 1 of desk.toml (margin)*",
@@ -73,7 +73,7 @@ REGULAR_VIEW = [
     "- \U0001F7E2 **100 SPY shares** cost $632.40, now $648.12 | P/L +$1,572.00 | today unavailable",
     "  - *quote grade A | liquidation $648.10*",
     "- \U0001F534 **1 long SPY 620 put, 2026-12-18** cost $11.30, now $9.95 | P/L -$135.00 | today unavailable",
-    "  - *quote grade B | liquidation $9.80 | IV 24.68 % | 45 calendar days (32 trading days) left*",
+    "  - *quote grade B | liquidation $9.80 | IV 24.59 % | 45 calendar days (32 trading days) left*",
     "",
     "*session open; as of 14:31:12 ET; freshness bound 25 min*",
     "",

@@ -71,7 +71,8 @@ DESCRIPTION = ("the book of record: every position marked from the desk's quotes
                "metrics and day P/L against the desk's own snapshot; unavailable is a verdict (exit 20), never a zero")
 NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
                   "(through the quote cache); none with --offline")
-GREEKS_SHAPE = {"delta": "float", "gamma": "float", "theta": "float per day", "vega": "float per vol point",
+GREEKS_SHAPE = {"delta": "float (approximate when greeks_quality is near_boundary)",
+                "gamma": "float | null (null in the boundary band)", "theta": "float per day | null (null in the band)", "vega": "float per vol point",
                 "rho": "float per 1 %"}
 OUTPUT: Dict[str, Any] = {
     "generated_at": "ISO-8601 UTC",
@@ -103,9 +104,16 @@ OUTPUT: Dict[str, Any] = {
                            "for grade E although mark_liq is null; a 0 ask stays 0: no offer, not a price to close at; "
                            "null for F, closed, expired or unquoted legs)",
               "tau_years": "float | null",
-              "iv": "float | null", "iv_status": "ok | expiring | spot_unaligned | spot_unavailable | unavailable | "
-              "expired | closed | not_option | below_intrinsic | above_bound | no_root",
+              "iv": "float | null (American: the lattice price inverted from the mid)",
+              "iv_status": "ok | expiring | spot_unaligned | spot_unavailable | unavailable | expired | closed | "
+              "not_option | dividend_unknown | below_intrinsic | above_bound | no_root",
               "greeks": dict(GREEKS_SHAPE), "position_greeks": dict(GREEKS_SHAPE),
+              "model": "american_crr_200 | null (the model of record the leg was priced with)",
+              "early_exercise_premium": "float | null (American less European per share, from one tree)",
+              "greeks_quality": "ok | near_boundary | null (near_boundary: delta approximate within 0.05, gamma "
+                                "and theta null)",
+              "exercise_now": "boolean | null (the lattice: immediate exercise is optimal now)",
+              "near_boundary": "boolean | null (the lattice: within about two node spacings of the exercise boundary)",
               "unrealized_pl_mid": "decimal string | null", "unrealized_pl_liq": "decimal string | null",
               "day_pl": "decimal string | null", "realized_day_pl": "decimal string | null",
               "extrinsic_bid": "decimal string | null (fresh_bid - intrinsic at the underlying's usable mid stamped "
@@ -122,7 +130,9 @@ OUTPUT: Dict[str, Any] = {
                 "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null",
                 "pct_captured_liq": "decimal string | null", "pct_captured_mid": "decimal string | null",
                 "realized_pl": "decimal string", "net_greeks": dict(GREEKS_SHAPE), "legs": ["row_number"],
-                "data_quality": "ok | unavailable", "warnings": ["string"], "underlying_stop": "decimal string | null"}],
+                "data_quality": "ok | unavailable", "warnings": ["string"], "underlying_stop": "decimal string | null",
+                "greeks_quality": "ok | near_boundary | null (near_boundary: an open leg is in the band, so net delta "
+                                  "is approximate)"}],
     "underlyings": {"SYMBOL": {"mark_mid": "decimal string | null", "bid": "decimal string | null",
                                "ask": "decimal string | null", "as_of": "ISO-8601 UTC | null", "quote_grade": "A-F | null",
                                "prev_eod_mid": "decimal string | null (the previous snapshot's mid)",

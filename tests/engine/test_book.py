@@ -19,7 +19,7 @@ import unittest
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from aegis_desk import book, calendar_events, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, quote_qc, state, units
+from aegis_desk import american, book, calendar_events, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, quote_qc, state, units
 from aegis_desk.grouping import PositionGroup, group_positions
 from aegis_desk.market_types import Quote
 from aegis_desk.positions_csv import PositionsFile, parse_positions_text
@@ -75,6 +75,8 @@ EX_MONDAY = "date = 2026-11-23, amount = 0.2350"
 CFG = desk_config.load_desk_config(os.path.join(FIXTURE_DESK, "desk.toml"))
 PATHS = desk_paths.for_root(FIXTURE_DESK)
 CAL = calendar_events.load_calendar(os.path.join(FIXTURE_DESK, "research", "calendar.toml"))
+with open(os.path.join(FIXTURE_DESK, "research", "calendar.toml"), encoding="utf-8") as _calendar:
+    CALENDAR_TEXT = _calendar.read()
 
 
 def ex_monday_calendar() -> calendar_events.CalendarFile:
@@ -164,19 +166,21 @@ class KeysTest(unittest.TestCase):
                     "bid_date", "ask_date", "as_of", "spread_pct", "mark_mid", "mark_liq", "mark_source", "tau_years", "iv",
                     "iv_status", "greeks", "position_greeks", "unrealized_pl_mid", "unrealized_pl_liq", "day_pl",
                     "realized_day_pl", "extrinsic_bid", "itm", "warnings", "open_quantity", "remaining_cost_basis",
-                    "fresh_bid", "fresh_ask"}
+                    "fresh_bid", "fresh_ask", "model", "early_exercise_premium", "greeks_quality", "exercise_now",
+                    "near_boundary"}
         self.assertEqual(7, len(self.document["legs"]), "every row, closed ones included")
         for leg in self.document["legs"]:
             self.assertEqual(expected, set(leg), leg["row_number"])
         self.assertEqual(expected, set(book.LEG_KEYS))
-        self.assertEqual(("open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask"), book.LEG_KEYS[-4:],
+        self.assertEqual(("open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask"), book.LEG_KEYS[-9:-5],
                          "the fresh sides are appended after remaining_cost_basis")
+        self.assertEqual(book.LEG_MODEL_KEYS, book.LEG_KEYS[-5:], "the American model's keys come last (roadmap 2.3)")
 
     def test_group_keys(self) -> None:
         expected = {"group_id", "trade_id", "account", "underlying", "structure", "basis_kind", "net_cost", "max_profit",
                     "max_loss", "breakevens", "unbounded_up", "unbounded_down", "unrealized_pl_liq", "unrealized_pl_mid",
                     "pct_captured_liq", "pct_captured_mid", "realized_pl", "net_greeks", "legs", "data_quality",
-                    "warnings", "underlying_stop"}
+                    "warnings", "underlying_stop", "greeks_quality"}
         self.assertEqual(4, len(self.document["groups"]))
         for group in self.document["groups"]:
             self.assertEqual(expected, set(group), group["group_id"])
@@ -312,9 +316,17 @@ class OptionAnalyticsTest(unittest.TestCase):
             spot = self.document["underlyings"][underlying]["mark_mid"]
             tau = seconds / units.SECONDS_PER_YEAR
             self.assertAlmostEqual(tau, leg["tau_years"], places=12, msg=symbol)
-            q = float(CAL.dividend_yield(underlying))
-            expected = iv.implied_vol(float(leg["mark_mid"]), right, float(spot), strike, tau, RISK_FREE, q)
+            q = float(CAL.sourced_yield(underlying).value)
+            expected = american.implied_vol(float(leg["mark_mid"]), right, float(spot), strike, tau, RISK_FREE, q)
             self.assertEqual(("ok", expected.sigma), (leg["iv_status"], leg["iv"]), symbol)
+            value = american.value(right, float(spot), strike, tau, RISK_FREE, q, expected.sigma)
+            self.assertEqual(value.greeks(), dict(leg["greeks"], iv=expected.sigma), symbol)
+            self.assertEqual((american.MODEL_AMERICAN, value.early_exercise_premium, value.quality, value.exercise_now,
+                              value.near_boundary),
+                             (leg["model"], leg["early_exercise_premium"], leg["greeks_quality"], leg["exercise_now"],
+                              leg["near_boundary"]), symbol)
+            european = iv.implied_vol(float(leg["mark_mid"]), right, float(spot), strike, tau, RISK_FREE, q)
+            self.assertLessEqual(leg["iv"], european.sigma + 1e-9, "the American volatility is never above the European")
             self.assertEqual({"delta", "gamma", "theta", "vega", "rho"}, set(leg["greeks"]))
             self.assertEqual({"delta", "gamma", "theta", "vega", "rho"}, set(leg["position_greeks"]))
             scale = float(leg["quantity"]) * 100
@@ -362,16 +374,60 @@ class OptionAnalyticsTest(unittest.TestCase):
         closed = group_by_id(self.document, "AG-20261001-04")
         self.assertIsNone(closed["net_greeks"])
 
-    def test_q_defaults_to_zero_with_a_leg_warning_without_a_calendar(self) -> None:
+    def test_without_a_sourced_yield_iv_and_greeks_are_unavailable(self) -> None:
+        # roadmap 2.3, the owner's answer to open question 3: an unknown yield is never zero
         document = build(calendar=None)
         self.assertIn(book.WARNING_NO_CALENDAR, document["warnings"])
         self.assertIsNone(document["config_sha"]["calendar_toml"])
         leg = leg_by_symbol(document, WMT_CALL)
-        self.assertIn("q = 0: no dividend yield in calendar.toml", leg["warnings"])
-        spot = document["underlyings"]["WMT"]["mark_mid"]
-        expected = iv.implied_vol(3.425, "CALL", float(spot), 105.0, 1474128 / units.SECONDS_PER_YEAR, RISK_FREE, 0.0)
-        self.assertEqual(expected.sigma, leg["iv"])
+        self.assertEqual((book.IV_STATUS_DIVIDEND_UNKNOWN, None, None, None, None),
+                         (leg["iv_status"], leg["iv"], leg["greeks"], leg["position_greeks"], leg["model"]))
+        self.assertIn(book.WARNING_DIVIDEND_UNKNOWN, leg["warnings"])
+        self.assertEqual([], [w for w in leg["warnings"] if w.startswith("q = 0")])
+        self.assertEqual("mid", leg["mark_source"], "the marks and P/L stand; only the model values are withheld")
+        self.assertIsNone(group_by_id(document, "AG-20261020-01")["net_greeks"])
+        self.assertIsNone(document["portfolio"]["net_delta"])
         self.assertEqual("pm", leg["settlement"], "every root is PM-settled without a calendar")
+
+    def test_a_version_one_yield_is_not_sourced_and_status_none_is_zero(self) -> None:
+        text = CALENDAR_TEXT.replace("schema_version = 2", "schema_version = 1")
+        for symbol, value in (("WMT", "0.0090"), ("NVDA", "0.0003"), ("SPY", "0.0115")):
+            text = text.replace("yield = %s, " % value, "")
+            text = text.replace("[symbols.%s]\n" % symbol, "[symbols.%s]\ndividend_yield = %s\n" % (symbol, value))
+        document = build(calendar=calendar_events.parse_calendar_text(text, "calendar.toml"))
+        self.assertEqual(book.IV_STATUS_DIVIDEND_UNKNOWN, leg_by_symbol(document, WMT_CALL)["iv_status"])
+        none = CALENDAR_TEXT.replace(
+            'ex_dividend = { date = 2026-11-24, amount = 0.2350, yield = 0.0090, status = "confirmed"',
+            'ex_dividend = { status = "none"')
+        none_cal = calendar_events.parse_calendar_text(none, "calendar.toml")
+        self.assertEqual(calendar_events.YIELD_NONE, none_cal.sourced_yield("WMT").status)
+        leg = leg_by_symbol(build(calendar=none_cal), WMT_CALL)
+        spot = self.document["underlyings"]["WMT"]["mark_mid"]
+        expected = american.implied_vol(3.425, "CALL", float(spot), 105.0, 1474128 / units.SECONDS_PER_YEAR, RISK_FREE,
+                                        0.0)
+        self.assertEqual(("ok", expected.sigma), (leg["iv_status"], leg["iv"]))
+
+    def test_a_leg_in_the_boundary_band_keeps_an_approximate_delta(self) -> None:
+        # roadmap 2.3, the owner's answer to open question 2: delta approximate within lattice.BAND_DELTA_TOL, gamma and
+        # theta null; the group's net Greeks go Greek by Greek, so its net delta (and the portfolio's) stays
+        prices = dict(REGULAR_PRICES)
+        prices["SPY"] = ("569.98", "570.02")
+        prices[SPY_PUT] = ("50.00", "50.10")
+        document = build(prices=prices)
+        leg = leg_by_symbol(document, SPY_PUT)
+        self.assertEqual(("ok", True, False, book.GREEKS_QUALITY_NEAR_BOUNDARY),
+                         (leg["iv_status"], leg["near_boundary"], leg["exercise_now"], leg["greeks_quality"]))
+        self.assertEqual((None, None), (leg["greeks"]["gamma"], leg["greeks"]["theta"]))
+        self.assertEqual((None, None), (leg["position_greeks"]["gamma"], leg["position_greeks"]["theta"]))
+        self.assertLess(leg["greeks"]["delta"], -0.95)
+        group = group_by_id(document, "AG-20261028-03")
+        self.assertEqual(book.GREEKS_QUALITY_NEAR_BOUNDARY, group["greeks_quality"])
+        self.assertAlmostEqual(100.0 + leg["position_greeks"]["delta"], group["net_greeks"]["delta"], places=9)
+        self.assertEqual((None, None), (group["net_greeks"]["gamma"], group["net_greeks"]["theta"]))
+        self.assertAlmostEqual(leg["position_greeks"]["vega"], group["net_greeks"]["vega"], places=9)
+        self.assertIsNotNone(document["portfolio"]["net_delta"], "one band leg never blanks the portfolio net delta")
+        self.assertEqual(book.GREEKS_QUALITY_OK, group_by_id(document, "AG-20261020-01")["greeks_quality"])
+        self.assertGreater(leg["early_exercise_premium"], 0.0)
 
     def test_under_one_hour_to_the_cutoff_is_expiring(self) -> None:
         now = datetime.datetime(2026, 11, 20, 20, 30, tzinfo=UTC)
