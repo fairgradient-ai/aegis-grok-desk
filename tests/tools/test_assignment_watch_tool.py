@@ -446,7 +446,7 @@ class ErrorMappingTest(DeskCopy):
         self.assertIn("did you mean", body["error"]["message"])
 
     def test_calendar_parse_error_is_exit_1(self) -> None:
-        self.rewrite("research/calendar.toml", "schema_version = 1", "schema_version = 2")
+        self.rewrite("research/calendar.toml", "schema_version = 2", "schema_version = 3")
         code, body = run_json(self.argv("regular"))
         self.assertEqual((1, "error", "calendar_invalid"), (code, body["status"], body["error"]["code"]))
 

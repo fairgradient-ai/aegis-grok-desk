@@ -27,11 +27,10 @@ NOW = datetime(2026, 11, 3, 19, 50, 0, tzinfo=UTC)
 CHECKED = datetime(2026, 11, 1, 12, 0, 0, tzinfo=UTC)
 
 BRIEF_TEXT = """\
-schema_version = 1
+schema_version = 2
 [symbols.WMT]
 earnings = { date = 2026-11-17, time = "pre", status = "confirmed", source = "https://example.invalid/wmt", checked_utc = 2026-11-01T12:00:00Z }
-ex_dividend = { date = 2026-12-11, amount = 0.2350, status = "estimated", source = "owner-entered", checked_utc = 2026-11-01T12:00:00Z }
-dividend_yield = 0.0090
+ex_dividend = { date = 2026-12-11, amount = 0.2350, yield = 0.0090, status = "estimated", source = "owner-entered", checked_utc = 2026-11-01T12:00:00Z }
 [symbols.NVDA]
 earnings = { date = 2026-11-19, time = "post", status = "confirmed", source = "owner-entered", checked_utc = 2026-11-01T12:00:00Z }
 ex_dividend = { status = "none", source = "owner-entered: no dividend", checked_utc = 2026-11-01T12:00:00Z }
@@ -96,7 +95,7 @@ class ParseBriefExampleTest(unittest.TestCase):
         self.cal = parse(BRIEF_TEXT, "research/calendar.toml")
 
     def test_schema_path_and_sha(self) -> None:
-        self.assertEqual(1, self.cal.schema_version)
+        self.assertEqual(2, self.cal.schema_version)
         self.assertEqual("research/calendar.toml", self.cal.path)
         self.assertEqual(hashlib.sha256(BRIEF_TEXT.encode("utf-8")).hexdigest(), self.cal.sha256)
         self.assertIsInstance(self.cal.warnings, tuple)
@@ -212,7 +211,7 @@ class StrictReadingTest(unittest.TestCase):
         return caught.exception
 
     def test_error_is_a_value_error_with_path_and_reason(self) -> None:
-        exc = self.fails("schema_version = 2\n", "schema_version")
+        exc = self.fails("schema_version = 3\n", "schema_version")
         self.assertIsInstance(exc, ValueError)
         self.assertEqual("cal.toml", exc.path)
         self.assertEqual("cal.toml: " + exc.reason, str(exc))
@@ -228,7 +227,7 @@ class StrictReadingTest(unittest.TestCase):
 
     def test_schema_version_rules(self) -> None:
         self.fails("[symbols.WMT]\ndividend_yield = 0.01\n", "schema_version")
-        self.fails("schema_version = 2\n", "schema_version", "1")
+        self.fails("schema_version = 3\n", "schema_version", "1 or 2")
         self.fails('schema_version = "1"\n', "schema_version")
         self.fails("schema_version = true\n", "schema_version")
 
@@ -536,7 +535,7 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual(("STALE", "WMT", "message"), (finding.kind, finding.symbol, finding.message))
         with self.assertRaises(dataclasses.FrozenInstanceError):
             finding.kind = "PAST"  # type: ignore[misc]
-        self.assertEqual(("STALE", "MISSING", "UNKNOWN_DIVIDEND", "PAST"), ce.FINDING_KINDS)
+        self.assertEqual(("STALE", "MISSING", "UNKNOWN_DIVIDEND", "PAST", "NO_YIELD"), ce.FINDING_KINDS)
 
     def test_clean_calendar(self) -> None:
         self.assertEqual([], ce.freshness(self.cal, NOW, 7, ["WMT", "NVDA"], ["WMT"]))
@@ -567,15 +566,17 @@ class FreshnessTest(unittest.TestCase):
         cal = parse(symbol_table("WMT", earnings()) + "\n[symbols.NVDA]\n" + ex_dividend(status='"unknown"', amount=None, date=None)
                     + "\n[symbols.SPY]\n" + ex_dividend(status='"none"', date=None, amount=None))
         held = ["WMT", "NVDA", "SPY"]
-        findings = ce.freshness(cal, NOW, 7, held, held)
+        findings = [f for f in ce.freshness(cal, NOW, 7, held, held) if f.kind != ce.FINDING_NO_YIELD]
         self.assertEqual([("UNKNOWN_DIVIDEND", "NVDA"), ("UNKNOWN_DIVIDEND", "WMT")], [(f.kind, f.symbol) for f in findings])
         self.assertIn("unknown", findings[0].message)
         self.assertIn("never zero", findings[0].message)
-        self.assertEqual([("UNKNOWN_DIVIDEND", "NVDA")],
-                         [(f.kind, f.symbol) for f in ce.freshness(cal, NOW, 7, held, ["NVDA"])])
-        self.assertEqual([], ce.freshness(cal, NOW, 7, held, []), "no short calls: nothing to grade")
+        def graded(found: List[ce.Finding]) -> List[tuple]:
+            return [(f.kind, f.symbol) for f in found if f.kind != ce.FINDING_NO_YIELD]
+
+        self.assertEqual([("UNKNOWN_DIVIDEND", "NVDA")], graded(ce.freshness(cal, NOW, 7, held, ["NVDA"])))
+        self.assertEqual([], graded(ce.freshness(cal, NOW, 7, held, [])), "no short calls: nothing to grade")
         self.assertEqual([("UNKNOWN_DIVIDEND", "NVDA"), ("UNKNOWN_DIVIDEND", "WMT")],
-                         [(f.kind, f.symbol) for f in ce.freshness(cal, NOW, 7, held)],
+                         graded(ce.freshness(cal, NOW, 7, held)),
                          "the default scope is every held symbol (conservative)")
         self.assertEqual([], ce.freshness(cal, NOW, 7, ["SPY"]), "a confirmed none is known")
         self.assertEqual([], ce.freshness(cal, NOW, 7, [], ["WMT"]), "the scope is a subset of what is held")
@@ -599,7 +600,8 @@ class FreshnessTest(unittest.TestCase):
     def test_undated_entries_are_never_past(self) -> None:
         cal = parse(symbol_table("SPY", earnings(status='"none"', date=None, time=None) + "\n"
                                  + ex_dividend(status='"unknown"', amount=None, date=None)))
-        self.assertEqual([], ce.freshness(cal, datetime(2027, 6, 1, tzinfo=UTC), 400, ["SPY"], []))
+        self.assertEqual([("NO_YIELD", "SPY")],
+                         [(f.kind, f.symbol) for f in ce.freshness(cal, datetime(2027, 6, 1, tzinfo=UTC), 400, ["SPY"], [])])
 
     def test_without_a_calendar_every_held_symbol_is_missing(self) -> None:
         findings = ce.freshness(None, NOW, 7, ["WMT", "NVDA"])
@@ -630,6 +632,90 @@ class ModuleHygieneTest(unittest.TestCase):
         for module in ("urllib", "http.client", "socket", "ssl", "tomllib", "subprocess"):
             self.assertNotIn("import %s" % module, source)
         self.assertTrue(source.lstrip().startswith('"""'))
+
+
+class SchemaVersionTwoTest(unittest.TestCase):
+    """Roadmap 2.3, the owner's answer to open question 3: the dividend yield moves into the sourced, dated
+    ``ex_dividend`` entry; version 1 still loads, and its bare yield counts as unknown for the model of record."""
+
+    def v2(self, symbol: str, body: str) -> ce.CalendarFile:
+        return parse("schema_version = 2\n[symbols.%s]\n%s\n" % (symbol, body))
+
+    def test_the_yield_is_read_from_the_entry_with_its_source(self) -> None:
+        cal = self.v2("WMT", ex_dividend(**{"yield": "0.0090"}))
+        self.assertEqual(2, cal.schema_version)
+        self.assertEqual(Decimal("0.0090"), cal.dividend_yield("WMT"))
+        view = cal.sourced_yield("wmt")
+        self.assertEqual((ce.YIELD_SOURCED, Decimal("0.0090"), "owner-entered", CHECKED),
+                         (view.status, view.value, view.source, view.checked_utc))
+        self.assertTrue(view.known)
+        self.assertEqual(view, ce.sourced_yield(cal, "WMT"))
+
+    def test_a_yield_is_allowed_with_an_unknown_dividend(self) -> None:
+        cal = self.v2("WMT", ex_dividend(status='"unknown"', amount=None, date=None, **{"yield": "0.0090"}))
+        self.assertEqual(ce.YIELD_SOURCED, cal.sourced_yield("WMT").status)
+        self.assertEqual(ce.STATUS_UNKNOWN, cal.dividend_before("WMT", date(2026, 12, 31), NOW).status)
+
+    def test_status_none_means_zero_and_takes_no_yield(self) -> None:
+        cal = self.v2("BRK.B".join('""'), ex_dividend(status='"none"', amount=None, date=None))
+        view = cal.sourced_yield("BRK.B")
+        self.assertEqual((ce.YIELD_NONE, Decimal(0)), (view.status, view.value))
+        with self.assertRaises(ce.CalendarError) as caught:
+            self.v2("WMT", ex_dividend(status='"none"', amount=None, date=None, **{"yield": "0.01"}))
+        self.assertIn("takes no yield", str(caught.exception))
+
+    def test_no_entry_or_no_yield_is_unknown_never_zero(self) -> None:
+        cal = self.v2("WMT", earnings())
+        self.assertEqual((ce.YIELD_UNKNOWN, None), (cal.sourced_yield("WMT").status, cal.sourced_yield("WMT").value))
+        self.assertFalse(cal.sourced_yield("WMT").known)
+        self.assertEqual(ce.YIELD_UNKNOWN, self.v2("WMT", ex_dividend()).sourced_yield("WMT").status)
+        self.assertEqual(ce.YIELD_UNKNOWN, cal.sourced_yield("AAPL").status)
+        self.assertEqual(ce.YIELD_UNKNOWN, ce.sourced_yield(None, "WMT").status)
+
+    def test_version_two_refuses_a_top_level_yield_and_checks_the_fraction(self) -> None:
+        with self.assertRaises(ce.CalendarError) as caught:
+            self.v2("WMT", "dividend_yield = 0.0090")
+        self.assertIn("yield of the ex_dividend entry", str(caught.exception))
+        for bad in ("1.5", "1", "-0.01", '"0.01"', "true"):
+            with self.assertRaises(ce.CalendarError):
+                self.v2("WMT", ex_dividend(**{"yield": bad}))
+
+    def test_version_one_loads_and_its_yield_is_not_sourced(self) -> None:
+        cal = parse(symbol_table("WMT", ex_dividend() + "\ndividend_yield = 0.0090"))
+        self.assertEqual((1, Decimal("0.0090")), (cal.schema_version, cal.dividend_yield("WMT")))
+        self.assertEqual(ce.YIELD_UNKNOWN, cal.sourced_yield("WMT").status)
+        with self.assertRaises(ce.CalendarError):
+            parse(symbol_table("WMT", ex_dividend(**{"yield": "0.0090"})))  # the yield key is version 2's
+        with self.assertRaises(ce.CalendarError) as caught:
+            parse("schema_version = 3\n")
+        self.assertIn("1 or 2", str(caught.exception))
+        self.assertEqual((1, 2), ce.SCHEMA_VERSIONS)
+        self.assertEqual(2, ce.SCHEMA_VERSION)
+
+    def test_no_yield_is_a_finding_for_every_held_symbol(self) -> None:
+        text = ("schema_version = 2\n[symbols.WMT]\n" + ex_dividend(**{"yield": "0.0090"})
+                + "\n[symbols.NVDA]\n" + ex_dividend() + "\n[symbols.SPY]\n" + earnings(status='"none"', date=None, time=None)
+                + '\n[symbols."BRK.B"]\n' + ex_dividend(status='"none"', amount=None, date=None))
+        cal = parse(text)
+        held = ["WMT", "NVDA", "SPY", "BRK.B"]
+        findings = [f for f in ce.freshness(cal, NOW, 7, held, []) if f.kind == ce.FINDING_NO_YIELD]
+        self.assertEqual(["NVDA", "SPY"], [f.symbol for f in findings])
+        self.assertIn("the ex_dividend entry has no yield", findings[0].message)
+        self.assertIn("no ex_dividend entry", findings[1].message)
+        self.assertIn("never zero", findings[0].message)
+        self.assertEqual([], [f for f in ce.freshness(cal, NOW, 7, [], []) if f.kind == ce.FINDING_NO_YIELD],
+                         "only held symbols")
+        v1 = parse(symbol_table("WMT", ex_dividend() + "\ndividend_yield = 0.0090"))
+        found = [f for f in ce.freshness(v1, NOW, 7, ["WMT"], []) if f.kind == ce.FINDING_NO_YIELD]
+        self.assertEqual(1, len(found))
+        self.assertIn("schema_version 1", found[0].message)
+
+    def test_the_fixture_calendars_are_version_two_with_sourced_yields(self) -> None:
+        for root in ("desk", "desk_recon"):
+            cal = ce.load_calendar(os.path.join(ROOT, "tests", "fixtures", root, "research", "calendar.toml"))
+            self.assertEqual(2, cal.schema_version)
+            for symbol in ("WMT", "NVDA", "SPY"):
+                self.assertEqual(ce.YIELD_SOURCED, cal.sourced_yield(symbol).status, (root, symbol))
 
 
 if __name__ == "__main__":

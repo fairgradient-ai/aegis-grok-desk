@@ -26,8 +26,9 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
   table per symbol of either, in sorted order, with ``earnings = { date = ..., time = "pre" | "post" | "unknown",
   status = "confirmed" | "estimated", source = "owner-entered", checked_utc = <--now> }`` or ``{ status = "none",
   source = <the owner's>, checked_utc = <--now> }`` first when the symbol has one, then ``ex_dividend = { date = ...,
-  amount = ..., status = "confirmed" | "estimated", source = "owner-entered", checked_utc = <--now> }`` or ``{ status =
-  "none", source = <the owner's>, checked_utc = <--now> }``,
+  amount = ..., yield = ... (when given), status = "confirmed" | "estimated", source = "owner-entered", checked_utc =
+  <--now> }`` or ``{ status = "none", source = <the owner's>, checked_utc = <--now> }`` (calendar ``schema_version``
+  2: the dividend yield lives in the ``ex_dividend`` entry; without it ``calendar_check`` lists ``NO_YIELD``),
   validated by ``calendar_events.parse_calendar_text`` (exit 1 ``calendar_invalid``). The bootstrap runs the tool a
   second time for this intake once ``positions.csv`` is validated, with answers that hold no ``desk``.
 * ``structuring.toml`` (when the answers hold ``structuring``, which may stand alone like ``ex_dividends``; PR 3b
@@ -128,6 +129,8 @@ MARKET_DATA_KEYS: Tuple[str, ...] = ("host", "key_env", "secret_env", "credentia
 RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
 DATED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status")
+DATED_DIVIDEND_OPTIONAL: Tuple[str, ...] = ("yield",)
+"""The dividend yield, asked with the ex-dividend date (roadmap 2.3); without it calendar_check lists NO_YIELD."""
 NONE_DIVIDEND_KEYS: Tuple[str, ...] = ("status", "source")
 DATED_EARNINGS_KEYS: Tuple[str, ...] = ("date", "time", "status")
 STRUCTURING_KEYS: Tuple[str, ...] = ("disclosure_acknowledged",) + structuring_config.SECTIONS[1:]
@@ -228,7 +231,8 @@ ANSWERS_SHAPE: Dict[str, Any] = {
                                         "key ID on line 1 and the secret on line 2)"},
     "rates": {"risk_free_rate": "decimal string", "source": "string", "as_of": "YYYY-MM-DD"},
     "levels": {"penny_classes": ["OCC root (optional)"], "penny_all_classes": ["OCC root (optional)"]},
-    "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, status confirmed | estimated} or "
+    "ex_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, yield decimal string (optional: the "
+                               "dividend yield as a fraction, 0.0090 is 0.90 %), status confirmed | estimated} or "
                                "{status none, source string} (optional; written to research/calendar.toml)"},
     "earnings": {"SYMBOL": "{date YYYY-MM-DD, time pre | post | unknown, status confirmed | estimated} or "
                            "{status none, source string} (optional; written to research/calendar.toml with the "
@@ -440,10 +444,11 @@ def _earnings_body(entry: Any, where: str, checked: str) -> str:
 def _dividend_body(entry: Any, where: str, checked: str) -> str:
     status = entry.get("status") if isinstance(entry, dict) else None
     if status in DATED_STATUSES:
-        table(entry, where, DATED_DIVIDEND_KEYS, DATED_DIVIDEND_KEYS)
-        return "date = %s, amount = %s, status = %s, source = %s, checked_utc = %s" % (
+        table(entry, where, DATED_DIVIDEND_KEYS + DATED_DIVIDEND_OPTIONAL, DATED_DIVIDEND_KEYS)
+        stated_yield = ("yield = %s, " % decimal_value(entry["yield"], where + ".yield")) if "yield" in entry else ""
+        return "date = %s, amount = %s, %sstatus = %s, source = %s, checked_utc = %s" % (
             date_value(entry["date"], where + ".date"), decimal_value(entry["amount"], where + ".amount"),
-            json.dumps(status), json.dumps(OWNER_ENTERED), checked)
+            stated_yield, json.dumps(status), json.dumps(OWNER_ENTERED), checked)
     if status == calendar_events.STATUS_NONE:
         table(entry, where, NONE_DIVIDEND_KEYS, NONE_DIVIDEND_KEYS)
         return "status = %s, source = %s, checked_utc = %s" % (

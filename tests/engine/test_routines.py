@@ -31,8 +31,9 @@ AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
 MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
 AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
-# PR 3b decision S14: the planned roll-window routine is dropped (the Structuring Desk never posts alerts).
-PLANNED_IDS = STAGE1_IDS + ["opening-marks", "midday-limits", "event-sheet", "t1-call", "pre-event-stress",
+# PR 3b decision S14: the planned roll-window routine is dropped (the Structuring Desk never posts alerts). The owner
+# dropped t1-call (final-call already runs the T-1 PREVIEW) and midday-limits (limits are exit rules; roadmap 2.7).
+PLANNED_IDS = STAGE1_IDS + ["opening-marks", "event-sheet", "pre-event-stress",
                             "weekend-stress", "calendar-build", "journal-close", "weekly-review",
                             "rules-sanity", "rulebook-memo"]
 STRUCTURING_TOOLS = ("exit_ticket", "roll_analysis", "propose")
@@ -519,7 +520,7 @@ class AutoreviewTest(unittest.TestCase):
         planned = dataclasses.replace(self.manifest, routines=tuple(
             dataclasses.replace(self.manifest.routines[0], id=routine_id) for routine_id in PLANNED_IDS))
         texts = routines.rules_text(planned, self.autoreview)
-        self.assertEqual(672, len(texts["allow"]), "17 planned routine ids (roll-window dropped)")
+        self.assertEqual(648, len(texts["allow"]), "15 planned routine ids (roll-window, t1-call, midday-limits dropped)")
         self.assertEqual([], routines.rules_text_problems(planned, self.autoreview))
 
     def test_too_long_and_unnamed_texts_are_problems(self) -> None:

@@ -68,13 +68,22 @@ Definitions (plan section 8)
 * Spot = the underlying's ``mark_mid`` (a usable grade) stamped within 60 seconds of the option's as-of;
   otherwise ``iv_status`` is ``"spot_unavailable"`` (no usable underlying mark) or ``"spot_unaligned"``
   (the stamps differ) and IV and Greeks are ``None``. The last trade is never used.
-* IV = ``iv.implied_vol(mark_mid, right, S, K, tau, r, q)`` with ``r = cfg.rates.risk_free_rate_f`` and
-  ``q`` the symbol's ``dividend_yield`` from ``calendar.toml``, else 0.0 with the leg warning
-  :data:`WARNING_Q_ZERO` (the Stage-1 European approximation). Any solver status but ``ok`` is carried in
-  ``iv_status`` with Greeks ``None``. Greeks are ``greeks.european_greeks`` in desk units (per share);
-  ``position_greeks`` scales by the open signed quantity x multiplier. A group's ``net_greeks`` adds the
-  stock legs' delta (one per share) to its option legs' position Greeks and is ``None`` when any open option
-  leg lacks Greeks.
+* The model of record is American (roadmap 2.3, the owner's answer to open question 2): every option leg is
+  priced by :mod:`aegis_desk.american` on the lattice, and carries ``model`` (``"american_crr_200"``).
+  ``q`` is the symbol's sourced yield (:func:`aegis_desk.calendar_events.sourced_yield`: the ``yield`` of its
+  ``ex_dividend`` entry, or zero for status ``none``); without one, ``iv_status`` is ``"dividend_unknown"`` and IV
+  and Greeks are ``None``: an unknown yield is never zero. IV = ``american.implied_vol(mark_mid, right, S, K, tau,
+  r, q)`` with ``r = cfg.rates.risk_free_rate_f``; a mid below the intrinsic value has no American volatility
+  (``below_intrinsic``). Any solver status but ``ok`` is carried in ``iv_status`` with Greeks ``None``. Greeks are
+  the lattice's in desk units (per share; vega and rho central differences of the lattice price);
+  ``position_greeks`` scales by the open signed quantity x multiplier. ``early_exercise_premium`` is American less
+  European per share, and ``exercise_now`` / ``near_boundary`` are the lattice's flags. In the boundary band
+  (``near_boundary``) ``greeks_quality`` is ``"near_boundary"``: delta is approximate within
+  ``lattice.BAND_DELTA_TOL`` and gamma and theta are ``None``. A group's ``net_greeks`` adds the stock legs' delta
+  (one per share) to its option legs' position Greeks, Greek by Greek: the whole dict is ``None`` when any open
+  option leg lacks Greeks, and a single Greek is ``None`` when any open leg lacks that Greek (a band leg's gamma
+  and theta); the group's ``greeks_quality`` is ``"near_boundary"`` when any open leg is in the band, so its net
+  delta is approximate.
 * ``settlement`` is ``"am"`` when the OCC root is in the calendar's ``am_settled_roots`` (else ``"pm"``);
   ``dte_*`` via ``market_clock.dte`` to the last trading day; ``itm`` by the one-cent rule at the underlying's
   usable mid (``S >= K + 0.01`` for a call, ``S <= K - 0.01`` for a put).
@@ -131,8 +140,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import calendar_events, data_source, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
-from . import greeks as greeks_module
+from . import american, calendar_events, data_source, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
 from .calendar_events import CalendarFile
 from .desk_config import DeskConfig
 from .desk_paths import DeskPaths
@@ -157,12 +165,16 @@ LEG_KEYS: Tuple[str, ...] = (
     "entry_price_per_share", "status", "quote_grade", "quote_status", "bid", "ask", "bid_date", "ask_date", "as_of",
     "spread_pct", "mark_mid", "mark_liq", "mark_source", "tau_years", "iv", "iv_status", "greeks", "position_greeks",
     "unrealized_pl_mid", "unrealized_pl_liq", "day_pl", "realized_day_pl", "extrinsic_bid", "itm", "warnings",
-    "open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask",
+    "open_quantity", "remaining_cost_basis", "fresh_bid", "fresh_ask", "model", "early_exercise_premium",
+    "greeks_quality", "exercise_now", "near_boundary",
 )
+LEG_MODEL_KEYS: Tuple[str, ...] = ("model", "early_exercise_premium", "greeks_quality", "exercise_now", "near_boundary")
+"""The leg keys the American model of record added (roadmap 2.3); a snapshot written before it lacks them."""
 GROUP_KEYS: Tuple[str, ...] = (
     "group_id", "trade_id", "account", "underlying", "structure", "basis_kind", "net_cost", "max_profit", "max_loss",
     "breakevens", "unbounded_up", "unbounded_down", "unrealized_pl_liq", "unrealized_pl_mid", "pct_captured_liq",
     "pct_captured_mid", "realized_pl", "net_greeks", "legs", "data_quality", "warnings", "underlying_stop",
+    "greeks_quality",
 )
 UNDERLYING_KEYS: Tuple[str, ...] = ("mark_mid", "bid", "ask", "as_of", "quote_grade", "prev_eod_mid",
                                     "move_pct_from_prev_eod", "day_change_source")
@@ -183,6 +195,10 @@ IV_STATUS_UNAVAILABLE: str = "unavailable"
 IV_STATUS_EXPIRED: str = "expired"
 IV_STATUS_CLOSED: str = "closed"
 IV_STATUS_NOT_OPTION: str = "not_option"
+IV_STATUS_DIVIDEND_UNKNOWN: str = "dividend_unknown"
+"""No sourced dividend yield for the leg's underlying: IV and Greeks are ``None`` (an unknown yield is never zero)."""
+GREEKS_QUALITY_OK: str = american.QUALITY_OK
+GREEKS_QUALITY_NEAR_BOUNDARY: str = american.QUALITY_NEAR_BOUNDARY
 SETTLEMENT_AM: str = "am"
 SETTLEMENT_PM: str = "pm"
 DAY_CHANGE_SOURCE: str = "desk snapshot"
@@ -193,9 +209,12 @@ SPOT_ALIGNMENT_SECONDS: int = expiry.SPOT_ALIGNMENT_S
 and for ``extrinsic_bid``: the assignment watch's own constant (``expiry.SPOT_ALIGNMENT_S``), one rule for both."""
 ONE_CENT: Decimal = Decimal("0.01")
 BETA_WEIGHTED_DELTA: Dict[str, Any] = {"value": None, "r2_flag": "unavailable"}
-WARNING_NO_CALENDAR: str = ("no research/calendar.toml: dividend yields unknown (q = 0 for every option, Stage-1 "
-                            "approximation) and every root treated as PM-settled")
+WARNING_NO_CALENDAR: str = ("no research/calendar.toml: dividend yields unknown (every option's implied volatility and "
+                            "Greeks are unavailable) and every root treated as PM-settled")
 WARNING_Q_ZERO: str = "q = 0: no dividend yield in calendar.toml"
+"""The structuring tools' warning until they move to the sourced yield; the book no longer prints it."""
+WARNING_DIVIDEND_UNKNOWN: str = ("dividend yield unknown: no sourced yield in research/calendar.toml (the yield of the "
+                                 "ex_dividend entry, or status none), so no implied volatility or Greeks")
 SNAPSHOT_STATUS_OK: str = state.STATUS_OK
 SNAPSHOT_STATUS_MISSING: str = state.STATUS_MISSING
 SNAPSHOT_STATUS_CORRUPT: str = state.STATUS_CORRUPT
@@ -291,8 +310,8 @@ def _pct_of(numerator: Decimal, denominator: Decimal) -> Optional[Decimal]:
     return pnl.quantize_pct(numerator / denominator * _HUNDRED)
 
 
-def _greeks_dict(values: greeks_module.Greeks) -> Dict[str, float]:
-    return {"delta": values.delta, "gamma": values.gamma, "theta": values.theta, "vega": values.vega, "rho": values.rho}
+def _greeks_dict(values: Mapping[str, Optional[float]]) -> Dict[str, Optional[float]]:
+    return {key: values[key] for key in GREEK_KEYS}
 
 
 def _usable_spot(verdict: Optional[QuoteQC]) -> Optional[Decimal]:
@@ -550,23 +569,27 @@ class _Builder:
         if not _spot_aligned(verdict, under):
             rec["iv_status"] = IV_STATUS_SPOT_UNALIGNED
             return
-        dividend_yield = calendar_events.dividend_yield(self.calendar, leg.underlying)
-        if dividend_yield is None:
-            q = 0.0
-            rec["warnings"].append(WARNING_Q_ZERO)
-        else:
-            q = float(dividend_yield)
+        dividend = calendar_events.sourced_yield(self.calendar, leg.underlying)
+        if not dividend.known or dividend.value is None:
+            rec["iv_status"] = IV_STATUS_DIVIDEND_UNKNOWN
+            rec["warnings"].append(WARNING_DIVIDEND_UNKNOWN)
+            return
+        q = float(dividend.value)
         tau = rec["tau_years"]
-        result = iv.implied_vol(float(marks.mark_mid), right, float(spot), float(strike), tau, self.rate, q)
+        result = american.implied_vol(float(marks.mark_mid), right, float(spot), float(strike), tau, self.rate, q)
         if not result.ok or result.sigma is None:
             rec["iv_status"] = result.status
             return
+        value = american.value(right, float(spot), float(strike), tau, self.rate, q, result.sigma)
         rec["iv"] = result.sigma
         rec["iv_status"] = IV_STATUS_OK
-        per_share = greeks_module.european_greeks(right, float(spot), float(strike), tau, self.rate, q, result.sigma)
-        rec["greeks"] = _greeks_dict(per_share)
-        rec["position_greeks"] = _greeks_dict(greeks_module.position_greeks(per_share, float(leg.open_quantity),
-                                                                            leg.multiplier))
+        rec["model"] = value.model
+        rec["early_exercise_premium"] = value.early_exercise_premium
+        rec["greeks_quality"] = value.quality
+        rec["exercise_now"] = value.exercise_now
+        rec["near_boundary"] = value.near_boundary
+        rec["greeks"] = _greeks_dict(value.greeks())
+        rec["position_greeks"] = _greeks_dict(value.position_greeks(float(leg.open_quantity), leg.multiplier))
 
     # -- groups -----------------------------------------------------------------------------
     def group(self, group: PositionGroup) -> Dict[str, Any]:
@@ -604,19 +627,27 @@ class _Builder:
             rec["pct_captured_mid"] = pnl.pct_captured(group, pnl.cost_to_close(group.open_legs, mids), profile.max_profit)
             rec["pct_captured_liq"] = pnl.pct_captured(group, pnl.cost_to_close(group.open_legs, liqs), profile.max_profit)
             rec["net_greeks"] = self._net_greeks(group)
+            if rec["net_greeks"] is not None:
+                band = any(self.leg_records[leg.row_number]["greeks_quality"] == GREEKS_QUALITY_NEAR_BOUNDARY
+                           for leg in group.open_legs if leg.is_option)
+                rec["greeks_quality"] = GREEKS_QUALITY_NEAR_BOUNDARY if band else GREEKS_QUALITY_OK
         return rec
 
-    def _net_greeks(self, group: PositionGroup) -> Optional[Dict[str, float]]:
-        total = {key: 0.0 for key in GREEK_KEYS}
+    def _net_greeks(self, group: PositionGroup) -> Optional[Dict[str, Optional[float]]]:
+        """Greek by Greek (module notes): ``None`` when an open option leg has no Greeks; one Greek ``None`` when an
+        open leg lacks it."""
+        total: Dict[str, Optional[float]] = {key: 0.0 for key in GREEK_KEYS}
         for leg in group.open_legs:
             if leg.is_option:
                 position = self.leg_records[leg.row_number]["position_greeks"]
                 if position is None:
                     return None
                 for key in GREEK_KEYS:
-                    total[key] += position[key]
+                    current, add = total[key], position[key]
+                    total[key] = None if current is None or add is None else current + add
             else:
-                total["delta"] += float(leg.open_quantity) * leg.multiplier
+                delta = total["delta"]
+                total["delta"] = None if delta is None else delta + float(leg.open_quantity) * leg.multiplier
         return total
 
     # -- blocks -----------------------------------------------------------------------------
@@ -1095,9 +1126,12 @@ __all__ = [
     "DATA_QUALITY_UNAVAILABLE",
     "DAY_CHANGE_SOURCE",
     "EXPIRING_SECONDS",
+    "GREEKS_QUALITY_NEAR_BOUNDARY",
+    "GREEKS_QUALITY_OK",
     "GREEK_KEYS",
     "GROUP_KEYS",
     "IV_STATUS_CLOSED",
+    "IV_STATUS_DIVIDEND_UNKNOWN",
     "IV_STATUS_EXPIRED",
     "IV_STATUS_EXPIRING",
     "IV_STATUS_NOT_OPTION",
@@ -1106,6 +1140,7 @@ __all__ = [
     "IV_STATUS_SPOT_UNAVAILABLE",
     "IV_STATUS_UNAVAILABLE",
     "LEG_KEYS",
+    "LEG_MODEL_KEYS",
     "MARK_SOURCE_MID",
     "MARK_SOURCE_UNAVAILABLE",
     "ONE_CENT",
@@ -1127,6 +1162,7 @@ __all__ = [
     "SOURCE_KEYS",
     "SPOT_ALIGNMENT_SECONDS",
     "UNDERLYING_KEYS",
+    "WARNING_DIVIDEND_UNKNOWN",
     "WARNING_NO_CALENDAR",
     "WARNING_Q_ZERO",
     "assess_quotes",

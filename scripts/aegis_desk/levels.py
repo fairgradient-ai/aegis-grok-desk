@@ -38,8 +38,8 @@ single price); exact underlying prices found on the stock grid with the rule's o
 ``stock_below_long_put``, ``itm``, ``auto_exercise_itm`` on long legs, ``spot_vs_stop_pct``, ``move_pct_from_prev_eod``);
 bands (``pct_from_strike`` by ``expiry.distance_pct``, ``between_strikes``); the model level of ``abs_delta`` (the
 spot where ``|delta|``, read as the rule reads it, two decimals half-even, crosses: the root of ``|delta(S)| = T -
-0.005`` for ``>=``, Brent's method over ``aegis_desk.greeks`` with the leg's IV, the date fixed, the book's rate and
-the calendar's dividend yield); dates (``dte``, ``days_to_earnings``, ``days_to_ex_dividend``). A ``dte`` condition with
+0.005`` for ``>=``, Brent's method over the American lattice's delta (``aegis_desk.lattice``, the book's model of
+record) with the leg's IV, the date fixed, the book's rate and the calendar's sourced dividend yield); dates (``dte``, ``days_to_earnings``, ``days_to_ex_dividend``). A ``dte`` condition with
 ``>`` or ``>=`` that is false prints ``cannot fire on this position``, a false ``dte <=`` condition adds ``from <date>``.
 Suffixes: ``threshold already crossed (rule fired)`` (fired or cooldown), ``... (pending confirmation: observation N
 of M)``, for a take-profit price ``resting-eligible: yes (below the current ask A)`` (above the bid for a long, the net
@@ -70,9 +70,9 @@ from . import (
     calendar_events,
     exit_rules,
     expiry,
-    greeks,
     grouping,
     iv,
+    lattice,
     market_clock,
     occ,
     pnl,
@@ -347,7 +347,8 @@ def delta_boundary(threshold: Decimal, op: str) -> Decimal:
 def delta_level(right: str, spot: Any, strike: Any, tau_years: Any, rate: Any, dividend_yield: Any, sigma: Any,
                 threshold: Decimal, op: str) -> Optional[Decimal]:
     """The spot (unrounded, ``Decimal(repr(root))``) where ``|delta|`` reaches the reading boundary, with the IV and the
-    date fixed; ``None`` when ``|delta|`` cannot reach it inside ``[spot / 100, spot x 100]``."""
+    date fixed; ``None`` when ``|delta|`` cannot reach it inside ``[spot / 100, spot x 100]``. Delta is the American
+    lattice's (:func:`aegis_desk.lattice.american`), the book's model of record (roadmap 2.3)."""
     boundary = bsm.as_float("the delta boundary", delta_boundary(threshold, op))
     s0 = bsm.as_float("spot", spot)
     k = bsm.as_float("strike", strike)
@@ -357,7 +358,7 @@ def delta_level(right: str, spot: Any, strike: Any, tau_years: Any, rate: Any, d
     vol = bsm.as_float("sigma", sigma)
 
     def gap(spot_at: float) -> float:
-        return abs(greeks.european_greeks(right, spot_at, k, tau, r, q, vol).delta) - boundary
+        return abs(lattice.american(right, spot_at, k, tau, r, q, vol).delta) - boundary
 
     low, high = s0 / 100.0, s0 * 100.0
     try:
@@ -1223,9 +1224,11 @@ class _LineMaker:
         if (leg.get("iv_status") != "ok" or spot is None or spot <= 0 or not isinstance(sigma, float)
                 or not isinstance(tau, float) or self.book.rate is None or leg.get("strike") is None):
             raise _NeedsData()
-        dividend = calendar_events.dividend_yield(self.book.calendar, symbol)
+        dividend = calendar_events.sourced_yield(self.book.calendar, symbol)
+        if dividend.value is None:  # the book solved no IV without a sourced yield either
+            raise _NeedsData()
         rate = bsm.as_float("rate", self.book.rate)
-        q = bsm.as_float("dividend yield", dividend) if dividend is not None else 0.0
+        q = bsm.as_float("dividend yield", dividend.value)
         threshold = condition.value
         root = delta_level(str(leg["right"]), spot, leg["strike"], tau, rate, q, sigma, threshold, condition.op)
         if root is None:

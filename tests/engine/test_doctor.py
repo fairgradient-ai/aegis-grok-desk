@@ -525,7 +525,7 @@ class DeskFilesTest(DeskCopy):
         os.remove(self.paths.positions_csv)
         item, _cfg, _cal = self.run_check()
         self.assertIn("positions.csv missing", item.reason)
-        self.rewrite("research/calendar.toml", "schema_version = 1", "schema_version = 2")
+        self.rewrite("research/calendar.toml", "schema_version = 2", "schema_version = 3")
         item, _cfg, cal = self.run_check()
         self.assertEqual(("FAIL", None), (item.status, cal))
         os.remove(self.paths.adopted_file)

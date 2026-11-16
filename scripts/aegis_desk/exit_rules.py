@@ -60,7 +60,8 @@ g["max_loss"] x 100``); ``dte`` (the minimum over the open option legs of ``dte_
 of an open long put); ``spot_vs_stop_pct`` (``(S - stop) / stop x 100`` for a group carrying
 ``g["underlying_stop"]``; not applicable without one); ``days_to_earnings``. Leg ``l``: ``pct_captured`` (a short
 leg: ``(entry_price_per_share - side) / entry_price_per_share x 100``), ``abs_delta`` (only when ``iv_status`` is
-``ok``), ``dte``, ``itm``, ``extrinsic_bid`` (the book's), ``pct_from_strike`` (``expiry.distance_pct(S, K)``),
+``ok``; for a leg in the lattice's boundary band, ``greeks_quality`` ``"near_boundary"``, a threshold within
+``lattice.BAND_DELTA_TOL`` of its approximate ``|delta|`` reads UNAVAILABLE: roadmap 2.3), ``dte``, ``itm``, ``extrinsic_bid`` (the book's), ``pct_from_strike`` (``expiry.distance_pct(S, K)``),
 ``auto_exercise_itm`` (``open_quantity > 0`` and ``itm`` and ``dte_trading == 0``), ``days_to_ex_dividend``,
 ``dividend_amount``, ``extrinsic_minus_dividend`` (decision 14: ``expiry.dividend_window``, the assignment watch's
 own facts, with the book's ``extrinsic_bid``), ``days_to_earnings`` (decision 9: ``trading_days_between(today,
@@ -184,12 +185,15 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from . import book as book_module
-from . import calendar_events, expiry, grouping, market_clock, occ, payoff, pnl, rule_state, toml_compat
+from . import calendar_events, expiry, grouping, lattice, market_clock, occ, payoff, pnl, rule_state, toml_compat
 from .calendar_events import CalendarFile
 from .desk_paths import DeskPaths
 from .market_clock import SessionInfo
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
+
+BAND_DELTA_TOL: Decimal = Decimal(repr(lattice.BAND_DELTA_TOL))
+"""An ``abs_delta`` threshold within this of a band leg's approximate ``|delta|`` reads UNAVAILABLE (roadmap 2.3)."""
 
 SCHEMA_VERSION: int = 1
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\Z")
@@ -1759,6 +1763,10 @@ class _Context:
         value = _greek(abs(delta)) if isinstance(delta, (int, float)) and not isinstance(delta, bool) else None
         if value is None:
             return _unavailable("%s: no delta" % _label(leg))
+        if (leg.get("greeks_quality") == book_module.GREEKS_QUALITY_NEAR_BOUNDARY and condition.value is not None
+                and abs(Decimal(repr(abs(delta))) - condition.value) <= BAND_DELTA_TOL):
+            return _unavailable("%s: |delta| %s is approximate near the early-exercise boundary (within %s), too close "
+                                "to %s to decide" % (_label(leg), value, BAND_DELTA_TOL, condition.value))
         return _value(value, [Input("delta", delta, _src(leg, "greeks.delta"), leg.get("as_of"), leg.get("quote_grade"))])
 
     def m_itm(self, subject: _Subject, condition: Condition) -> _Reading:
@@ -2547,17 +2555,22 @@ LEG_FIELDS: Dict[str, str] = {
     "iv": "float?", "iv_status": "str", "greeks": "greeks?", "position_greeks": "greeks?", "unrealized_pl_mid": "dec?",
     "unrealized_pl_liq": "dec?", "day_pl": "dec?", "realized_day_pl": "dec?", "extrinsic_bid": "dec?", "itm": "bool?",
     "warnings": "strs", "open_quantity": "dec", "remaining_cost_basis": "dec", "fresh_bid": "dec?", "fresh_ask": "dec?",
+    "model": "str?", "early_exercise_premium": "float?", "greeks_quality": "str?", "exercise_now": "bool?",
+    "near_boundary": "bool?",
 }
 """How every leg key is read back (``?``: may be null)."""
-LEG_OPTIONAL_KEYS: Tuple[str, ...] = ("fresh_bid", "fresh_ask")
-"""Leg keys a snapshot written before PR 2b's follow-up does not have (read as null)."""
+LEG_OPTIONAL_KEYS: Tuple[str, ...] = ("fresh_bid", "fresh_ask") + book_module.LEG_MODEL_KEYS
+"""Leg keys a snapshot written before PR 2b's follow-up, or before the American model of record (roadmap 2.3), does
+not have (read as null)."""
 GROUP_FIELDS: Dict[str, str] = {
     "group_id": "str", "trade_id": "str?", "account": "str", "underlying": "str", "structure": "str", "basis_kind": "str",
     "net_cost": "dec", "max_profit": "dec?", "max_loss": "dec?", "breakevens": "decs", "unbounded_up": "bool",
     "unbounded_down": "bool", "unrealized_pl_liq": "dec?", "unrealized_pl_mid": "dec?", "pct_captured_liq": "dec?",
     "pct_captured_mid": "dec?", "realized_pl": "dec", "net_greeks": "greeks?", "legs": "ints", "data_quality": "str",
-    "warnings": "strs", "underlying_stop": "dec?",
+    "warnings": "strs", "underlying_stop": "dec?", "greeks_quality": "str?",
 }
+GROUP_OPTIONAL_KEYS: Tuple[str, ...] = ("greeks_quality",)
+"""Group keys a snapshot written before the American model of record (roadmap 2.3) does not have (read as null)."""
 UNDERLYING_FIELDS: Dict[str, str] = {
     "mark_mid": "dec?", "bid": "dec?", "ask": "dec?", "as_of": "dt?", "quote_grade": "str?", "prev_eod_mid": "dec?",
     "move_pct_from_prev_eod": "dec?", "day_change_source": "str",
@@ -2580,7 +2593,7 @@ _TABLES: Dict[str, Dict[str, str]] = {
     "beta": {"value": "float?", "r2_flag": "str"},
     "concentration": {"declared_equity": "dec", "by_underlying": "by_underlying"},
     "quarantined": {"group_id": "str", "reasons": "strs"},
-    "greeks": {key: "float" for key in book_module.GREEK_KEYS},
+    "greeks": {key: "float?" for key in book_module.GREEK_KEYS},  # a band leg's gamma and theta are null
 }
 
 
@@ -2675,7 +2688,8 @@ def _read_value(kind: str, value: Any, where: str) -> Any:
         return [_read_table(item, LEG_FIELDS, "%s[%d]" % (where, index), LEG_OPTIONAL_KEYS)
                 for index, item in enumerate(_read_list(value, where))]
     if kind == "groups":
-        return [_read_table(item, GROUP_FIELDS, "%s[%d]" % (where, index)) for index, item in enumerate(_read_list(value, where))]
+        return [_read_table(item, GROUP_FIELDS, "%s[%d]" % (where, index), GROUP_OPTIONAL_KEYS)
+                for index, item in enumerate(_read_list(value, where))]
     if kind == "sources":
         return [_read_table(item, _TABLES["source"], "%s[%d]" % (where, index))
                 for index, item in enumerate(_read_list(value, where))]

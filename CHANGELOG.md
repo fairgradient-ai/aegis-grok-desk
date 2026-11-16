@@ -2,6 +2,43 @@
 
 ## 1.0.0 (unreleased)
 
+- **The book on the American model of record** (roadmap step 2.3, third part; the owner's answers to open questions 2
+  and 3). Every option leg's IV inverts the American lattice price from its mid, and its Greeks come from the lattice
+  (`aegis_desk.american`). Each leg gains `model` (`american_crr_200`), `early_exercise_premium`, `greeks_quality`,
+  `exercise_now` and `near_boundary`. A leg in the boundary band keeps an approximate delta and has null gamma and
+  theta. A group's `net_greeks` go Greek by Greek and gain a `greeks_quality`, so one band leg no longer blanks a net
+  delta. A leg without a sourced yield is `iv_status = "dividend_unknown"` (no IV, no Greeks), which replaces the q = 0
+  warning in the book. An `abs_delta` rule threshold within 0.05 of a band delta reads UNAVAILABLE. Trigger levels'
+  model levels solve the lattice delta with the sourced yield, and `vol_context` counts only days priced on the
+  American model. The exit rules still read snapshots written before this change. The fixture book's American values
+  move a few goldens: SPY's put IV 24.68 % to 24.59 %, net delta 278.84 to 278.67, and the MONETIZE level 572.79 to
+  575.48. The structuring tools still price European until the last part lands.
+- **The dividend yield as a sourced fact** (roadmap step 2.3, second part; the owner's answer to open question 3).
+  `research/calendar.toml` is schema version 2: the yield is the `yield` of the symbol's `ex_dividend` entry
+  (`ex_dividend = { date = ..., amount = ..., yield = 0.0090, status = ..., source = ..., checked_utc = ... }`), so
+  it shares that entry's source, time and STALE check. Version 2 refuses a top-level `dividend_yield`; status `none`
+  takes no yield and means zero. Version 1 files still load. `calendar_events.sourced_yield` says whether a yield is
+  sourced (a version-2 `yield`, or status `none`); a bare version-1 yield is not. `calendar_check.py` gains the finding
+  `NO_YIELD` for every held symbol without a sourced yield. `desk_init.py` writes version 2 and takes an optional
+  `yield` with each dated ex-dividend. The fixture calendars are version 2. The book still prices with whichever yield
+  the file holds until the wiring part lands.
+- **The American leg pricer** (roadmap step 2.3, first part; engine only, not wired). `aegis_desk.american` prices
+  one leg on the owner's model of record: the lattice's price, delta, gamma and theta in desk units, vega and rho as
+  central differences of the lattice price, the early-exercise premium and `model = "american_crr_200"`. A leg in the
+  boundary band keeps its price, vega, rho and an approximate delta (`lattice.BAND_DELTA_TOL = 0.05`); its gamma and
+  theta are `None`. `american.implied_vol` inverts the lattice price (bounds: the undiscounted intrinsic value and the
+  spot or strike; a quote on the intrinsic value has no single volatility), starting from the European volatility,
+  which it never exceeds. The QuantLib oracle now asserts band delta within the tolerance, and the new pricer's vega,
+  rho and implied volatility against QuantLib's finite-difference engine.
+- **The owner's answers to the roadmap's open questions 1 to 8** (`docs/ROADMAP.md`). Step 2.3 comes next and 2.8
+  after it. The model of record is American everywhere, one value per leg; in the early-exercise band delta is marked
+  `approx` within a tested 0.05, and gamma and theta are UNAVAILABLE. The dividend stays a continuous yield, moved into
+  the sourced `ex_dividend` entry, with a note on every leg spanning an ex-date and a long put's wait line; step 2.2
+  (discrete dividends) is dropped. Weeklies narrow the `dte` window to 21 days under the same four-chain cap. Cash is
+  optional per account, checked at the peak cash out and UNAVAILABLE after 5 trading days. Limits are two rule metrics
+  in the exit rulebook. One GET-only path reads cash dividends. Journal and review totals are counts only. The planned
+  `t1-call` and `midday-limits` routines are dropped (`tests/engine/test_routines.py` now fits fifteen ids), and
+  three recorded `desk.toml` values are retired with step 2.6.
 - **Volatility context** (roadmap step 2.9). The new read-only tool `vol_context.py` (`aegis_desk.vol_context`) reads
   the desk's own end-of-day book snapshots: a symbol's value for a day is the median implied volatility of its open
   option legs with `iv_status` ok (never the vendor's Greeks), and the context places the latest day's value among

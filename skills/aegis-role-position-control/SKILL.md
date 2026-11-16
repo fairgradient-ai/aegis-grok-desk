@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/position-control.md
-  source_sha256: 20d2fa122348e78fb5974a075e0548cbe56b622b5ac41b415c7100cc7399ccbd
+  source_sha256: acc9448dcd3eea618a873db9d41e9aece63cd6555af347747e4c810dae358e5f
 ---
 
 # Aegis Position Control: role skill
@@ -209,7 +209,7 @@ python3 /workspace/aegis-grok-desk/scripts/market_clock.py --expiry 2026-11-20 -
 - Their output is diagnostic. Quote it only when the owner asks, unchanged, in a fenced block headed by the exact
   command. Never paraphrase it and never add a number to it.
 - The proposed rows of `csv_recon.py --diff` appear only in a 1:1 chat (yours or the Desk Lead's), never in the Floor.
-- `calendar_check.py` lists STALE, MISSING, UNKNOWN_DIVIDEND and PAST entries of `research/calendar.toml`;
+- `calendar_check.py` lists STALE, MISSING, UNKNOWN_DIVIDEND, PAST and NO_YIELD entries of `research/calendar.toml`;
   `--max-age-days N` sets the staleness bound (default 7). `market_clock.py --expiry` adds `--am-settled` for an
   AM-settled contract.
 

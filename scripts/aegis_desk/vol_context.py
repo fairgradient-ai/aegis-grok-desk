@@ -2,7 +2,10 @@
 
 The record is the desk's own end-of-day book snapshots (``data/book/<ET date>.json``, ``book.write_snapshot``): for a
 symbol, a day's value is the median implied volatility of that day's open option legs on it whose ``iv_status`` is
-``ok`` (each solved by ``aegis_desk.iv`` from the quotes' mids; the vendor's Greeks are never read). The context of a
+``ok`` and whose ``model`` is the model of record (:data:`MODEL`, the American lattice of roadmap 2.3; each solved
+from the quotes' mids; the vendor's Greeks are never read). A leg without ``model`` was priced before the American
+model of record (``european_bsm``) and is left out, so a European history never ranks an American volatility: the
+context is UNAVAILABLE until enough American days are recorded. The context of a
 symbol places the latest snapshot's value among the earlier recorded days: how many were lower, the range, the number
 of days. Fewer than :data:`MIN_HISTORY_DAYS` earlier days, or no value on the latest day, is UNAVAILABLE.
 
@@ -17,9 +20,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import state
+from . import american, state
 from .desk_paths import DeskPaths
 
+MODEL: str = american.MODEL_AMERICAN
+"""The ``model`` a leg must carry to count (a leg without one counts as :data:`aegis_desk.american.MODEL_EUROPEAN`)."""
 MIN_HISTORY_DAYS: int = 5
 """Earlier recorded days a context needs; fewer is UNAVAILABLE ``short_history``."""
 STATUS_OK: str = "ok"
@@ -30,17 +35,19 @@ REASON_SHORT_HISTORY: str = "short_history"
 REASON_WORDS: Dict[str, str] = {
     REASON_NO_SNAPSHOTS: "the desk has written no end-of-day book snapshot yet",
     REASON_NO_VALUE: "the latest snapshot holds no option leg on it with a solved implied volatility",
-    REASON_SHORT_HISTORY: "fewer than %d earlier recorded days hold a value" % MIN_HISTORY_DAYS,
+    REASON_SHORT_HISTORY: "fewer than %d earlier recorded days hold a value on the American model" % MIN_HISTORY_DAYS,
 }
 SNAPSHOT_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
 
 
 def symbol_ivs(document: Mapping[str, Any]) -> Dict[str, float]:
     """``{underlying: median implied volatility}`` of one book snapshot's open option legs whose ``iv_status`` is
-    ``ok`` (a leg without a finite positive ``iv`` is skipped)."""
+    ``ok`` and whose ``model`` is :data:`MODEL` (a leg without a finite positive ``iv`` is skipped)."""
     values: Dict[str, List[float]] = {}
     for leg in document.get("legs") or []:
         if not isinstance(leg, Mapping) or leg.get("instrument_type") != "option" or leg.get("iv_status") != "ok":
+            continue
+        if (leg.get("model") or american.MODEL_EUROPEAN) != MODEL:
             continue
         iv, underlying = leg.get("iv"), leg.get("underlying")
         if isinstance(iv, bool) or not isinstance(iv, (int, float)) or not iv > 0 or not isinstance(underlying, str):
@@ -149,6 +156,7 @@ def contexts(history: History, symbols: Optional[Sequence[str]] = None) -> List[
 __all__ = [
     "History",
     "MIN_HISTORY_DAYS",
+    "MODEL",
     "REASON_NO_SNAPSHOTS",
     "REASON_NO_VALUE",
     "REASON_SHORT_HISTORY",

@@ -515,7 +515,7 @@ SPY_ROLL = """### STRUCTURING AG-20261028-03 | SPY protective put: the roll anal
 - **max loss** 2,370.00 now, 4,700.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 643.70 now, 657.00 after
-- **group delta** 72.52 now, 70.17 after
+- **group delta** 72.36 now, 70.17 after
 
 **Replacement candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
 - 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856

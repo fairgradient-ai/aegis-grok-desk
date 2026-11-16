@@ -29,8 +29,11 @@ NOW = "2026-11-03T21:00:00Z"
 SPY_IVS = (0.15, 0.17, 0.16, 0.19, 0.18, 0.20, 0.17)
 
 
-def leg(underlying: str, iv: Any, status: Any = "ok", instrument: str = "option") -> dict:
-    return {"instrument_type": instrument, "underlying": underlying, "iv": iv, "iv_status": status}
+def leg(underlying: str, iv: Any, status: Any = "ok", instrument: str = "option", model: Any = V.MODEL) -> dict:
+    record = {"instrument_type": instrument, "underlying": underlying, "iv": iv, "iv_status": status}
+    if model is not None:
+        record["model"] = model
+    return record
 
 
 def call(argv: Sequence[str]) -> Tuple[int, str]:
@@ -90,6 +93,16 @@ class LibraryTest(DeskCase):
                                                                       V.context("WMT", history).reason))
         self.assertEqual(["SPY"], [item.symbol for item in V.contexts(history)])
         self.assertEqual(4, len(V.load_history(self.paths, through=datetime.date(2026, 10, 29)).days))
+
+    def test_only_days_priced_on_the_american_model_count(self) -> None:
+        # roadmap 2.3: a snapshot leg without a model was priced European and never ranks an American volatility
+        self.assertEqual({}, V.symbol_ivs({"legs": [leg("SPY", 0.2, model=None), leg("SPY", 0.3, model="european_bsm")]}))
+        for index, iv in enumerate(SPY_IVS[:-1]):  # six European days, then one American day
+            self.snapshot(datetime.date(2026, 10, 26) + datetime.timedelta(days=index), [leg("SPY", iv, model=None)])
+        self.snapshot(datetime.date(2026, 11, 1), [leg("SPY", 0.17)])
+        item = V.context("SPY", V.load_history(self.paths))
+        self.assertEqual((V.STATUS_UNAVAILABLE, V.REASON_SHORT_HISTORY, 0), (item.status, item.reason, item.history_days))
+        self.assertEqual("american_crr_200", V.MODEL)
 
     def test_too_little_history_and_no_snapshot_are_unavailable(self) -> None:
         self.assertEqual(V.REASON_NO_SNAPSHOTS, V.context("SPY", V.load_history(self.paths)).reason)

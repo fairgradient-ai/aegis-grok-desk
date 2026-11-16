@@ -333,7 +333,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **max loss** 2,370.00 now, 4,700.00 after",
         "- **max profit** unbounded now, unbounded after",
         "- **breakeven** 643.70 now, 657.00 after",
-        "- **group delta** 72.52 now, 70.17 after",
+        "- **group delta** 72.36 now, 70.17 after",
         "",
         "**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within "
         "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",

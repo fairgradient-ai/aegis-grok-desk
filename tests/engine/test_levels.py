@@ -91,8 +91,8 @@ REGULAR_SHEET = [
     "LAPSE14 fires on 2026-12-04 (14 calendar days before the last trading day 2026-12-18)",
     # ROLL30 at a line start reads as an imperative to the lint (IS04): the line names it "your rule ROLL30"
     "your rule ROLL30 fires on 2026-11-18 (30 calendar days before the last trading day 2026-12-18)",
-    "MONETIZE fires near SPY 572.79 (rounded up from 572.7826; model estimate at IV 24.68 %, date fixed; 11.62 % below "
-    "the current 648.12, 1.42 sigma)",
+    "MONETIZE fires near SPY 575.48 (rounded up from 575.4762; model estimate at IV 24.59 %, date fixed; 11.21 % below "
+    "the current 648.12, 1.38 sigma)",
     "FLOOR fires at SPY 619.99 or below (one cent below the strike 620; 4.34 % below the current 648.12)",
     "AUTOEX fires at SPY 619.99 or below (one cent below the strike 620; 4.34 % below the current 648.12) on the last "
     "trading day 2026-12-18",

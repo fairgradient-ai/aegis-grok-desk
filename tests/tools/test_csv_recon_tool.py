@@ -388,7 +388,7 @@ class MainRootTest(DeskCopy):
         self.positions_stat = os.stat(self.positions)
 
     def test_calendar_parse_error_is_exit_1(self) -> None:
-        self.rewrite(os.path.join("research", "calendar.toml"), "schema_version = 1", "schema_version = 1\nbogus = 2")
+        self.rewrite(os.path.join("research", "calendar.toml"), "schema_version = 2", "schema_version = 2\nbogus = 2")
         code, body = run_json(self.argv("regular", REGULAR_NOW))
         self.assertEqual((1, "error", "calendar_invalid"), (code, body["status"], body["error"]["code"]))
 

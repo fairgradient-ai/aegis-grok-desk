@@ -1,6 +1,6 @@
 ---
 name: aegis-book-marking-and-greeks-honesty
-description: How the read-only Aegis desk marks the book and when it refuses to, for the Aegis Exit Sentinel. The mid and liquidation marks and the mark_source gate, which side each rule reads, time to expiry, spot and days to expiry, implied volatility and its failure statuses, European Greeks in desk units with the dividend-yield assumption, unrealized, realized and day P/L from the desk's own snapshot, percent captured, max profit and loss and breakevens, and what UNAVAILABLE protects the owner from.
+description: How the read-only Aegis desk marks the book and when it refuses to, for the Aegis Exit Sentinel. The mid and liquidation marks and the mark_source gate, which side each rule reads, time to expiry, spot and days to expiry, implied volatility and its failure statuses, American Greeks in desk units with the sourced dividend yield and the early-exercise boundary band, unrealized, realized and day P/L from the desk's own snapshot, percent captured, max profit and loss and breakevens, and what UNAVAILABLE protects the owner from.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -64,11 +64,13 @@ unavailable: your rule DAILY: day P/L unavailable: row 4 WMT261120C00105000: no 
 
 ## Implied volatility and when it is refused
 
-The desk solves IV itself from the leg's mid and never reads the vendor's IV or Greeks. The rate `r` is
-`desk.toml` `[rates] risk_free_rate`. The dividend yield `q` is the symbol's `dividend_yield` in
-`research/calendar.toml`, else 0, with the leg warning `q = 0: no dividend yield in calendar.toml`. The dividend
-intake of `desk_init.py` writes no `dividend_yield`, so on a new desk that warning is expected until the owner adds
-the yields by hand.
+The desk solves IV itself from the leg's mid and never reads the vendor's IV or Greeks. It inverts the American
+lattice price (the model of record), so the IV is never above the European one. The rate `r` is `desk.toml` `[rates]
+risk_free_rate`. The dividend yield `q` is the symbol's sourced yield in `research/calendar.toml`: the `yield` of its
+`ex_dividend` entry (schema version 2), or zero when that entry's status is `none`. Without one, the leg's
+`iv_status` is `dividend_unknown` and it has no IV or Greeks: an unknown yield is never zero, and a version-1
+`dividend_yield` has no source, so it does not count. The dividend intake of `desk_init.py` asks for the yield with
+the ex-dividend date; a held symbol without a sourced yield is a `NO_YIELD` finding of `calendar_check.py`.
 
 Each leg's `iv_status` says what happened:
 
@@ -80,27 +82,33 @@ Each leg's `iv_status` says what happened:
 | `expiring` | under one hour to the cutoff |
 | `expired`, `closed` | past its last trading day, or a closed row |
 | `not_option` | a stock or ETF leg |
-| `below_intrinsic`, `above_bound` | the mid is outside the no-arbitrage bounds |
+| `dividend_unknown` | no sourced dividend yield for the underlying |
+| `below_intrinsic`, `above_bound` | the mid is below the intrinsic value or above the strike (put) or spot (call) |
 | `no_root` | no volatility reproduces the mid |
 
 Every status but `ok` leaves IV and Greeks empty, and a rule that needs them is unavailable. From a synthetic book
 check on the stale set: `unavailable: your rule DELTA_WATCH: row 6 NVDA261120C00150000: no Greeks (iv_status
 unavailable)`.
 
-## Greeks: European, in desk units
+## Greeks: American, in desk units
 
-- The model is the European closed form. A deep in-the-money American option quoted at intrinsic can come back
-  `below_intrinsic` under it; that is a known limit, not a data error. American Greeks are planned for Stage 2
-  (not in this release).
+- The model of record is the American lattice (`model` is `american_crr_200` on every priced leg). Delta, gamma and
+  theta come from the tree; vega and rho are differences of its price. `early_exercise_premium` is the American value
+  less the European one, per share. A mid exactly at the intrinsic value has no single volatility (`no_root`), and
+  one below it none at all (`below_intrinsic`).
+- Near the early-exercise boundary (`greeks_quality` is `near_boundary`) the delta is approximate, within 0.05, and
+  gamma and theta are empty: the tree cannot tell exercise from holding there. A rule on `abs_delta` whose threshold
+  lies within 0.05 of such a delta is unavailable; one farther away is decided.
 - Units: delta per share, theta per calendar day, vega per volatility point, rho per 1 % of rate.
 - `position_greeks` scale a leg's Greeks by its open signed quantity times the multiplier.
-- A group's `net_greeks` adds one delta per share of stock to its option legs, and is empty when any open option leg
-  has no Greeks.
+- A group's `net_greeks` adds one delta per share of stock to its option legs, Greek by Greek. It is empty when any
+  open option leg has no Greeks; a single Greek is empty when a leg lacks it (a band leg's gamma and theta), and the
+  group's `greeks_quality` says its net delta is approximate.
 - The portfolio's `net_delta` is set only when every open group has Greeks: a partial total is worse than none.
 - `beta_weighted_delta` is always `{"value": null, "r2_flag": "unavailable"}` in Stage 1. Beta-weighted delta and
   exposures are planned for Stage 2 (not in this release).
 - `vol_context.py` places a symbol's implied volatility on the latest end-of-day snapshot (the median of its solved
-  option legs, never the vendor's Greeks) among the earlier recorded days. It is information only: no rule, alert,
+  option legs on the American model, never the vendor's Greeks) among the earlier recorded American days. It is information only: no rule, alert,
   ticket or ranking reads it, and fewer than 5 earlier days is UNAVAILABLE, never a guess.
 
 ## P/L: unrealized, realized and day
