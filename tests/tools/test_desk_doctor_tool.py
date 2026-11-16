@@ -244,8 +244,8 @@ class SelftestModeTest(DeskCopy):
         self.assertEqual((0, "ok", "selftest", "PASS"), (code, body["status"], body["payload"]["mode"],
                                                           body["payload"]["verdict"]))
         self.assertEqual(["interpreter", "selftest"], [item["id"] for item in body["payload"]["checks"]])
-        self.assertEqual(("PASS", "engine selftest: 5 of 5 sub-checks passed (bsm golden, iv round trip, DST transitions, "
-                                  "TOML reader, alert lint)"),
+        self.assertEqual(("PASS", "engine selftest: 6 of 6 sub-checks passed (bsm golden, iv round trip, american model, "
+                                  "DST transitions, TOML reader, alert lint)"),
                          (self.checks(body)["selftest"]["status"], self.checks(body)["selftest"]["reason"]))
         self.assertEqual(([], None), (body["payload"]["written"], body["payload"]["record"]))
         self.assertEqual([], self.files(empty))

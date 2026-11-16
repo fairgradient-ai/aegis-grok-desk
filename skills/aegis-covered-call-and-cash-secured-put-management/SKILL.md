@@ -161,8 +161,9 @@ command; the expiry and assignment skill has the protocol.
   Desk prices a roll analysis of the short put and a ROLL ticket for the put the owner names, judged under
   `[roll]` (`aegis-roll-decision-framework`), with an `early-assignment note:` when the put is deep in the money or
   its time value is below the interest on its strike. A CLOSE ticket covers it too.
-- The early-exercise test is the European extrinsic-versus-dividend test above. American pricing is
-  planned for Stage 2 (not in this release).
+- The early-assignment test before an ex-date is the extrinsic-versus-dividend test above, read from the quote, never
+  a model price. The desk's prices are American, but they treat the dividend as a continuous yield and do not see its
+  drop on the ex-date, so that test stays: the assignment watch's dividend note says so beside the tier.
 - The desk checks no cash reserve. No alert reads the approval level: only the structuring tools check `desk.toml`'s
   self-attested `approval_level`, on their own answers (a covered call needs level 1 by the desk's convention).
 

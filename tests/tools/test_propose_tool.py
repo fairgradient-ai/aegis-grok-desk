@@ -130,7 +130,7 @@ SPY_COLLAR_BEST_TEXT = [
     "- **max loss** 63,240.00 now, 1,165.00 after",
     "- **max profit** unbounded now, 4,835.00 after",
     "- **breakeven** 632.40 now, 631.65 after",
-    "- **group delta** 100.00 now, 23.75 after",
+    "- **group delta** 100.00 now, 23.01 after",
     "",
     "**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your "
     "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -149,8 +149,8 @@ SPY_COLLAR_BEST_TEXT = [
     "net-debit budget",
     "> - tie on cap_within_budget broken by the put strike (higher first)",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
     "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
@@ -184,8 +184,8 @@ SPY_COLLAR_NONE_TEXT = [
     "> - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your "
     "net-debit budget",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
     "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
@@ -216,7 +216,7 @@ SPY_PP_TEXT = [
     "- **max loss** 63,240.00 now, 4,550.00 after",
     "- **max profit** unbounded now, unbounded after",
     "- **breakeven** 632.40 now, 655.50 after",
-    "- **group delta** 100.00 now, 70.17 after",
+    "- **group delta** 100.00 now, 69.59 after",
     "",
     "**Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested "
     "level 2 (desk.toml); your broker's own approval for this account decides",
@@ -231,8 +231,8 @@ SPY_PP_TEXT = [
     "> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from "
     "the best",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
     "a year, because those quotes exclude the calendar's 1.15 %",
     "> - criteria: your structuring.toml (sha 5155427c)",
@@ -277,8 +277,8 @@ WMT_BEST_TEXT = [
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "> - you supply the limit; the desk prints none",
     "> - if you decide to act, you type it into your brokerage account yourself",
@@ -306,8 +306,8 @@ WMT_NONE_TEXT = [
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "> - you supply the limit; the desk prints none",
     "> - if you decide to act, you type it into your brokerage account yourself",

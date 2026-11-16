@@ -21,12 +21,14 @@ own CDF, its own formulas and its own solver.
 
 The Structuring Desk's legs (PR 3b, designer Q's D17): the best and runner-up legs of the fixture answers of
 ``aegis_desk.structuring`` (the WMT and NVDA roll analyses, the WMT covered call, the SPY protective put and the SPY
-collar on copies of ``tests/fixtures/desk`` at the regular instant) are re-priced at their solved implied volatilities
-by the date-based ``AnalyticEuropeanEngine``. Their maturities are fractional (seconds to the exercise cutoff), and the
-engine counts whole days, so the comparison uses the time-homogeneous rescaling of a flat-curve European: with the
-expiry one Actual/365 year away and ``sigma' = sigma sqrt(tau)``, ``r' = r tau``, ``q' = q tau``, the discount and
-dividend factors and the total variance are those of the leg, so the price, delta and gamma are invariant, vega scales
-by ``sqrt(tau)`` (per vol point x 0.01) and QuantLib's own solver recovers ``sigma = sigma' / sqrt(tau)`` from the mid.
+collar on copies of ``tests/fixtures/desk`` at the regular instant) are priced on the American model of record
+(roadmap 2.3), so QuantLib's finite-difference American engine re-prices each at its solved implied volatility: the
+price equals the mid within the lattice's price bound and the delta agrees (within ``lattice.BAND_DELTA_TOL`` near the
+boundary). Their maturities are fractional (seconds to the exercise cutoff), and the engine counts whole days, so the
+comparison uses the time-homogeneous rescaling of a flat curve: with the expiry one Actual/365 year away and
+``sigma' = sigma sqrt(tau)``, ``r' = r tau``, ``q' = q tau``, the discount and dividend factors and the total variance
+are those of the leg, and an American option's optimal exercise scales with time too, so the price and delta are
+invariant.
 
 The American lattice (step 2.1 of ``docs/ROADMAP.md``): ``aegis_desk.lattice.american`` at its default steps
 against QuantLib's finite-difference American engine (``FdBlackScholesVanillaEngine``, 2000 time by 2000 space steps),
@@ -349,7 +351,11 @@ def _structuring_legs(tmp: str) -> list:
 
 @unittest.skipUnless(HAVE_QUANTLIB, "QuantLib (Python bindings) not installed; CI oracle job only")
 class StructuringLegsOracleTest(unittest.TestCase):
-    """The Structuring Desk's best and runner-up legs at their solved IVs against AnalyticEuropeanEngine."""
+    """The Structuring Desk's best and runner-up legs at their solved IVs against QuantLib's finite-difference American
+    engine (roadmap 2.3: the structuring prices are the American model of record's). The legs' maturities are
+    fractional, so the comparison rescales time as the European check does (sigma sqrt(tau), r tau, q tau over one
+    Actual/365 year): an American option's optimal exercise scales with time too, so its price and delta are
+    invariant."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -361,34 +367,16 @@ class StructuringLegsOracleTest(unittest.TestCase):
         self.assertEqual(7, len(self.legs))
         self.assertEqual({"CALL", "PUT"}, {leg[1] for leg in self.legs})
 
-    def test_price_delta_gamma_vega_at_the_solved_iv(self) -> None:
+    def test_quantlib_prices_the_mid_at_the_solved_iv(self) -> None:
         for label, right, S, K, tau, r, q, sigma, mid, delta in self.legs:
             rescaled = {"S": S, "K": K, "r": r * tau, "q": q * tau, "sigma": sigma * math.sqrt(tau)}
-            theirs = _date_engine(right, rescaled, 365)
-            market = {"S": S, "K": K, "tau": tau, "r": r, "q": q, "sigma": sigma}
-            ours = greeks.european_greeks(right, **market)
+            theirs = _american_engine(right, rescaled, 365)
+            ours = american.value(right, S, K, tau, r, q, sigma)
             with self.subTest(leg=label):
-                self.assertTrue(_approx(bsm.price(right, **market), theirs["price"], PRICE_REL, PRICE_ABS), label)
-                self.assertTrue(_approx(mid, theirs["price"], 0.0, 1e-6), (label, mid, theirs["price"]))
-                self.assertTrue(_approx(ours.delta, theirs["delta"], GREEK_REL, GREEK_ABS), label)
-                self.assertTrue(_approx(delta, theirs["delta"], GREEK_REL, GREEK_ABS), label)
-                self.assertTrue(_approx(ours.gamma, theirs["gamma"], GREEK_REL, GREEK_ABS), label)
-                self.assertTrue(_approx(ours.vega, theirs["vega_per_unit"] * math.sqrt(tau) * VOL_POINT, GREEK_REL,
-                                        GREEK_ABS), label)
-
-    def test_quantlib_recovers_the_implied_volatility_from_the_mid(self) -> None:
-        for label, right, S, K, tau, r, q, sigma, mid, _delta in self.legs:
-            rescaled = {"S": S, "K": K, "r": r * tau, "q": q * tau, "sigma": sigma * math.sqrt(tau)}
-            theirs = _date_engine(right, rescaled, 365)
-            settings = ql.Settings.instance()
-            previous = settings.evaluationDate
-            try:
-                settings.evaluationDate = ql.Date(1, 1, 2020)
-                ql_sigma = theirs["option"].impliedVolatility(mid, theirs["process"], 1e-12, 1000, 1e-6, 10.0)
-            finally:
-                settings.evaluationDate = previous
-            with self.subTest(leg=label):
-                self.assertTrue(_approx(sigma, float(ql_sigma) / math.sqrt(tau), 0.0, 1e-7), (label, sigma, ql_sigma))
+                self.assertTrue(_approx(mid, theirs["price"], 0.0, AMERICAN_PRICE_REL * max(theirs["price"], 1.0)),
+                                (label, mid, theirs["price"]))
+                tolerance = lattice.BAND_DELTA_TOL if ours.near_boundary else AMERICAN_DELTA_ABS
+                self.assertTrue(_approx(ours.delta, theirs["delta"], 0.0, tolerance), (label, ours.delta, theirs))
 
 
 AMERICAN_PRICE_REL = 3e-3

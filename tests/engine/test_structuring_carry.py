@@ -108,14 +108,16 @@ class FixtureCarryTest(unittest.TestCase):
 
     def test_call_and_put_volatilities_agree_at_the_parity_carry(self) -> None:
         # the report's check: at the calendar's 1.15 % the call and put volatilities at the three strikes nearest the
-        # money are about 1.9 points apart; at the parity carry they agree within a few hundredths of a point
+        # money are about 1.9 points apart; at the parity carry they agree within a few hundredths of a point. Parity
+        # is a European relation, so the check reads the European volatilities, the carry estimate's own input
+        # (roadmap 2.3: the candidates themselves are priced on the American model)
         chain = {MAR19: self.collar.chains[MAR19]}
 
         def vols_at(ctx: "S.PricingContext") -> dict:
             out = {}
             for right in ("CALL", "PUT"):
                 for quote, listed in S.listed_options(chain, right):
-                    leg = S.price_listed(quote, listed, ctx)
+                    leg = S.price_listed(quote, listed, ctx, european_vol=True)
                     if leg.unpriced is None:
                         out[(right, leg.strike)] = leg.iv
             return out

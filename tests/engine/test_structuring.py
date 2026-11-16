@@ -1,8 +1,8 @@
 """The Structuring Desk's engine (``aegis_desk.structuring``; PR 3b, designer Q's D3-D17 under the addendum S1-S17).
 
-Every golden of designer Q's D16 is recomputed here with the landed engine (book, quote_qc, iv, greeks, payoff, pnl)
+Every golden of designer Q's D16 is recomputed here with the landed engine (book, quote_qc, american, payoff, pnl)
 and pinned exactly: money and scores as Decimal strings, deltas and implied volatilities to 1e-9 against
-``iv.implied_vol`` and ``greeks.european_greeks`` at the solved volatility. The runs use copies of
+``american.implied_vol`` and ``american.value`` at the solved volatility (the model of record, roadmap 2.3). The runs use copies of
 ``tests/fixtures/desk`` at the regular instant (``--now 2026-11-03T19:50:00Z``, quotes stamped 19:31:12Z) with the
 fixture criteria ``tests/fixtures/init/expected_structuring.toml``; the proposal goldens use copies without row 4 (the
 WMT call) or row 8 (the SPY put). Hand-built quotes pin the objectives (per-day normalisation of two protective-put
@@ -33,7 +33,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from unittest import mock
 
-from aegis_desk import (alpaca_client, approval, calendar_events, greeks, grouping, iv, market_clock, payoff, pnl,
+from aegis_desk import (alpaca_client, american, approval, calendar_events, grouping, market_clock, payoff, pnl,
                         positions_csv, quote_cache, quote_qc, structuring, structuring_config, units)
 from aegis_desk import market_types
 from aegis_desk.market_types import Quote
@@ -254,9 +254,9 @@ class PriceContractTest(unittest.TestCase):
         self.assertEqual((D("3.55"), D("3.65"), D("3.60"), "B", D("2.78")), (leg.bid, leg.ask, leg.mid, leg.grade,
                                                                            leg.spread_pct))
         tau = (market_clock.exercise_cutoff_utc(JAN15, False) - STAMP).total_seconds() / units.SECONDS_PER_YEAR
-        solved = iv.implied_vol(3.60, "CALL", 104.23, 115.0, tau, RATE, 0.009)
+        solved = american.implied_vol(3.60, "CALL", 104.23, 115.0, tau, RATE, 0.009)
         self.assertAlmostEqual(solved.sigma, leg.iv, delta=1e-12)
-        self.assertAlmostEqual(greeks.european_greeks("CALL", 104.23, 115.0, tau, RATE, 0.009, solved.sigma).delta,
+        self.assertAlmostEqual(american.value("CALL", 104.23, 115.0, tau, RATE, 0.009, solved.sigma).delta,
                                leg.delta, delta=1e-12)
         self.assertAlmostEqual(tau, leg.tau_years, delta=1e-15)
         self.assertEqual(D("0.33"), leg.abs_delta)
@@ -713,15 +713,16 @@ class AmericanCaveatTest(unittest.TestCase):
                  for leg in (low, rich, otm)]
         self.assertEqual([True, False, False], flags)
 
-    def test_long_put_with_an_absolute_delta_of_at_least_080(self) -> None:
+    def test_a_long_put_carries_no_note_under_the_american_model(self) -> None:
         ctx = pricing("ZZZ", spot=spot_qc("ZZZ", "99.99", "100.01"), q=None)
         group = group_context("100", "9000.00", symbol="ZZZ", trade_id="AG-20261101-01")
         section = dataclasses.replace(CRITERIA.protective_put, floor_pct=(D("0"), D("50")))
         deep = S.price_contract(option("ZZZ", MAR19, "put", "150", "50.40", "50.60"), ctx)
         near = S.price_contract(option("ZZZ", MAR19, "put", "95", "3.95", "4.05"), ctx)
         self.assertGreaterEqual(deep.abs_delta, D("0.80"))
-        self.assertEqual([True, False], [S.protective_put_candidate(leg, ctx, group, section).american_caveat
-                                         for leg in (deep, near)])
+        # roadmap 2.3: the American model of record prices a long put's early exercise, so its note is retired
+        self.assertEqual([False, False], [S.protective_put_candidate(leg, ctx, group, section).american_caveat
+                                          for leg in (deep, near)])
 
 
     def test_short_put_early_assignment_note_reads_the_long_puts_two_tests(self) -> None:
@@ -885,11 +886,11 @@ def by_id(answer: "S.Answer") -> Dict[str, "S.Candidate"]:
 
 def solved(occ: str, right: str, spot: str, strike: str, expiration: datetime.date, mid: str, q: float,
            stamp: datetime.datetime = STAMP) -> Tuple[float, float]:
-    """``(sigma, delta)`` solved independently from the mid with the landed iv and greeks."""
+    """``(sigma, delta)`` solved independently from the mid with the American model of record (roadmap 2.3)."""
     tau = (market_clock.exercise_cutoff_utc(expiration, False) - stamp).total_seconds() / units.SECONDS_PER_YEAR
-    result = iv.implied_vol(float(D(mid)), right, float(D(spot)), float(D(strike)), tau, RATE, q)
+    result = american.implied_vol(float(D(mid)), right, float(D(spot)), float(D(strike)), tau, RATE, q)
     assert result.ok, (occ, result)
-    return result.sigma, greeks.european_greeks(right, float(D(spot)), float(D(strike)), tau, RATE, q, result.sigma).delta
+    return result.sigma, american.value(right, float(D(spot)), float(D(strike)), tau, RATE, q, result.sigma).delta
 
 
 def money(value: Optional[float]) -> Optional[str]:
@@ -1115,13 +1116,13 @@ class ProposalGoldenTest(unittest.TestCase):
         self.assertEqual((D("22.90"), D("23.10"), D("23.00"), "A", D("0.87"), 136, 93),
                          (leg.bid, leg.ask, leg.mid, leg.grade, leg.spread_pct, leg.dte_calendar, leg.dte_trading))
         # the March chain is priced at its put-call parity carry (step 3a), not the calendar's 0.0115
-        self.assertEqual(("0.280384", "-0.298316"), ("%.6f" % leg.iv, "%.6f" % leg.delta))
+        self.assertEqual(("0.277370", "-0.304085"), ("%.6f" % leg.iv, "%.6f" % leg.delta))
         sigma, delta = solved(leg.occ, "PUT", "648.12", "610", MAR19, "23.00", answer.pricing.q_for(MAR19))
         self.assertAlmostEqual(sigma, leg.iv, delta=1e-9)
         self.assertAlmostEqual(delta, leg.delta, delta=1e-9)
         self.assertEqual((D("0.1856"), D("5.88"), D("91.504"), D("9150.40"), D("2310.00")),
                          (best.score, best.floor_pct, best.covered_per_share, best.covered_total, best.cost_total))
-        self.assertEqual(("70.17", D("4550.00"), None, True, D("655.50")),
+        self.assertEqual(("69.59", D("4550.00"), None, True, D("655.50")),
                          (money(best.after.group_delta), best.after.max_loss, best.after.max_profit,
                           best.after.unbounded_up, best.after.breakeven))
         table = [(c.id[-8:-3], c.status, format(c.score, "f")) for c in answer.ranking.candidates]
@@ -1147,10 +1148,10 @@ class ProposalGoldenTest(unittest.TestCase):
                                                                                put.spread_pct))
         self.assertEqual((D("26.40"), D("26.60"), D("26.50"), "A", D("0.75")), (call.bid, call.ask, call.mid, call.grade,
                                                                                call.spread_pct))
-        self.assertEqual(("-0.329158", "0.433348", "0.226162"), ("%.6f" % put.delta, "%.6f" % call.delta, "%.6f" % call.iv))
+        self.assertEqual(("-0.336543", "0.433348", "0.226162"), ("%.6f" % put.delta, "%.6f" % call.delta, "%.6f" % call.iv))
         self.assertEqual((D("4.92"), D("-0.75"), D("-75.00"), D("4.34"), D("4.92")),
                          (best.score, best.net_debit, best.net_debit_total, best.floor_pct, best.cap_pct))
-        self.assertEqual(("23.75", D("1165.00"), D("4835.00"), D("631.65")),
+        self.assertEqual(("23.01", D("1165.00"), D("4835.00"), D("631.65")),
                          (money(best.after.group_delta), best.after.max_loss, best.after.max_profit, best.after.breakeven))
         self.assertEqual([("ex_dividend", "crosses_ex_dividend", "#assign-ok"), ("ex_dividend", "dividend_unknown", "#assign-ok")],
                          [(a.key, a.code, a.by) for a in best.accepted])
@@ -1215,7 +1216,7 @@ class ReplacementGoldenTest(unittest.TestCase):
         self.assertEqual(("SPY261218P00620000", 8, "long", 1, D("9.80"), "bid", D("-150.00")),
                          (held.occ, held.row_number, held.side, held.contracts, held.close_price, held.close_side,
                           held.realized))
-        self.assertEqual((D("4700.00"), None, True, D("657.00"), "70.17"),
+        self.assertEqual((D("4700.00"), None, True, D("657.00"), "69.59"),
                          (candidate.after.max_loss, candidate.after.max_profit, candidate.after.unbounded_up,
                           candidate.after.breakeven, money(candidate.after.group_delta)))
         self.assertEqual((D("2370.00"), D("643.70")), (answer.before.max_loss, answer.before.breakeven))
@@ -2046,10 +2047,10 @@ class SpotBarTest(unittest.TestCase):
         answer = S.run_proposal(self.desk("640.00").market(), "AG-20261028-03", "collar", CRITERIA)
         leg = next(leg for candidate in answer.ranking.candidates for leg in candidate.legs if leg.unpriced is None)
         q = answer.pricing.q_for(leg.expiration)
-        sigma = iv.implied_vol(float(leg.mid), leg.right, 640.0, float(leg.strike), leg.tau_years, RATE, q).sigma
+        sigma = american.implied_vol(float(leg.mid), leg.right, 640.0, float(leg.strike), leg.tau_years, RATE, q).sigma
         assert_close(self, sigma, leg.iv)
-        delta = greeks.european_greeks(leg.right, float(answer.pricing.spot_mid), float(leg.strike), leg.tau_years,
-                                       RATE, q, leg.iv).delta
+        delta = american.value(leg.right, float(answer.pricing.spot_mid), float(leg.strike), leg.tau_years, RATE, q,
+                               leg.iv).delta
         assert_close(self, delta, leg.delta)
 
 

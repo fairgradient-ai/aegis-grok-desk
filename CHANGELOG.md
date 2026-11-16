@@ -2,6 +2,28 @@
 
 ## 1.0.0 (unreleased)
 
+- **Step 2.3 landed: the structuring prices and the early-exercise line** (the owner's answers to open questions 2
+  and 3).
+  - **Structuring prices.** The Structuring Desk prices every candidate on the American model of record. Without a
+    sourced yield an answer is UNAVAILABLE `dividend_unknown`, which replaces the q = 0 warning. The parity-carry
+    estimate alone keeps European volatilities, the input of its own early-exercise bound.
+  - **Notes and model wording.** The long put's `american-style note:` is retired. A short call's ex-dividend note and
+    a short put's note read `early-assignment note:`. `MODEL_LINE` and `MODEL_NOTE` name the American model. The
+    structuring texts say "dividend rate", because the structuring lint refuses the word yield.
+  - **The early-exercise line.** New `aegis_desk.early_exercise` gives `assignment_watch.py` a line under each leg it
+    lists, read by side: a long leg's exercise note or near-boundary line, a short leg's early-assignment warning, a
+    long put's wait line when a stated dividend exceeds the interest on its strike, or why the line was not
+    evaluated. It also gives the dividend note. A leg no tier lists is listed as `EARLY EXERCISE <leg>` when the lattice
+    flags it, and `--json` adds `early_exercise`. The tiers, verdicts and exit codes do not change.
+  - **Doctor.** The selftest gains an `american model` check: Hull's five-step put and an American volatility round
+    trip, so the selftest now has six sub-checks.
+  - **Journeys.** Four new journeys run on the new fixture root `tests/fixtures/desk_american` (the evening before an
+    ex-date) and on the main root. They cover a dividend tier that stays HIGH where the lattice flags nothing, the
+    wait line, the early-assignment warning, the band in the book, the exit rules' band guard, and `dividend_unknown`
+    with `NO_YIELD`.
+  - **Oracle.** The structuring-legs check compares with QuantLib's American engine.
+  - **Docs.** Every "European-only" and "American pricing is planned" line is rewritten, and the roadmap marks 2.3
+    landed.
 - **The book on the American model of record** (roadmap step 2.3, third part; the owner's answers to open questions 2
   and 3). Every option leg's IV inverts the American lattice price from its mid, and its Greeks come from the lattice
   (`aegis_desk.american`). Each leg gains `model` (`american_crr_200`), `early_exercise_premium`, `greeks_quality`,

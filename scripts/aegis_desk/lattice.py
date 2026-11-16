@@ -1,9 +1,9 @@
 """American early-exercise lattice: a Cox-Ross-Rubinstein binomial tree with a continuous dividend yield (stdlib only).
 
-Step 2.1 of ``docs/ROADMAP.md``. This module is the engine only: no tool, routine, Greek in ``book.json`` or
-structuring answer reads it yet, and the European closed form of :mod:`aegis_desk.bsm` stays the model of record until
-the wiring step (2.3) lands with its own tests. :mod:`aegis_desk.american`, the leg pricer that step wires in, turns a
-result into desk units, adds vega and rho and inverts the price for an implied volatility. Pure and synchronous: floats in, floats out; no I/O, no clock, no global
+Step 2.1 of ``docs/ROADMAP.md``, the engine of the desk's model of record since step 2.3: :mod:`aegis_desk.american`
+turns a result into desk units, adds vega and rho and inverts the price for an implied volatility, and the book, the
+exit rules, the trigger levels, the structuring tools and the assignment watch's early-exercise line
+(:mod:`aegis_desk.early_exercise`) read it through that module. Pure and synchronous: floats in, floats out; no I/O, no clock, no global
 state.
 
 Conventions are those of :mod:`aegis_desk.bsm` (``right`` is ``"CALL"`` or ``"PUT"``; ``S``, ``K`` > 0; ``tau`` in
@@ -61,9 +61,10 @@ What a result reports (:class:`LatticeResult`)
 
 Limits, stated rather than hidden
 ---------------------------------
-* The dividend is the continuous yield the rest of the engine uses (``research/calendar.toml``'s
-  ``dividend_yield``). A discrete dividend, which is what makes a short call's early assignment the evening before an
-  ex-date likely, is not modelled here; the roadmap proposes it as its own step.
+* The dividend is the continuous yield the rest of the engine uses (the sourced ``yield`` of the symbol's
+  ``ex_dividend`` entry in ``research/calendar.toml``). A discrete dividend, which is what makes a short call's early
+  assignment the evening before an ex-date likely, is not modelled here: the owner dropped that step (roadmap 2.2),
+  so the dividend tier of the expiry tools stays the test of that risk.
 * A binomial value converges to the continuous-time value at the rate ``1 / steps``, with an oscillation in the
   steps' parity; the tree's exercise boundary converges only at ``1 / sqrt(steps)``. Measured at
   :data:`DEFAULT_STEPS` against QuantLib's finite-difference American engine (2000 x 2000) on the oracle's 480-point

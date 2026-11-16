@@ -113,8 +113,8 @@ NVDA_TEXT = [
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "",
     footer("19:31"),
@@ -167,8 +167,8 @@ WMT_TEXT = [
     "",
     "> - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price",
     "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options "
-    "is not modelled",
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    "is a continuous rate, and its drop on the ex-date is not seen",
     "> - criteria: your structuring.toml (sha 5155427c)",
     "",
     footer("19:31"),
@@ -198,7 +198,7 @@ SPY_TEXT = [
     '- **max loss** 2,370.00 now, 4,700.00 after',
     '- **max profit** unbounded now, unbounded after',
     '- **breakeven** 643.70 now, 657.00 after',
-    '- **group delta** 72.36 now, 70.17 after',
+    '- **group delta** 72.36 now, 69.59 after',
     '',
     '**Replacement candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)',
     '- 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856',
@@ -211,8 +211,8 @@ SPY_TEXT = [
     "> - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it "
     'apart from the best',
     '> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC',
-    "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-    'options is not modelled',
+    "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+    'is a continuous rate, and its drop on the ex-date is not seen',
     '> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a '
     "year, because those quotes exclude the calendar's 1.15 %",
     '> - criteria: your structuring.toml (sha 5155427c)',
@@ -644,6 +644,17 @@ class FailClosedTest(DeskCopy):
         self.assertEqual(2, len(records))
         self.assertEqual((None, "criteria_missing", "UNAVAILABLE"),
                          (records[0]["criteria_sha256"], records[0]["refused_code"], records[0]["verdict"]))
+
+    def test_no_sourced_dividend_yield_is_unavailable(self) -> None:
+        # roadmap 2.3, the owner's answer to open question 3: an unknown yield is never zero, so nothing is priced
+        self.init_structuring()
+        self.edit("research/calendar.toml", "amount = 0.2350, yield = 0.0090, status", "amount = 0.2350, status")
+        self.ack()
+        body = self.run_json(expected=20)
+        payload = body["payload"]
+        self.assertEqual(("UNAVAILABLE", "dividend_unknown"), (payload["verdict"], payload["cause"]))
+        self.assertIn("an unknown dividend rate is never zero", payload["message"])
+        self.assertEqual([], [line for line in payload["message"].split("\n") if "yield" in line])
 
     def test_positions_csv_edited_after_the_acknowledgement(self) -> None:
         self.prepare()

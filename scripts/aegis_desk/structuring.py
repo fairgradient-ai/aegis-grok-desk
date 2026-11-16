@@ -43,10 +43,13 @@ at a usable grade (A-D) with both sides fresh (a ``mark_mid``) on a standard con
 shares); otherwise it is UNPRICED with exactly one code: ``market_closed``, ``quote_missing``, ``quote_undated``,
 ``quote_stale``, ``quote_one_side_stale``, ``quote_crossed``, ``zero_bid``, ``quote_wide``, ``nonstandard_contract``,
 ``spot_unavailable``, ``spot_unaligned`` (the underlying's stamp more than 60 s from the option's), ``expiring`` (under
-one hour to the exercise cutoff) or ``iv_<status>`` (the solver's status). A spread above ``[general] max_spread_pct``
+one hour to the exercise cutoff) or ``iv_<status>`` (the American solver's status). A spread above ``[general] max_spread_pct``
 is priced and OUTSIDE_BANDS ``max_spread_pct``. ``tau = (exercise_cutoff_utc - as_of) / units.SECONDS_PER_YEAR``; the IV
-inverts the mid with ``r`` = ``desk.toml``'s rate and ``q`` = the calendar's ``dividend_yield`` (0 when absent);
-Greeks are ``greeks.european_greeks`` at that IV; ``|delta|`` is read at 2 dp half-even as the exit rules read it. A
+inverts the American lattice price of the mid (``american.implied_vol``, the model of record of roadmap 2.3) with ``r``
+= ``desk.toml``'s rate and ``q`` = the calendar's sourced yield (``calendar_events.sourced_yield``: the ``yield`` of
+the ``ex_dividend`` entry, or zero for status ``none``; without one the answer is UNAVAILABLE ``dividend_unknown``,
+because an unknown yield is never zero); Greeks are the lattice's at that IV (``american.value``; in the boundary band
+gamma and theta are ``None``); ``|delta|`` is read at 2 dp half-even as the exit rules read it. A
 held leg being closed uses its conservative fresh side only (:class:`HeldLeg`): a short leg its fresh ask (> 0), a long
 leg its fresh bid (0 allowed), from any grade A-E; grade E adds :data:`GRADE_E_NOTE`.
 
@@ -115,11 +118,10 @@ from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from . import alerts, approval, book, bsm, calendar_events, carry, expiry, grouping, iv, market_clock, payoff
+from . import alerts, american, approval, book, bsm, calendar_events, carry, expiry, grouping, iv, market_clock, payoff
 from . import positions_csv
 from . import quote_cache, quote_qc
 from . import structuring_config, units
-from . import greeks as greeks_module
 from .calendar_events import CalendarFile
 from .grouping import PositionGroup
 from .market_clock import SessionInfo
@@ -285,11 +287,15 @@ CAUSE_REPLACEMENT_NOT_LISTED: str = "replacement_not_listed"
 CAUSE_POSITIONS_QUARANTINED: str = "positions_quarantined"
 """Another group of positions.csv is quarantined: its rows are not loaded, so the account's coverage cannot be
 counted (reviews L2-1 and L3-1: every structuring answer fails closed while one exists)."""
+CAUSE_DIVIDEND_UNKNOWN: str = "dividend_unknown"
+"""No sourced dividend yield for the underlying (roadmap 2.3): no leg can be priced, because an unknown yield is never
+zero."""
 CAUSE_NO_CANDIDATE_PRICED: str = "no_candidate_priced"
 """Every candidate of the evaluated chains is UNPRICED: no candidate was judged against the owner's criteria, so the
 answer is not a complete evaluation (designer Q's D12: unusable data is UNAVAILABLE, never NONE_QUALIFIES)."""
 CAUSES: Tuple[str, ...] = (CAUSE_MARKET_CLOSED, CAUSE_GROUP_QUARANTINED, CAUSE_POSITIONS_QUARANTINED,
-                           CAUSE_SPOT_UNUSABLE, CAUSE_HELD_LEG_UNUSABLE, CAUSE_EXPIRATIONS_NOT_SERVED,
+                           CAUSE_SPOT_UNUSABLE, CAUSE_DIVIDEND_UNKNOWN, CAUSE_HELD_LEG_UNUSABLE,
+                           CAUSE_EXPIRATIONS_NOT_SERVED,
                            CAUSE_CHAIN_NOT_SERVED, CAUSE_NO_CANDIDATE_PRICED, CAUSE_REPLACEMENT_NOT_LISTED)
 """Why an answer is UNAVAILABLE (designer Q's D12 and S5); every one is exit 20 in the tools."""
 NOT_REQUESTED: str = "not requested: an earlier expiration was not served"
@@ -337,13 +343,12 @@ NET_SCORE_QUANTUM: Decimal = Decimal("0.000001")
 PCT_QUANTUM: Decimal = Decimal("0.01")
 DECIMAL_DIGITS: int = 28
 AMERICAN_PUT_ABS_DELTA: Decimal = Decimal("0.80")
-"""A long put at or beyond this ``|delta|`` carries the American caveat (early exercise may be worth more)."""
+"""A short put at or beyond this ``|delta|`` carries the early-assignment note (:func:`short_put_caveat`)."""
 TICKET_MINUTES: int = 30
 GRADE_E_NOTE: str = "quote grade E: the conservative side stands"
-MODEL_NOTE: str = ("European Black-Scholes-Merton with a continuous dividend yield on the quotes' mids; US equity "
-                   "options are American and early exercise is not modelled; American pricing is planned for Stage 2 "
-                   "(not in this release)")
-WARNING_Q_ZERO: str = book.WARNING_Q_ZERO
+MODEL_NOTE: str = ("American: a Cox-Ross-Rubinstein binomial tree of %d steps with a continuous dividend yield on the "
+                   "quotes' mids, so early exercise is priced; the drop of a discrete dividend on its ex-date is not "
+                   "seen (a short call's ex-dividend risk is the dividend tier's test)" % american.lattice.DEFAULT_STEPS)
 
 TIE_BREAKS: Dict[str, Tuple[str, ...]] = {
     KIND_COVERED_CALL: ("abs_delta", "expiration", "strike", "contract"),
@@ -936,8 +941,10 @@ def _quote_reason(qc: QuoteQC) -> Optional[Reason]:
     return None
 
 
-def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
-    """Grade and price one new leg (module notes, "Pricing and quote QC"); never raises on a quote's state."""
+def price_contract(quote: Quote, ctx: PricingContext, european_vol: bool = False) -> PricedLeg:
+    """Grade and price one new leg (module notes, "Pricing and quote QC"); never raises on a quote's state.
+    ``european_vol`` solves only the European volatility and no Greeks: the input :func:`attach_chain_carry` gives
+    :func:`carry.decide`, whose early-exercise bound runs its own tree on a European volatility."""
     right = (quote.option_type or "").upper()
     if right not in (bsm.CALL, bsm.PUT) or quote.strike is None or quote.expiration_date is None:
         raise ValueError("price_contract() takes an option quote, got %r" % (quote.symbol,))
@@ -983,13 +990,17 @@ def price_contract(quote: Quote, ctx: PricingContext) -> PricedLeg:
     assert spot is not None and qc.mark_mid is not None and leg.tau_years is not None
     leg = replace(leg, spot_used=spot)
     q = ctx.q_for(expiration)
-    result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
+    if european_vol:
+        result = iv.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
+        if not result.ok or result.sigma is None:
+            return replace(leg, unpriced=Reason(KEY_UNPRICED, IV_CODE_PREFIX + result.status, leg.mid, None))
+        return replace(leg, iv=result.sigma)
+    result = american.implied_vol(float(qc.mark_mid), right, float(spot), float(strike), leg.tau_years, ctx.rate, q)
     if not result.ok or result.sigma is None:
         return replace(leg, unpriced=Reason(KEY_UNPRICED, IV_CODE_PREFIX + result.status, leg.mid, None))
     assert current_spot is not None
     # the Greeks at the current spot: the volatility is the option's, the delta is the position's now
-    values = greeks_module.european_greeks(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, q,
-                                           result.sigma)
+    values = american.value(right, float(current_spot), float(strike), leg.tau_years, ctx.rate, q, result.sigma)
     return replace(leg, iv=result.sigma, delta=values.delta, abs_delta=abs_delta_2dp(values.delta),
                    greeks={"delta": values.delta, "gamma": values.gamma, "theta": values.theta, "vega": values.vega,
                            "rho": values.rho})
@@ -1272,8 +1283,9 @@ def put_exercise_carry(leg: PricedLeg, ctx: PricingContext) -> Optional[Tuple[De
 
 
 def _put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
-    """The American caveat of a long put: absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with
-    a time value at the mid below the interest on its strike (:func:`put_exercise_carry`)."""
+    """A put's early-exercise test: absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with a time
+    value at the mid below the interest on its strike (:func:`put_exercise_carry`). Read for a short put only: the long
+    put's ``american-style note`` was retired when the American model of record priced early exercise (roadmap 2.3)."""
     if leg.abs_delta is not None and leg.abs_delta >= AMERICAN_PUT_ABS_DELTA:
         return True
     pair = put_exercise_carry(leg, ctx)
@@ -1281,11 +1293,12 @@ def _put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
 
 
 def short_put_caveat(leg: PricedLeg, ctx: PricingContext) -> bool:
-    """The early-assignment note of a short put (roadmap step 2.4): the same two tests as a long put's American caveat
-    (:func:`_put_caveat`: absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with a time value
-    at the mid below the interest on its strike to expiry). Where the holder of the put may do better exercising it
-    than holding it, the owner who is short it may be assigned before expiry, which the European model does not
-    price."""
+    """The early-assignment note of a short put (roadmap step 2.4): the two tests of
+    :func:`_put_caveat` (absolute delta at least :data:`AMERICAN_PUT_ABS_DELTA`, or in the money with a time value at
+    the mid below the interest on its strike to expiry). Where the holder of the put may do better exercising it than
+    holding it, the owner who is short it may be assigned before expiry. It stays under the American model of record
+    (roadmap 2.3): it warns from ``|delta|`` 0.80, the lattice's own flags start only near 0.95, and for a short leg a
+    missed warning is the costly error."""
     return _put_caveat(leg, ctx)
 
 
@@ -1494,7 +1507,7 @@ def protective_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupCo
     score, metrics = _put_parts(leg, ctx, section, contracts, reasons)
     assert leg.ask is not None
     after = after_state(group, contracts, [(leg, contracts, leg.ask)], None)
-    return _finish(KIND_PROTECTIVE_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg, ctx), after, **metrics)
+    return _finish(KIND_PROTECTIVE_PUT, [leg], contracts, score, reasons, (), False, after, **metrics)
 
 
 def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupContext, held: HeldLeg,
@@ -1514,7 +1527,7 @@ def replacement_put_candidate(leg: PricedLeg, ctx: PricingContext, group: GroupC
         metrics["incremental_cost_per_day"] = incremental_cost_per_day(leg.ask, held.close_price, spot,
                                                                        leg.dte_calendar, held_days)
         metrics["days_added"] = leg.dte_calendar - held_days
-    return _finish(KIND_REPLACEMENT_PUT, [leg], contracts, score, reasons, (), _put_caveat(leg, ctx), after, **metrics)
+    return _finish(KIND_REPLACEMENT_PUT, [leg], contracts, score, reasons, (), False, after, **metrics)
 
 
 def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group: GroupContext, section: Any,
@@ -1544,7 +1557,7 @@ def collar_candidate(put: PricedLeg, call: PricedLeg, ctx: PricingContext, group
         reasons.append(Reason(KEY_STRIKE_FLOOR, CODE_STRIKE_BELOW_COST, call.strike, payoff.quantize_price(group.s0)))
     kept, accepted = _call_events(call, group, section, events, held_call)
     after = after_state(group, contracts, [(put, contracts, put.ask), (call, -contracts, call.bid)], None)
-    caveat = _put_caveat(put, ctx) or _short_call_caveat(call, spot, events)
+    caveat = _short_call_caveat(call, spot, events)  # a long put's note was retired (roadmap 2.3)
     scores = {_OBJ.OBJECTIVE_CAP_WITHIN_BUDGET: (cap, None),
               _OBJ.OBJECTIVE_BAND_CENTRE: (_centre_score([("dte", put.dte_calendar, section.dte),
                                                           ("floor_pct", floor, section.floor_pct),
@@ -1617,10 +1630,10 @@ def listed_options(chains: Mapping[datetime.date, Sequence[Quote]], right: str) 
     return out
 
 
-def price_listed(quote: Quote, quotes_listed: int, ctx: PricingContext) -> PricedLeg:
+def price_listed(quote: Quote, quotes_listed: int, ctx: PricingContext, european_vol: bool = False) -> PricedLeg:
     """:func:`price_contract` of a listed contract; one listed with conflicting quotes is UNPRICED ``quote_conflict``
     and carries no price, no grade and no Greeks."""
-    leg = price_contract(quote, ctx)
+    leg = price_contract(quote, ctx, european_vol)
     if quotes_listed <= 1:
         return leg
     return replace(leg, bid=None, ask=None, mid=None, spread_pct=None, grade=None, quote_status=None,
@@ -2462,6 +2475,8 @@ _UNAVAILABLE_WORDS: Dict[str, str] = {
                                   "count the account's coverage"),
     CAUSE_NO_CANDIDATE_PRICED: "no candidate in your window could be priced",
     CAUSE_SPOT_UNUSABLE: "no usable quote of the underlying",
+    CAUSE_DIVIDEND_UNKNOWN: ("no dividend rate stated in the underlying's ex_dividend entry of research/calendar.toml "
+                             "(or status none there): an unknown dividend rate is never zero"),
     CAUSE_HELD_LEG_UNUSABLE: "no fresh conservative side for the held leg",
     CAUSE_EXPIRATIONS_NOT_SERVED: "the listed expirations were not served",
     CAUSE_CHAIN_NOT_SERVED: "an option chain in your window was not served",
@@ -2503,9 +2518,10 @@ def _priced_context(answer: Answer) -> Optional[Answer]:
     spot = group_book.spot
     if spot is None or not spot.usable_for_rules or spot.mark_mid is None:
         return _unavailable(answer, CAUSE_SPOT_UNUSABLE)
-    dividend_yield = calendar_events.dividend_yield(target.calendar, target.group.underlying)
-    if dividend_yield is None:
-        answer.warnings.append(WARNING_Q_ZERO)
+    sourced = calendar_events.sourced_yield(target.calendar, target.group.underlying)
+    if not sourced.known or sourced.value is None:
+        return _unavailable(answer, CAUSE_DIVIDEND_UNKNOWN)
+    dividend_yield = sourced.value
     market = target.market
     answer.pricing = PricingContext(now=target.now, today=target.today, session=target.session,
                                     prior_close_utc=target.prior_close_utc, bound_min=market.bound_min,
@@ -2604,7 +2620,8 @@ def _carry_value(value: Optional[float]) -> Optional[Decimal]:
 
 def attach_chain_carry(answer: Answer, chains: Mapping[datetime.date, Sequence[Quote]]) -> None:
     """The carry of each expiration of ``chains`` (step 3a of the quant review, :func:`carry.decide`): every option is
-    priced at the calendar's rate, the near-the-money calls' and puts' quotes and the puts' volatilities give the
+    priced at the calendar's rate, the near-the-money calls' and puts' quotes and the puts' European volatilities (the
+    input of :func:`carry.early_exercise_gap`'s own tree) give the
     parity estimate, and an expiration whose quotes exclude the calendar's rate is priced at its parity carry
     (:attr:`PricingContext.chain_q`). Each expiration gets a record in :attr:`Answer.carry`. No request is made."""
     pricing = answer.pricing
@@ -2621,7 +2638,7 @@ def attach_chain_carry(answer: Answer, chains: Mapping[datetime.date, Sequence[Q
         spots: List[float] = []
         for right in (bsm.CALL, bsm.PUT):
             for quote, listed in listed_options({expiration: chains[expiration]}, right):
-                leg = price_listed(quote, listed, pricing)
+                leg = price_listed(quote, listed, pricing, european_vol=True)  # carry.decide reads European vols
                 if (leg.unpriced is not None or leg.iv is None or leg.bid is None or leg.ask is None
                         or leg.tau_years is None):
                     continue

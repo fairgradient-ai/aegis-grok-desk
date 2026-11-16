@@ -1,0 +1,7 @@
+instrument_type,symbol,occ_symbol,quantity,expiration,option_right,strike,account,trade_id,opened,cost_basis_total,cost_basis_per_unit,open_price_per_share,status,closed,closed_quantity,close_price_per_unit,underlying_stop,note
+# American-model fixture book (roadmap step 2.3): three deep in-the-money legs the evening before an ex-dividend date.
+equity,WMT,,200,,,,Brokerage (margin),AG-20261201-01,2026-12-01,,98.50,,open,,,,,
+option,WMT,WMT261218C00080000,-2,,,,Brokerage (margin),AG-20261201-01,2026-12-01,-7800.00,,39.00,open,,,,,covered call
+etf,SPY,,100,,,,Roth IRA,AG-20261201-02,2026-12-01,63240.00,,,open,,,,,
+option,SPY,SPY270115P00700000,1,,,,Roth IRA,AG-20261201-02,2026-12-01,9800.00,,98.00,open,,,,,protective put
+option,NVDA,NVDA270115P00200000,-1,,,,Brokerage (margin),AG-20261201-03,2026-12-01,-4900.00,,49.00,open,,,,,cash-secured put

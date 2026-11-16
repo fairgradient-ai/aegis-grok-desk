@@ -6,7 +6,7 @@ Usage::
     python3 scripts/assignment_watch.py [--fixture-set NAME] [--json] [--schema] [--timeout S]
         [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
 
-Stage 1, European-only (``aegis_desk.expiry``). Loads ``positions.csv`` and ``research/calendar.toml``,
+The two tiers read no model price (``aegis_desk.expiry``). Loads ``positions.csv`` and ``research/calendar.toml``,
 groups the legs, reads ONE quote batch through ``quote_cache.get_quotes`` (every open option leg still
 ahead of its last trading day, its underlying and every open stock leg; never chains), grades the quotes
 with ``quote_qc.assess`` and prints, for every open short call whose underlying goes ex-dividend within
@@ -31,6 +31,12 @@ tool twice. A short leg's text ends ``; the session close: a short option is clo
 when the close governs (``act_by_basis`` ``session_close`` in each leg). On an early-close day a long leg's act-by is
 the earlier of the broker cutoff and the 13:00 ET close, marked ``early close ...: confirm your broker's cutoff``
 (``act_by_early_close`` in each leg); a short leg's 13:00 ET close carries no such mark.
+
+Beside the tiers, the early-exercise reading of the American model of record (``aegis_desk.early_exercise``, roadmap
+2.3): under every listed leg its early-exercise line (a long leg's exercise note or near-boundary line, a short leg's
+early-assignment warning, a long put's wait line, or why it was not evaluated) and its dividend note; a leg no tier lists
+is listed as ``EARLY EXERCISE <leg>`` only when the lattice flags it. The reading adds lines only: it never changes a
+tier, a verdict or the exit code. ``--json`` adds ``early_exercise``: one record per open option leg.
 """
 
 from __future__ import annotations
@@ -43,14 +49,14 @@ import datetime  # noqa: E402
 import sys  # noqa: E402
 from typing import Any, Dict, List, Optional, Sequence  # noqa: E402
 
-from aegis_desk import calendar_events, desk_config, desk_paths, expiry, grouping, market_clock, positions_csv, quote_cache, quote_qc, state  # noqa: E402
+from aegis_desk import calendar_events, desk_config, desk_paths, early_exercise, expiry, grouping, market_clock, positions_csv, quote_cache, quote_qc, state  # noqa: E402
 from aegis_desk.market_types import Quote  # noqa: E402
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "assignment_watch"
 DESCRIPTION = ("dividend (extrinsic-versus-dividend, bid side) and pin tiers for the open option legs with act-by times "
-               "(a short leg's session close or the owner's broker cutoff); Stage 1, European-only; UNAVAILABLE when a "
-               "dividend or quote is unknown")
+               "(a short leg's session close or the owner's broker cutoff), with the American model's early-exercise "
+               "line and dividend note beside them; UNAVAILABLE when a dividend or quote is unknown")
 NETWORK_ACCESS = ("GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest only "
                   "(through the quote cache); none with --offline")
 LABEL_NO_QUOTE = "no quote"
@@ -74,6 +80,11 @@ OUTPUT: Dict[str, Any] = {
     "session": "market_clock.SessionInfo.as_dict()",
     "warnings": ["string"],
     "fixture_set": "string | null (offline runs)",
+    "early_exercise": [{"row_number": "integer", "symbol": "string", "side": "long | short",
+                        "status": "flagged | wait | clear | unavailable", "reason": "string | null",
+                        "exercise_now": "boolean | null", "near_boundary": "boolean | null",
+                        "early_exercise_premium": "float | null (per share)", "iv": "float | null",
+                        "lines": ["string (printed under the leg)"]}],
     "message": "string: the human text exactly, without the final newline",
     "as_of": "ISO-8601 UTC: the instant of the text's footer line (Alpaca paper (IEX stocks, indicative options: approximate), delayed 15 min, as of HH:MM UTC)",
 }
@@ -122,6 +133,28 @@ def summary_line(sheet: expiry.ExpirySheet, session: market_clock.SessionInfo, e
     return "assignment watch %s (session %s): %s (%d fired, %d noted, %d unavailable, %d open option legs)" % (
         expiry.weekday_date(sheet.today), session.session, verdict_word(exit_code).upper(), counts["fired"],
         counts["noted"], counts["unavailable"], counts["open_option_legs"])
+
+
+def early_exercise_of(sheet: expiry.ExpirySheet, qcs: Dict[str, quote_qc.QuoteQC], rate: float,
+                      cal: Optional[calendar_events.CalendarFile],
+                      extra: Dict[Any, str]) -> Dict[int, early_exercise.EarlyExercise]:
+    """Each open option leg's early-exercise reading by row number (module notes)."""
+    readings: Dict[int, early_exercise.EarlyExercise] = {}
+    for leg in sheet.legs:
+        option = qcs.get(leg.symbol)
+        under = qcs.get(leg.underlying)
+        usable = option is not None and option.usable_for_rules
+        spot_ok = under is not None and under.usable_for_rules
+        readings[leg.row_number] = early_exercise.assess(
+            symbol=leg.underlying, right=leg.right, short=leg.side == "short", strike=leg.strike,
+            expiration=leg.expiration, last_trading_day=leg.last_trading_day,
+            am_settled=leg.settlement == expiry.SETTLEMENT_AM,
+            option_mid=option.mark_mid if usable and option is not None else None,
+            option_as_of=option.as_of if usable and option is not None else None,
+            spot_mid=under.mark_mid if spot_ok and under is not None else None,
+            spot_as_of=under.as_of if spot_ok and under is not None else None,
+            rate=rate, cal=cal, today=sheet.today, extra_holidays=extra)
+    return readings
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -213,9 +246,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     all_warnings = list(sheet.warnings) + warnings
 
+    readings = early_exercise_of(sheet, qcs, market.cfg.rates.risk_free_rate_f, cal, extra)
     lines = [summary_line(sheet, session, exit_code, counts)]
     listed = False
     for leg in sheet.legs:
+        reading = readings[leg.row_number]
         if leg.dividend is not None:
             lines.append(expiry.dividend_line(leg))
             listed = True
@@ -224,6 +259,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             listed = True
         if leg.dividend is not None or leg.pin is not None:
             lines.extend(expiry.extra_lines(leg))
+            lines.extend("  " + line for line in reading.lines)
+        elif reading.status in (early_exercise.STATUS_FLAGGED, early_exercise.STATUS_WAIT):
+            lines.append("EARLY EXERCISE %s: last trading day %s; %s" % (leg.head, expiry.weekday_date(leg.last_trading_day),
+                                                                         leg.act_by_text))
+            lines.extend("  " + line for line in reading.lines)
+            listed = True
     if not listed:
         lines.append(NOTHING_LINE)
     for group_id in sorted(sheet.quarantined):
@@ -246,6 +287,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "session": session.as_dict(),
             "warnings": all_warnings,
             "fixture_set": market.fixture_set,
+            "early_exercise": [dict(readings[leg.row_number].as_dict(), row_number=leg.row_number, symbol=leg.symbol,
+                                    side=leg.side) for leg in sheet.legs],
             "message": message,
             "as_of": state.format_utc(footer_as_of),
         })

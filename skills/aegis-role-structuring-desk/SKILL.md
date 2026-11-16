@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 3156c669b66d36c622a8b865367ddfb944738885f556049e7d238d1f661ede8e
+  source_sha256: d84969f778fe97b81469ae2a563de5061982cfc8f3249e7b680f2907daa9c870
 ---
 
 # Aegis Structuring Desk: role skill
@@ -147,7 +147,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC

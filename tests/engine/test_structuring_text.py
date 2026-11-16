@@ -261,8 +261,8 @@ class FixedLineTest(unittest.TestCase):
         self.assertEqual("if you decide to act, you type it into your brokerage account yourself", T.ACT_LINE)
         self.assertEqual("after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
                          T.AFTER_FILL_LINE)
-        self.assertEqual("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these "
-                         "American-style options is not modelled", T.MODEL_LINE)
+        self.assertEqual("prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+                         "is a continuous rate, and its drop on the ex-date is not seen", T.MODEL_LINE)
         self.assertEqual("the score ranks the candidates only on the objective you chose; it is not a forecast",
                          T.CAVEAT_LINE)
         self.assertEqual("a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
@@ -461,7 +461,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 """ + FOOTER
@@ -489,7 +489,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 """ + FOOTER
@@ -515,7 +515,7 @@ SPY_ROLL = """### STRUCTURING AG-20261028-03 | SPY protective put: the roll anal
 - **max loss** 2,370.00 now, 4,700.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 643.70 now, 657.00 after
-- **group delta** 72.36 now, 70.17 after
+- **group delta** 72.36 now, 69.59 after
 
 **Replacement candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
 - 🟢 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
@@ -527,7 +527,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
 > - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 
@@ -570,7 +570,7 @@ WMT_CALL = """### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
 > - if you decide to act, you type it into your brokerage account yourself
@@ -596,7 +596,7 @@ SPY_PUT = """### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY share
 - **max loss** 63,240.00 now, 4,550.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 632.40 now, 655.50 after
-- **group delta** 100.00 now, 70.17 after
+- **group delta** 100.00 now, 69.59 after
 
 **Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
@@ -609,7 +609,7 @@ SPY_PUT = """### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY share
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
 > - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
@@ -641,7 +641,7 @@ SPY_COLLAR = """### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you
 - **max loss** 63,240.00 now, 1,165.00 after
 - **max profit** unbounded now, 4,835.00 after
 - **breakeven** 632.40 now, 631.65 after
-- **group delta** 100.00 now, 23.75 after
+- **group delta** 100.00 now, 23.01 after
 
 **Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
@@ -658,7 +658,7 @@ not paired, outside their bands: 7 puts outside your floor band and 10 calls out
 > - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
 > - tie on cap_within_budget broken by the put strike (higher first)
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
@@ -685,7 +685,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 """ + FOOTER
@@ -816,15 +816,15 @@ class GoldenTextTest(unittest.TestCase):
         w = T.Writer()
         deep = dataclasses.replace(best, legs=(dataclasses.replace(leg, abs_delta=D("0.85")),), american_caveat=True)
         self.assertEqual("early-assignment note: the 2027-03-19 625 put is deep in the money (absolute delta 0.85); a "
-                         "short put this deep can be assigned before expiry, and the European model does not price "
-                         "that", T.american_line(w, deep, self.short_put.pricing))
+                         "short put this deep can be assigned before expiry"
+                         "", T.american_line(w, deep, self.short_put.pricing))
         carry_leg = dataclasses.replace(leg, strike=D("700"), mid=D("52.00"), abs_delta=D("0.70"))
         itm = dataclasses.replace(best, legs=(carry_leg,), american_caveat=True)
         line = T.american_line(w, itm, self.short_put.pricing)
         self.assertTrue(line.startswith("early-assignment note: the 2027-03-19 700 put is in the money and its time "
                                         "value at the mid, "), line)
-        self.assertTrue(line.endswith("; a short put can then be assigned before expiry, and the European model does "
-                                      "not price that"), line)
+        self.assertTrue(line.endswith("; a short put can then be assigned before expiry"
+                                      ""), line)
         with self.assertRaises(ValueError):  # an out-of-the-money put carries no note
             T.short_put_line(w, best, self.short_put.pricing)
         # the note passes the structuring lint inside a full answer

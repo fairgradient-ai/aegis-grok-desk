@@ -46,8 +46,9 @@ Callers that have no sigma for an expired leg use :func:`intrinsic` directly.
 
 Very small ``sigma * sqrt(tau)`` (a quote minutes from expiry) is NOT an error: ``N`` saturates
 at 0 or 1 and every function converges to its intrinsic-limit value without NaN or overflow.
-Equity options are American; this European closed form is the Stage-1 model of record and a
-documented approximation for early-exercise situations (Aegis MODEL_NOTE).
+Equity options are American: the desk's model of record is the American lattice (``aegis_desk.american``, roadmap
+2.3), which uses this closed form as its control variate; the parity-carry estimate and the doctor's golden read it
+directly.
 """
 
 from __future__ import annotations

@@ -1,0 +1,14 @@
+# American-model fixture calendar (roadmap step 2.3): schema version 2, every yield sourced in its ex_dividend entry.
+schema_version = 2
+
+[symbols.WMT]
+ex_dividend = { date = 2026-12-18, amount = 0.2350, yield = 0.0090, status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-12-14T12:00:00Z }
+
+[symbols.SPY]
+ex_dividend = { date = 2026-12-18, amount = 1.85, yield = 0.0115, status = "estimated", source = "owner-entered (fixture)", checked_utc = 2026-12-14T12:00:00Z }
+
+[symbols.NVDA]
+ex_dividend = { status = "none", source = "owner-entered (fixture): no dividend before January", checked_utc = 2026-12-14T12:00:00Z }
+
+[settlement]
+am_settled_roots = ["SPX", "NDX", "RUT", "VIX", "DJX", "XSP"]

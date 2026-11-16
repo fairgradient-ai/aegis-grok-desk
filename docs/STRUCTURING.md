@@ -56,7 +56,7 @@ the same width: `--new-strike` names the new short leg and the long leg keeps th
 new long leg, closes the held short, closes the held long and opens the new short, which the new long call covers (a
 defined-risk spread, level 3 by the desk's convention); no `structuring.toml` section judges it, so it prints the new
 vertical's width and net and the roll's net in place of checks. A vertical has no roll analysis. Weekly expirations,
-American pricing, scenario, a cash-balance check and per-account approval levels are planned for
+scenario, a cash-balance check and per-account approval levels are planned for
 Stage 2 (not in this release).
 
 ## Only when you ask
@@ -270,8 +270,8 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
   is a standard contract of the underlying; a spread above `max_spread_pct` is still priced and falls OUTSIDE_BANDS
   `max_spread_pct`. A contract the chain lists more than once with different quotes is not priced (`the chain lists the
   contract more than once with different quotes`); identical copies count once. Its implied volatility is solved from
-  the mid with the European Black-Scholes-Merton model and the dividend yield of `research/calendar.toml` (0 with a
-  warning), unless that expiration's own quotes rule it out (the next item). A held leg you would close is priced at its conservative fresh side, which is the ask for a short and the
+  the mid with the American model (a binomial tree) and the sourced dividend yield of `research/calendar.toml` (with
+  none the answer is UNAVAILABLE `dividend_unknown`), unless that expiration's own quotes rule it out (the next item). A held leg you would close is priced at its conservative fresh side, which is the ask for a short and the
   bid for a long. At grade E that side still stands, with the note `quote grade E: the conservative side stands`.
 - **The carry of each expiration.** Before the candidates are priced, each expiration's near-the-money calls and puts
   give the carry their put-call parity implies, with two bounds: one for the quotes' own width, and one, from a
@@ -395,11 +395,11 @@ A short call (a covered call, a replacement call, a collar's call) is checked ag
   call's last trading day; the calendar holds one`.
 - An accepted label stays visible, as a yellow item whose criteria part reads `accepted by #assign-ok`, `accepted by
   #earnings-ok` or `accepted by your structuring.toml`.
-- A short call in the money whose bid's time value is below a dividend before its last trading day, or a long put
-  with an absolute delta of 0.80 or more, or a long put in the money (K > S) whose time value at the mid is below the
-  interest on its strike to expiry, K x (1 - e^(-r x tau)), gets an `american-style note:` in the notes: early
-  exercise can matter there, and the European model does not price it. A put at or out of the money never gets the
-  note from the interest test: exercising it now pays nothing.
+- A short call in the money whose bid's time value is below a dividend before its last trading day gets an
+  `early-assignment note:` in the notes: the prices treat the dividend as a continuous rate and do not see its drop on
+  the ex-date. A short put with an absolute delta of 0.80 or more, or in the money (K > S) with a time value at the mid
+  below the interest on its strike to expiry, K x (1 - e^(-r x tau)), gets the same note. A long put gets none: the
+  American model prices its early exercise (the long put's `american-style note:` was retired in roadmap step 2.3).
 
 ## The approval-level check
 
@@ -512,7 +512,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
@@ -550,7 +550,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC
@@ -611,7 +611,7 @@ named by the roll analysis above:
 
 > - after 20:20 UTC its quotes are too old, and a new ticket needs a new request
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - the desk does not see your cash balance
 > - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines
 > - you supply the limit; the desk prints none
@@ -692,7 +692,7 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 - **max loss** 63,240.00 now, 4,550.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 632.40 now, 655.50 after
-- **group delta** 100.00 now, 70.17 after
+- **group delta** 100.00 now, 69.59 after
 
 **Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
@@ -705,7 +705,7 @@ long put row, so the SPY group holds shares only, and whose share row carries `#
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
 > - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
@@ -741,7 +741,7 @@ On the same copy, `--structure collar`:
 - **max loss** 63,240.00 now, 1,165.00 after
 - **max profit** unbounded now, 4,835.00 after
 - **breakeven** 632.40 now, 631.65 after
-- **group delta** 100.00 now, 23.75 after
+- **group delta** 100.00 now, 23.01 after
 
 **Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
@@ -758,7 +758,7 @@ not paired, outside their bands: 7 puts outside your floor band and 10 calls out
 > - cap_within_budget: the cap's distance above the share price, in percent, among pairs within your net-debit budget
 > - tie on cap_within_budget broken by the put strike (higher first)
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
@@ -862,10 +862,12 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
 
 ## Limits
 
-- **Pricing.** European Black-Scholes-Merton with a continuous dividend yield, on the quotes' mids. US equity options
-  are American-style, and early exercise is not modelled; the `american-style note:` line marks the cases where it can
-  matter. American pricing is planned for Stage 2 (not in this release). Its engine, the lattice
-  `scripts/aegis_desk/lattice.py`, is in the tree, and no tool reads it yet ([the roadmap](ROADMAP.md), step 2.1).
+- **Pricing.** American: a Cox-Ross-Rubinstein binomial tree of 200 steps (`american.py` on `lattice.py`) with a
+  continuous dividend yield, on the quotes' mids, so early exercise is priced. The yield is the sourced one in
+  `research/calendar.toml`; without it the answer is UNAVAILABLE `dividend_unknown`. The drop of a discrete dividend on
+  its ex-date is not seen, so a short call's ex-dividend risk keeps the dividend tier's test and the
+  `early-assignment note:`. Near the early-exercise boundary a leg's delta is approximate within 0.05 and its gamma and
+  theta are null ([the roadmap](ROADMAP.md), step 2.3).
 - **Data.** Alpaca's free feed: IEX stock quotes (real time, IEX only) and indicative option quotes, delayed 15
   minutes and approximate (not exchange quotes), so every option price a structuring text names is approximate; the
   desk treats every quote as 15 minutes delayed. A ticket is computed only while the session is open, and it

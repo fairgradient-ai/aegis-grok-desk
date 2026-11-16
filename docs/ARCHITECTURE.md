@@ -131,12 +131,15 @@ Without `--desk-root` a tool reads the current directory; `routine.py` alone def
   within 1e-8 relative, Greeks within 1e-6).
 - **Implied volatility.** `iv.py`: a bracketed Brent solver with arbitrage bounds. A failure is a status (`expired`,
   `below_intrinsic`, `above_bound`, `no_root`), never a number.
-- **Greeks.** `greeks.py`, in desk units: theta per calendar day, vega per volatility point, rho per rate point. In
-  Stage 1 they are European; American Greeks are planned for Stage 2 (not in this release).
+- **Greeks.** In desk units: theta per calendar day, vega per volatility point, rho per rate point. The model of record
+  is American (`american.py` on the lattice below; roadmap step 2.3): the book, the exit rules, the trigger levels and
+  the structuring tools read it, and `greeks.py` keeps the European closed form the lattice uses as its control
+  variate.
 - **The American lattice.** `lattice.py`: a Cox-Ross-Rubinstein tree with the continuous dividend yield, giving an
-  American value, its early-exercise premium and tree Greeks. It is the engine of [ROADMAP.md](ROADMAP.md) step 2.1:
-  no tool reads it yet, so every answer is still European. It is tested against the American put Hull prints, and the
-  CI oracle compares it with QuantLib's finite-difference American engine.
+  American value, its early-exercise premium and tree Greeks ([ROADMAP.md](ROADMAP.md) step 2.1). `american.py` turns
+  it into the model of record (step 2.3) and `early_exercise.py` into the early-exercise line beside the expiry tiers.
+  It is tested against the American put Hull prints, and the CI oracle compares it with QuantLib's finite-difference
+  American engine.
 - **The market clock.** `market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed
   from the NYSE hours calendar, with the America/New_York daylight-saving rule (no `tzdata` needed). The table expires
   on 2027-12-31; the doctor's check 3 fails 60 days before that.
@@ -186,10 +189,11 @@ The owner's decisions behind the design (2026-10-30):
 
 ## Later stages (planned)
 
-[ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. The first
-step's engine, the American lattice `scripts/aegis_desk/lattice.py`, is in the tree, but no tool reads it yet.
+[ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
+the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4) and the volatility context
+tool (2.9).
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with American pricing,
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with
   scenario and event stress and a decision calendar, are planned for Stage 2 (not in this release). Volatility
   context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
 - For the Aegis Structuring Desk, weekly expirations, a cash-balance check and per-account approval levels are

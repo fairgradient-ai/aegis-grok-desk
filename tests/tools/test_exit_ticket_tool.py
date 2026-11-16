@@ -119,8 +119,8 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "",
         "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
         "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-        "options is not modelled",
+        "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+        "is a continuous rate, and its drop on the ex-date is not seen",
         "> - the desk does not see your cash balance",
         "> - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
         "> - you supply the limit; the desk prints none",
@@ -231,8 +231,8 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "",
         "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
         "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-        "options is not modelled",
+        "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+        "is a continuous rate, and its drop on the ex-date is not seen",
         "> - the desk does not see your cash balance",
         "> - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines",
         "> - you supply the limit; the desk prints none",
@@ -333,7 +333,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **max loss** 2,370.00 now, 4,700.00 after",
         "- **max profit** unbounded now, unbounded after",
         "- **breakeven** 643.70 now, 657.00 after",
-        "- **group delta** 72.36 now, 70.17 after",
+        "- **group delta** 72.36 now, 69.59 after",
         "",
         "**Approval-level check (leg 1 first):** the highest step needs level 2 by the desk's convention, within "
         "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -343,8 +343,8 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "",
         "> - after 20:20 UTC its quotes are too old, and a new ticket needs a new request",
         "> - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC",
-        "> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-        "options is not modelled",
+        "> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+        "is a continuous rate, and its drop on the ex-date is not seen",
         "> - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % "
         "a year, because those quotes exclude the calendar's 1.15 %",
         "> - the desk does not see your cash balance",

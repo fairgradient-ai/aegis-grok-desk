@@ -90,7 +90,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | --- | --- | --- | --- |
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
-| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | in progress: the book is wired; the structuring tools are next |
+| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | landed |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
@@ -139,7 +139,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Revisit if** you later want a line that says a short call is likely to be assigned before an ex-date. That needs
   this step and a calendar with a list of ex-dates, together, as a new decision.
 
-### 2.3 The lattice wired in
+### 2.3 The lattice wired in (landed)
 
 - **What landed first: the leg pricer, not wired.** `scripts/aegis_desk/american.py` prices one leg on the model of
   record: the lattice's price, delta, gamma and theta in desk units, vega and rho as central differences of the
@@ -158,6 +158,20 @@ context, sourced dates) and widens the Structuring Desk's scope.
   `abs_delta`, trigger levels on the lattice delta, and `vol_context` on American days only. Still to land: the
   structuring prices, the early-exercise lines with the yield note and the put wait line, the journeys and the
   doctor's American check.
+- **What landed last: the structuring prices and the early-exercise line.** The Structuring Desk prices every
+  candidate on the leg pricer and answers UNAVAILABLE `dividend_unknown` without a sourced yield; its parity-carry
+  estimate alone keeps European volatilities, the input of its own early-exercise bound. The long put's
+  `american-style note:` is retired, a short call's dividend note and a short put's note read `early-assignment
+  note:`, and the `MODEL_LINE` and `MODEL_NOTE` name the American model. `aegis_desk.early_exercise` gives
+  `assignment_watch.py` its early-exercise line under each listed leg (and lists a leg no tier lists when the lattice
+  flags it), the dividend note and the long put's wait line; it adds lines only, never a tier change or an exit code.
+  One reading of your answer: at a volatility implied from a mid above the intrinsic value, the tree holds at its
+  root, so a quoted deep in-the-money put reads `near_boundary` rather than `exercise_now`; the wait line therefore
+  applies to a long put the lattice flags either way. The doctor's selftest gains the American check (Hull's five-step
+  put and an American volatility round trip), and four journeys on the new root `tests/fixtures/desk_american` (the
+  evening before an ex-date) and the main root show the tier that stays HIGH, the wait line, the early-assignment
+  warning, the band in the book, the band guard of the exit rules and `dividend_unknown`. Every line this step made
+  untrue is rewritten.
 - **What lands.** The book's Greeks and implied volatility and the Structuring Desk's prices move to the lattice.
   `book.json` names the model each leg was priced with, and `docs/TOOLS.md` is regenerated. The structuring
   `american-style note:`, the `MODEL_LINE` and the `MODEL_NOTE` change with it, and counsel signs the new wording.
@@ -553,7 +567,7 @@ only the files that do.
 
 | Item | Step | Mentioned in |
 | --- | --- | --- |
-| American pricing: the desk's prices and Greeks, and early-exercise analysis beside the expiry tiers | 2.3 (2.1 rewrote the lines that named the lattice or an early-exercise model) | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `docs/PROVENANCE.md`, `docs/STRUCTURING.md`, `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `scripts/aegis_desk/structuring.py` (`MODEL_NOTE`, `_put_caveat`), `scripts/aegis_desk/structuring_text.py` (`MODEL_LINE`), `scripts/aegis_desk/bsm.py` and `scripts/aegis_desk/iv.py` (module notes), `tests/engine/test_lattice.py` (the `MODEL_NOTE` assertion) |
+| American pricing: the desk's prices and Greeks, and early-exercise analysis beside the expiry tiers (landed) | 2.3 (2.1 rewrote the lines that named the lattice or an early-exercise model; 2.3 rewrote the rest) | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `docs/PROVENANCE.md`, `docs/STRUCTURING.md`, `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `scripts/aegis_desk/structuring.py` (`MODEL_NOTE`, `_put_caveat`), `scripts/aegis_desk/structuring_text.py` (`MODEL_LINE`), `scripts/aegis_desk/bsm.py` and `scripts/aegis_desk/iv.py` (module notes), `tests/engine/test_lattice.py` (the `MODEL_NOTE` assertion) |
 | The parity-carry bound's own tree (proposed here) | 2.3 | `scripts/aegis_desk/carry.py` (`_tree`, `early_exercise_gap`, `TREE_STEPS`), `docs/STRUCTURING.md` (the carry of each expiration) |
 | Roll analyses (a long put's, a short put's and a collar's landed; a vertical rolls by ticket) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
 | Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
@@ -582,24 +596,20 @@ both counts reach zero.
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
 | `agents/desk-lead.md` | 3 | 3 |
-| `agents/position-control.md` | 2 | 0 |
-| `docs/ARCHITECTURE.md` | 3 | 1 |
-| `docs/FAQ.md` | 2 | 0 |
-| `docs/PROVENANCE.md` | 1 | 0 |
-| `docs/STRUCTURING.md` | 3 | 0 |
-| `scripts/roll_analysis.py` | 1 | 0 |
+| `agents/position-control.md` | 1 | 0 |
+| `docs/ARCHITECTURE.md` | 2 | 1 |
+| `docs/FAQ.md` | 1 | 0 |
+| `docs/STRUCTURING.md` | 2 | 0 |
 | `scripts/aegis_desk/book.py` | 1 | 0 |
-| `scripts/aegis_desk/structuring.py` | 1 | 0 |
+| `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 1 | 0 |
-| `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
-| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 3 | 0 |
+| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 2 | 0 |
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
-| `skills/aegis-role-position-control/SKILL.md` | 2 | 0 |
+| `skills/aegis-role-position-control/SKILL.md` | 1 | 0 |
 | `skills/aegis-roll-decision-framework/SKILL.md` | 1 | 0 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |
-| `tests/engine/test_lattice.py` | 1 | 0 |
