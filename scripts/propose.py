@@ -122,8 +122,8 @@ _LEG_SHAPE: Dict[str, Any] = {
     "ask": "decimal string | null", "mid": "decimal string | null", "spread_pct": "decimal string | null",
     "grade": "A-F | null", "quote_status": "string | null", "quote_age_min": "integer | null",
     "as_of": "ISO-8601 UTC | null", "tau_years": "float | null", "iv": "float | null (iv.implied_vol at the mid)",
-    "delta": "float | null (greeks.european_greeks)", "abs_delta": "decimal string | null (2 dp, half-even)",
-    "greeks": "{delta, gamma, theta, vega, rho: float} | null",
+    "delta": "float | null (american.value: the American model of record)", "abs_delta": "decimal string | null (2 dp, half-even)",
+    "greeks": "{delta, vega, rho: float; gamma, theta: float | null (null near the early-exercise boundary)} | null",
     "unpriced": "UNPRICED code | null (market_closed, quote_missing, ..., iv_<status>)",
     "spot_bar_utc": "ISO-8601 UTC | null (the one-minute bar the volatility was solved against)",
     "spot_used": "decimal string | null (the stock price the volatility and a call's time value read)",
@@ -143,7 +143,7 @@ _CANDIDATE_SHAPE: Dict[str, Any] = {
     "accepted": [{"key": "earnings | ex_dividend", "code": "string", "by": "#earnings-ok | #assign-ok | your "
                   "structuring.toml", "value": "any", "threshold": "any"}],
     "lost_because": "{by, ...} | null (the status or the first rule that separated it from the best)",
-    "american_caveat": "boolean (early exercise matters for this leg; the text names it)",
+    "american_caveat": "boolean (a short leg carries an early-assignment note; the text names it)",
     "extrinsic_bid": "decimal string | null (covered call)", "net_credit": "null",
     "net_credit_total": "null", "credit_total": "decimal string | null (covered call: bid x 100 x contracts)",
     "floor_pct": "decimal string | null (protective put, collar)", "cap_pct": "decimal string | null (collar)",
@@ -193,7 +193,7 @@ OUTPUT: Dict[str, Any] = {
     "failure_counts": "{structuring.toml key: n} | null (the failing candidates; the unpriced apart)",
     "outside_bands": "{puts, calls} | null (collar: the legs outside their floor and cap bands, not paired)",
     "after": dict(_AFTER_SHAPE),
-    "model_note": "string (European Black-Scholes-Merton; early exercise not modelled)",
+    "model_note": "string (American: a binomial tree of 200 steps; early exercise priced, a discrete dividend's drop not seen)",
     "carry": [{"expiration": "YYYY-MM-DD", "source": "parity | calendar_unresolved | calendar_gap | "
                                                      "calendar_too_few_strikes",
                "q": "decimal string (the carry the expiration was priced at)",

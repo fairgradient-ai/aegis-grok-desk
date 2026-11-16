@@ -6,7 +6,7 @@ Usage::
     python3 scripts/expiry_checklist.py (--week | --tomorrow | --final-call) [--fixture-set NAME] [--json]
         [--schema] [--timeout S] [--desk-root DIR] [--offline] [--now ISO-8601-UTC]
 
-Stage 1, European-only (``aegis_desk.expiry``, the same functions as ``assignment_watch.py``). Loads
+The tiers read no model price (``aegis_desk.expiry``, the same functions as ``assignment_watch.py``). Loads
 ``positions.csv`` and ``research/calendar.toml``, groups the legs, reads ONE quote batch through
 ``quote_cache.get_quotes`` (never chains) and lists, per open option leg: ``--week`` every contract whose
 last trading day falls in the current ET week (Monday to Sunday), ``--tomorrow`` the contracts whose last

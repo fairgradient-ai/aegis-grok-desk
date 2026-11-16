@@ -12,7 +12,13 @@ metadata:
 
 Expiration is the one event that changes the book without a trade. Aegis Position Control owns it from the first
 docket line to the Monday reconciliation. Every time, tier and outcome below is computed by a tool; the Bot quotes it.
-The analysis is European-only in Stage 1: early-exercise analysis is planned for Stage 2 (not in this release).
+The tiers read quotes and stated dividends, never a model price. Beside them, the assignment watch prints the
+American model's early-exercise line under each leg it lists, and lists a leg no tier lists when the model flags it:
+`early exercise:` for a long leg (an exercise note, or near the boundary, which signals neither exercising nor
+holding), `early assignment:` for a short leg, and for a long put before a stated dividend larger than the interest on
+its strike, `early exercise: not flagged`. A `dividend note:` says the model prices the dividend as a yield and does not
+see its drop on the ex-date; for a call the dividend tier is the test. These lines add warnings only: no tier, verdict
+or exit code changes. `early exercise not evaluated: <why>` is UNAVAILABLE, never a guess.
 
 ## Exercise by exception and the one-cent rule
 

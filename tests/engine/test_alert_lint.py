@@ -439,8 +439,8 @@ class StructuringFooterTest(unittest.TestCase):
                      "the score ranks the candidates only on the objective you chose; it is not a forecast",
                      "a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its expiration "
                      "and strike",
-                     "prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-                     "options is not modelled",
+                     "prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend "
+                     "is a continuous rate, and its drop on the ex-date is not seen",
                      "entered as one multi-leg order, some brokers class a roll as a spread, which can need a higher "
                      "level",
                      "approval: the highest step needs level 1 by the desk's convention, within your self-attested "

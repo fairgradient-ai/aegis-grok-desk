@@ -221,7 +221,7 @@ A copy whose SPY put row was removed, so AG-20261028-03 holds 100 SPY shares onl
 - **max loss** 63,240.00 now, 4,550.00 after
 - **max profit** unbounded now, unbounded after
 - **breakeven** 632.40 now, 655.50 after
-- **group delta** 100.00 now, 70.17 after
+- **group delta** 100.00 now, 69.59 after
 
 **Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
@@ -234,7 +234,7 @@ A copy whose SPY put row was removed, so AG-20261028-03 holds 100 SPY shares onl
 > - stress_cost_per_day: the put's ask per calendar day per 100 of loss it offsets at your stress drop
 > - rank 2 lies within the best's own quote spread on stress_cost_per_day: these quotes do not tell it apart from the best
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - carry: the 2027-03-19 options are priced at the dividend carry their put-call parity implies, 0.01 % a year, because those quotes exclude the calendar's 1.15 %
 > - criteria: your structuring.toml (sha 5155427c)
 > - you supply the limit; the desk prints none
@@ -264,7 +264,7 @@ candidates.
 - **max loss** 63,240.00 now, 1,165.00 after
 - **max profit** unbounded now, 4,835.00 after
 - **breakeven** 632.40 now, 631.65 after
-- **group delta** 100.00 now, 23.75 after
+- **group delta** 100.00 now, 23.01 after
 
 **Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
 - 🟢 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75

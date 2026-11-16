@@ -32,9 +32,10 @@ Input errors (programming errors, never quotes) raise :class:`ValueError` exactl
 :mod:`aegis_desk.bsm` does: ``right`` not ``"CALL"``/``"PUT"``, ``S <= 0``, ``K <= 0``, or any
 non-finite or non-numeric ``price``, ``S``, ``K``, ``tau``, ``r``, ``q``.
 
-The European closed form is the Stage-1 model of record; a deep in-the-money American quote at
-undiscounted intrinsic can legitimately come back ``"below_intrinsic"`` under it (documented
-limitation, Aegis MODEL_NOTE). Pure function API only; no vectorisation.
+The European solver behind the American one (``aegis_desk.american.implied_vol`` starts from its answer, roadmap
+2.3) and the parity-carry estimate; a deep in-the-money American quote at undiscounted intrinsic can legitimately come
+back ``"below_intrinsic"`` under it, which is why the model of record inverts the American price instead. Pure function
+API only; no vectorisation.
 """
 
 from __future__ import annotations

@@ -159,7 +159,7 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   Its first lines name the run instant and your Python version. Its last two lines, on a passing computer:
 
   ```text
-  [PASS] 12 selftest: engine selftest: 5 of 5 sub-checks passed (bsm golden, iv round trip, DST transitions, TOML reader, alert lint)
+  [PASS] 12 selftest: engine selftest: 6 of 6 sub-checks passed (bsm golden, iv round trip, american model, DST transitions, TOML reader, alert lint)
   verdict: PASS (2 checks; warnings: none; failures: none); nothing written (selftest)
   ```
 

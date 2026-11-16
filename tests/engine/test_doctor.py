@@ -631,13 +631,21 @@ class SelftestTest(unittest.TestCase):
     def test_every_sub_check_passes(self) -> None:
         self.assertEqual([(name, True) for name in doctor.SELFTEST_NAMES], doctor.selftest_results())
         item = doctor.selftest_check()
-        self.assertEqual((12, "PASS", "engine selftest: 5 of 5 sub-checks passed (bsm golden, iv round trip, DST "
-                                      "transitions, TOML reader, alert lint)"), (item.number, item.status, item.reason))
+        self.assertEqual((12, "PASS", "engine selftest: 6 of 6 sub-checks passed (bsm golden, iv round trip, american "
+                                      "model, DST transitions, TOML reader, alert lint)"),
+                         (item.number, item.status, item.reason))
 
     def test_a_broken_engine_fails_by_name(self) -> None:
         with mock.patch.object(bsm, "price", return_value=13.5):
             item = doctor.selftest_check()
-        self.assertEqual(("FAIL", "engine selftest: bsm golden, iv round trip"), (item.status, item.reason))
+        # the American lattice's control variate is the closed form, so a broken closed form breaks it too
+        self.assertEqual(("FAIL", "engine selftest: bsm golden, iv round trip, american model"),
+                         (item.status, item.reason))
+        broken = doctor.iv.IvResult(sigma=None, status="no_root", iterations=0, residual=None, lower_bound=0.0,
+                                    upper_bound=1.0)
+        with mock.patch.object(doctor.american, "implied_vol", return_value=broken):
+            item = doctor.selftest_check()
+        self.assertEqual(("FAIL", "engine selftest: american model"), (item.status, item.reason))
         with mock.patch.object(doctor.toml_compat, "loads", side_effect=ValueError("broken reader")):
             item = doctor.selftest_check()
         self.assertEqual(("FAIL", "engine selftest: TOML reader"), (item.status, item.reason))
@@ -649,6 +657,8 @@ class SelftestTest(unittest.TestCase):
     def test_the_golden_is_the_suite_s_golden_of_record(self) -> None:
         self.assertEqual(13.494231234329277, doctor.SELFTEST_BSM_GOLDEN)
         self.assertEqual(("CALL", 162.06, 170.163, 1.553, 0.05, 0.052, 0.226), doctor.SELFTEST_BSM_ARGS)
+        # Hull's five-step American put, as tests/engine/test_lattice.py pins it (Hull prints 4.49)
+        self.assertEqual(4.488458534725913, doctor.SELFTEST_AMERICAN_GOLDEN)
 
 
 class RecordTest(DeskCopy):

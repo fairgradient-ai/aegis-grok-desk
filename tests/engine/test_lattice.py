@@ -501,10 +501,11 @@ class TreeWordingTest(unittest.TestCase):
         self.ALLOWED = (sentence,)
         self.assertEqual([], self.claims(sentence))
 
-    def test_the_structuring_model_note_names_american_pricing_as_planned(self) -> None:
+    def test_the_structuring_model_note_names_the_american_model(self) -> None:
+        # roadmap 2.3: the structuring prices are the American model of record's
         from aegis_desk import structuring
-        self.assertNotIn("lattice", structuring.MODEL_NOTE)
-        self.assertIn("American pricing is planned for Stage 2 (not in this release)", structuring.MODEL_NOTE)
+        self.assertTrue(structuring.MODEL_NOTE.startswith("American: a Cox-Ross-Rubinstein binomial tree of 200 steps"))
+        self.assertNotIn("planned", structuring.MODEL_NOTE)
 
 
 if __name__ == "__main__":

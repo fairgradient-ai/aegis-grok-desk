@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "ex_dividends": {
+    "WMT": {"date": "2026-11-24", "amount": "0.2350", "status": "confirmed"},
+    "NVDA": {"date": "2026-12-03", "amount": "0.01", "status": "confirmed"},
+    "SPY": {"date": "2026-12-18", "amount": "1.85", "status": "estimated"}
+  }
+}

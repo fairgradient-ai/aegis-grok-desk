@@ -1,4 +1,4 @@
-"""Expiry and assignment analytics (Stage 1, European-only) behind ``assignment_watch.py`` and
+"""Expiry and assignment analytics (the tiers read quotes and stated dividends, no model price) behind ``assignment_watch.py`` and
 ``expiry_checklist.py``: the request batch, settlement and act-by times, the dividend
 (extrinsic-versus-dividend) and pin tiers, the docket implications and the exit codes.
 

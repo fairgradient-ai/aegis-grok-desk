@@ -173,7 +173,7 @@ OUTPUT: Dict[str, Any] = {
                     "before": "structuring.BeforeState.as_dict | null"},
     "spot": {"symbol": "string", "bid": "decimal string | null", "ask": "decimal string | null",
              "mid": "decimal string | null", "grade": "A-F", "as_of": "ISO-8601 UTC | null"},
-    "model_note": "the European model's note (ROLL) | null",
+    "model_note": "the American model's note (ROLL) | null",
     "requests": {"made": "integer", "chains": "integer", "per_run_max_requests": "integer",
                  "per_run_max_chains": "integer", "budget_left": "integer"},
     "warnings": ["string"],

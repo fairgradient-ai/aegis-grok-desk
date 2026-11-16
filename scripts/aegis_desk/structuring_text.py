@@ -67,8 +67,8 @@ ACT_LINE: str = "if you decide to act, you type it into your brokerage account y
 AFTER_FILL_LINE: str = "after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines"
 AFTER_EXPIRY_LINE: str = ("after expiry, the post-expiry check of Aegis Position Control proposes the positions.csv "
                           "lines")
-MODEL_LINE: str = ("prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style "
-                   "options is not modelled")
+MODEL_LINE: str = ("prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is "
+                   "a continuous rate, and its drop on the ex-date is not seen")
 SPOT_BAR_LINE: str = ("spot: %s option %s quoted more than %s seconds from the stock quote %s priced against the "
                       "stock's one-minute IEX bar of the minute %s quoted in")
 """The note after :data:`MODEL_LINE` when a priced leg solved its volatility against a one-minute bar
@@ -1021,24 +1021,22 @@ def group_block(w: Writer, after: "structuring.AfterState", before: Optional["st
 
 def american_line(w: Writer, candidate: "structuring.Candidate",
                   pricing: Optional["structuring.PricingContext"] = None) -> str:
-    """The American caveat of a candidate that carries one (designer Q's D4): early exercise may matter and the
-    European model does not price it."""
-    put = next((leg for leg in candidate.legs if leg.right == "PUT"), None)
+    """The early-assignment note of a candidate's short leg that carries one (designer Q's D4; roadmap 2.3 retired the
+    long put's ``american-style note``, because the American model of record prices a long put's early exercise): a
+    short put on the two tests of ``structuring.short_put_caveat``, a short call whose bid's time value is below the
+    dividend before its last trading day (the drop of a discrete dividend, which a continuous yield does not see)."""
+    short_put = None
     if candidate.kind == structuring.KIND_REPLACEMENT_SHORT_PUT:
-        return short_put_line(w, candidate, pricing)
-    if put is not None and put.abs_delta is not None and put.abs_delta >= structuring.AMERICAN_PUT_ABS_DELTA:
-        return ("american-style note: %s is deep in the money (absolute delta %s); early exercise can be worth more "
-                "than the European model prices" % (contract_words(w, put.expiration, put.strike, "PUT"),
-                                                    w.plain(put.abs_delta)))
-    pair = None if put is None or pricing is None else structuring.put_exercise_carry(put, pricing)
-    if pair is not None and pair[0] < pair[1]:
-        return ("american-style note: %s is in the money and its time value at the mid, %s, is below the interest on "
-                "its strike to expiry, %s; early exercise can be worth more than the European model prices"
-                % (contract_words(w, put.expiration, put.strike, "PUT"), w.money(pair[0]), w.money(pair[1])))
+        short_put = candidate.legs[0]
+    elif candidate.kind == structuring.KIND_REPLACEMENT_VERTICAL and candidate.legs[-1].right == "PUT":
+        short_put = candidate.legs[-1]
+    if short_put is not None:
+        return short_put_line(w, candidate, pricing, short_put)
     call = next(leg for leg in candidate.legs if leg.right == "CALL")
-    return ("american-style note: %s is in the money and its bid's time value is below the dividend before its last "
-            "trading day, so an early exercise before the ex-date is possible; the European model does not price it"
-            % contract_words(w, call.expiration, call.strike, "CALL"))
+    return ("early-assignment note: %s is in the money and its bid's time value is below the dividend before its last "
+            "trading day, so an early exercise before the ex-date is possible; the prices treat the dividend as a "
+            "continuous rate and do not see its drop on the ex-date" % contract_words(w, call.expiration, call.strike,
+                                                                                       "CALL"))
 
 
 def cash_secured_line(w: Writer, candidate: "structuring.Candidate", held: "structuring.HeldLeg") -> str:
@@ -1052,21 +1050,22 @@ def cash_secured_line(w: Writer, candidate: "structuring.Candidate", held: "stru
 
 
 def short_put_line(w: Writer, candidate: "structuring.Candidate",
-                   pricing: Optional["structuring.PricingContext"] = None) -> str:
-    """The early-assignment note of a short put (roadmap step 2.4; ``structuring.short_put_caveat``): on the same two
-    tests as a long put's caveat, the holder may exercise early, so the owner who is short the put may be assigned
-    before expiry, and the European model does not price it."""
-    put = candidate.legs[0]
+                   pricing: Optional["structuring.PricingContext"] = None,
+                   put: Optional["structuring.PricedLeg"] = None) -> str:
+    """The early-assignment note of a short put (roadmap step 2.4; ``structuring.short_put_caveat``): on its two tests
+    the holder may exercise early, so the owner who is short the put may be assigned before expiry. ``put`` is the
+    short put (a short put's replacement's only leg by default, a vertical's short leg when given)."""
+    put = candidate.legs[0] if put is None else put
     words = contract_words(w, put.expiration, put.strike, "PUT")
     if put.abs_delta is not None and put.abs_delta >= structuring.AMERICAN_PUT_ABS_DELTA:
         return ("early-assignment note: %s is deep in the money (absolute delta %s); a short put this deep can be "
-                "assigned before expiry, and the European model does not price that" % (words, w.plain(put.abs_delta)))
+                "assigned before expiry" % (words, w.plain(put.abs_delta)))
     pair = None if pricing is None else structuring.put_exercise_carry(put, pricing)
     if pair is None or pair[0] >= pair[1]:
         raise ValueError("the candidate carries no early-assignment note")
     return ("early-assignment note: %s is in the money and its time value at the mid, %s, is below the interest on its "
-            "strike to expiry, %s; a short put can then be assigned before expiry, and the European model does not "
-            "price that" % (words, w.money(pair[0]), w.money(pair[1])))
+            "strike to expiry, %s; a short put can then be assigned before expiry" % (words, w.money(pair[0]),
+                                                                                       w.money(pair[1])))
 
 
 # --------------------------------------------------------------------------------------------

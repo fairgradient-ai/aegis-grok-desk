@@ -100,7 +100,7 @@ The ROLL ticket of that command, a markdown desk view the Bot posts as it is (ne
 
 > - after 20:20 UTC its quotes are too old, and a new ticket needs a new request
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - the desk does not see your cash balance
 > - after a fill, tell the Aegis Desk Lead the fill; it proposes the positions.csv lines
 > - you supply the limit; the desk prints none

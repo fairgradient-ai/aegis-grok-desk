@@ -44,9 +44,11 @@ The rules are cited by name, as their sources are; this page adds no study or pa
   per volatility point, rho per rate point. Near the early-exercise boundary the delta is approximate within 0.05
   (`lattice.BAND_DELTA_TOL`, a bound the oracle tests) and gamma and theta are UNAVAILABLE. The dividend yield is the
   symbol's sourced yield in `research/calendar.toml` (the `yield` of its `ex_dividend` entry, or zero for status
-  `none`); without one the leg's IV and Greeks are UNAVAILABLE. The trigger levels' model levels use the same delta.
-  The structuring tools still price on the European closed form (`greeks.py`); their American pricing is planned for
-  Stage 2 (not in this release).
+  `none`); without one the leg's IV and Greeks are UNAVAILABLE. The trigger levels' model levels use the same delta,
+  and the structuring tools price every candidate the same way (their parity-carry estimate alone reads European
+  volatilities, the input of its own early-exercise bound). `greeks.py` keeps the European closed form, the lattice's
+  control variate. The assignment watch prints the model's early-exercise line beside the expiry tiers, which read no
+  model price.
 - `tests/engine/test_lattice.py` reproduces the American put Hull prints in *Options, Futures, and Other Derivatives*
   (S = K = 50, r = 10 %, sigma = 40 %, five months: 4.49 at 5 steps; 4.263, 4.272, 4.278 and 4.283 at 30, 50, 100 and
   500). The CI oracle compares the lattice with QuantLib's finite-difference American engine (price, delta and gamma,

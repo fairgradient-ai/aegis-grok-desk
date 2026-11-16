@@ -102,6 +102,12 @@ FORBIDDEN_OUTPUT: Tuple["re.Pattern[str]", ...] = (
 ) + alert_lint.FORBIDDEN_PATTERNS
 FIXTURE_DESK = "tests/fixtures/desk"
 FIXTURE_DESK_RECON = "tests/fixtures/desk_recon"
+# Roadmap 2.3: the American model of record. The evening before an ex-dividend date (Thursday 2026-12-17, 14:50 ET):
+# a deep in-the-money short WMT call, a long SPY put and a short NVDA put (tests/fixtures/desk_american/_generate.py).
+FIXTURE_DESK_AMERICAN = "tests/fixtures/desk_american"
+AMERICAN_NOW = "2026-12-17T19:50:00Z"
+BAND_CANDIDATE_RULES = "tests/fixtures/rules/candidate-band-1.0.1.toml"
+NO_YIELD_ANSWERS = "tests/fixtures/init/dividends-no-yield.json"
 # desk_init's own root: the owner's answers and the expected rendering, no desk.toml (the journey writes one on its copy).
 FIXTURE_INIT = "tests/fixtures/init"
 # The fixture sets' instants (tests/fixtures/desk/fixtures/alpaca/README.md and the recon root's
@@ -829,6 +835,57 @@ JOURNEYS += (
                   "payload.files": None, "payload.lint.ok": True,
                   "payload.message": TextMatch(prefix="UNAVAILABLE | CONFIG CHANGED: desk.toml: not acknowledged -> sha "
                                                       "f08a18dc", contains=("acknowledge with ack.py config --owner-tapped",))}),
+)
+
+# Roadmap 2.3: the American model of record beside the expiry tiers, in the book and in the exit rules.
+JOURNEYS += (
+    tool_journey("assignment_watch deep -> FIRED: the WMT call's dividend tier stays HIGH where the lattice flags nothing; "
+                 "the SPY put's wait line; the NVDA put's early-assignment warning",
+                 ("assignment_watch.py", "--fixture-set", "deep"), 10,
+                 {"status": "fired", "payload.exit_code": 10, "payload.counts.fired": 1,
+                  "payload.early_exercise.0.status": "clear", "payload.early_exercise.1.status": "wait",
+                  "payload.early_exercise.2.status": "flagged", "payload.early_exercise.2.near_boundary": True,
+                  "payload.message": TextMatch(
+                      prefix="assignment watch Thu 2026-12-17 (session open): FIRED",
+                      contains=("HIGH AG-20261201-01 WMT261218C00080000 short 2: ex-dividend 2026-12-18 in 1 trading day",
+                                "extrinsic (bid) 0.05 = bid 40.05 - max(0, 120.00 - 80)",
+                                "  dividend note: the dividend is priced as a continuous yield, so the drop on the ex-date "
+                                "2026-12-18 is not seen here; for a call the dividend tier is the test of early assignment",
+                                "EARLY EXERCISE AG-20261201-02 SPY270115P00700000 long 1",
+                                "  early exercise: not flagged: the stated 1.85 dividend on 2026-12-18 exceeds the interest "
+                                "on the 700 strike until then (0.08)",
+                                "EARLY EXERCISE AG-20261201-03 NVDA270115P00200000 short 1",
+                                "  early assignment: the American model places this short put near its early-exercise "
+                                "boundary"))},
+                 now=AMERICAN_NOW, desk_root=FIXTURE_DESK_AMERICAN),
+    tool_journey("book deep -> two legs near the early-exercise boundary: delta approximate, gamma and theta null, the "
+                 "portfolio net delta still present",
+                 ("book.py", "--fixture-set", "deep"), 0,
+                 {"status": "ok", "payload.legs.3.model": "american_crr_200",
+                  "payload.legs.3.greeks_quality": "near_boundary", "payload.legs.3.greeks.gamma": None,
+                  "payload.legs.3.greeks.theta": None, "payload.legs.4.greeks_quality": "near_boundary",
+                  "payload.legs.1.greeks_quality": "ok", "payload.groups.1.greeks_quality": "near_boundary",
+                  "payload.groups.1.net_greeks.gamma": None, "payload.portfolio.net_delta": ANY},
+                 now=AMERICAN_NOW, desk_root=FIXTURE_DESK_AMERICAN),
+    tool_journey("exit_check --dry-run --rules candidate-band deep -> MONETIZE at 0.95 UNAVAILABLE: within 0.05 of a band "
+                 "delta",
+                 ("exit_check.py", "--dry-run", "--rules", BAND_CANDIDATE_RULES, "--fixture-set", "deep"), 20,
+                 {"status": "unavailable", "payload.verdicts.1.group_id": "AG-20261201-02",
+                  "payload.verdicts.1.unavailable.0.rule_id": "MONETIZE",
+                  "payload.verdicts.1.unavailable.0.conditions.0.metric": "abs_delta",
+                  "payload.verdicts.1.unavailable.0.conditions.0.threshold": "0.95",
+                  "payload.verdicts.1.unavailable.0.conditions.0.reason": TextMatch(
+                      contains=("approximate near the early-exercise boundary (within 0.05), too close to 0.95",))},
+                 now=AMERICAN_NOW, desk_root=FIXTURE_DESK_AMERICAN),
+    tool_journey("desk_init dividends without a yield, then book regular -> dividend_unknown (no IV, no Greeks, no net "
+                 "delta) and calendar_check -> NO_YIELD",
+                 ("book.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.legs.1.iv_status": "dividend_unknown", "payload.legs.1.iv": None,
+                  "payload.legs.1.greeks": None, "payload.portfolio.net_delta": None},
+                 steps=(tool_step(("desk_init.py", "--answers", NO_YIELD_ANSWERS, "--replace", "--owner-tapped"), 0,
+                                  {"status": "ok", "payload.written": ["research/calendar.toml"]},
+                                  now="2026-11-03T19:40:00Z"),
+                        tool_step(("calendar_check.py",), 20, {"status": "unavailable", "payload.counts.NO_YIELD": 3}))),
 )
 
 

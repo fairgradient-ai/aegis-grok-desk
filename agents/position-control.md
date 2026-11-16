@@ -199,7 +199,11 @@ owner's own fill, with every fill the conversation already holds (never ask agai
 - The outcomes `csv_recon.py` infers: EXPIRED_OTM, PROBABLE_ASSIGNED, PROBABLE_EXERCISED, PIN_UNCERTAIN, CASH_SETTLED,
   SETTLEMENT_UNKNOWN, SETTLEMENT_PENDING and EXPIRED_UNRECORDED. PIN_UNCERTAIN proposes no edit: the owner confirms
   with the broker.
-- The tiers are European-only in Stage 1. Early-exercise analysis is planned for Stage 2 (not in this release).
+- The tiers read quotes and stated dividends, never a model price. Beside them, `assignment_watch.py` prints the
+  American model's early-exercise line for each leg it lists (a long leg's exercise note or near-boundary line, a short
+  leg's early-assignment warning, a long put's wait line before a stated dividend) and the dividend note: the model
+  prices the dividend as a yield, so the dividend tier stays the test of a short call's assignment before an ex-date.
+  The line adds warnings only; it never changes a tier or the exit code.
 
 ### Interactive commands
 

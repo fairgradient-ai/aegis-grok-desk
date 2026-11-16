@@ -57,9 +57,11 @@ one-line reason that never carries a secret.
     instant or older than 30 days WARNs ``re-confirm connected apps and MCP servers``.
 11. ``heartbeats``: the cadence profile's slots of the ET date (``routines.audit_day``); WARN names each slot with
     no heartbeat 45 minutes after it, otherwise PASS with the latest heartbeat's age per routine.
-12. ``selftest``: five engine sub-checks (:data:`SELFTEST_NAMES`): the BSM golden of record, an implied-volatility
-    round trip, the 2026 DST transitions, the vendored TOML reader and the alert lint (a known-good message passes
-    and the same message with nothing emitted fails); any failure FAILs ``engine selftest: <which>``.
+12. ``selftest``: six engine sub-checks (:data:`SELFTEST_NAMES`): the BSM golden of record, an implied-volatility
+    round trip, the American model of record (roadmap 2.3: the lattice's five-step value of Hull's American put,
+    4.488458534725913, and an American implied-volatility round trip), the 2026 DST transitions, the vendored TOML
+    reader and the alert lint (a known-good message passes and the same message with nothing emitted fails); any
+    failure FAILs ``engine selftest: <which>``.
 
 Modes (:data:`MODE_CHECKS`): ``full`` runs 1-11, ``quick`` 2, 3, 4, 8 and 9, ``selftest`` 2 and 12 (no desk file).
 The verdict is FAIL when any check FAILs, else PASS (warnings allowed). :func:`doctor_record` is the
@@ -82,6 +84,7 @@ from . import (
     alert_lint,
     alpaca_client,
     alerts,
+    american,
     bsm,
     calendar_events,
     contract,
@@ -178,7 +181,15 @@ SELFTEST_DST: Tuple[Tuple[datetime.datetime, str], ...] = (
 )
 SELFTEST_TOML: Tuple[str, Dict[str, Any]] = ('a = 1.5\n[b]\nc = "x"\n', {"a": Decimal("1.5"), "b": {"c": "x"}})
 SELFTEST_AS_OF: datetime.datetime = datetime.datetime(2026, 11, 3, 19, 31, tzinfo=datetime.timezone.utc)
-SELFTEST_NAMES: Tuple[str, ...] = ("bsm golden", "iv round trip", "DST transitions", "TOML reader", "alert lint")
+SELFTEST_AMERICAN_HULL: Tuple[Any, ...] = ("PUT", 50.0, 50.0, 5 / 12, 0.10, 0.0, 0.40)
+"""Hull's American put (S = K = 50, r = 10 %, sigma = 40 %, five months), as ``tests/engine/test_lattice.py`` pins it."""
+SELFTEST_AMERICAN_GOLDEN: float = 4.488458534725913
+"""The lattice's tree value of that put at five steps (Hull prints 4.49)."""
+SELFTEST_AMERICAN_ARGS: Tuple[Any, ...] = ("PUT", 100.0, 110.0, 0.5, 0.0412, 0.0115, 0.25)
+"""An in-the-money put with an early-exercise value, for the American implied-volatility round trip."""
+SELFTEST_AMERICAN_SIGMA_TOLERANCE: float = 1e-6
+SELFTEST_NAMES: Tuple[str, ...] = ("bsm golden", "iv round trip", "american model", "DST transitions", "TOML reader",
+                                   "alert lint")
 
 
 @dataclass(frozen=True)
@@ -557,6 +568,17 @@ def _iv_round_trip() -> bool:
     return abs(repriced - value) <= SELFTEST_IV_TOLERANCE and abs(found.sigma - sigma) <= SELFTEST_IV_SIGMA_TOLERANCE
 
 
+def _american_model() -> bool:
+    tree = american.lattice.american(*SELFTEST_AMERICAN_HULL, steps=5).tree_price
+    if abs(tree - SELFTEST_AMERICAN_GOLDEN) > SELFTEST_BSM_TOLERANCE:
+        return False
+    right, spot, strike, tau, rate, dividend, sigma = SELFTEST_AMERICAN_ARGS
+    value = american.value(*SELFTEST_AMERICAN_ARGS)
+    found = american.implied_vol(value.price, right, spot, strike, tau, rate, dividend)
+    return (found.status == iv.STATUS_OK and found.sigma is not None and value.early_exercise_premium > 0.0
+            and abs(found.sigma - sigma) <= SELFTEST_AMERICAN_SIGMA_TOLERANCE)
+
+
 def _dst_transitions() -> bool:
     return all(market_clock.to_et(moment).isoformat() == expected for moment, expected in SELFTEST_DST)
 
@@ -584,7 +606,8 @@ def _alert_lint() -> bool:
 
 
 _SELFTESTS: Tuple[Tuple[str, Callable[[], bool]], ...] = (
-    ("bsm golden", _bsm_golden), ("iv round trip", _iv_round_trip), ("DST transitions", _dst_transitions),
+    ("bsm golden", _bsm_golden), ("iv round trip", _iv_round_trip), ("american model", _american_model),
+    ("DST transitions", _dst_transitions),
     ("TOML reader", _toml_reader), ("alert lint", _alert_lint),
 )
 

@@ -156,11 +156,12 @@ paper key only, and the live trading host is refused`. A live key can trade, so 
 
 The desk computes them itself and never takes them from the feed (Alpaca's option snapshots carry Greeks and implied
 volatility computed from indicative quotes; the desk ignores them): implied volatility from the quote's mid
-with the generalised Black-Scholes-Merton model, and European Greeks in desk units (theta per calendar day, vega per
-volatility point). The dividend yield comes from `research/calendar.toml`, or 0 with a warning on the leg. Early
-exercise is not modelled in Stage 1; American pricing is planned for Stage 2 (not in this release). Its engine, an
-early-exercise lattice, is in the tree, but no tool reads it yet ([the roadmap](ROADMAP.md), step 2.1). The
-Structuring Desk prices its candidates the same way and prints that it does. See the skill
+on the American model: a binomial tree that prices early exercise, with its Greeks in desk units (theta per calendar
+day, vega per volatility point). The dividend yield is the sourced one in `research/calendar.toml` (the `yield` of the
+symbol's `ex_dividend` entry); without it the leg's implied volatility and Greeks are UNAVAILABLE, never priced at
+zero. Near the early-exercise boundary the delta is approximate and gamma and theta are UNAVAILABLE
+([the roadmap](ROADMAP.md), step 2.3). The Structuring Desk prices its candidates the same way and prints that it
+does. See the skill
 [aegis-book-marking-and-greeks-honesty](../skills/aegis-book-marking-and-greeks-honesty/SKILL.md).
 
 ## Is there a Grok Bot template?

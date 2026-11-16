@@ -50,15 +50,14 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
   secures (the desk does not see the cash balance).
 - Where a short put's holder may do better exercising it than holding it (the long put's two tests: absolute delta
   0.80 or more, or in the money with a time value below the interest on its strike), the answer carries an
-  `early-assignment note:`: the short put can be assigned before expiry, and the European model does not price that.
+  `early-assignment note:`: the short put can be assigned before expiry.
 - A `collar` group's two legs, replaced as a unit and judged under `[collar]`: every pair of a later standard
   monthly inside its `dte` and floor and cap bands, the new collar's own net debit against `max_net_debit`, ranked
   by its objective. The best candidate's four legs open the new put, close the held put, close the held call and
   open the new call (protected and covered at every step); its checks add the roll's net per share, and with no best
   candidate both held legs' closes are quoted. A ticket for one pair names its expiration and both strikes.
 - Any other structure is NOT_APPLICABLE with its reason; a vertical's roll is a ROLL ticket the owner names, at the
-  same width (`aegis-ticket-and-unwind-order`). Weekly expirations and American pricing are planned for Stage 2 (not
-  in this release).
+  same width (`aegis-ticket-and-unwind-order`). Weekly expirations are planned for Stage 2 (not in this release).
 - An index underlying (the data source cannot quote index options) and the structure's section disabled
   (`[roll] enabled = false` for a covered call or a cash-secured put, `[protective_put] enabled = false` for a
   protective put, `[collar] enabled = false` for a collar) are NOT_APPLICABLE too.
@@ -169,7 +168,7 @@ a ticket for one of these: ask the Aegis Desk Lead for a ROLL ticket with its ex
 
 > - extrinsic_per_day: the bid's time value per calendar day, in percent of the share price
 > - quotes: Alpaca paper (IEX stocks, indicative options: approximate), 15-min delayed, as of 19:31 UTC
-> - prices: European Black-Scholes-Merton on the quotes' mids; early exercise of these American-style options is not modelled
+> - prices: American, a binomial tree on the quotes' mids, so early exercise is priced; the dividend is a continuous rate, and its drop on the ex-date is not seen
 > - criteria: your structuring.toml (sha 5155427c)
 
 computed by the desk's tools from your criteria · posted by an AI assistant · a personalized suggestion for positions you hold, not an order · you decide and act in your brokerage account · data delayed 15 min, as of 19:31 UTC

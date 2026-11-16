@@ -211,8 +211,6 @@ ONE_CENT: Decimal = Decimal("0.01")
 BETA_WEIGHTED_DELTA: Dict[str, Any] = {"value": None, "r2_flag": "unavailable"}
 WARNING_NO_CALENDAR: str = ("no research/calendar.toml: dividend yields unknown (every option's implied volatility and "
                             "Greeks are unavailable) and every root treated as PM-settled")
-WARNING_Q_ZERO: str = "q = 0: no dividend yield in calendar.toml"
-"""The structuring tools' warning until they move to the sourced yield; the book no longer prints it."""
 WARNING_DIVIDEND_UNKNOWN: str = ("dividend yield unknown: no sourced yield in research/calendar.toml (the yield of the "
                                  "ex_dividend entry, or status none), so no implied volatility or Greeks")
 SNAPSHOT_STATUS_OK: str = state.STATUS_OK
@@ -1164,7 +1162,6 @@ __all__ = [
     "UNDERLYING_KEYS",
     "WARNING_DIVIDEND_UNKNOWN",
     "WARNING_NO_CALENDAR",
-    "WARNING_Q_ZERO",
     "assess_quotes",
     "book_to_json",
     "build_book",
