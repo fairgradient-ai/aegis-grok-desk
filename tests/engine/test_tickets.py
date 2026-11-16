@@ -439,7 +439,7 @@ def assert_lints(case: unittest.TestCase, rendered: structuring_text.Rendered) -
     case.assertTrue(rendered.text.endswith(alert_lint.structuring_footer_line(rendered.as_of)))
 
 
-WMT_EX_DIVIDEND = ('ex_dividend = { date = 2026-11-24, amount = 0.2350, status = "confirmed", source = "owner-entered '
+WMT_EX_DIVIDEND = ('ex_dividend = { date = 2026-11-24, amount = 0.2350, yield = 0.0090, status = "confirmed", source = "owner-entered '
                    '(fixture)", checked_utc = 2026-11-01T12:00:00Z }\n')
 
 

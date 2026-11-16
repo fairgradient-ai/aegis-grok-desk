@@ -6,7 +6,7 @@
   "source": {"repository": "https://github.com/fairgradient-ai/aegis-grok-desk", "release": "1.0.0"},
   "templateSkillNames": ["aegis-desk-bootstrap-and-onboarding"],
   "skills": {
-    "aegis-book-marking-and-greeks-honesty": "7126b603048a13815d2102fa1c82521a1316f26f7141446fc2ce1e939a8d3d81",
+    "aegis-book-marking-and-greeks-honesty": "c7f792b177bf39249eeac9c4b4cb06261ab03334a6f4c6503c5e7afbe990401c",
     "aegis-compliance-voice-and-number-discipline": "c7e6d79d6bff23d7f638b15d8d9d20e979124b595ac0e720d1e6fff7d7a806f2",
     "aegis-covered-call-and-cash-secured-put-management": "167cfc19fb0394a8890edbb774fd7df8d29758cea8b1fc4c3ccf66a29b2724c3",
     "aegis-desk-bootstrap-and-onboarding": "85fb8c58e56e30e471778445e5258a475a6e2e65c6d085ab72461fe6c599188b",
@@ -28,7 +28,7 @@
   "roleSkills": {
     "aegis-role-desk-lead": "81d2d6fd0863ee0a1c0eaacd719a0190cc83286e9684a8abdef7cb3e966783ea",
     "aegis-role-exit-sentinel": "714d466f124230478e9bc619aaa9e62b433a7829d51dafb11731658056d98de5",
-    "aegis-role-position-control": "3a1bba3228a5c4a4808adf222448cddf911790ee69141a04e035d6d3018b7a97",
+    "aegis-role-position-control": "72aaa5ebb4218657765fa063b7619b26baaf69fef7e36e00b94b7d62b6a06fb3",
     "aegis-role-structuring-desk": "95e8fa1bf8c1e8705a87d9ef2c4d6912bd33aa28aa8222f240c1008d23d65fb6"
   }
 }

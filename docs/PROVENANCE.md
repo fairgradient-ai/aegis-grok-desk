@@ -39,8 +39,8 @@ The rules are cited by name, as their sources are; this page adds no study or pa
 - Implied volatility (`iv.py`) is a bracketed Brent solver with the arbitrage bounds of the price; a failure is a
   status, never a number.
 - Greeks (`greeks.py`) are European, in desk units: theta per calendar day, vega per volatility point, rho per rate
-  point. The dividend yield is the symbol's `dividend_yield` in `research/calendar.toml`, else 0 with a warning on the
-  leg. This European approximation is the Stage-1 model; American pricing is planned for Stage 2 (not in this release).
+  point. The dividend yield is the symbol's yield in `research/calendar.toml` (the `yield` of its `ex_dividend` entry
+  in schema version 2, or `dividend_yield` in version 1), else 0 with a warning on the leg. This European approximation is the Stage-1 model; American pricing is planned for Stage 2 (not in this release).
 - The American lattice (`lattice.py`, a Cox-Ross-Rubinstein tree), the engine for that step, is in the tree, and no
   tool reads it yet. `tests/engine/test_lattice.py` reproduces the American put Hull prints in *Options, Futures, and Other
   Derivatives* (S = K = 50, r = 10 %, sigma = 40 %, five months: 4.49 at 5 steps; 4.263, 4.272, 4.278 and 4.283 at 30,

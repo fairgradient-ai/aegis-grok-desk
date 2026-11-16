@@ -895,7 +895,7 @@ class CoverageTest(unittest.TestCase):
         rich = Scenario(lines, {"WMT": ("106.40", "106.46"), call: ("7.00", "7.20")}, now=T1)
         self.assertEqual("clear", result_of(rich.evaluate(), "AG-20261101-72", "EXDIV").result)
         unknown_cal = calendar_events.parse_calendar_text(CAL_TEXT.replace(
-            'ex_dividend = { date = 2026-11-24, amount = 0.2350, status = "confirmed"',
+            'ex_dividend = { date = 2026-11-24, amount = 0.2350, yield = 0.0090, status = "confirmed"',
             'ex_dividend = { date = 2026-11-24, status = "unknown"'), "calendar.toml")
         unknown = Scenario(lines, {"WMT": ("106.40", "106.46"), call: ("6.50", "6.70")}, now=T1, calendar=unknown_cal)
         exdiv_unknown = result_of(unknown.evaluate(), "AG-20261101-72", "EXDIV")

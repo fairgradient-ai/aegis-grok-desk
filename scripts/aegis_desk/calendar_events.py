@@ -2,8 +2,9 @@
 
 New for Aegis Desk (plan section 8 "research/calendar.toml", skill 7); standard library only.
 The file is owner- or Events-sourced and every entry is dated and sourced: the next earnings
-date, the next ex-dividend date with its amount, a dividend yield, the AM-settled index roots
-with their settlement values, and exchange closures the embedded NYSE table may not know. The
+date, the next ex-dividend date with its amount and the symbol's dividend yield, the AM-settled
+index roots with their settlement values, and exchange closures the embedded NYSE table may not
+know. The
 reader is strict (:func:`aegis_desk.toml_compat.load`, never ``tomllib``): unknown keys, wrong
 types and contradictory statuses are :class:`CalendarError` (a ``ValueError`` whose ``str`` is
 ``"<path>: <reason>"``), so a typo never becomes a silent zero.
@@ -11,11 +12,10 @@ types and contradictory statuses are :class:`CalendarError` (a ``ValueError`` wh
 Shape (every value typed by the vendored reader: TOML floats are ``Decimal``, local dates are
 ``datetime.date``, offset date-times are aware ``datetime.datetime``)::
 
-    schema_version = 1
+    schema_version = 2
     [symbols.WMT]
     earnings = { date = 2026-11-17, time = "pre", status = "confirmed", source = "...", checked_utc = 2026-11-01T12:00:00Z }
-    ex_dividend = { date = 2026-12-11, amount = 0.2350, status = "estimated", source = "...", checked_utc = 2026-11-01T12:00:00Z }
-    dividend_yield = 0.0090
+    ex_dividend = { date = 2026-12-11, amount = 0.2350, yield = 0.0090, status = "estimated", source = "...", checked_utc = 2026-11-01T12:00:00Z }
     [symbols.NVDA]
     ex_dividend = { status = "none", source = "...", checked_utc = 2026-11-01T12:00:00Z }
     [settlement]
@@ -31,6 +31,16 @@ Shape (every value typed by the vendored reader: TOML floats are ``Decimal``, lo
     kind = "early_close"      # full | early_close
     source = "..."
 
+Schema versions (roadmap 2.3, the owner's answer to open question 3)
+--------------------------------------------------------------------
+Version 2 is current: the dividend yield is the ``yield`` key of the symbol's ``ex_dividend`` entry, so it shares that
+entry's ``source``, ``checked_utc`` and STALE check, and a top-level ``dividend_yield`` is refused. ``yield`` is a
+fraction in ``[0, 1)`` allowed with status ``confirmed``, ``estimated`` or ``unknown``; status ``none`` takes no yield
+and means a yield of zero, because that status is a stated fact. Version 1 (a top-level ``dividend_yield`` beside the
+symbol's entries, no ``yield`` key) still loads. :func:`dividend_yield` reads either version's number;
+:func:`sourced_yield` answers the model of record's question, whether the yield is a sourced fact: only a version-2
+``yield``, or status ``none``, is; a bare version-1 yield has no source and no time, so it counts as unknown there.
+
 Rules
 -----
 * ``status`` is ``confirmed`` | ``estimated`` | ``unknown`` | ``none``; ``time`` (earnings) is
@@ -38,7 +48,7 @@ Rules
   need a ``date`` (and, for ``ex_dividend``, an ``amount`` > 0); ``none`` (a confirmed absence)
   takes no date, time or amount; ``unknown`` may carry a date but never an amount. ``source`` is
   a non-empty string and ``checked_utc`` an offset date-time (a local date-time has no zone and
-  is refused) on every entry. ``dividend_yield`` is a fraction in ``[0, 1)``.
+  is refused) on every entry. ``dividend_yield`` (version 1) and ``yield`` (version 2) are fractions in ``[0, 1)``.
 * Absent is unknown, never zero: a symbol table may omit any of its three keys, a symbol may be
   absent altogether, and every lookup then answers ``None`` / status ``unknown``.
 * Symbol table names and roots are written upper-case exactly as the vendor quotes them
@@ -68,8 +78,10 @@ Rules
   ex-dividend entry before today's ET date (reported once; the entry must be replaced anyway);
   ``STALE`` for an entry whose ``checked_utc`` is more than ``max_age_days`` old; ``MISSING``
   for a held symbol absent from the file; ``UNKNOWN_DIVIDEND`` for a held symbol in the
-  short-call scope whose ``ex_dividend`` is absent or ``unknown``. Settlement values are facts
-  and closures are a record: neither is stale or past.
+  short-call scope whose ``ex_dividend`` is absent or ``unknown``; ``NO_YIELD`` for every held
+  symbol listed in the file without a sourced yield (:func:`sourced_yield`: no ``ex_dividend``
+  entry, an entry without ``yield`` whose status is not ``none``, or a version-1 file).
+  Settlement values are facts and closures are a record: neither is stale or past.
 """
 
 from __future__ import annotations
@@ -87,7 +99,10 @@ from .toml_compat import TomlError
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
 
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
+"""The version the desk writes (module notes)."""
+SCHEMA_VERSIONS: Tuple[int, ...] = (1, 2)
+"""The versions the reader loads."""
 STATUS_CONFIRMED: str = "confirmed"
 STATUS_ESTIMATED: str = "estimated"
 STATUS_UNKNOWN: str = "unknown"
@@ -107,15 +122,25 @@ FINDING_STALE: str = "STALE"
 FINDING_MISSING: str = "MISSING"
 FINDING_UNKNOWN_DIVIDEND: str = "UNKNOWN_DIVIDEND"
 FINDING_PAST: str = "PAST"
-FINDING_KINDS: Tuple[str, ...] = (FINDING_STALE, FINDING_MISSING, FINDING_UNKNOWN_DIVIDEND, FINDING_PAST)
+FINDING_NO_YIELD: str = "NO_YIELD"
+FINDING_KINDS: Tuple[str, ...] = (FINDING_STALE, FINDING_MISSING, FINDING_UNKNOWN_DIVIDEND, FINDING_PAST,
+                                  FINDING_NO_YIELD)
+YIELD_SOURCED: str = "sourced"
+YIELD_NONE: str = "none"
+YIELD_UNKNOWN: str = "unknown"
+""":func:`sourced_yield` statuses: a version-2 ``yield``, a stated absence of dividends, or no sourced yield."""
 DEFAULT_MAX_AGE_DAYS: int = 7
 SYMBOL_RE = re.compile(r"^[A-Z0-9.$^:_-]{1,32}$")
 """The upper-case form of the client's symbol pattern: what a table name or root must match."""
 
 TOP_LEVEL_KEYS: Tuple[str, ...] = ("schema_version", "symbols", "settlement", "closures")
 SYMBOL_KEYS: Tuple[str, ...] = ("earnings", "ex_dividend", "dividend_yield")
+"""A symbol table's keys in version 1."""
+SYMBOL_KEYS_V2: Tuple[str, ...] = ("earnings", "ex_dividend")
 EARNINGS_KEYS: Tuple[str, ...] = ("date", "time", "status", "source", "checked_utc")
 EX_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status", "source", "checked_utc")
+"""An ``ex_dividend`` entry's keys in version 1."""
+EX_DIVIDEND_KEYS_V2: Tuple[str, ...] = ("date", "amount", "yield", "status", "source", "checked_utc")
 SETTLEMENT_KEYS: Tuple[str, ...] = ("am_settled_roots", "values")
 SETTLEMENT_VALUE_KEYS: Tuple[str, ...] = ("root", "date", "value", "source", "checked_utc")
 CLOSURE_KEYS: Tuple[str, ...] = ("date", "kind", "source")
@@ -150,13 +175,15 @@ class EarningsEntry:
 
 @dataclass(frozen=True)
 class DividendEntry:
-    """One ``ex_dividend`` entry; ``amount`` is set only for ``confirmed`` and ``estimated``."""
+    """One ``ex_dividend`` entry; ``amount`` is set only for ``confirmed`` and ``estimated``; ``dividend_yield`` is the
+    version-2 ``yield`` key (never set for ``none``)."""
 
     status: str
     source: str
     checked_utc: datetime.datetime
     date: Optional[datetime.date] = None
     amount: Optional[Decimal] = None
+    dividend_yield: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +195,21 @@ class SymbolEvents:
     earnings: Optional[EarningsEntry] = None
     ex_dividend: Optional[DividendEntry] = None
     dividend_yield: Optional[Decimal] = None
+
+
+@dataclass(frozen=True)
+class YieldView:
+    """:func:`sourced_yield`: ``value`` is set for ``sourced`` (the entry's ``yield``) and ``none`` (zero); ``source``
+    and ``checked_utc`` are the ``ex_dividend`` entry's when there is one."""
+
+    value: Optional[Decimal]
+    status: str
+    source: Optional[str] = None
+    checked_utc: Optional[datetime.datetime] = None
+
+    @property
+    def known(self) -> bool:
+        return self.status != YIELD_UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -226,8 +268,20 @@ class CalendarFile:
         return found if found is not None else SymbolEvents(key, False)
 
     def dividend_yield(self, symbol: str) -> Optional[Decimal]:
-        """The symbol's ``dividend_yield`` or ``None`` (absent is unknown, never zero)."""
+        """The symbol's yield (version 1: ``dividend_yield``; version 2: the ``ex_dividend`` entry's ``yield``) or
+        ``None`` (absent is unknown, never zero)."""
         return self.events_for(symbol).dividend_yield
+
+    def sourced_yield(self, symbol: str) -> YieldView:
+        """Whether the symbol's yield is a sourced fact (module notes, "Schema versions")."""
+        entry = self.events_for(symbol).ex_dividend
+        if entry is None:
+            return YieldView(None, YIELD_UNKNOWN)
+        if entry.status == STATUS_NONE:
+            return YieldView(Decimal(0), YIELD_NONE, entry.source, entry.checked_utc)
+        if self.schema_version >= 2 and entry.dividend_yield is not None:
+            return YieldView(entry.dividend_yield, YIELD_SOURCED, entry.source, entry.checked_utc)
+        return YieldView(None, YIELD_UNKNOWN, entry.source, entry.checked_utc)
 
     def dividend_before(self, symbol: str, expiry: DateLike, as_of: DateLike) -> DividendView:
         """The ex-dividend inside ``(as_of, expiry]`` on ET dates (module notes)."""
@@ -396,6 +450,15 @@ class _Reader:
             raise self.fail("%s %s must be a number > 0 (got %s)%s" % (where, key, result, hint))
         return result
 
+    def fraction(self, table: Dict[str, Any], key: str, where: str) -> Decimal:
+        value = self.require(table, key, where)
+        if not _is_number(value):
+            raise self.fail("%s %s must be a number (got %r)" % (where, key, value))
+        result = _as_decimal(value)
+        if not Decimal(0) <= result < Decimal(1):
+            raise self.fail("%s %s must be a fraction between 0 and 1 (0.0090 is 0.90 %%), got %s" % (where, key, result))
+        return result
+
     def forbid(self, table: Dict[str, Any], key: str, where: str, status: str) -> None:
         if key in table:
             raise self.fail("%s status \"%s\" takes no %s (got %r)" % (where, status, key, table[key]))
@@ -432,16 +495,20 @@ def _parse_earnings(reader: _Reader, raw: Any, where: str) -> EarningsEntry:
     return EarningsEntry(status, source, checked, day, time_of_day)
 
 
-def _parse_dividend(reader: _Reader, raw: Any, where: str) -> DividendEntry:
+def _parse_dividend(reader: _Reader, raw: Any, where: str, version: int = SCHEMA_VERSION) -> DividendEntry:
     table = reader.table(raw, where)
-    reader.check_keys(table, EX_DIVIDEND_KEYS, where)
+    reader.check_keys(table, EX_DIVIDEND_KEYS_V2 if version >= 2 else EX_DIVIDEND_KEYS, where)
     status = reader.choice(table, "status", where, STATUSES)
     source = reader.string(table, "source", where)
     checked = reader.instant(table, "checked_utc", where)
     if status == STATUS_NONE:
         reader.forbid(table, "date", where, status)
         reader.forbid(table, "amount", where, status)
+        if "yield" in table:
+            raise reader.fail("%s status \"none\" takes no yield: no dividend means a yield of zero (got %r)"
+                              % (where, table["yield"]))
         return DividendEntry(status, source, checked)
+    stated_yield = reader.fraction(table, "yield", where) if "yield" in table else None
     if status in DATED_STATUSES:
         if "date" not in table:
             raise reader.fail("%s status \"%s\" needs a date (an undated dividend is status \"unknown\")" % (where, status))
@@ -449,26 +516,30 @@ def _parse_dividend(reader: _Reader, raw: Any, where: str) -> DividendEntry:
             raise reader.fail("%s status \"%s\" needs an amount (use status \"none\" for no dividend)" % (where, status))
         day = reader.local_date(table, "date", where)
         amount = reader.positive_number(table, "amount", where, ": use status \"none\" for no dividend")
-        return DividendEntry(status, source, checked, day, amount)
+        return DividendEntry(status, source, checked, day, amount, stated_yield)
     if "amount" in table:
         raise reader.fail("%s status \"unknown\" takes no amount (an amount with an unknown dividend is contradictory: "
                           "use \"estimated\", got %r)" % (where, table["amount"]))
     day = reader.local_date(table, "date", where) if "date" in table else None
-    return DividendEntry(status, source, checked, day)
+    return DividendEntry(status, source, checked, day, None, stated_yield)
 
 
-def _parse_symbols(reader: _Reader, raw: Any) -> Dict[str, SymbolEvents]:
+def _parse_symbols(reader: _Reader, raw: Any, version: int = SCHEMA_VERSION) -> Dict[str, SymbolEvents]:
     table = reader.table(raw, "symbols")
     out: Dict[str, SymbolEvents] = {}
     for key, value in table.items():
         where = "[symbols.%s]" % key
         symbol = reader.upper_symbol(key, where, "symbol")
         entries = reader.table(value, where)
-        reader.check_keys(entries, SYMBOL_KEYS, where)
+        if version >= 2 and "dividend_yield" in entries:
+            raise reader.fail("%s dividend_yield is not a key in schema_version 2: write it as the yield of the "
+                              "ex_dividend entry, for example ex_dividend = { ..., yield = %s, ... }"
+                              % (where, entries["dividend_yield"]))
+        reader.check_keys(entries, SYMBOL_KEYS_V2 if version >= 2 else SYMBOL_KEYS, where)
         earnings = _parse_earnings(reader, entries["earnings"], where + " earnings") if "earnings" in entries else None
-        ex_dividend = (_parse_dividend(reader, entries["ex_dividend"], where + " ex_dividend")
+        ex_dividend = (_parse_dividend(reader, entries["ex_dividend"], where + " ex_dividend", version)
                        if "ex_dividend" in entries else None)
-        dividend_yield: Optional[Decimal] = None
+        dividend_yield: Optional[Decimal] = ex_dividend.dividend_yield if ex_dividend is not None else None
         if "dividend_yield" in entries:
             value_yield = entries["dividend_yield"]
             if not _is_number(value_yield):
@@ -551,12 +622,12 @@ def _parse_document(document: Any, path: str, sha256: str) -> CalendarFile:
     if "schema_version" not in table:
         raise reader.fail("missing key 'schema_version' at the top level (write schema_version = %d)" % SCHEMA_VERSION)
     version = table["schema_version"]
-    if not _is_int(version) or version != SCHEMA_VERSION:
-        raise reader.fail("schema_version must be %d (got %r)" % (SCHEMA_VERSION, version))
-    symbols = _parse_symbols(reader, table["symbols"]) if "symbols" in table else {}
+    if not _is_int(version) or version not in SCHEMA_VERSIONS:
+        raise reader.fail("schema_version must be %s (got %r)" % (" or ".join(str(v) for v in SCHEMA_VERSIONS), version))
+    symbols = _parse_symbols(reader, table["symbols"], version) if "symbols" in table else {}
     roots, values = _parse_settlement(reader, table["settlement"]) if "settlement" in table else ((), ())
     closures = _parse_closures(reader, table["closures"]) if "closures" in table else ()
-    return CalendarFile(path, SCHEMA_VERSION, symbols, roots, values, closures, sha256, _closure_warnings(closures))
+    return CalendarFile(path, version, symbols, roots, values, closures, sha256, _closure_warnings(closures))
 
 
 def _toml_reason(exc: TomlError) -> str:
@@ -619,6 +690,14 @@ def events_for(cal: Optional[CalendarFile], symbol: str) -> SymbolEvents:
 
 def dividend_yield(cal: Optional[CalendarFile], symbol: str) -> Optional[Decimal]:
     return events_for(cal, symbol).dividend_yield
+
+
+def sourced_yield(cal: Optional[CalendarFile], symbol: str) -> YieldView:
+    """:meth:`CalendarFile.sourced_yield`; without a calendar every yield is unknown."""
+    if cal is None:
+        _normalise_symbol(symbol)
+        return YieldView(None, YIELD_UNKNOWN)
+    return cal.sourced_yield(symbol)
 
 
 def dividend_before(cal: Optional[CalendarFile], symbol: str, expiry: DateLike, as_of: DateLike) -> DividendView:
@@ -708,7 +787,19 @@ def freshness(cal: Optional[CalendarFile], now: datetime.datetime, max_age_days:
                 findings.append(Finding(FINDING_UNKNOWN_DIVIDEND, symbol,
                                         "%s: dividend unknown (%s): a short call's assignment risk cannot be graded; "
                                         "unknown is never zero" % (symbol, detail)))
+        if symbol in held and cal is not None and not cal.sourced_yield(symbol).known:
+            findings.append(Finding(FINDING_NO_YIELD, symbol, "%s: %s: its options' implied volatility and Greeks need "
+                                    "a yield stated in its ex_dividend entry (or status \"none\"); unknown is never "
+                                    "zero" % (symbol, _no_yield_detail(cal, events))))
     return findings
+
+
+def _no_yield_detail(cal: CalendarFile, events: SymbolEvents) -> str:
+    if cal.schema_version < 2:
+        return "no sourced dividend yield (a schema_version 1 yield has no source or time)"
+    if events.ex_dividend is None:
+        return "no sourced dividend yield (no ex_dividend entry)"
+    return "no sourced dividend yield (the ex_dividend entry has no yield)"
 
 
 __all__ = [
@@ -724,9 +815,11 @@ __all__ = [
     "DividendView",
     "EARNINGS_KEYS",
     "EX_DIVIDEND_KEYS",
+    "EX_DIVIDEND_KEYS_V2",
     "EarningsEntry",
     "FINDING_KINDS",
     "FINDING_MISSING",
+    "FINDING_NO_YIELD",
     "FINDING_PAST",
     "FINDING_STALE",
     "FINDING_UNKNOWN_DIVIDEND",
@@ -734,6 +827,7 @@ __all__ = [
     "KIND_EARLY_CLOSE",
     "KIND_FULL",
     "SCHEMA_VERSION",
+    "SCHEMA_VERSIONS",
     "SETTLEMENT_KEYS",
     "SETTLEMENT_VALUE_KEYS",
     "STATUSES",
@@ -742,6 +836,7 @@ __all__ = [
     "STATUS_NONE",
     "STATUS_UNKNOWN",
     "SYMBOL_KEYS",
+    "SYMBOL_KEYS_V2",
     "SYMBOL_RE",
     "SettlementValue",
     "SymbolEvents",
@@ -750,6 +845,10 @@ __all__ = [
     "TIME_PRE",
     "TIME_UNKNOWN",
     "TOP_LEVEL_KEYS",
+    "YIELD_NONE",
+    "YIELD_SOURCED",
+    "YIELD_UNKNOWN",
+    "YieldView",
     "dividend_before",
     "dividend_yield",
     "early_closes",
@@ -761,4 +860,5 @@ __all__ = [
     "load_calendar_if_present",
     "parse_calendar_text",
     "settlement_value",
+    "sourced_yield",
 ]

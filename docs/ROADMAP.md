@@ -90,7 +90,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | --- | --- | --- | --- |
 | 2.1 | The American early-exercise lattice, engine only | nothing | landed, not wired |
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
-| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | in progress: the leg pricer landed, not wired |
+| 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | in progress: the leg pricer and the sourced yield landed, not wired |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
@@ -148,6 +148,10 @@ context, sourced dates) and widens the Structuring Desk's scope.
   value below, the spot or the strike above). `tests/engine/test_american.py` and the QuantLib oracle check it (band
   delta within the tolerance; vega and rho within 6e-3 of QuantLib's differences; the solved volatility repricing
   QuantLib's price within the price bound). No tool reads it yet.
+- **What landed next: the sourced yield.** `research/calendar.toml` schema version 2 (the yield inside the
+  `ex_dividend` entry, a top-level `dividend_yield` refused, version 1 still loaded), `calendar_events.sourced_yield`,
+  the `NO_YIELD` finding of `calendar_check.py` and the `yield` of the `desk_init.py` intake. The book and the
+  structuring tools still read whichever yield the file holds until they are wired.
 - **What lands.** The book's Greeks and implied volatility and the Structuring Desk's prices move to the lattice.
   `book.json` names the model each leg was priced with, and `docs/TOOLS.md` is regenerated. The structuring
   `american-style note:`, the `MODEL_LINE` and the `MODEL_NOTE` change with it, and counsel signs the new wording.

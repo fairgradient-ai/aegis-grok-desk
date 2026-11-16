@@ -341,6 +341,8 @@ class DividendIntakeTest(TempRoot):
         cal = calendar_events.load_calendar(os.path.join(self.root, "research", "calendar.toml"))
         self.assertEqual(["BRK.B", "NVDA", "WMT"], sorted(cal.symbols))
         self.assertEqual("0.2350", str(cal.symbols["WMT"].ex_dividend.amount))
+        self.assertEqual((2, calendar_events.YIELD_UNKNOWN, calendar_events.YIELD_NONE),
+                         (cal.schema_version, cal.sourced_yield("WMT").status, cal.sourced_yield("BRK.B").status))
         payload = body["payload"]
         self.assertEqual((["research/calendar.toml"], None, None), (payload["written"], payload["desk_toml"],
                                                                      payload["acknowledge"]))
@@ -360,6 +362,33 @@ class DividendIntakeTest(TempRoot):
         self.assertEqual(0, code, body)
         self.assertEqual(["desk.toml", "research/calendar.toml"], body["payload"]["written"])
         self.assertEqual(["research/calendar.toml"], body["payload"]["replaced"])
+
+    def test_the_yield_is_asked_with_the_ex_dividend_date(self) -> None:
+        # Roadmap 2.3 (the owner's answer to open question 3): the yield lives in the ex_dividend entry, sourced and
+        # dated with it.
+        os.makedirs(self.root)
+        intake = {"WMT": {"date": "2026-11-24", "amount": "0.2350", "yield": "0.0090", "status": "confirmed"}}
+        code, body = self.run_json({"schema_version": 1, "ex_dividends": intake})
+        self.assertEqual(0, code, body)
+        text = read_bytes(os.path.join(self.root, "research", "calendar.toml")).decode("utf-8")
+        self.assertIn("schema_version = 2\n", text)
+        self.assertIn('ex_dividend = { date = 2026-11-24, amount = 0.2350, yield = 0.0090, status = "confirmed", '
+                      'source = "owner-entered", checked_utc = 2026-11-04T15:20:00Z }\n', text)
+        cal = calendar_events.load_calendar(os.path.join(self.root, "research", "calendar.toml"))
+        view = cal.sourced_yield("WMT")
+        self.assertEqual((calendar_events.YIELD_SOURCED, "0.0090", "owner-entered"),
+                         (view.status, str(view.value), view.source))
+
+    def test_a_yield_outside_zero_to_one_or_with_no_dividend_is_refused(self) -> None:
+        os.makedirs(self.root)
+        code, body = self.run_json({"schema_version": 1, "ex_dividends": {"WMT": {
+            "date": "2026-11-24", "amount": "0.2350", "yield": "1.5", "status": "confirmed"}}})
+        self.assertEqual((1, "calendar_invalid"), (code, body["error"]["code"]))
+        self.assertIn("fraction between 0 and 1", body["error"]["message"])
+        code, body = self.run_json({"schema_version": 1, "ex_dividends": {"WMT": {
+            "status": "none", "source": "x", "yield": "0.01"}}})
+        self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]))
+        self.assertEqual([], self.files())
 
     def test_invalid_intakes(self) -> None:
         os.makedirs(self.root)

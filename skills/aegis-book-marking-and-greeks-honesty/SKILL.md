@@ -65,10 +65,10 @@ unavailable: your rule DAILY: day P/L unavailable: row 4 WMT261120C00105000: no 
 ## Implied volatility and when it is refused
 
 The desk solves IV itself from the leg's mid and never reads the vendor's IV or Greeks. The rate `r` is
-`desk.toml` `[rates] risk_free_rate`. The dividend yield `q` is the symbol's `dividend_yield` in
-`research/calendar.toml`, else 0, with the leg warning `q = 0: no dividend yield in calendar.toml`. The dividend
-intake of `desk_init.py` writes no `dividend_yield`, so on a new desk that warning is expected until the owner adds
-the yields by hand.
+`desk.toml` `[rates] risk_free_rate`. The dividend yield `q` is the symbol's yield in `research/calendar.toml` (the
+`yield` of its `ex_dividend` entry in schema version 2, or `dividend_yield` in version 1), else 0, with the leg
+warning `q = 0: no dividend yield in calendar.toml`. The dividend intake of `desk_init.py` asks for the yield with the
+ex-dividend date; a held symbol without a sourced yield is a `NO_YIELD` finding of `calendar_check.py`.
 
 Each leg's `iv_status` says what happened:
 

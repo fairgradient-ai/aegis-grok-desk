@@ -2,6 +2,15 @@
 
 ## 1.0.0 (unreleased)
 
+- **The dividend yield as a sourced fact** (roadmap step 2.3, second part; the owner's answer to open question 3).
+  `research/calendar.toml` is schema version 2: the yield is the `yield` of the symbol's `ex_dividend` entry
+  (`ex_dividend = { date = ..., amount = ..., yield = 0.0090, status = ..., source = ..., checked_utc = ... }`), so
+  it shares that entry's source, time and STALE check. Version 2 refuses a top-level `dividend_yield`; status `none`
+  takes no yield and means zero. Version 1 files still load. `calendar_events.sourced_yield` says whether a yield is
+  sourced (a version-2 `yield`, or status `none`); a bare version-1 yield is not. `calendar_check.py` gains the finding
+  `NO_YIELD` for every held symbol without a sourced yield. `desk_init.py` writes version 2 and takes an optional
+  `yield` with each dated ex-dividend. The fixture calendars are version 2. The book still prices with whichever yield
+  the file holds until the wiring part lands.
 - **The American leg pricer** (roadmap step 2.3, first part; engine only, not wired). `aegis_desk.american` prices
   one leg on the owner's model of record: the lattice's price, delta, gamma and theta in desk units, vega and rho as
   central differences of the lattice price, the early-exercise premium and `model = "american_crr_200"`. A leg in the

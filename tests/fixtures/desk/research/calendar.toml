@@ -1,20 +1,17 @@
 # Fixture research calendar (plan section 8): every entry is dated and sourced; "unknown" is never zero.
-schema_version = 1
+schema_version = 2
 
 [symbols.WMT]
 earnings = { date = 2026-11-17, time = "pre", status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-ex_dividend = { date = 2026-11-24, amount = 0.2350, status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-dividend_yield = 0.0090
+ex_dividend = { date = 2026-11-24, amount = 0.2350, yield = 0.0090, status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
 
 [symbols.NVDA]
 earnings = { date = 2026-11-19, time = "post", status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-ex_dividend = { date = 2026-12-03, amount = 0.01, status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-dividend_yield = 0.0003
+ex_dividend = { date = 2026-12-03, amount = 0.01, yield = 0.0003, status = "confirmed", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
 
 [symbols.SPY]
 earnings = { status = "none", source = "ETF: no earnings (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-ex_dividend = { date = 2026-12-18, amount = 1.85, status = "estimated", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
-dividend_yield = 0.0115
+ex_dividend = { date = 2026-12-18, amount = 1.85, yield = 0.0115, status = "estimated", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }
 
 [settlement]
 am_settled_roots = ["SPX", "NDX", "RUT", "VIX", "DJX", "XSP"]

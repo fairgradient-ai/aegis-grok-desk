@@ -221,7 +221,7 @@ python3 /workspace/aegis-grok-desk/scripts/market_clock.py --expiry 2026-11-20 -
 - Their output is diagnostic. Quote it only when the owner asks, unchanged, in a fenced block headed by the exact
   command. Never paraphrase it and never add a number to it.
 - The proposed rows of `csv_recon.py --diff` appear only in a 1:1 chat (yours or the Desk Lead's), never in the Floor.
-- `calendar_check.py` lists STALE, MISSING, UNKNOWN_DIVIDEND and PAST entries of `research/calendar.toml`;
+- `calendar_check.py` lists STALE, MISSING, UNKNOWN_DIVIDEND, PAST and NO_YIELD entries of `research/calendar.toml`;
   `--max-age-days N` sets the staleness bound (default 7). `market_clock.py --expiry` adds `--am-settled` for an
   AM-settled contract.
 

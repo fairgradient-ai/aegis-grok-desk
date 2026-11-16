@@ -1214,18 +1214,18 @@ class CalendarTomlTest(unittest.TestCase):
 
     def test_shape_and_symbols(self) -> None:
         doc = self.load()
-        self.assertEqual(1, doc["schema_version"])
+        self.assertEqual(2, doc["schema_version"])  # roadmap 2.3: the yield lives in the ex_dividend entry
         self.assertEqual(sorted(["schema_version", "symbols", "settlement", "closures"]), sorted(doc))
         self.assertEqual(sorted(["WMT", "NVDA", "SPY"]), sorted(doc["symbols"]))
         checked = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
         for symbol, table in doc["symbols"].items():
-            self.assertEqual(sorted(["earnings", "ex_dividend", "dividend_yield"]), sorted(table), symbol)
+            self.assertEqual(sorted(["earnings", "ex_dividend"]), sorted(table), symbol)
             for entry in (table["earnings"], table["ex_dividend"]):
                 self.assertEqual(checked, entry["checked_utc"], symbol)
                 self.assertIn(entry["status"], ("confirmed", "estimated", "unknown", "none"), symbol)
                 self.assertTrue(entry["source"], symbol)
-            self.assertIsInstance(table["dividend_yield"], Decimal, symbol)
-            self.assertGreater(table["dividend_yield"], 0, symbol)
+            self.assertIsInstance(table["ex_dividend"]["yield"], Decimal, symbol)
+            self.assertGreater(table["ex_dividend"]["yield"], 0, symbol)
 
     def test_entries(self) -> None:
         doc = self.load()
@@ -1234,17 +1234,17 @@ class CalendarTomlTest(unittest.TestCase):
                                                                    wmt["earnings"]["status"]))
         self.assertEqual((date(2026, 11, 24), Decimal("0.2350"), "confirmed"),
                          (wmt["ex_dividend"]["date"], wmt["ex_dividend"]["amount"], wmt["ex_dividend"]["status"]))
-        self.assertEqual(Decimal("0.0090"), wmt["dividend_yield"])
+        self.assertEqual(Decimal("0.0090"), wmt["ex_dividend"]["yield"])
         self.assertEqual((date(2026, 11, 19), "post", "confirmed"), (nvda["earnings"]["date"], nvda["earnings"]["time"],
                                                                     nvda["earnings"]["status"]))
         self.assertEqual((date(2026, 12, 3), Decimal("0.01"), "confirmed"),
                          (nvda["ex_dividend"]["date"], nvda["ex_dividend"]["amount"], nvda["ex_dividend"]["status"]))
-        self.assertEqual(Decimal("0.0003"), nvda["dividend_yield"])
+        self.assertEqual(Decimal("0.0003"), nvda["ex_dividend"]["yield"])
         self.assertEqual("none", spy["earnings"]["status"])
         self.assertNotIn("date", spy["earnings"])  # an ETF has no earnings: an explicit none, never a zero
         self.assertEqual((date(2026, 12, 18), Decimal("1.85"), "estimated"),
                          (spy["ex_dividend"]["date"], spy["ex_dividend"]["amount"], spy["ex_dividend"]["status"]))
-        self.assertEqual(Decimal("0.0115"), spy["dividend_yield"])
+        self.assertEqual(Decimal("0.0115"), spy["ex_dividend"]["yield"])
         # WMT's ex-dividend date is 3 trading days after the t1 instant (2026-11-19), inside the EXDIV window, but its
         # last cum-dividend day (Mon 2026-11-23) is after the Nov-20 call's last trading day: no dividend tier is listed.
         self.assertEqual(3, mc.trading_days_between(date(2026, 11, 19), date(2026, 11, 24)))

@@ -10,8 +10,9 @@ Reads ``research/calendar.toml`` strictly (``aegis_desk.calendar_events``), ``po
 held symbols (the underlyings of the open rows) and the short-call underlyings (``aegis_desk.grouping``),
 and prints every finding of ``calendar_events.freshness``: ``STALE`` (an entry checked more than
 ``--max-age-days`` ago, default 7), ``MISSING`` (a held symbol absent from the file), ``UNKNOWN_DIVIDEND``
-(a short-call underlying whose dividend is absent or ``unknown``: never zero) and ``PAST`` (a dated event
-that has passed). No network, no market data, nothing written. Exit 0 clean, 20 when anything is stale,
+(a short-call underlying whose dividend is absent or ``unknown``: never zero), ``PAST`` (a dated event
+that has passed) and ``NO_YIELD`` (a held symbol listed without a sourced dividend yield: the ``yield`` of its
+``ex_dividend`` entry in calendar ``schema_version`` 2, or that entry's status ``none``). No network, no market data, nothing written. Exit 0 clean, 20 when anything is stale,
 missing, unknown or past, when ``research/calendar.toml`` does not exist (every event is then unknown) or
 when ``positions.csv`` has file errors (held symbols unknown); 1 on a parse error of the calendar, a
 missing ``positions.csv`` or an unusable desk root; 2 on usage. ``--json`` payload: ``{"verdict",
@@ -34,8 +35,8 @@ from aegis_desk import calendar_events, desk_paths, grouping, market_clock, posi
 from aegis_desk.version import release_version  # noqa: E402
 
 TOOL = "calendar_check"
-DESCRIPTION = ("freshness lint of research/calendar.toml: STALE, MISSING, UNKNOWN_DIVIDEND and PAST findings against the held "
-               "symbols and the short-call underlyings; no network, nothing written")
+DESCRIPTION = ("freshness lint of research/calendar.toml: STALE, MISSING, UNKNOWN_DIVIDEND, PAST and NO_YIELD findings against "
+               "the held symbols and the short-call underlyings; no network, nothing written")
 NETWORK_ACCESS = "none"
 VERDICT_CLEAN = "clean"
 VERDICT_UNAVAILABLE = "unavailable"

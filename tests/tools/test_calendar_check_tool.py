@@ -100,7 +100,7 @@ class LintTest(DeskCopy):
                          (payload["verdict"], payload["exit_code"], payload["max_age_days"], payload["findings"], payload["today"]))
         self.assertEqual((["NVDA", "SPY", "WMT"], ["NVDA", "WMT"], ["NVDA", "SPY", "WMT"]),
                          (payload["held_symbols"], payload["short_call_symbols"], payload["listed_symbols"]))
-        self.assertEqual({"STALE": 0, "MISSING": 0, "UNKNOWN_DIVIDEND": 0, "PAST": 0}, payload["counts"])
+        self.assertEqual({"STALE": 0, "MISSING": 0, "UNKNOWN_DIVIDEND": 0, "PAST": 0, "NO_YIELD": 0}, payload["counts"])
         self.assertEqual(64, len(payload["calendar_sha256"]))
         self.assertEqual(before, self.tree(), "the lint writes nothing, not even runtime directories")
         code, text = run_tool(self.argv(json_mode=False))
@@ -157,20 +157,33 @@ class LintTest(DeskCopy):
 
     def test_unknown_dividend_for_a_short_call_underlying(self) -> None:
         self.rewrite("research/calendar.toml",
-                     'ex_dividend = { date = 2026-12-03, amount = 0.01, status = "confirmed", source = "owner-entered (fixture)", '
+                     'ex_dividend = { date = 2026-12-03, amount = 0.01, yield = 0.0003, status = "confirmed", source = "owner-entered (fixture)", '
                      'checked_utc = 2026-11-01T12:00:00Z }',
-                     'ex_dividend = { status = "unknown", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }')
+                     'ex_dividend = { yield = 0.0003, status = "unknown", source = "owner-entered (fixture)", '
+                     'checked_utc = 2026-11-01T12:00:00Z }')
         code, body = run_json(self.argv())
         self.assertEqual(20, code, body)
         self.assertEqual([("UNKNOWN_DIVIDEND", "NVDA")], [(f["kind"], f["symbol"]) for f in body["payload"]["findings"]])
 
     def test_spy_without_a_short_call_needs_no_dividend(self) -> None:
         self.rewrite("research/calendar.toml",
-                     'ex_dividend = { date = 2026-12-18, amount = 1.85, status = "estimated", source = "owner-entered (fixture)", '
+                     'ex_dividend = { date = 2026-12-18, amount = 1.85, yield = 0.0115, status = "estimated", source = "owner-entered (fixture)", '
+                     'checked_utc = 2026-11-01T12:00:00Z }',
+                     'ex_dividend = { yield = 0.0115, status = "unknown", source = "owner-entered (fixture)", '
+                     'checked_utc = 2026-11-01T12:00:00Z }')
+        code, body = run_json(self.argv())
+        self.assertEqual(0, code, body)
+
+    def test_an_unknown_dividend_without_a_yield_is_no_yield(self) -> None:
+        # roadmap 2.3: a held symbol needs a sourced yield whatever its dividend status (unless it is "none")
+        self.rewrite("research/calendar.toml",
+                     'ex_dividend = { date = 2026-12-18, amount = 1.85, yield = 0.0115, status = "estimated", source = "owner-entered (fixture)", '
                      'checked_utc = 2026-11-01T12:00:00Z }',
                      'ex_dividend = { status = "unknown", source = "owner-entered (fixture)", checked_utc = 2026-11-01T12:00:00Z }')
         code, body = run_json(self.argv())
-        self.assertEqual(0, code, body)
+        self.assertEqual(20, code, body)
+        self.assertEqual([("NO_YIELD", "SPY")], [(f["kind"], f["symbol"]) for f in body["payload"]["findings"]])
+        self.assertEqual(1, body["payload"]["counts"]["NO_YIELD"])
 
     def test_held_symbol_absent_from_the_file_is_missing(self) -> None:
         self.rewrite("research/calendar.toml", "[symbols.NVDA]", "[symbols.NVDX]")
