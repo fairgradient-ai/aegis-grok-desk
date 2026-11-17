@@ -92,10 +92,10 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
 | 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | landed |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
-| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
-| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
-| 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | planned |
-| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
+| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
+| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
+| 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | landed |
+| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed: the tool; its routines are 2.10 |
 | 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
 | 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | planned |
@@ -292,8 +292,14 @@ context, sourced dates) and widens the Structuring Desk's scope.
   put and its absence on an out-of-the-money one, the alert lint's structuring mode over every new text, the QuantLib
   oracle over the new best legs, and counsel's sign-off.
 
-### 2.5 Weekly expirations
+### 2.5 Weekly expirations (landed)
 
+- **What landed.** `structuring_config` reads `expirations = "monthly" | "weekly"` in every structure section
+  (schema version 2, default `monthly`) and refuses a `weekly` section whose `dte` spans more than 21 days;
+  `structuring.is_week_end` and `candidate_expirations(weekly=True)` add the week-end expirations; the notes print
+  `expirations: weekly and monthly in your N to M day window`; `desk_init.py` takes the key. Tests cover a holiday
+  Friday's Thursday weekly, the 21-day refusal, the dailies left out and, over every window of 2026 and 2027, at most
+  four week-ends (the four-chain cap holds; a chain past the cap still answers UNAVAILABLE).
 - **What lands.** The structuring tools list weekly expirations as well as the standard monthly ones.
 - **The chain budget (your answer to open question 8): narrow the window, keep the cap.** One chain is one
   expiration, and a run may fetch at most 4 chains and 40 requests (`PER_RUN_MAX_CHAINS`, `PER_RUN_MAX_REQUESTS` in
@@ -311,10 +317,18 @@ context, sourced dates) and widens the Structuring Desk's scope.
   whose Friday is a holiday, so the weekly falls on Thursday; a listing that would still exceed 4 chains answering
   UNAVAILABLE.
 
-### 2.6 A cash-balance check and per-account approval levels
+### 2.6 A cash-balance check and per-account approval levels (landed)
 
 - **Constraint.** The desk has no brokerage API and does not see your cash. A cash figure can only be one you state,
   per account, in `desk.toml`, with its date, and acknowledged like every other owner value.
+- **What landed.** `desk_config` reads an optional `approval_level`, `cash` and `cash_as_of` on each
+  `[[owner.accounts]]` entry (`OwnerSection.level_for`, `.account`); the structuring tools read the account's own
+  level; `aegis_desk.cash_check` computes the peak cash out over a ticket's or proposal's legs in order (short-put
+  collateral included) and compares it with the stated cash, UNAVAILABLE when it is absent, dated ahead or older than
+  `CASH_MAX_AGE_TRADING_DAYS` (5); tickets print it under the cash block (and carry `cash.check` in JSON), proposals
+  after the approval block; a shortfall is a failed item, never a refusal. `engagement`, `chatty_or_quiet` and
+  `attention_thresholds` are optional and read by nothing; `desk_init.py` no longer requires them and takes the new
+  account keys.
 - **What lands.** An `approval_level` on each `[[owner.accounts]]` entry (each already has a `name` and a `type`),
   read before the desk-wide `[owner] approval_level`, and a cash check on every ticket and proposal.
 - **Stated cash (your answer to open question 5).** Two optional keys per account, given together or not at all:
@@ -334,8 +348,18 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** The approval-level check's tests for each account; the peak-cash goldens, the WMT credit roll among them;
   every UNAVAILABLE case; the `desk_init.py` intake; the acknowledgement set; counsel's sign-off on the cash line.
 
-### 2.7 Exposures and limits
+### 2.7 Exposures and limits (landed)
 
+- **What landed.** `aegis_desk.beta` fits each symbol's OLS beta against SPY on split-adjusted daily closes (the 252
+  closes ending the previous trading day; UNAVAILABLE under 126 paired returns or past the 40 % guard; `r2_flag` `ok`
+  at r2 >= 0.30, else `low`). `beta_refresh.py`, a new read-only tool, fetches those bars through the quote cache with
+  `history(..., adjustment="split")` (the default stays `"raw"`) and writes the day's fits to `data/beta/<date>.json`;
+  a second run the same day reads the cache. The book reads that file, so a book run still sends only its quotes
+  batch: each underlying carries `net_delta`, `beta` and `beta_r2_flag`, and `beta_weighted_delta` is filled in dollars
+  with its `r2_flag` (an underlying with no net delta needs no beta; the portfolio line prints the figure when there is
+  one). The exit rulebook gains `beta_weighted_delta_pct` (portfolio) and `delta_exposure_pct` (underlying), and
+  `rules/examples/limits-1.0.0.toml` holds `BWD` and `UDELTA`, both `owner_must_set`. The fixture desk's regular set
+  carries split-adjusted bars (NVDA fits 2.04 with r2 0.50, ok; WMT 0.53 with r2 0.23, low).
 - **What lands.** `beta_weighted_delta`, today always `{"value": null, "r2_flag": "unavailable"}` in `book.json`,
   filled in dollars with its `r2_flag`, and two new rule metrics.
 - **The limits (your answer to open question 4): two metrics in the exit rulebook.** Limits live where `CONC` and
@@ -359,8 +383,24 @@ context, sourced dates) and widens the Structuring Desk's scope.
   split-adjusted bars fit; UNAVAILABLE when bars are missing; the example rules passing the lint; counsel's sign-off on
   the two metric names, the beta source line and the WATCH wording.
 
-### 2.8 Scenario and event stress
+### 2.8 Scenario and event stress (landed: the tool)
 
+- **What landed.** `aegis_desk.scenario` and `scripts/scenario.py`. The book is marked once, as `book.py` marks it,
+  and every open group is re-priced through `book.leg_price`, the book's own leg pricer (the American lattice).
+  - **The grid (proposed here).** Spot moves of -10, -5, -2, 0, +2, +5 and +10 % crossed with volatility moves of -5,
+    0 and +5 points (never below 1 %): 21 cells. Counsel signs its labels.
+  - **A zero move equals the book.** Each change is measured between two model prices, so the stressed P/L at a zero
+    move is the book's `unrealized_pl_mid` exactly.
+  - **Exclusions.** A group the book marks unavailable, a leg without implied volatility, or an unknown dividend
+    yield excludes its group, and the portfolio total is then empty.
+  - **Event stresses.** `--event earnings|ex_dividend --symbol SYM` prices the close of the first trading day after
+    the date. A leg that expires first is valued at its intrinsic value at the moved spot, spot is never cut by the
+    dividend, and the dividend tier is named when a short call is in scope.
+  - **A hedge through an event.** Each group's change is split into stock and options.
+  - **The routines.** `pre-event-stress` (15:05 ET each trading weekday) and `weekend-stress` (Saturday 10:00 ET) are
+    proposed here. They add 6 runs a week (lean 47, active 67, pinned in `tests/engine/test_routines.py`), and their
+    ids already fit the Auto-review text. They post in the Aegis Book & Risk Analyst's chat, so they land with that
+    seat (2.10).
 - **What lands.** A scenario tool (not yet in the tree) that re-prices the book under spot and volatility moves, and an
   event stress of a position through an earnings or ex-dividend date, including a hedge through an event. Every price
   comes from the engine; a scenario is labelled as a computation, not a forecast.
@@ -395,7 +435,24 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** All ten steps of `check.sh` with five agents; the template claiming the new skills; the bootstrap and
   `SETUP.md` steps for the new Bot with readbacks.
 
-### 2.11 Sourced events and the decision calendar
+### 2.11 Sourced events and the decision calendar (landed: the tools)
+
+- **What landed.**
+  - **The read path.** `alpaca_client.cash_dividends`, on the eighth allow-listed path `/v1/corporate-actions`
+    (`types=cash_dividend`, the market-data host, the same paper key). It keeps the ex-dates of the window and drops
+    a record without an ex-date. `SECURITY.md` lists the path.
+  - **`dividend_source.py`.** It compares the declarations with `research/calendar.toml` (AGREES, NEW, DIFFERS,
+    NONE FOUND) and proposes the new or different ones as `sourced_dividends` answers.
+  - **The owner's tap.** `desk_init.py --replace --owner-tapped` rewrites only those `ex_dividend` lines, with status
+    `confirmed`, `source = "Alpaca corporate actions (cash_dividend)"` and the fetch time as `checked_utc`. A stated
+    `yield` is kept with its new `yield_source` key (calendar schema 2), and every other line is kept.
+  - **`decision_calendar.py`.** It lists the act-by instants, last trading days, ex-dividend and earnings dates with
+    their sources; an unknown or missing date is UNAVAILABLE.
+  - **Not yet confirmed.** The response shape follows Alpaca's documentation of `cash_dividends` (`symbol`, `rate`,
+    `ex_date`, `process_date`, `special`, `foreign`). Whether the free plan serves it to a paper key is confirmed only
+    on a live run: if it is not, the tool answers UNAVAILABLE and the owner keeps stating dividends.
+  - **The routines.** `calendar-build` and `event-sheet` post in the Aegis Events and Calendar Analyst's chat, so
+    they land with that seat (2.12).
 
 - **The data source (your answer to open question 1).** One new GET-only read path on the pinned market-data host,
   Alpaca's corporate actions (`data.alpaca.markets`, `/v1/corporate-actions`, `types=cash_dividend`), with the same
@@ -518,8 +575,9 @@ Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts
 | `disclosures_acknowledged` | kept as a required record; no stage gates behaviour on it |
 
 Retired means the key becomes optional in `desk_config.py`, so existing files still parse under the strict reader;
-nothing reads it, `desk_init.py` stops asking for it and writing it, and the charter and Desk Lead lines say so. This
-lands with 2.6. Counsel decides whether any later owner-facing text must check `disclosures_acknowledged` first.
+nothing reads it, `desk_init.py` no longer requires it (an answers file that still gives it is rendered as before, so
+an existing desk keeps its hash) and the interview no longer asks for it, and the Desk Lead lines say so. Landed with
+2.6. Counsel decides whether any later owner-facing text must check `disclosures_acknowledged` first.
 
 ## Not on the roadmap
 
@@ -571,13 +629,13 @@ only the files that do.
 | The parity-carry bound's own tree (proposed here) | 2.3 | `scripts/aegis_desk/carry.py` (`_tree`, `early_exercise_gap`, `TREE_STEPS`), `docs/STRUCTURING.md` (the carry of each expiration) |
 | Roll analyses (a long put's, a short put's and a collar's landed; a vertical rolls by ticket) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
 | Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
-| Weekly expirations | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
-| Cash-balance check, per-account approval levels | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
-| Beta-weighted delta, exposures, limits and limit messages | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
-| Scenario and event stress, a hedge through an event | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
+| Weekly expirations (landed) | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
+| Cash-balance check, per-account approval levels (landed) | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
+| Beta-weighted delta, exposures, limits and limit messages (landed) | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
+| Scenario and event stress, a hedge through an event (landed: the tool) | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
 | The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
-| Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
+| Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar (landed: the tools) | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
 | The Aegis Events and Calendar Analyst | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
@@ -596,20 +654,14 @@ both counts reach zero.
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
 | `agents/desk-lead.md` | 3 | 3 |
-| `agents/position-control.md` | 1 | 0 |
-| `docs/ARCHITECTURE.md` | 2 | 1 |
+| `docs/ARCHITECTURE.md` | 1 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
-| `docs/STRUCTURING.md` | 2 | 0 |
-| `scripts/aegis_desk/book.py` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
-| `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 1 | 0 |
 | `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
-| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 2 | 0 |
+| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
-| `skills/aegis-role-position-control/SKILL.md` | 1 | 0 |
-| `skills/aegis-roll-decision-framework/SKILL.md` | 1 | 0 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

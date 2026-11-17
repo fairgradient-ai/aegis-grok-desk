@@ -55,9 +55,12 @@ shares stay protected and covered at every step. A vertical's ROLL ticket moves 
 the same width: `--new-strike` names the new short leg and the long leg keeps the held distance from it. It opens the
 new long leg, closes the held short, closes the held long and opens the new short, which the new long call covers (a
 defined-risk spread, level 3 by the desk's convention); no `structuring.toml` section judges it, so it prints the new
-vertical's width and net and the roll's net in place of checks. A vertical has no roll analysis. Weekly expirations,
-scenario, a cash-balance check and per-account approval levels are planned for
-Stage 2 (not in this release).
+vertical's width and net and the roll's net in place of checks. A vertical has no roll analysis. Every ticket and
+proposal reads the account's own approval level (else `[owner] approval_level`) and checks its peak cash need against
+the cash you stated for the account (`[[owner.accounts]]` `cash` and `cash_as_of`): `cash needed at the peak, after
+step 1 of 2: 700.00 | stated cash 18,500.00 as of 2026-11-13 (2 trading days old)`. The need includes the cash a
+short put opened secures, less what a short put closed releases; a shortfall is a failed check item, never a refusal;
+no stated cash, a figure older than 5 trading days or dated ahead, or a leg without its quote side is UNAVAILABLE.
 
 ## Only when you ask
 
@@ -263,6 +266,11 @@ CHANGED at the next book check, so an edit that would steer the best candidate i
 
 - **Expirations.** Standard monthly expirations whose calendar days to expiry lie in your `dte` window and, for a
   replacement, that expire after the held leg. The window is at most 90 days wide, so a run needs at most four chains.
+  A section with `expirations = "weekly"` (schema version 2) adds every listed week-end expiration: the last trading
+  day of its week, a Friday, or the Thursday when that Friday is a holiday; daily expirations are never listed. Its
+  `dte` window may then be at most 21 days wide (the reader refuses a wider one), so it holds at most four
+  expirations and the same four-chain cap holds. The notes name the mode, for example `expirations: weekly and
+  monthly in your 30 to 51 day window`.
   A window that holds no listed standard monthly is NOT_APPLICABLE and writes no report. Synthetic, the fixture with
   `[roll] dte = [80, 100]`: `no listed standard monthly expiration lies inside your roll window of 80 to 100 calendar
   days`.
@@ -872,10 +880,11 @@ changes, every structuring tool answers `config_unacknowledged` until you tap `a
   minutes and approximate (not exchange quotes), so every option price a structuring text names is approximate; the
   desk treats every quote as 15 minutes delayed. A ticket is computed only while the session is open, and it
   is valid for 30 minutes at most.
-- **What the desk knows.** Your positions, your criteria and the approval level you stated. It does not see your cash,
-  your other holdings, your objectives or your taxes, and it makes no cash check.
-- **Expirations.** Standard monthly expirations only; weekly expirations are planned for Stage 2 (not in this
-  release).
+- **What the desk knows.** Your positions, your criteria, the approval levels you stated and the cash you stated per
+  account with its date. It does not see your cash, your other holdings, your objectives or your taxes: its cash
+  check compares a ticket's or proposal's peak need with your stated figure only, and models no margin.
+- **Expirations.** Standard monthlies, and with `expirations = "weekly"` the week-end expirations of a window at most
+  21 days wide; never daily expirations.
 - **Dates.** One next earnings date and one next ex-dividend date per symbol, from `research/calendar.toml`. A date
   that is unknown, not listed or already passed counts as inside a call's life, and a call whose last trading day is
   at least 80 calendar days after the known ex-date also gets the second-ex-date label.

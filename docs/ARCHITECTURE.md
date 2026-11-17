@@ -90,6 +90,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `state/heartbeat/` | `routine.py`, `book_check.py --post`, `heartbeat.py` | one heartbeat per routine and the history |
 | `data/cache/` | the quote cache | quotes, the request ledger |
 | `data/book/<date>.json` | `book.py --snapshot` | the end-of-day snapshot of record (the next day's day P/L reads it) |
+| `data/beta/<date>.json` | `beta_refresh.py` | each held underlying's beta against SPY (the book's beta-weighted delta reads it) |
 | `data/positions/<date>.csv`, `.sha256`, `.recon.json` | `csv_recon.py` | a copy of `positions.csv` and the reconciliation |
 | `journal/signals.jsonl`, `journal/alerts.jsonl`, `journal/<date>.md` | `book_check.py --post`, `routine.py` | every signal and every posted message |
 | `levels/<date>.md`, `levels/<date>.json` | `trigger_levels.py` | the threshold-level sheet |
@@ -140,6 +141,25 @@ Without `--desk-root` a tool reads the current directory; `routine.py` alone def
   it into the model of record (step 2.3) and `early_exercise.py` into the early-exercise line beside the expiry tiers.
   It is tested against the American put Hull prints, and the CI oracle compares it with QuantLib's finite-difference
   American engine.
+- **Beta and the limits.** `beta.py` (roadmap step 2.7): the OLS beta of a symbol's daily simple returns against SPY's
+  over the 252 split-adjusted closes ending the previous trading day. Fewer than 126 paired returns, or one daily return
+  beyond 40 % in either series, is UNAVAILABLE; `r2_flag` is `ok` at r2 >= 0.30 and `low` below. `beta_refresh.py`
+  writes the day's fits to `data/beta/<date>.json` once a day, so the book stays a quotes-only read. The book fills
+  each underlying's `net_delta` and `beta` and the portfolio's `beta_weighted_delta` in dollars, and the exit
+  rulebook reads them as two metrics, `beta_weighted_delta_pct` and `delta_exposure_pct`. A limit is an exit rule the
+  owner adopts (`rules/examples/limits-1.0.0.toml`), with WATCH verdicts only.
+- **Scenario and event stress.** `scenario.py` (roadmap step 2.8) re-prices the book on a grid of spot moves (-10 to
+  +10 %) crossed with volatility moves (-5 to +5 points) through `book.leg_price`, the book's own leg pricer, so a
+  stressed price never uses another model. It measures each change between two model prices, so the stressed book
+  equals the book at a zero move. An event stress prices one symbol's groups at the close of the first trading day
+  after its earnings or ex-dividend date; spot is never cut by the dividend. A computation, not a forecast.
+- **Sourced dividends and the decision calendar.** `dividend_source.py` (roadmap step 2.11) reads the held symbols'
+  declared cash dividends from Alpaca's corporate actions (`/v1/corporate-actions`, `types=cash_dividend`). It keeps
+  the ex-dates in its window, compares them with `research/calendar.toml`, and proposes the new or different ones as
+  `desk_init.py` answers. Nothing is written until the owner's tap runs `desk_init.py --replace --owner-tapped`,
+  which rewrites only those `ex_dividend` lines (`source = "Alpaca corporate actions (cash_dividend)"`, a stated
+  yield kept with its `yield_source`). `decision_calendar.py` lists the dated decision points: act-by instants, last
+  trading days, ex-dividend and earnings dates with their sources. An unknown date is UNAVAILABLE.
 - **The market clock.** `market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed
   from the NYSE hours calendar, with the America/New_York daylight-saving rule (no `tzdata` needed). The table expires
   on 2027-12-31; the doctor's check 3 fails 60 days before that.
@@ -154,7 +174,7 @@ for order-shaped text. Where the numbers and thresholds come from is in [PROVENA
 ## Trust boundaries
 
 - **One network path.** `scripts/aegis_desk/alpaca_client.py` is the only module that may open a connection: GET only,
-  two pinned hosts (Alpaca's market-data host and its paper trading host, the live trading host refused), seven
+  two pinned hosts (Alpaca's market-data host and its paper trading host, the live trading host refused), eight
   allow-listed read paths, no redirects, no proxy. `scripts/check_no_write_paths.py`
   proves this by reading every module's syntax tree.
 - **One credential.** An Alpaca paper key pair, used only to read market data, which cannot reach a live account.
@@ -190,13 +210,15 @@ The owner's decisions behind the design (2026-10-30):
 ## Later stages (planned)
 
 [ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
-the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4) and the volatility context
-tool (2.9).
+the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4), weekly expirations (2.5),
+the stated cash check and per-account approval levels (2.6), the exposures and the two limit metrics (2.7), the
+scenario and event stress tool (2.8), the volatility context tool (2.9), and the sourced cash dividends and the
+decision calendar (2.11).
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with
-  scenario and event stress and a decision calendar, are planned for Stage 2 (not in this release). Volatility
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with the stress routines and the
+  `calendar-build` and `event-sheet` routines, are planned for Stage 2 (not in this release). Their tools have landed:
+  `scripts/scenario.py`, `scripts/dividend_source.py` and `scripts/decision_calendar.py`; the seats that relay them
+  are part of that plan. Volatility
   context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
-- For the Aegis Structuring Desk, weekly expirations, a cash-balance check and per-account approval levels are
-  planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).

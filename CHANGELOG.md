@@ -2,6 +2,52 @@
 
 ## 1.0.0 (unreleased)
 
+- **Sourced cash dividends and the decision calendar** (roadmap step 2.11; the owner's answer to open question 1).
+  - **One new read path.** The market-data client gains `/v1/corporate-actions` (`types=cash_dividend`), the eighth
+    allow-listed path (`SECURITY.md`).
+  - **`dividend_source.py`** (new, read-only) compares the held symbols' declared dividends with
+    `research/calendar.toml` and proposes the new or different ones.
+  - **The owner's tap.** `desk_init.py` gains `sourced_dividends` answers. Run with `--replace --owner-tapped`, it
+    rewrites only those `ex_dividend` lines and keeps a stated yield under the new `yield_source` key.
+  - **`decision_calendar.py`** (new, read-only) lists the act-by instants, last trading days, ex-dividend and
+    earnings dates in date order, and an unknown date as UNAVAILABLE.
+- **Scenario and event stress** (roadmap step 2.8). `scenario.py`, a new read-only tool, marks the book as `book.py`
+  does and re-prices every open group through `book.leg_price`, the book's own leg pricer.
+  - **The grid.** Spot -10 to +10 % crossed with volatility -5 to +5 points, 21 cells (the desk's proposal).
+  - **Event stresses.** `--event earnings|ex_dividend --symbol SYM` prices the close of the first trading day after
+    the event, without cutting spot by the dividend.
+  - **Output.** A zero move equals the book. Each group's change is split into stock and options, so a hedge's
+    offset shows. A group without usable inputs is excluded with its reason (exit 20). Nothing is written.
+- **Exposures and two limit metrics** (roadmap step 2.7; the owner's answer to open question 4).
+  - **Beta.** `aegis_desk.beta` fits the OLS beta of daily simple returns against SPY over the 252 split-adjusted
+    closes ending the previous trading day. Under 126 paired returns, or past a 40 % daily return in either series, it
+    is UNAVAILABLE; `r2_flag` is `ok` at r2 >= 0.30 and `low` below.
+  - **`beta_refresh.py`** (new, read-only) fetches those bars once a day with `adjustment=split` on the existing bars
+    path and writes `data/beta/<date>.json`; exit 20 when a fit is UNAVAILABLE.
+  - **The book** fills each underlying's `net_delta`, `beta` and `beta_r2_flag` and the portfolio's
+    `beta_weighted_delta` in dollars from that file, and prints it on the portfolio line. It sends no extra request.
+  - **The exit rulebook** gains `beta_weighted_delta_pct` and `delta_exposure_pct`, with the example rules `BWD` and
+    `UDELTA` in `rules/examples/limits-1.0.0.toml` (both `owner_must_set`).
+- **Stated cash and per-account approval levels** (roadmap step 2.6; the owner's answers to open questions 5 and 7).
+  - **New account keys.** Each `[[owner.accounts]]` entry may state its own `approval_level`, which the structuring
+    tools read before `[owner] approval_level`. It may also state `cash` with `cash_as_of`, the two given together.
+  - **The cash check.** `aegis_desk.cash_check` compares a ticket's or proposal's peak cash out with that stated cash.
+    The peak is taken over the legs in the desk's fixed order and includes the cash a short put opened secures, less
+    what a short put closed releases.
+    - Tickets print it under the cash block and carry `cash.check` in JSON; proposals print it after the approval
+      block.
+    - A shortfall is a failed check item, never a refusal.
+    - It reads UNAVAILABLE when no cash is stated, the figure is dated ahead or older than 5 trading days, or a leg
+      has no quote side.
+  - **Retired values.** `engagement`, `chatty_or_quiet` and `attention_thresholds` are optional and read by nothing.
+    `desk_init.py` no longer requires them but still renders them when given, so an existing desk keeps its hash. It
+    accepts the new account keys.
+- **Weekly expirations** (roadmap step 2.5; the owner's answer to open question 8). Every structure section of
+  `structuring.toml` may set `expirations = "weekly"` (schema version 2; default `monthly`). Such a section adds every
+  listed week-end expiration (the last trading day of its week: a Friday, or the Thursday when that Friday is a holiday)
+  to the standard monthlies, and its `dte` window may span at most 21 days, so it holds at most four expirations and the
+  four-chain cap stays as it is. The notes print `expirations: weekly and monthly in your N to M day window`, and
+  `desk_init.py` takes the key. Daily expirations are never listed.
 - **Step 2.3 landed: the structuring prices and the early-exercise line** (the owner's answers to open questions 2
   and 3).
   - **Structuring prices.** The Structuring Desk prices every candidate on the American model of record. Without a

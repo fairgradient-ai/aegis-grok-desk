@@ -651,6 +651,18 @@ class SchemaVersionTwoTest(unittest.TestCase):
         self.assertTrue(view.known)
         self.assertEqual(view, ce.sourced_yield(cal, "WMT"))
 
+    def test_a_sourced_dividend_keeps_the_owners_yield_with_its_own_source(self) -> None:
+        cal = self.v2("WMT", ex_dividend(source='"%s"' % ce.SOURCE_ALPACA_DIVIDEND,
+                                         **{"yield": "0.0090", "yield_source": '"owner-entered"'}))
+        entry = cal.events_for("WMT").ex_dividend
+        self.assertEqual((ce.SOURCE_ALPACA_DIVIDEND, "owner-entered"), (entry.source, entry.yield_source))
+        self.assertEqual("owner-entered", cal.sourced_yield("WMT").source)
+        for body in (ex_dividend(**{"yield_source": '"owner-entered"'}),
+                     ex_dividend(status='"none"', amount=None, date=None, **{"yield_source": '"owner-entered"'})):
+            with self.subTest(body=body), self.assertRaises(ce.CalendarError):
+                self.v2("WMT", body)
+        self.assertEqual("Alpaca corporate actions (cash_dividend)", ce.SOURCE_ALPACA_DIVIDEND)
+
     def test_a_yield_is_allowed_with_an_unknown_dividend(self) -> None:
         cal = self.v2("WMT", ex_dividend(status='"unknown"', amount=None, date=None, **{"yield": "0.0090"}))
         self.assertEqual(ce.YIELD_SOURCED, cal.sourced_yield("WMT").status)

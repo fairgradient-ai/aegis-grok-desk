@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import alert_lint, alerts, approval, data_source, desk_paths, expiry, signals, state, structuring
+from . import alert_lint, alerts, approval, cash_check, data_source, desk_paths, expiry, signals, state, structuring
 from .desk_paths import DeskPaths
 
 UTC = datetime.timezone.utc  # noqa: UP017 - datetime.UTC needs 3.11; the floor is 3.9
@@ -1096,6 +1096,42 @@ def cash_block(w: Writer, net_conservative: Decimal, net_mid: Optional[Decimal],
     return [CASH_CAPTION] + labelled_items(rows)
 
 
+CASH_CHECK_LINE: str = ("**cash check** cash needed at the peak, after step %s of %s: %s | stated cash %s as of %s (%s "
+                        "trading days old)")
+"""The cash check of a ticket or a proposal against the account's stated cash (roadmap 2.6; ``aegis_desk.cash_check``);
+a shortfall adds :data:`CASH_SHORT_TAIL` and opens the item with the failed mark."""
+CASH_SHORT_TAIL: str = " | the stated cash is %s less than the peak"
+CASH_UNAVAILABLE_LINE: str = "**cash check** UNAVAILABLE: %s"
+"""The cash check that cannot be made (no cash stated, a figure too old or dated ahead, a leg without its quote side)."""
+
+
+def proposal_cash_check(answer: "structuring.Answer", candidate: "structuring.Candidate") -> "cash_check.CashCheck":
+    """The cash check of a proposal's legs in their order (roadmap 2.6): a long leg opened pays its ask, a short leg
+    opened receives its bid, times the contract size and the contracts; a proposal never opens a short put, so no
+    leg secures cash."""
+    target = answer.target
+    assert target is not None and target.group is not None
+    steps = []
+    for leg in candidate.legs:
+        short = leg.right == "CALL"  # a proposal sells a call (covered call, collar) and buys a put (protective put, collar)
+        side = leg.bid if short else leg.ask
+        premium = None if side is None else (side if short else -side) * structuring.CONTRACT_SIZE * candidate.contracts
+        steps.append(cash_check.Step(premium))
+    return cash_check.check(steps, target.market.cfg.owner.account(target.group.account), target.today,
+                            target.extra_holidays)
+
+
+def cash_check_item(w: Writer, check: Any) -> str:
+    """The cash check as one item (:data:`CASH_CHECK_LINE`, :data:`CASH_UNAVAILABLE_LINE`)."""
+    if check.status == "unavailable":
+        return item_line(CASH_UNAVAILABLE_LINE % check.reason)
+    text = CASH_CHECK_LINE % (w.count(check.after_step), w.count(check.steps), w.amount(check.need), w.amount(check.cash),
+                              w.date(check.as_of), w.count(check.age_trading_days))
+    if check.status == "short":
+        return item_line(text + CASH_SHORT_TAIL % w.amount(check.shortfall), STATUS_FAIL)
+    return item_line(text)
+
+
 def let_assign_line(w: Writer, strike: Decimal, right: str, broker_cutoff_et: Any) -> str:
     """``no leg to enter: if the 105 call is at least 0.01 in the money at expiry, OCC exercises it by exception; your
     broker's cutoff is 16:30 ET (desk.toml)``."""
@@ -1283,6 +1319,19 @@ def spot_bar_lines(w: Writer, answer: "structuring.Answer") -> List[str]:
                              "was" if one else "were", "it was" if one else "each was")]
 
 
+EXPIRATIONS_LINE: str = "expirations: weekly and monthly in your %s to %s day window"
+"""The note of a section with ``expirations = "weekly"`` (roadmap 2.5): the set of expirations follows from the owner's
+window alone; absent for a monthly section."""
+
+
+def expirations_line(w: Writer, section: Any) -> Optional[str]:
+    """:data:`EXPIRATIONS_LINE` for a weekly section, else ``None``."""
+    if getattr(section, "expirations", None) != structuring.structuring_config.EXPIRATIONS_WEEKLY:
+        return None
+    low, high = section.dte
+    return EXPIRATIONS_LINE % (w.count(low), w.count(high))
+
+
 CENTRE_SETTINGS_LINE: str = "band_centre with your own settings in structuring.toml: %s"
 """The note after ``band_centre``'s words when the owner set a centre or a weight (``schema_version = 2``); it replaces
 the equal-weight convention the words name with the owner's own numbers."""
@@ -1379,6 +1428,9 @@ def _analysis_notes(w: Writer, answer: "structuring.Answer", as_of: datetime.dat
     ranking = answer.ranking
     assert ranking is not None
     items = [objective_line(w, ranking.objective)]
+    weekly = expirations_line(w, answer.section)
+    if weekly is not None:
+        items.append(weekly)
     if ranking.objective.id == structuring.structuring_config.OBJECTIVE_BAND_CENTRE:
         settings = centre_settings_line(w, answer.section)
         if settings is not None:
@@ -1507,6 +1559,7 @@ def proposal_lines(w: Writer, answer: "structuring.Answer", owner_level: int) ->
             lines.append(ITEM + coverage)  # one more item of the group: why its max profit can stay unbounded
         lines.append("")
         lines.extend(approval_block(w, answer, best, owner_level))
+        lines.append(cash_check_item(w, proposal_cash_check(answer, best)))
     else:
         lines.append(bold(NONE_QUALIFIES_LINE))
     lines.append("")
@@ -1603,7 +1656,10 @@ def _words_of(*texts: str) -> List[str]:
 
 
 _LEXICON_SOURCES: Tuple[str, ...] = (
-    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, CENTRE_SETTINGS_LINE, *alerts.STRUCTURE_WORDS.values(),
+    _TEMPLATE_WORDS, SOURCE_WORDS, alert_lint.STRUCTURING_FOOTER_PREFIX, *FIXED_LINES, CARRY_LINE, CENTRE_SETTINGS_LINE, EXPIRATIONS_LINE, CASH_CHECK_LINE, CASH_SHORT_TAIL, CASH_UNAVAILABLE_LINE,
+    cash_check.REASON_NOT_STATED, cash_check.REASON_NO_ACCOUNT, cash_check.REASON_NO_QUOTE, cash_check.REASON_FUTURE,
+    cash_check.REASON_STALE,
+    *alerts.STRUCTURE_WORDS.values(),
     *ACTION_WORDS.values(), ROLL_PUT_WORDS, ROLL_SHORT_PUT_WORDS, ROLL_COLLAR_WORDS, ROLL_VERTICAL_WORDS, *WHAT_WORDS, *TIE_BREAK_WORDS.values(), *EXPIRATION_WORDS.values(),
     *structuring.UNPRICED_WORDS.values(), *approval.MULTI_LEG_NOTES.values(), *approval.CONVENTION.values(),
     *(objective.words for objective in structuring.structuring_config.OBJECTIVE_DEFS.values()),
@@ -1846,7 +1902,7 @@ __all__ = [
     "CODE_FAILS_RULE", "CODE_OCC_SYMBOL", "CODE_OWNER_TEXT", "EXPIRATION_WORDS", "FAILS_RULE_WORD", "FEED_DELAY_MIN",
     "FIXED_LINES", "FOOTER_KIND", "JOURNAL_KEYS", "LIMIT_LINE", "MODEL_LINE", "NONE_QUALIFIES_LINE", "OCC_RE",
     "POINTER_LINE", "PRECHECK_CODES", "ROLL_PUT_WORDS", "Rendered", "ReportExists", "ReportFiles", "SOURCE_WORDS",
-    "TIE_BREAK_WORDS", "WHAT_WORDS", "Writer", "accepted_line", "account_words", "after_line", "american_line",
+    "TIE_BREAK_WORDS", "WHAT_WORDS", "Writer", "EXPIRATIONS_LINE", "expirations_line", "CASH_CHECK_LINE", "cash_check_item", "accepted_line", "account_words", "after_line", "american_line",
     "append_journal_record", "append_unavailable_record", "approval_block", "best_line", "candidate_line", "cash_line",
     "config_changed_line",
     "config_unacknowledged_line", "contract_words", "criteria_missing_line", "criterion_line", "data_as_of",

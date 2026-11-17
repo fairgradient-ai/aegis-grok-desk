@@ -194,8 +194,8 @@ owner's own fill, with every fill the conversation already holds (never ask agai
   EXDIV not applicable: the last trading day 2026-11-20 precedes the last cum-dividend day 2026-11-23 of the 2026-11-24 ex-date
   ```
 
-- An unknown dividend is UNAVAILABLE, never zero. In Stage 1 the owner states dividends in the desk interview
-  (`desk_init.py`, the Desk Lead's); sourcing them is planned for Stage 2 (not in this release).
+- An unknown dividend is UNAVAILABLE, never zero. The owner states dividends in the desk interview (`desk_init.py`,
+  the Desk Lead's), or taps a proposal of `dividend_source.py` read from Alpaca's corporate actions.
 - The outcomes `csv_recon.py` infers: EXPIRED_OTM, PROBABLE_ASSIGNED, PROBABLE_EXERCISED, PIN_UNCERTAIN, CASH_SETTLED,
   SETTLEMENT_UNKNOWN, SETTLEMENT_PENDING and EXPIRED_UNRECORDED. PIN_UNCERTAIN proposes no edit: the owner confirms
   with the broker.

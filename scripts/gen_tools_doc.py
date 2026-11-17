@@ -41,12 +41,15 @@ from aegis_desk import version
 import ack
 import alert_lint
 import assignment_watch
+import beta_refresh
 import book
 import book_check
 import calendar_check
 import csv_recon
+import decision_calendar
 import desk_doctor
 import desk_init
+import dividend_source
 import eod_summary
 import exit_check
 import exit_ticket
@@ -63,14 +66,15 @@ import routine
 import routine_audit
 import rules_adopt
 import rules_diff
+import scenario
 import trigger_levels
 import vol_context
 
 TOOL_MODULES = (
-    ack, alert_lint, assignment_watch, book, book_check, calendar_check, csv_recon, desk_doctor, desk_init,
-    eod_summary, exit_check, exit_ticket, expiry_checklist, heartbeat, market_clock, opening_bell, positions_check,
-    propose, quote_cache, quote_qc, roll_analysis, routine, routine_audit, rules_adopt, rules_diff, trigger_levels,
-    vol_context,
+    ack, alert_lint, assignment_watch, beta_refresh, book, book_check, calendar_check, csv_recon, decision_calendar,
+    desk_doctor, desk_init, dividend_source, eod_summary, exit_check, exit_ticket, expiry_checklist, heartbeat, market_clock, opening_bell,
+    positions_check, propose, quote_cache, quote_qc, roll_analysis, routine, routine_audit, rules_adopt, rules_diff,
+    scenario, trigger_levels, vol_context,
 )
 """Every desk tool (a ``scripts/*.py`` with ``build_parser`` and ``main``), sorted by name."""
 

@@ -40,9 +40,13 @@ or a criterion for you.
 
 ## Later stages
 
-- `aegis-exposures-limits-and-stress`, exposures, limits and stress views, is planned for Stage 2 (not in this release).
+- `aegis-exposures-limits-and-stress`, the skill for exposures, limits and stress views, is planned for Stage 2 (not in
+  this release). The exposures and the two limit metrics have landed in the book and the exit rulebook (step 2.7), and
+  the scenario and event stress tool `scenario.py` (step 2.8).
 - `aegis-vol-context`, volatility context that never changes a verdict, is planned for Stage 2 (not in this release).
-- `aegis-event-calendar-sourcing`, sourced earnings and ex-dividend dates, is planned for Stage 2 (not in this release).
+- `aegis-event-calendar-sourcing`, the skill for sourced event dates, is planned for Stage 2 (not in this release).
+  Its tools have landed (step 2.11): `dividend_source.py` proposes declared cash dividends, and `decision_calendar.py`
+  lists the dated decision points.
 - `aegis-signal-journal-and-review`, the signal journal and the weekly review, is planned for Stage 3 (not in this release).
 
 ## Role skills

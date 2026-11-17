@@ -42,6 +42,13 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
   ``structuring_config.parse_structuring_toml_text`` before anything is written (a failure is exit 1
   ``structuring_invalid`` with the reader's reason).
 
+* ``sourced_dividends`` (roadmap 2.11; alone): ``dividend_source.py``'s proposal, ``{SYMBOL: {date, amount,
+  checked_utc}}``, read from Alpaca's corporate actions. It updates the existing ``research/calendar.toml`` in place
+  (:func:`merge_sourced_dividends`): each symbol's ``ex_dividend`` line becomes ``{ date, amount, status =
+  "confirmed", source = "Alpaca corporate actions (cash_dividend)", checked_utc }``, keeping a stated ``yield`` with its
+  own ``yield_source``; every other line is kept. A missing calendar is ``calendar_missing``, an entry not written on
+  one line ``calendar_layout``. The update replaces an existing file, so it needs ``--replace --owner-tapped``.
+
 An existing ``desk.toml``, ``research/calendar.toml`` or ``structuring.toml`` is refused (exit 1 ``desk_toml_exists``,
 ``calendar_exists`` or ``structuring_exists``) unless both ``--replace`` and ``--owner-tapped`` are given
 (``--owner-tapped`` is the signature of
@@ -119,12 +126,23 @@ CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vend
                              "order_shape_enabled": "false"}
 """The rendered values the interview does not ask."""
 TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends",
-                             "earnings", "structuring")
+                             "earnings", "structuring", "sourced_dividends")
+SOURCED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "checked_utc")
+"""A ``sourced_dividends`` entry (roadmap 2.11): what ``dividend_source.py`` read from Alpaca's corporate actions."""
+INSTANT_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)\Z")
 DESK_KEYS: Tuple[str, ...] = ("engagement", "cadence_profile", "chatty_or_quiet")
+DESK_REQUIRED: Tuple[str, ...] = ("cadence_profile",)
+"""``engagement`` and ``chatty_or_quiet`` are retired (roadmap 2.6): the interview no longer asks for them, and an
+answers file that still gives them is rendered as before."""
 OWNER_KEYS: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity", "attention_thresholds",
                                "disclosures_acknowledged", "accounts")
+OWNER_REQUIRED: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity",
+                                   "disclosures_acknowledged", "accounts")
+"""``attention_thresholds`` is retired (roadmap 2.6), as the two ``[desk]`` values are."""
 ATTENTION_KEYS: Tuple[str, ...] = ("pl_day_pct", "pl_trade_abs")
-ACCOUNT_KEYS: Tuple[str, ...] = ("name", "type")
+ACCOUNT_KEYS: Tuple[str, ...] = ("name", "type", "approval_level", "cash", "cash_as_of")
+ACCOUNT_REQUIRED: Tuple[str, ...] = ("name", "type")
+"""An account's ``approval_level`` and its ``cash`` with ``cash_as_of`` are optional (roadmap 2.6)."""
 MARKET_DATA_KEYS: Tuple[str, ...] = ("host", "key_env", "secret_env", "credentials_file")
 RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
@@ -141,7 +159,7 @@ STRUCTURING_KINDS: Dict[str, str] = {
     "strike_floor": "string", "earnings": "string", "ex_dividend": "string", "objective": "string",
     "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
     "dte_centre": "decimal", "abs_delta_centre": "decimal", "floor_pct_centre": "decimal", "cap_pct_centre": "decimal",
-    "band_weights": "decimal_table", "roll_test": "string",
+    "band_weights": "decimal_table", "roll_test": "string", "expirations": "string",
 }
 """How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS`` and of
 ``structuring_config.V2_KEYS``)."""
@@ -171,6 +189,10 @@ def _objective_words(section: str) -> str:
     return " | ".join(structuring_config.OBJECTIVES[section])
 
 
+EXPIRATIONS_WORDS: str = ("monthly | weekly (optional; weekly adds the week-end expirations and needs a dte window of at "
+                          "most 21 days; writes schema_version 2)")
+
+
 def _v2_words(section: str) -> Dict[str, str]:
     """The optional ``schema_version = 2`` keys of a section that can take ``band_centre``, described."""
     bands = structuring_config.CENTRE_BANDS[section]
@@ -178,6 +200,7 @@ def _v2_words(section: str) -> Dict[str, str]:
              for band in bands}
     words["band_weights"] = ("{%s: decimal string > 0 and <= 10} (optional; band_centre only; each absent band "
                              "weighs 1; writes schema_version 2)" % ", ".join(bands + (structuring_config.QUOTE_WEIGHT,)))
+    words["expirations"] = EXPIRATIONS_WORDS
     return words
 
 
@@ -200,7 +223,7 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
              "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll"),
              "roll_test": "%s (optional; given in place of credit_only; net_time_value fails a roll whose new call "
                           "holds less time value than the held call; writes schema_version 2)"
-                          % " | ".join(structuring_config.ROLL_TESTS)},
+                          % " | ".join(structuring_config.ROLL_TESTS), "expirations": EXPIRATIONS_WORDS},
     "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                        "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
                        "objective": _objective_words("protective_put"), **_v2_words("protective_put")},
@@ -215,13 +238,21 @@ no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
     "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, "
                       "structuring, or any of these together)",
-    "desk": {"engagement": "string", "cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
-             "chatty_or_quiet": " | ".join(desk_config.CHATTY_OR_QUIET)},
+    "desk": {"cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
+             "engagement": "string (optional and retired: nothing reads it)",
+             "chatty_or_quiet": "%s (optional and retired: nothing reads it)" % " | ".join(desk_config.CHATTY_OR_QUIET)},
     "owner": {"broker_exercise_cutoff_et": "HH:MM (America/New_York)", "approval_level": "integer 0-5 (self-attested)",
               "declared_equity": "decimal string, for example \"250000.00\"",
-              "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"},
+              "attention_thresholds": {"pl_day_pct": "decimal string (optional and retired: nothing reads it)",
+                                       "pl_trade_abs": "decimal string (optional and retired)"},
               "disclosures_acknowledged": ["string"],
-              "accounts": [{"name": "string", "type": " | ".join(desk_config.ACCOUNT_TYPES)}]},
+              "accounts": [{"name": "string", "type": " | ".join(desk_config.ACCOUNT_TYPES),
+                            "approval_level": "integer 0-5 (optional; read before owner.approval_level for this "
+                                              "account)",
+                            "cash": "decimal string >= 0 (optional; the free cash not securing open short puts; "
+                                    "with cash_as_of)",
+                            "cash_as_of": "YYYY-MM-DD (with cash; older than 5 trading days the check is "
+                                          "UNAVAILABLE)"}]},
     "market_data": {"host": "paper (live is refused: the desk holds an Alpaca paper key pair only)",
                     "key_env": "string (the NAME of the environment variable that holds the paper key ID, for "
                                "example APCA_API_KEY_ID; never the key itself)",
@@ -238,6 +269,9 @@ ANSWERS_SHAPE: Dict[str, Any] = {
                            "{status none, source string} (optional; written to research/calendar.toml with the "
                            "ex_dividends of the same answers)"},
     "structuring": STRUCTURING_SHAPE,
+    "sourced_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, checked_utc RFC 3339 UTC} (optional, "
+                                    "alone: dividend_source.py's proposal; updates the symbol's ex_dividend entry in "
+                                    "the existing research/calendar.toml, needs --replace --owner-tapped)"},
 }
 
 
@@ -344,8 +378,8 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     for key in ("owner", "market_data", "rates"):
         if key not in answers:
             raise answers_error("answers with desk also need %s" % key)
-    desk = table(answers["desk"], "desk", DESK_KEYS, DESK_KEYS)
-    owner = table(answers["owner"], "owner", OWNER_KEYS, OWNER_KEYS)
+    desk = table(answers["desk"], "desk", DESK_KEYS, DESK_REQUIRED)
+    owner = table(answers["owner"], "owner", OWNER_KEYS, OWNER_REQUIRED)
     market = table(answers["market_data"], "market_data", MARKET_DATA_KEYS, ("host", "key_env", "secret_env"))
     rates = table(answers["rates"], "rates", RATES_KEYS, RATES_KEYS)
     levels = table(answers.get("levels", {}), "levels", LEVELS_KEYS, ())
@@ -356,7 +390,8 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     low, high = desk_config.APPROVAL_LEVEL_RANGE
     if isinstance(level, bool) or not isinstance(level, int) or not low <= level <= high:
         raise answers_error("owner.approval_level must be an integer %d-%d" % (low, high))
-    attention = table(owner["attention_thresholds"], "owner.attention_thresholds", ATTENTION_KEYS, ATTENTION_KEYS)
+    attention = (table(owner["attention_thresholds"], "owner.attention_thresholds", ATTENTION_KEYS, ATTENTION_KEYS)
+                 if "attention_thresholds" in owner else None)
     disclosures = owner["disclosures_acknowledged"]
     if not isinstance(disclosures, list):
         raise answers_error("owner.disclosures_acknowledged must be a list of strings")
@@ -371,17 +406,21 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     if key_env == secret_env:
         raise answers_error("market_data.key_env and market_data.secret_env must name two different variables")
     lines: List[str] = list(DESK_HEADER)
-    lines += ["[desk]", "timezone = %s" % CONSTANTS["timezone"],
-              "engagement = %s" % text_value(desk["engagement"], "desk.engagement"),
-              "cadence_profile = %s" % choice(desk["cadence_profile"], "desk.cadence_profile",
-                                              desk_config.CADENCE_PROFILES),
-              "chatty_or_quiet = %s" % choice(desk["chatty_or_quiet"], "desk.chatty_or_quiet",
-                                              desk_config.CHATTY_OR_QUIET), ""]
+    lines += ["[desk]", "timezone = %s" % CONSTANTS["timezone"]]
+    if "engagement" in desk:
+        lines.append("engagement = %s" % text_value(desk["engagement"], "desk.engagement"))
+    lines.append("cadence_profile = %s" % choice(desk["cadence_profile"], "desk.cadence_profile",
+                                                 desk_config.CADENCE_PROFILES))
+    if "chatty_or_quiet" in desk:
+        lines.append("chatty_or_quiet = %s" % choice(desk["chatty_or_quiet"], "desk.chatty_or_quiet",
+                                                     desk_config.CHATTY_OR_QUIET))
+    lines.append("")
     lines += ["[owner]", "broker_exercise_cutoff_et = %s:00" % cutoff, "approval_level = %d" % level,
-              "declared_equity = %s" % decimal_value(owner["declared_equity"], "owner.declared_equity"),
-              "attention_thresholds = { pl_day_pct = %s, pl_trade_abs = %s }" % (
-                  decimal_value(attention["pl_day_pct"], "owner.attention_thresholds.pl_day_pct"),
-                  decimal_value(attention["pl_trade_abs"], "owner.attention_thresholds.pl_trade_abs"))]
+              "declared_equity = %s" % decimal_value(owner["declared_equity"], "owner.declared_equity")]
+    if attention is not None:
+        lines.append("attention_thresholds = { pl_day_pct = %s, pl_trade_abs = %s }" % (
+            decimal_value(attention["pl_day_pct"], "owner.attention_thresholds.pl_day_pct"),
+            decimal_value(attention["pl_trade_abs"], "owner.attention_thresholds.pl_trade_abs")))
     if disclosures:
         lines.append("disclosures_acknowledged = [")
         lines += ["  %s," % text_value(item, "owner.disclosures_acknowledged[%d]" % index)
@@ -390,9 +429,20 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     else:
         lines.append("disclosures_acknowledged = []")
     for index, raw in enumerate(accounts):
-        account = table(raw, "owner.accounts[%d]" % index, ACCOUNT_KEYS, ACCOUNT_KEYS)
-        lines += ["", "[[owner.accounts]]", "name = %s" % text_value(account["name"], "owner.accounts[%d].name" % index),
-                  "type = %s" % choice(account["type"], "owner.accounts[%d].type" % index, desk_config.ACCOUNT_TYPES)]
+        account = table(raw, "owner.accounts[%d]" % index, ACCOUNT_KEYS, ACCOUNT_REQUIRED)
+        where = "owner.accounts[%d]" % index
+        lines += ["", "[[owner.accounts]]", "name = %s" % text_value(account["name"], where + ".name"),
+                  "type = %s" % choice(account["type"], where + ".type", desk_config.ACCOUNT_TYPES)]
+        if "approval_level" in account:
+            own = account["approval_level"]
+            if isinstance(own, bool) or not isinstance(own, int) or not low <= own <= high:
+                raise answers_error("%s.approval_level must be an integer %d-%d" % (where, low, high))
+            lines.append("approval_level = %d" % own)
+        if ("cash" in account) != ("cash_as_of" in account):
+            raise answers_error("%s.cash and %s.cash_as_of go together: give both or neither" % (where, where))
+        if "cash" in account:
+            lines += ["cash = %s" % decimal_value(account["cash"], where + ".cash"),
+                      "cash_as_of = %s" % date_value(account["cash_as_of"], where + ".cash_as_of")]
     lines += ["", "[market_data]", "vendor = %s" % CONSTANTS["vendor"],
               "host = %s" % choice(market["host"], "market_data.host", (PAPER,)),
               "key_env = %s" % key_env, "secret_env = %s" % secret_env]
@@ -476,6 +526,66 @@ def render_calendar_toml(intake: Any, now: datetime.datetime, earnings: Any = No
     return "\n".join(lines) + "\n", symbols
 
 
+def _ex_dividend_line(symbol: str, entry: Any, existing: Optional[calendar_events.DividendEntry]) -> str:
+    where = "sourced_dividends.%s" % symbol
+    table(entry, where, SOURCED_DIVIDEND_KEYS, SOURCED_DIVIDEND_KEYS)
+    checked = entry["checked_utc"]
+    if not isinstance(checked, str) or not INSTANT_RE.match(checked):
+        raise answers_error("%s.checked_utc must be a UTC instant YYYY-MM-DDTHH:MM:SSZ" % where)
+    stated = ""
+    if existing is not None and existing.dividend_yield is not None:
+        stated = "yield = %s, yield_source = %s, " % (existing.dividend_yield,
+                                                      json.dumps(existing.yield_source or existing.source))
+    return "ex_dividend = { date = %s, amount = %s, %sstatus = %s, source = %s, checked_utc = %s }" % (
+        date_value(entry["date"], where + ".date"), decimal_value(entry["amount"], where + ".amount"), stated,
+        json.dumps(calendar_events.STATUS_CONFIRMED), json.dumps(calendar_events.SOURCE_ALPACA_DIVIDEND),
+        checked[:19] + "Z")
+
+
+def merge_sourced_dividends(text: str, sourced: Any, path: str) -> Tuple[str, List[str]]:
+    """``(text, symbols)``: ``text`` (the existing ``research/calendar.toml``) with each sourced symbol's
+    ``ex_dividend`` line replaced, or added under its ``[symbols.<SYM>]`` table (a new table at the end when the file
+    has none). Every other line is kept byte for byte, closures and settlement values among them. A symbol whose entry
+    is not one inline line is refused (``calendar_layout``): the owner edits that file by hand."""
+    intake = _intake_table(sourced, "sourced_dividends")
+    try:
+        current = calendar_events.parse_calendar_text(text, path=path)
+    except calendar_events.CalendarError as exc:
+        raise ToolError("calendar_invalid", "the existing research/calendar.toml does not load: %s" % exc) from None
+    lines = text.split("\n")
+    for symbol in sorted(intake):
+        key = symbol if BARE_KEY_RE.match(symbol) else json.dumps(symbol)
+        new = _ex_dividend_line(symbol, intake[symbol], current.events_for(symbol).ex_dividend)
+        headers = ("[symbols.%s]" % symbol, "[symbols.%s]" % json.dumps(symbol))
+        if any(line.strip().startswith("[symbols.%s." % candidate.strip("[]").split(".", 1)[1])
+               for line in lines for candidate in headers):
+            raise ToolError("calendar_layout", "research/calendar.toml writes %s's entries as sub-tables: update its "
+                                               "ex_dividend by hand" % symbol)
+        start = next((index for index, line in enumerate(lines) if line.strip() in headers), None)
+        if start is None:
+            while lines and lines[-1] == "":
+                lines.pop()
+            lines += ["", "[symbols.%s]" % key, new, ""]
+            continue
+        end = next((index for index in range(start + 1, len(lines)) if lines[index].lstrip().startswith("[")),
+                   len(lines))
+        found = [index for index in range(start + 1, end)
+                 if re.match(r"\s*ex_dividend\s*=", lines[index])]
+        if found:
+            line = lines[found[0]]
+            if "{" not in line or not line.rstrip().endswith("}"):
+                raise ToolError("calendar_layout", "research/calendar.toml writes %s's ex_dividend over several lines: "
+                                                   "update it by hand" % symbol)
+            lines[found[0]] = new
+        else:
+            last = max([index for index in range(start, end) if lines[index].strip()] or [start])
+            lines.insert(last + 1, new)
+    merged = "\n".join(lines)
+    if not merged.endswith("\n"):
+        merged += "\n"
+    return merged, sorted(intake)
+
+
 def structuring_value(kind: str, value: Any, where: str) -> str:
     """One structuring answer as its TOML text (``answers_invalid`` for a wrong JSON shape; the values themselves
     are the reader's to judge)."""
@@ -555,7 +665,9 @@ def read_answers(path: str) -> Dict[str, Any]:
     answers = table(answers, "the answers", TOP_KEYS, ("schema_version",))
     if answers["schema_version"] != SCHEMA_VERSION or isinstance(answers["schema_version"], bool):
         raise answers_error("the answers' schema_version must be %d" % SCHEMA_VERSION)
-    if not any(key in answers for key in ("desk", "ex_dividends", "earnings", "structuring")):
+    if "sourced_dividends" in answers and len(answers) != 2:
+        raise answers_error("sourced_dividends stands alone: it updates the existing research/calendar.toml")
+    if not any(key in answers for key in ("desk", "ex_dividends", "earnings", "structuring", "sourced_dividends")):
         raise answers_error("the answers render nothing: give desk (with owner, market_data and rates), ex_dividends, "
                             "earnings, structuring or several of them")
     for key in ("owner", "market_data", "rates", "levels"):
@@ -611,6 +723,18 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
             calendar_events.parse_calendar_text(calendar_text, path=calendar_toml)
         except calendar_events.CalendarError as exc:
             raise ToolError("calendar_invalid", "the rendered research/calendar.toml does not load: %s" % exc) from None
+        planned.append((calendar_toml, calendar_text))
+    if "sourced_dividends" in answers:
+        if not os.path.isfile(calendar_toml):
+            raise ToolError("calendar_missing", "sourced_dividends updates research/calendar.toml, which does not exist "
+                                                "at %s: state the dividends in the desk interview first" % root)
+        with open(calendar_toml, encoding="utf-8") as handle:
+            existing = handle.read()
+        calendar_text, symbols = merge_sourced_dividends(existing, answers["sourced_dividends"], calendar_toml)
+        try:
+            calendar_events.parse_calendar_text(calendar_text, path=calendar_toml)
+        except calendar_events.CalendarError as exc:
+            raise ToolError("calendar_invalid", "the updated research/calendar.toml does not load: %s" % exc) from None
         planned.append((calendar_toml, calendar_text))
     if "structuring" in answers:
         structuring_text = render_structuring_toml(answers["structuring"])

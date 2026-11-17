@@ -1,0 +1,49 @@
+# Aegis Desk example limit rules 1.0.0 (roadmap step 2.7). EXAMPLES ONLY: nothing in this file is active.
+# Two exposure limits, written as exit rules: copy the ones you want into your own rulebook, set the thresholds
+# (both carry owner_must_set = true: the right number depends on your account) and adopt the rulebook with
+# rules_adopt.py. Each reads the book's exposures as a signed percentage of desk.toml's declared_equity; a net-short
+# book adds a mirrored "<=" rule. See rules/examples/README.md.
+schema_version = 1
+rulebook_version = "1.0.0"
+title = "Aegis Desk example limit rules"
+
+[defaults]
+mark_basis = "liq"
+confirmations = 2
+confirmation_gap_min = 10
+confirmation_window_min = 90
+cooldown_min = 240
+rearm = "next_trading_day"
+hysteresis_pct = 10
+
+[[rule]]
+id = "BWD"
+title = "Beta-weighted delta above the declared equity"
+role = "portfolio"
+scope = "portfolio"
+applies_to = ["portfolio"]
+input_class = "G"
+when = [
+  { metric = "beta_weighted_delta_pct", op = ">=", value = 100, unit = "percent" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+owner_must_set = true
+origin = "example"
+source = "owner risk control: more SPY-equivalent exposure than the declared equity (the owner sets the percentage; 100 is a documented default)"
+
+[[rule]]
+id = "UDELTA"
+title = "Delta exposure in one underlying"
+role = "risk"
+scope = "underlying"
+applies_to = ["any_underlying"]
+input_class = "G"
+when = [
+  { metric = "delta_exposure_pct", op = ">=", value = 20, unit = "percent" },
+]
+verdict = "WATCH"
+plan = "hold_review"
+owner_must_set = true
+origin = "example"
+source = "owner risk control: one underlying's delta exposure as a share of the declared equity (the owner sets the percentage; 20 is a documented default)"

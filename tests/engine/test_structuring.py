@@ -169,6 +169,33 @@ class ExpirationHelpersTest(unittest.TestCase):
         self.assertEqual([], S.candidate_expirations(listed, TODAY, (46, 72)))
         self.assertEqual([MAR19], S.candidate_expirations([MAR19, datetime.date(2027, 6, 17)], TODAY, (120, 210)))
 
+    def test_a_week_end_is_the_last_trading_day_of_its_week(self) -> None:
+        # roadmap 2.5: a Friday, or the Thursday when that Friday is a holiday; a standard monthly is one too
+        for day, expected in ((datetime.date(2026, 12, 11), True), (datetime.date(2026, 12, 10), False),
+                              (datetime.date(2027, 3, 25), True), (datetime.date(2027, 3, 26), False),  # Good Friday
+                              (datetime.date(2026, 11, 27), True), (datetime.date(2026, 11, 26), False),  # Thanksgiving
+                              (DEC18, True), (datetime.date(2026, 12, 12), False)):
+            with self.subTest(day=day):
+                self.assertEqual(expected, S.is_week_end(day))
+
+    def test_weekly_adds_the_week_ends_and_never_a_daily(self) -> None:
+        listed = [datetime.date(2026, 12, 7), datetime.date(2026, 12, 9), datetime.date(2026, 12, 11), DEC18,
+                  datetime.date(2026, 12, 21), datetime.date(2026, 12, 24), datetime.date(2026, 12, 31), JAN15]
+        self.assertEqual([DEC18], S.candidate_expirations(listed, TODAY, (30, 51)))
+        self.assertEqual([datetime.date(2026, 12, 11), DEC18, datetime.date(2026, 12, 24)],
+                         S.candidate_expirations(listed, TODAY, (30, 51), weekly=True))
+        self.assertEqual([datetime.date(2027, 3, 25)],
+                         S.candidate_expirations([datetime.date(2027, 3, 24), datetime.date(2027, 3, 25)], TODAY,
+                                                 (130, 151), weekly=True), "a holiday Friday moves the weekly to Thursday")
+
+    def test_a_weekly_window_of_21_days_holds_at_most_four_expirations(self) -> None:
+        # the chain cap (4) holds by arithmetic: every week-end of 2026 and 2027 listed, every start and every window
+        days = [datetime.date(2026, 1, 1) + datetime.timedelta(days=n) for n in range(730)]
+        week_ends = [day for day in days if S.is_week_end(day)]
+        today = datetime.date(2026, 1, 2)
+        most = max(len(S.candidate_expirations(week_ends, today, (lo, lo + 21), weekly=True)) for lo in range(7, 380))
+        self.assertEqual(4, most)
+
     def test_window_from_expiration_day(self) -> None:
         listed = [datetime.date(2026, 11, 20), DEC18, JAN15, datetime.date(2027, 2, 19)]
         self.assertEqual([JAN15], S.candidate_expirations(listed, datetime.date(2026, 11, 20), (40, 75),

@@ -29,6 +29,7 @@ Rules (every one an error that names the section and the key)
    :data:`DISCLOSURE_TEXT` the structuring interview shows last; otherwise the reason is ``the structuring
    disclosure structuring-suggestions-1 is not acknowledged in this file: run the structuring interview again``.
 5. ``dte`` (every structure section): two integers, calendar days, ``7 <= lo < hi <= 400`` and ``hi - lo <= 90``
+   (``hi - lo <= 21`` with ``expirations = "weekly"``, roadmap 2.5)
    (four consecutive standard monthlies span at least 84 days, so a window never needs more than the per-run chain
    cap of four chains).
 6. ``abs_delta`` (``covered_call``, ``roll``): ``0.05 <= lo < hi <= 0.60``, compared with ``|delta|`` read at 2
@@ -131,15 +132,26 @@ ROLL_TESTS: Tuple[str, ...] = (ROLL_TEST_CREDIT, ROLL_TEST_NET_TIME_VALUE, ROLL_
 """``[roll] roll_test`` (``schema_version = 2``, in place of ``credit_only``): ``credit`` fails a net debit (as
 ``credit_only = true``), ``net_time_value`` fails a roll that buys back more time value than it sells, ``none`` tests
 neither (as ``credit_only = false``)."""
+EXPIRATIONS_KEY: str = "expirations"
+EXPIRATIONS_MONTHLY: str = "monthly"
+EXPIRATIONS_WEEKLY: str = "weekly"
+EXPIRATIONS_MODES: Tuple[str, ...] = (EXPIRATIONS_MONTHLY, EXPIRATIONS_WEEKLY)
+"""``expirations`` (``schema_version = 2``, every structure section; roadmap 2.5, the owner's answer to open question 8):
+``monthly`` (the default) lists the standard monthlies; ``weekly`` adds every listed expiration on the last trading day
+of its week (a Friday, or the Thursday when the Friday is a holiday), and narrows the window to
+:data:`WEEKLY_DTE_SPAN_MAX` days, so it holds at most four expirations and the per-run chain cap holds by arithmetic."""
+WEEKLY_DTE_SPAN_MAX: int = 21
+"""The widest ``dte`` window of a ``weekly`` section: five consecutive week-ends span at least 27 days."""
 V2_KEYS: Dict[str, Tuple[str, ...]] = {
-    section: tuple("%s_centre" % band for band in bands) + (BAND_WEIGHTS_KEY,)
+    section: tuple("%s_centre" % band for band in bands) + (BAND_WEIGHTS_KEY, EXPIRATIONS_KEY)
     for section, bands in CENTRE_BANDS.items()
 }
-V2_KEYS[SECTION_ROLL] = (ROLL_TEST_KEY,)
+V2_KEYS[SECTION_ROLL] = (ROLL_TEST_KEY, EXPIRATIONS_KEY)
 """The optional keys of ``schema_version = 2``, in the order ``desk_init`` writes them after ``objective``: each band's
 centre (a number inside the band; the midpoint when absent) and ``band_weights``, an inline table of positive numbers
-per band and for ``quote`` (1 when absent), which apply only with ``objective = "band_centre"``; and ``[roll]
-roll_test`` (:data:`ROLL_TESTS`), given in place of ``credit_only``."""
+per band and for ``quote`` (1 when absent), which apply only with ``objective = "band_centre"``; ``[roll]
+roll_test`` (:data:`ROLL_TESTS`), given in place of ``credit_only``; and ``expirations`` (:data:`EXPIRATIONS_MODES`)
+in every structure section."""
 BAND_WEIGHT_MAX: Decimal = Decimal("10")
 
 EVENT_EXCLUDE: str = "exclude"
@@ -308,6 +320,9 @@ class _CentreMixin:
         echo: Dict[str, Any] = {"%s_centre" % name: value for name, value in self.centres}
         if self.band_weights:
             echo[BAND_WEIGHTS_KEY] = dict(self.band_weights)
+        expirations = getattr(self, EXPIRATIONS_KEY, EXPIRATIONS_MONTHLY)
+        if expirations != EXPIRATIONS_MONTHLY:
+            echo[EXPIRATIONS_KEY] = expirations
         return echo
 
 
@@ -323,6 +338,7 @@ class CoveredCallSection(_CentreMixin):
     objective: str
     centres: Tuple[Tuple[str, Decimal], ...] = ()
     band_weights: Tuple[Tuple[str, Decimal], ...] = ()
+    expirations: str = EXPIRATIONS_MONTHLY
 
 
 @dataclass(frozen=True)
@@ -338,6 +354,7 @@ class RollSection:
     objective: str
     roll_test: Optional[str] = None
     """The ``schema_version = 2`` roll test, or ``None`` when the file states ``credit_only`` (:meth:`roll_rule`)."""
+    expirations: str = EXPIRATIONS_MONTHLY
 
     def roll_rule(self) -> str:
         """The roll test the candidates are judged by: ``roll_test``, else ``credit`` or ``none`` from
@@ -356,6 +373,7 @@ class ProtectivePutSection(_CentreMixin):
     objective: str
     centres: Tuple[Tuple[str, Decimal], ...] = ()
     band_weights: Tuple[Tuple[str, Decimal], ...] = ()
+    expirations: str = EXPIRATIONS_MONTHLY
 
 
 @dataclass(frozen=True)
@@ -371,6 +389,7 @@ class CollarSection(_CentreMixin):
     objective: str
     centres: Tuple[Tuple[str, Decimal], ...] = ()
     band_weights: Tuple[Tuple[str, Decimal], ...] = ()
+    expirations: str = EXPIRATIONS_MONTHLY
 
 
 @dataclass(frozen=True)
@@ -413,6 +432,8 @@ class StructuringConfig:
                                 else getattr(section, key)) for key in SECTION_KEYS[name]}
             if isinstance(section, _CentreMixin):
                 echo[name].update(section.v2_echo())
+            if isinstance(section, RollSection) and section.expirations != EXPIRATIONS_MONTHLY:
+                echo[name][EXPIRATIONS_KEY] = section.expirations
             if isinstance(section, RollSection) and section.roll_test is not None:
                 echo[name] = {(ROLL_TEST_KEY if key == "credit_only" else key):
                               (section.roll_test if key == "credit_only" else value)
@@ -472,7 +493,7 @@ class _Reader:
     def centres_and_weights(self, table: Dict[str, Any], where: str, bands: Dict[str, Tuple[Any, Any]], objective: str
                             ) -> Tuple[Tuple[Tuple[str, Decimal], ...], Tuple[Tuple[str, Decimal], ...]]:
         """The version-2 centres and ``band_weights`` of a section that can take ``band_centre`` (:data:`V2_KEYS`)."""
-        present = [key for key in V2_KEYS[where] if key in table]
+        present = [key for key in V2_KEYS[where] if key in table and key != EXPIRATIONS_KEY]
         if present and objective != OBJECTIVE_BAND_CENTRE:
             raise self.fail('[%s] %s applies only with objective = "%s" (got %r)'
                             % (where, present[0], OBJECTIVE_BAND_CENTRE, objective))
@@ -572,7 +593,17 @@ class _Reader:
         if not (DTE_MIN <= lo < hi <= DTE_MAX and hi - lo <= DTE_SPAN_MAX):
             raise self.fail("[%s] dte must be calendar days with %d <= lo < hi <= %d and hi - lo <= %d (got [%d, %d])"
                             % (where, DTE_MIN, DTE_MAX, DTE_SPAN_MAX, lo, hi))
+        if self.expirations(table, where) == EXPIRATIONS_WEEKLY and hi - lo > WEEKLY_DTE_SPAN_MAX:
+            raise self.fail('[%s] dte spans %d days, but expirations = "weekly" needs hi - lo <= %d, so the window holds '
+                            'at most four weekly expirations (got [%d, %d])'
+                            % (where, hi - lo, WEEKLY_DTE_SPAN_MAX, lo, hi))
         return lo, hi
+
+    def expirations(self, table: Dict[str, Any], where: str) -> str:
+        """The section's ``expirations`` mode (:data:`EXPIRATIONS_MODES`), ``monthly`` when absent."""
+        if EXPIRATIONS_KEY not in table:
+            return EXPIRATIONS_MONTHLY
+        return self.choice(table, EXPIRATIONS_KEY, where, EXPIRATIONS_MODES)
 
     def abs_delta(self, table: Dict[str, Any], where: str) -> Tuple[Decimal, Decimal]:
         lo, hi = self.decimal_band(table, "abs_delta", where)
@@ -634,7 +665,8 @@ class _Reader:
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=objective, centres=centres, band_weights=weights)
+            objective=objective, centres=centres, band_weights=weights,
+            expirations=self.expirations(table, where))
 
     def roll(self, document: Dict[str, Any]) -> RollSection:
         where = SECTION_ROLL
@@ -649,7 +681,7 @@ class _Reader:
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=self.objective(table, where))
+            objective=self.objective(table, where), expirations=self.expirations(table, where))
 
     def protective_put(self, document: Dict[str, Any]) -> ProtectivePutSection:
         where = SECTION_PROTECTIVE_PUT
@@ -664,7 +696,8 @@ class _Reader:
         objective = self.objective(table, where)
         centres, weights = self.centres_and_weights(table, where, {"dte": dte, "floor_pct": floor}, objective)
         return ProtectivePutSection(enabled=enabled, dte=dte, floor_pct=floor, stress_drop_pct=stress,
-                                    objective=objective, centres=centres, band_weights=weights)
+                                    objective=objective, centres=centres, band_weights=weights,
+                                    expirations=self.expirations(table, where))
 
     def collar(self, document: Dict[str, Any]) -> CollarSection:
         where = SECTION_COLLAR
@@ -689,7 +722,8 @@ class _Reader:
             strike_floor=self.choice(table, "strike_floor", where, STRIKE_FLOORS),
             earnings=self.choice(table, "earnings", where, EVENT_POLICIES),
             ex_dividend=self.choice(table, "ex_dividend", where, EVENT_POLICIES),
-            objective=objective, centres=centres, band_weights=weights)
+            objective=objective, centres=centres, band_weights=weights,
+            expirations=self.expirations(table, where))
 
     def parse(self, document: Dict[str, Any], sha256: str) -> StructuringConfig:
         sections = ", ".join("[%s]" % name for name in SECTIONS)
@@ -819,6 +853,11 @@ __all__ = [
     "DTE_MAX",
     "DTE_MIN",
     "DTE_SPAN_MAX",
+    "EXPIRATIONS_KEY",
+    "EXPIRATIONS_MODES",
+    "EXPIRATIONS_MONTHLY",
+    "EXPIRATIONS_WEEKLY",
+    "WEEKLY_DTE_SPAN_MAX",
     "DisclosureSection",
     "EVENT_ALLOW",
     "EVENT_EXCLUDE",

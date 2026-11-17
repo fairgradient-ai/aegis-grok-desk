@@ -52,6 +52,19 @@ def closed(writer: "T.Writer", lines: List[str], as_of: datetime.datetime = STAM
     return "\n".join(list(lines) + [writer.footer(as_of)])
 
 
+class ExpirationsLineTest(unittest.TestCase):
+    def test_a_weekly_section_names_its_mode_and_a_monthly_one_nothing(self) -> None:
+        # roadmap 2.5: the set of expirations follows from the owner's window alone, and the text says so
+        w = T.Writer()
+        weekly = T.structuring.structuring_config.CoveredCallSection(
+            enabled=True, dte=(30, 51), abs_delta=(D("0.15"), D("0.35")), min_credit=D("0.50"), strike_floor="cost_basis",
+            earnings="exclude", ex_dividend="exclude", objective="extrinsic_per_day", expirations="weekly")
+        line = T.expirations_line(w, weekly)
+        self.assertEqual("expirations: weekly and monthly in your 30 to 51 day window", line)
+        self.assertTrue(lint(closed(w, [line]), w).ok, lint(closed(w, [line]), w).problems)
+        self.assertIsNone(T.expirations_line(T.Writer(), dataclasses.replace(weekly, expirations="monthly")))
+
+
 CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,open,,,,,"
            "cash-secured put")
 
@@ -562,6 +575,7 @@ WMT_CALL = """### PROPOSAL AG-20261020-01 | a covered call on the 200 WMT shares
 
 **Approval-level check:** the highest step needs level 1 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 200 WMT shares, 2 short calls | level 1
+- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml
 
 **Candidates by rank** 5 of 20 passed your criteria; 15 failed (abs_delta 15, strike_floor 4)
 - \U0001F7E2 **1** 2026-12-18 | strike 112.5 | delta 0.32 | bid 2.80 | extrinsic_per_day 0.0597
@@ -600,6 +614,7 @@ SPY_PUT = """### PROPOSAL AG-20261028-03 | a protective put on the 100 SPY share
 
 **Approval-level check:** the highest step needs level 2 by the desk's convention, within your self-attested level 2 (desk.toml); your broker's own approval for this account decides
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
+- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml
 
 **Candidates by rank** 5 of 12 passed your criteria; 7 failed (floor_pct 7)
 - \U0001F7E2 **1** 2027-03-19 | strike 610 | floor 5.88 % | ask 23.10 | stress_cost_per_day 0.1856
@@ -647,6 +662,7 @@ SPY_COLLAR = """### PROPOSAL AG-20261028-03 | a collar on the 100 SPY shares you
 - after leg 1: you hold 100 SPY shares, 1 long put | level 2
 - after leg 2: you hold 100 SPY shares, 1 short call, 1 long put | level 1
 - entered as one multi-leg order, some brokers class a collar as a spread, which can need a higher level
+- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml
 
 **Candidates by rank** 4 of 10 passed your criteria; 6 failed (max_net_debit 6)
 - \U0001F7E2 **1** 2027-03-19 | put 620 / call 680 | floor 4.34 % | cap 4.92 % | credit 0.75

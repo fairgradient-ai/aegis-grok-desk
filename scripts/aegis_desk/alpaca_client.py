@@ -110,12 +110,17 @@ records, built into the shared ``market_types`` types with their ``from_record``
   listing without an upper bound stops at the coming weekend, so the window is always explicit.
 * Strikes (``option_strikes``): the distinct strikes of one expiration's contract listing.
 * History (``history``): :data:`PATH_STOCK_BARS` with ``timeframe=1Day`` (or ``1Week`` /
-  ``1Month``), ``adjustment=raw``, ``feed=<stock_feed>``; a bar's ``date`` is the America/New_York
+  ``1Month``), ``adjustment=raw`` (``split`` only when the caller asks: the beta fit of roadmap 2.7, the same GET
+  path; :data:`HISTORY_ADJUSTMENTS`), ``feed=<stock_feed>``; a bar's ``date`` is the America/New_York
   date of its ``t``.
 * Minute bars (``minute_bars``): the same path with ``timeframe=1Min`` between two UTC instants; a bar's
   ``start_utc`` is its ``t`` (the start of its minute) and its ``close`` the last trade of that minute on the stock
   feed. The Structuring Desk reads the stock's price at an option quote's own stamp from them, when the option was
   quoted more than 60 seconds before the stock (the indicative feed updates a thinly traded option less often).
+* Cash dividends (``cash_dividends``): :data:`PATH_CORPORATE_ACTIONS` with ``types=cash_dividend`` (roadmap 2.11), the
+  symbols sorted and comma-joined, ``start`` and ``end``. The endpoint filters by process date, so the caller asks for a
+  wider process-date window and the client keeps the records whose ``ex_date`` lies in ``[ex_start, ex_end]``; a record
+  without an ex-date, without a positive ``rate`` or on a symbol not asked for is counted in ``skipped`` and dropped.
 * Clock (``clock``): :data:`PATH_CLOCK` on the paper host; ``state`` is ``open`` or ``closed``
   from ``is_open``, ``date`` the ET date of ``timestamp``, ``next_change`` the ET ``HH:MM`` of
   ``next_close`` (open) or ``next_open`` (closed) and ``next_state`` the state it leads to.
@@ -147,7 +152,8 @@ Offline fixtures. :class:`OfflineTransport` maps a request to ``<fixture_dir>/<s
   ``contracts__<UNDERLYING>__<expiration_date_gte>__<expiration_date_lte>.json`` (the
   ``underlying_symbols`` parameter upper-cased; ``status``, ``type`` and ``limit`` are not part of
   the key);
-* ``bars__<SYMBOL>__<start>__<end>.json``;
+* ``bars__<SYMBOL>__<start>__<end>.json`` (``bars__<SYMBOL>__<start>__<end>__split.json`` for split-adjusted bars);
+* ``corporate_actions__<SYMBOLS>__<start>__<end>.json`` (the symbols sorted and comma-joined);
 * ``clock.json`` and ``calendar__<start>__<end>.json``;
 * a ``page_token`` adds ``__page-<token>`` before ``.json`` (the token must match
   ``[A-Za-z0-9_-]{1,64}``).
@@ -173,7 +179,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from . import market_clock, occ
 from .market_types import (
@@ -221,8 +227,14 @@ PATH_OPTION_QUOTES: str = "/v1beta1/options/quotes/latest"
 PATH_CLOCK: str = "/v2/clock"
 PATH_CALENDAR: str = "/v2/calendar"
 PATH_OPTION_CONTRACTS: str = "/v2/options/contracts"
-DATA_PATHS: Tuple[str, ...] = (PATH_STOCK_QUOTES, PATH_STOCK_BARS, PATH_OPTION_SNAPSHOTS, PATH_OPTION_QUOTES)
+PATH_CORPORATE_ACTIONS: str = "/v1/corporate-actions"
+"""Alpaca's corporate actions, read with ``types=cash_dividend`` only (roadmap 2.11)."""
+DATA_PATHS: Tuple[str, ...] = (PATH_STOCK_QUOTES, PATH_STOCK_BARS, PATH_OPTION_SNAPSHOTS, PATH_OPTION_QUOTES,
+                               PATH_CORPORATE_ACTIONS)
 """The market-data paths, all on :data:`DATA_HOST`."""
+CORPORATE_ACTION_TYPE: str = "cash_dividend"
+"""The one corporate-action type the client asks for."""
+CORPORATE_ACTIONS_PAGE_LIMIT: int = 1000
 PAPER_PATHS: Tuple[str, ...] = (PATH_CLOCK, PATH_CALENDAR, PATH_OPTION_CONTRACTS)
 """The only paper-host paths: the clock, the calendar and the option-contract listing (all reads)."""
 ALLOWED_PATHS: Tuple[str, ...] = DATA_PATHS + PAPER_PATHS
@@ -287,6 +299,8 @@ HEADER_SECRET: str = "APCA-API-SECRET-KEY"
 HEADER_ACCEPT: str = "application/json"
 CREDENTIAL_SOURCES: Tuple[str, ...] = ("env", "file")
 HISTORY_INTERVALS: Tuple[str, ...] = ("daily", "weekly", "monthly")
+HISTORY_ADJUSTMENTS: Tuple[str, ...] = ("raw", "split")
+"""The bar adjustments the client sends: ``raw`` by default, ``split`` for the beta fit (roadmap 2.7)."""
 HISTORY_TIMEFRAMES: Dict[str, str] = {"daily": "1Day", "weekly": "1Week", "monthly": "1Month"}
 MINUTE_TIMEFRAME: str = "1Min"
 """The ``timeframe`` of :meth:`AlpacaClient.minute_bars`."""
@@ -652,6 +666,10 @@ def fixture_file_name(path: str, params: Dict[str, str]) -> str:
                                             _compact_instant(params.get("end", "")))
     elif template == PATH_STOCK_BARS:
         stem = "bars__%s__%s__%s" % (params.get("symbols", "").upper(), params.get("start", ""), params.get("end", ""))
+        if params.get("adjustment", "raw") != "raw":
+            stem += "__%s" % params["adjustment"]
+    elif template == PATH_CORPORATE_ACTIONS:
+        stem = "corporate_actions__%s__%s__%s" % (_symbols_key(params), params.get("start", ""), params.get("end", ""))
     elif template == PATH_CLOCK:
         stem = "clock"
     elif template == PATH_CALENDAR:
@@ -838,6 +856,27 @@ class MinuteBar:
 @dataclass(frozen=True)
 class MinuteBarsResult:
     bars: List[MinuteBar]
+    receipt: RequestReceipt
+    raw: Dict[str, Any]
+    receipts: Tuple[RequestReceipt, ...] = ()
+
+
+@dataclass(frozen=True)
+class CashDividend:
+    """One declared cash dividend (module notes, "Cash dividends"): ``rate`` is the cash amount per share."""
+
+    symbol: str
+    ex_date: datetime.date
+    rate: Decimal
+    process_date: Optional[datetime.date] = None
+    special: bool = False
+    foreign: bool = False
+
+
+@dataclass(frozen=True)
+class DividendsResult:
+    dividends: List[CashDividend]
+    skipped: int
     receipt: RequestReceipt
     raw: Dict[str, Any]
     receipts: Tuple[RequestReceipt, ...] = ()
@@ -1031,6 +1070,44 @@ def _parse_contracts_page(document: Any) -> List[Dict[str, Any]]:
 
 def _parse_snapshots_page(document: Any) -> Dict[str, Any]:
     return dict(_object_field(document, "snapshots"))
+
+
+def _dividends_page(document: Any) -> List[Dict[str, Any]]:
+    actions = _object_field(document, "corporate_actions")
+    items = actions.get("cash_dividends")
+    if items is None:
+        return []
+    if not isinstance(items, list):
+        raise MarketTypesError("corporate_actions.cash_dividends", "expected a list, got %s" % type(items).__name__)
+    return [_entry(item, "corporate_actions.cash_dividends") for item in items]
+
+
+def _plain_date(value: Any) -> Optional[datetime.date]:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(value[:10])
+    except ValueError:
+        return None
+
+
+def _cash_dividend(raw: Dict[str, Any], asked: Sequence[str]) -> Optional[CashDividend]:
+    """A record as a :class:`CashDividend`, or ``None`` when it has no ex-date, no positive rate or another symbol."""
+    symbol = raw.get("symbol")
+    ex_date = _plain_date(raw.get("ex_date"))
+    rate = raw.get("rate")
+    if not isinstance(symbol, str) or symbol.upper() not in asked or ex_date is None:
+        return None
+    if isinstance(rate, bool) or not isinstance(rate, (int, float, str)):
+        return None
+    try:
+        amount = Decimal(str(rate))
+    except ArithmeticError:
+        return None
+    if not amount.is_finite() or amount <= 0:
+        return None
+    return CashDividend(symbol.upper(), ex_date, amount, _plain_date(raw.get("process_date")),
+                        raw.get("special") is True, raw.get("foreign") is True)
 
 
 def _bars_page_parser(symbol: str) -> Callable[[Any], List[Dict[str, Any]]]:
@@ -1628,17 +1705,20 @@ class AlpacaClient:
         return StrikesResult(sorted(strikes), receipts[-1], {"option_contracts": contracts}, tuple(receipts))
 
     def history(self, symbol: str, start: datetime.date, end: datetime.date, *,
-                interval: str = "daily") -> HistoryResult:
-        """Daily (or weekly/monthly) bars from ``start`` to ``end``, raw (unadjusted), on the stock feed."""
+                interval: str = "daily", adjustment: str = "raw") -> HistoryResult:
+        """Daily (or weekly/monthly) bars from ``start`` to ``end``, raw (unadjusted) unless ``adjustment`` is
+        ``split``, on the stock feed."""
         if interval not in HISTORY_INTERVALS:
             raise ValueError("interval must be one of %s, got %r" % (", ".join(HISTORY_INTERVALS), interval))
+        if adjustment not in HISTORY_ADJUSTMENTS:
+            raise ValueError("adjustment must be one of %s, got %r" % (", ".join(HISTORY_ADJUSTMENTS), adjustment))
         start_text = _iso_date(start, "start")
         end_text = _iso_date(end, "end")
         if end < start:
             raise ValueError("end %s is before start %s" % (end_text, start_text))
         ticker = _validate_symbol(symbol)
         params: Dict[str, str] = {"symbols": ticker, "timeframe": HISTORY_TIMEFRAMES[interval], "start": start_text,
-                                  "end": end_text, "adjustment": "raw", "feed": self._stock_feed,
+                                  "end": end_text, "adjustment": adjustment, "feed": self._stock_feed,
                                   "limit": str(BARS_PAGE_LIMIT)}
         pages, receipts, documents = self._paged(PATH_STOCK_BARS, params, 1, _bars_page_parser(ticker))
         try:
@@ -1671,6 +1751,33 @@ class AlpacaClient:
         info, receipt, document = self._complete(PATH_CLOCK, {}, 0, _parse_clock)
         return ClockResult(info.date, info.state, info.description, info.timestamp_utc,
                            info.next_change, info.next_state, receipt, document)
+
+    def cash_dividends(self, symbols: Iterable[str], start: datetime.date, end: datetime.date, *,
+                       ex_start: Optional[datetime.date] = None,
+                       ex_end: Optional[datetime.date] = None) -> DividendsResult:
+        """The declared cash dividends of ``symbols`` processed from ``start`` to ``end``, kept when their ex-date lies
+        in ``[ex_start, ex_end]`` (module notes, "Cash dividends")."""
+        start_text = _iso_date(start, "start")
+        end_text = _iso_date(end, "end")
+        if end < start:
+            raise ValueError("end %s is before start %s" % (end_text, start_text))
+        tickers = sorted(_validate_symbol(symbol) for symbol in ([symbols] if isinstance(symbols, str) else symbols))
+        if not tickers:
+            raise ValueError("at least one symbol is required")
+        params: Dict[str, str] = {"symbols": ",".join(tickers), "types": CORPORATE_ACTION_TYPE, "start": start_text,
+                                  "end": end_text, "limit": str(CORPORATE_ACTIONS_PAGE_LIMIT)}
+        pages, receipts, documents = self._paged(PATH_CORPORATE_ACTIONS, params, len(tickers), _dividends_page)
+        kept: List[CashDividend] = []
+        skipped = 0
+        for page in pages:
+            for raw in page:
+                item = _cash_dividend(raw, tickers)
+                if item is None:
+                    skipped += 1
+                elif (ex_start is None or item.ex_date >= ex_start) and (ex_end is None or item.ex_date <= ex_end):
+                    kept.append(item)
+        kept.sort(key=lambda item: (item.symbol, item.ex_date))
+        return DividendsResult(kept, skipped, receipts[-1], {"pages": documents}, tuple(receipts))
 
     def calendar(self, month: int, year: int) -> CalendarResult:
         """One month of the trading calendar (``month`` 1-12, ``year`` four digits); module notes."""
@@ -1769,6 +1876,9 @@ __all__ = [
     "CONTRACTS_PAGE_LIMIT",
     "CREDENTIAL_SOURCES",
     "CalendarResult",
+    "CashDividend",
+    "DividendsResult",
+    "PATH_CORPORATE_ACTIONS",
     "ChainResult",
     "ClockResult",
     "Credential",

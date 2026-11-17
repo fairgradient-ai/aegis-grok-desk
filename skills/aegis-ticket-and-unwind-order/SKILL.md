@@ -201,8 +201,9 @@ combination`), each ending `which can need a higher level`. The roll ticket's li
 - The cash block totals the steps at the conservative prices: a held short closes at the ask, a held long and the
   shares close at the bid, a new short opens at the bid, a new long opens at the ask. Then the same at the mids;
   with two legs or more, `spread cost against the mids` is the difference.
-- `the most the steps need at once` is the largest cash need along the steps in their order. The desk does not see
-  the owner's cash balance, and no tool checks it.
+- `the most the steps need at once` is the largest cash need along the steps in their order. The `cash check` item
+  compares that peak (plus short-put collateral) with the account's stated `cash` as of `cash_as_of`; a shortfall is
+  a failed item, never a refusal; no figure, or one over 5 trading days old, is `UNAVAILABLE`.
 - `realized on the closing leg` (or `legs`) estimates the realized result of the closed rows at the conservative
   side and at the mid. The realized figure itself comes from `positions.csv` once the owner records the fill.
 

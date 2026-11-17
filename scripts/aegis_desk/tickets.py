@@ -63,7 +63,7 @@ from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import approval, expiry, grouping, levels, market_clock, payoff, structuring, structuring_text
+from . import approval, cash_check, expiry, grouping, levels, market_clock, payoff, structuring, structuring_text
 from .grouping import PositionGroup
 from .positions_csv import PositionRow
 from .quote_cache import MarketData
@@ -404,6 +404,20 @@ class Cash:
                 "prefix": list(self.prefix)}
 
 
+def cash_steps(legs: Sequence["TicketLeg"]) -> List[cash_check.Step]:
+    """The legs as the cash check reads them (roadmap 2.6): each leg's conservative cash, and the cash a short put
+    opened secures (its strike x multiplier x contracts) or a short put closed releases."""
+    steps: List[cash_check.Step] = []
+    for leg in legs:
+        plan = leg.plan
+        secured = _ZERO
+        if plan.right == "PUT" and plan.strike is not None and plan.side == approval.SIDE_SHORT:
+            collateral = plan.strike * plan.multiplier * Decimal(plan.quantity)
+            secured = collateral if plan.effect == approval.EFFECT_OPEN else -collateral
+        steps.append(cash_check.Step(leg.cash_conservative, secured))
+    return steps
+
+
 def cash_summary(steps: Sequence[Tuple[Decimal, Optional[Decimal]]]) -> Cash:
     """:class:`Cash` of ``(conservative, mid)`` per step, in order (``ValueError`` for no step)."""
     if not steps:
@@ -627,6 +641,8 @@ class Ticket:
     approval: Optional[approval.ApprovalResult] = None
     owner_level: Optional[int] = None
     cash: Optional[Cash] = None
+    cash_check: Optional[cash_check.CashCheck] = None
+    """The check against the account's stated cash (roadmap 2.6)."""
     realized: List[RealizedLeg] = field(default_factory=list)
     let_assign: List[LetAssignLeg] = field(default_factory=list)
     puts: List[PutMoneyness] = field(default_factory=list)
@@ -690,7 +706,8 @@ class Ticket:
             "criteria": self.criteria.as_dict(), "legs": [leg.as_dict() for leg in self.legs],
             "approval": _approval_dict(self.approval),
             "steps": [] if self.approval is None else step_records(self.approval),
-            "cash": None if self.cash is None else self.cash.as_dict(),
+            "cash": None if self.cash is None else dict(self.cash.as_dict(), check=(
+                None if self.cash_check is None else self.cash_check.as_dict())),
             "realized": [item.as_dict() for item in self.realized],
             "let_assign": [item.as_dict() for item in self.let_assign], "puts": [item.as_dict() for item in self.puts],
             "replacement": replacement, "spot": spot,
@@ -735,6 +752,8 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
                     owner_level=market.cfg.owner.approval_level)
     target = structuring.load_target(market, trade_id)
     ticket.target, ticket.group = target, target.group
+    if target.group is not None:  # roadmap 2.6: the account's own approval level, else the desk-wide one
+        ticket.owner_level = market.cfg.owner.level_for(target.group.account)
     if target.unusable or target.group is None:
         return _close(ticket, market, VERDICT_UNAVAILABLE, structuring.CAUSE_GROUP_QUARANTINED)
     if target.others_quarantined:  # the account's coverage cannot be counted (reviews L2-1, L3-1)
@@ -837,6 +856,10 @@ def run_ticket(market: MarketData, trade_id: str, action: str, criteria: Structu
 def _finish(ticket: Ticket, market: MarketData) -> Ticket:
     if ticket.legs:
         ticket.cash = cash_summary([(leg.cash_conservative, leg.cash_mid) for leg in ticket.legs])
+        target = ticket.target
+        assert target is not None and ticket.group is not None
+        ticket.cash_check = cash_check.check(cash_steps(ticket.legs), market.cfg.owner.account(ticket.group.account),
+                                             target.today, target.extra_holidays)
     assert ticket.target is not None
     ticket.valid_until, ticket.valid_full = structuring.valid_until(ticket.now, ticket.target.session)
     ticket.ticket_id = structuring_text.ticket_stem(ticket.trade_id, ticket.action, ticket.now)
@@ -1139,6 +1162,8 @@ def ticket_lines(w: structuring_text.Writer, ticket: Ticket,
     lines.extend(structuring_text.ITEM + leg for leg in _leg_lines(w, ticket))
     lines.append("")
     lines.extend(cash_lines(w, ticket.cash, ticket.realized, len(ticket.legs)))
+    if ticket.cash_check is not None:
+        lines.append(structuring_text.cash_check_item(w, ticket.cash_check))
     lines.append("")
     replacement = ticket.replacement if ticket.action == structuring.ACTION_ROLL else None
     if replacement is not None:

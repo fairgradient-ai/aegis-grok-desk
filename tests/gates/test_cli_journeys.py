@@ -830,7 +830,7 @@ class CatalogueTest(unittest.TestCase):
                     source = handle.read()
                 if "def " + "build_parser(" in source and "def main(" in source:
                     tools.add(name)
-        self.assertEqual(27, len(tools))
+        self.assertEqual(31, len(tools))
         scripts = {argv[0] for journey in harness.JOURNEYS for argv, _exit in commands(journey)}
         self.assertEqual(set(), tools - scripts, "every desk tool runs in at least one journey")
         # check.sh steps 9 and 10 run the generators' --check on the tree under test; a journey without a desk root

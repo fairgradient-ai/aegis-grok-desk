@@ -13,13 +13,16 @@ Rules
   environment, never configured" (plan section 8: the file may only make the role stricter,
   and a configured role could loosen it).
 * ``[desk]``: ``timezone`` exactly ``"America/New_York"`` (the clock is pure ET arithmetic),
-  ``engagement`` (string), ``cadence_profile`` (``lean`` | ``active``), ``chatty_or_quiet``
-  (``chatty`` | ``quiet``).
+  ``cadence_profile`` (``lean`` | ``active``); ``engagement`` (string) and ``chatty_or_quiet``
+  (``chatty`` | ``quiet``) are optional and retired (roadmap 2.6, the owner's answer to open question 7: nothing reads
+  them; an existing file still parses).
 * ``[owner]``: ``broker_exercise_cutoff_et`` (TOML local time), ``approval_level`` (integer 0-5),
-  ``declared_equity`` (number > 0, stored as ``Decimal``), ``attention_thresholds`` (inline table
-  ``pl_day_pct``, ``pl_trade_abs``, both numbers stored as ``Decimal``), ``disclosures_acknowledged``
-  (list of strings), and at least one ``[[owner.accounts]]`` entry with ``name`` (non-empty
-  string) and ``type`` (``cash`` | ``margin`` | ``ira``).
+  ``declared_equity`` (number > 0, stored as ``Decimal``), ``disclosures_acknowledged`` (list of strings, kept as a
+  record), ``attention_thresholds`` (optional and retired: an inline table ``pl_day_pct``, ``pl_trade_abs``, both
+  numbers stored as ``Decimal``), and at least one ``[[owner.accounts]]`` entry with ``name`` (non-empty string) and
+  ``type`` (``cash`` | ``margin`` | ``ira``), and optionally (roadmap 2.6) ``approval_level`` (integer 0-5, read
+  before ``[owner] approval_level`` for that account's tickets and proposals) and ``cash`` (number >= 0, the free cash
+  not already securing open short puts) with ``cash_as_of`` (TOML local date), the two given together or not at all.
 * ``[market_data]``: ``vendor`` exactly ``"alpaca"``; ``host`` exactly ``"paper"`` (the desk's
   only credential is an Alpaca PAPER key pair; ``live`` and every other value are refused here,
   before any tool can build a client); ``key_env`` and ``secret_env`` (the NAMES of the two
@@ -97,10 +100,12 @@ MACHINE_ROLE_MESSAGE: str = "machine_role is derived from the environment, never
 SECTIONS: Tuple[str, ...] = ("desk", "owner", "market_data", "rates", "levels")
 
 _DESK_KEYS = ("timezone", "engagement", "cadence_profile", "chatty_or_quiet")
+_DESK_RETIRED = ("engagement", "chatty_or_quiet")
+"""Optional ``[desk]`` keys nothing reads (roadmap 2.6)."""
 _OWNER_KEYS = ("broker_exercise_cutoff_et", "approval_level", "declared_equity", "attention_thresholds",
                "disclosures_acknowledged", "accounts")
 _ATTENTION_KEYS = ("pl_day_pct", "pl_trade_abs")
-_ACCOUNT_KEYS = ("name", "type")
+_ACCOUNT_KEYS = ("name", "type", "approval_level", "cash", "cash_as_of")
 MARKET_DATA_KEYS: Tuple[str, ...] = ("vendor", "host", "key_env", "secret_env", "credentials_file", "options_feed",
                                      "stock_feed", "feed_delay_min", "quote_ttl_min", "grace_min", "pin_band")
 """The ``[market_data]`` keys, in the order ``desk_init`` renders them."""
@@ -127,15 +132,20 @@ class DeskConfigError(ValueError):
 @dataclass(frozen=True)
 class DeskSection:
     timezone: str
-    engagement: str
+    engagement: Optional[str]
     cadence_profile: str
-    chatty_or_quiet: str
+    chatty_or_quiet: Optional[str]
 
 
 @dataclass(frozen=True)
 class AccountEntry:
     name: str
     type: str
+    approval_level: Optional[int] = None
+    """The account's own self-attested level (roadmap 2.6), read before ``[owner] approval_level``."""
+    cash: Optional[Decimal] = None
+    cash_as_of: Optional[datetime.date] = None
+    """The free cash the owner states for the account and its date (roadmap 2.6; both or neither)."""
 
 
 @dataclass(frozen=True)
@@ -149,9 +159,21 @@ class OwnerSection:
     broker_exercise_cutoff_et: datetime.time
     approval_level: int
     declared_equity: Decimal
-    attention_thresholds: AttentionThresholds
+    attention_thresholds: Optional[AttentionThresholds]
     disclosures_acknowledged: List[str]
     accounts: List[AccountEntry]
+
+    def account(self, name: Optional[str]) -> Optional[AccountEntry]:
+        """The ``[[owner.accounts]]`` entry named exactly ``name``, or ``None``."""
+        return next((entry for entry in self.accounts if entry.name == name), None)
+
+    def level_for(self, name: Optional[str]) -> int:
+        """The approval level of the account named ``name`` (roadmap 2.6): its own ``approval_level``, else
+        ``[owner] approval_level``."""
+        entry = self.account(name)
+        if entry is not None and entry.approval_level is not None:
+            return entry.approval_level
+        return self.approval_level
 
 
 @dataclass(frozen=True)
@@ -333,9 +355,10 @@ class _Reader:
             raise self.fail('%s timezone must be exactly "%s" (got %r)' % (where, TIMEZONE, timezone))
         return DeskSection(
             timezone=timezone,
-            engagement=self.string(table, "engagement", where),
+            engagement=self.string(table, "engagement", where) if "engagement" in table else None,
             cadence_profile=self.choice(table, "cadence_profile", where, CADENCE_PROFILES),
-            chatty_or_quiet=self.choice(table, "chatty_or_quiet", where, CHATTY_OR_QUIET),
+            chatty_or_quiet=(self.choice(table, "chatty_or_quiet", where, CHATTY_OR_QUIET)
+                             if "chatty_or_quiet" in table else None),
         )
 
     def owner(self, document: Dict[str, Any]) -> OwnerSection:
@@ -345,16 +368,18 @@ class _Reader:
         cutoff = self.local_time(table, "broker_exercise_cutoff_et", where)
         level = self.integer(table, "approval_level", where, APPROVAL_LEVEL_RANGE[0], APPROVAL_LEVEL_RANGE[1])
         equity = self.number(table, "declared_equity", where, Decimal(0), exclusive=True)
-        thresholds = self.require(table, "attention_thresholds", where)
-        if not isinstance(thresholds, dict):
-            raise self.fail("%s attention_thresholds must be an inline table { pl_day_pct = ..., pl_trade_abs = ... }"
-                            " (got %r)" % (where, thresholds))
-        inner = "[owner] attention_thresholds"
-        self.check_keys(thresholds, _ATTENTION_KEYS, inner)
-        attention = AttentionThresholds(
-            pl_day_pct=self.number(thresholds, "pl_day_pct", inner),
-            pl_trade_abs=self.number(thresholds, "pl_trade_abs", inner),
-        )
+        attention: Optional[AttentionThresholds] = None
+        if "attention_thresholds" in table:  # retired (roadmap 2.6): read when present, never required
+            thresholds = table["attention_thresholds"]
+            if not isinstance(thresholds, dict):
+                raise self.fail("%s attention_thresholds must be an inline table { pl_day_pct = ..., pl_trade_abs = ... }"
+                                " (got %r)" % (where, thresholds))
+            inner = "[owner] attention_thresholds"
+            self.check_keys(thresholds, _ATTENTION_KEYS, inner)
+            attention = AttentionThresholds(
+                pl_day_pct=self.number(thresholds, "pl_day_pct", inner),
+                pl_trade_abs=self.number(thresholds, "pl_trade_abs", inner),
+            )
         disclosures = self.require(table, "disclosures_acknowledged", where)
         if not isinstance(disclosures, list) or not all(isinstance(item, str) for item in disclosures):
             raise self.fail("%s disclosures_acknowledged must be a list of strings (got %r)" % (where, disclosures))
@@ -368,9 +393,17 @@ class _Reader:
         for index, entry in enumerate(accounts_raw, 1):
             label = "%s entry %d" % (entries, index)
             self.check_keys(entry, _ACCOUNT_KEYS, label)
+            if ("cash" in entry) != ("cash_as_of" in entry):
+                raise self.fail("%s cash and cash_as_of go together: state both (the free cash and its date) or neither"
+                                % label)
+            cash = self.number(entry, "cash", label, Decimal(0)) if "cash" in entry else None
+            cash_as_of = self.local_date(entry, "cash_as_of", label) if "cash_as_of" in entry else None
             accounts.append(AccountEntry(
                 name=self.string(entry, "name", label),
                 type=self.choice(entry, "type", label, ACCOUNT_TYPES),
+                approval_level=(self.integer(entry, "approval_level", label, APPROVAL_LEVEL_RANGE[0],
+                                             APPROVAL_LEVEL_RANGE[1]) if "approval_level" in entry else None),
+                cash=cash, cash_as_of=cash_as_of,
             ))
         return OwnerSection(
             broker_exercise_cutoff_et=cutoff,

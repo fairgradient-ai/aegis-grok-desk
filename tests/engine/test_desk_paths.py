@@ -32,6 +32,7 @@ EXPECTED = {
     "lock_path": "state/.lock",
     "positions_snapshots_dir": "data/positions",
     "book_dir": "data/book",
+    "beta_dir": "data/beta",
     "cache_dir": "data/cache",
     "journal_dir": "journal",
     "levels_dir": "levels",

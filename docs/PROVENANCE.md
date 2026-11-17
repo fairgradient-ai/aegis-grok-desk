@@ -17,7 +17,7 @@ reference class in its own `source` field:
 | OIC/Cboe pin mechanics | `PIN3`, `VBETWEEN` |
 | OIC/Cboe early-exercise mechanics | `EXDIV` (a short call whose extrinsic value (bid) is below the coming dividend may be assigned early; an unknown dividend is never zero) |
 | OCC exercise by exception | `AUTOEX` (a long option at least 0.01 in the money on its last trading day is exercised automatically) |
-| owner risk control | `LOSSX`, `LAPSE14`, `MONETIZE`, `FLOOR`, `LLOSS50`, `VLOSS`, `USTOP`, `MOVE5_DOWN`, `MOVE5_UP`, `EARN2`, `DAILY`, `CONC` and the hedge review rule `ROLL30` |
+| owner risk control | `LOSSX`, `LAPSE14`, `MONETIZE`, `FLOOR`, `LLOSS50`, `VLOSS`, `USTOP`, `MOVE5_DOWN`, `MOVE5_UP`, `EARN2`, `DAILY`, `CONC`, the limits `BWD` and `UDELTA` (`rules/examples/limits-1.0.0.toml`) and the hedge review rule `ROLL30` |
 | owner threshold | `LTP100`, `LDTE30` |
 
 Those references describe how such thresholds are commonly reasoned about. The numbers in the file are documented
@@ -66,6 +66,13 @@ The Opening Bell states the expected move to the nearest standard expiration two
 They are different quantities and never interchangeable. Under Black-Scholes an at-the-money straddle is worth about
 0.80 x S x sigma x sqrt(tau) (the constant is the square root of 2/pi, about 0.798), so the straddle-based figure is
 about 0.64 times the one-sigma figure. On the synthetic fixture the two print `36.76` and `56.98`.
+
+## Scenario grid: the desk's proposal
+
+`scenario.py` (roadmap step 2.8) re-prices the book at spot moves of -10, -5, -2, 0, +2, +5 and +10 % crossed with
+volatility moves of -5, 0 and +5 volatility points, with no stressed volatility below 1 %. The grid is the desk's
+proposal, not a market convention: it brackets common daily and event moves of single stocks and broad ETFs, and
+counsel signs its labels. Each cell is a computation on the book's model of record, never a forecast or a probability.
 
 ## Market calendar
 
