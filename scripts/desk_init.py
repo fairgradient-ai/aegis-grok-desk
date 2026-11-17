@@ -141,7 +141,7 @@ STRUCTURING_KINDS: Dict[str, str] = {
     "strike_floor": "string", "earnings": "string", "ex_dividend": "string", "objective": "string",
     "floor_pct": "decimal_band", "stress_drop_pct": "decimal", "cap_pct": "decimal_band", "max_net_debit": "decimal",
     "dte_centre": "decimal", "abs_delta_centre": "decimal", "floor_pct_centre": "decimal", "cap_pct_centre": "decimal",
-    "band_weights": "decimal_table", "roll_test": "string",
+    "band_weights": "decimal_table", "roll_test": "string", "expirations": "string",
 }
 """How each structuring.toml key is written from its answer (every key of ``structuring_config.SECTION_KEYS`` and of
 ``structuring_config.V2_KEYS``)."""
@@ -171,6 +171,10 @@ def _objective_words(section: str) -> str:
     return " | ".join(structuring_config.OBJECTIVES[section])
 
 
+EXPIRATIONS_WORDS: str = ("monthly | weekly (optional; weekly adds the week-end expirations and needs a dte window of at "
+                          "most 21 days; writes schema_version 2)")
+
+
 def _v2_words(section: str) -> Dict[str, str]:
     """The optional ``schema_version = 2`` keys of a section that can take ``band_centre``, described."""
     bands = structuring_config.CENTRE_BANDS[section]
@@ -178,6 +182,7 @@ def _v2_words(section: str) -> Dict[str, str]:
              for band in bands}
     words["band_weights"] = ("{%s: decimal string > 0 and <= 10} (optional; band_centre only; each absent band "
                              "weighs 1; writes schema_version 2)" % ", ".join(bands + (structuring_config.QUOTE_WEIGHT,)))
+    words["expirations"] = EXPIRATIONS_WORDS
     return words
 
 
@@ -200,7 +205,7 @@ STRUCTURING_SHAPE: Dict[str, Any] = {
              "ex_dividend": _EVENT_WORDS, "objective": _objective_words("roll"),
              "roll_test": "%s (optional; given in place of credit_only; net_time_value fails a roll whose new call "
                           "holds less time value than the held call; writes schema_version 2)"
-                          % " | ".join(structuring_config.ROLL_TESTS)},
+                          % " | ".join(structuring_config.ROLL_TESTS), "expirations": EXPIRATIONS_WORDS},
     "protective_put": {"enabled": "boolean", "dte": _DTE_WORDS, "floor_pct": _FLOOR_WORDS,
                        "stress_drop_pct": "decimal string: percent, above the floor band's hi and at most 90",
                        "objective": _objective_words("protective_put"), **_v2_words("protective_put")},

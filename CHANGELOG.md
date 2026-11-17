@@ -2,6 +2,12 @@
 
 ## 1.0.0 (unreleased)
 
+- **Weekly expirations** (roadmap step 2.5; the owner's answer to open question 8). Every structure section of
+  `structuring.toml` may set `expirations = "weekly"` (schema version 2; default `monthly`). Such a section adds every
+  listed week-end expiration (the last trading day of its week: a Friday, or the Thursday when that Friday is a holiday)
+  to the standard monthlies, and its `dte` window may span at most 21 days, so it holds at most four expirations and the
+  four-chain cap stays as it is. The notes print `expirations: weekly and monthly in your N to M day window`, and
+  `desk_init.py` takes the key. Daily expirations are never listed.
 - **Step 2.3 landed: the structuring prices and the early-exercise line** (the owner's answers to open questions 2
   and 3).
   - **Structuring prices.** The Structuring Desk prices every candidate on the American model of record. Without a

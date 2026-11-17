@@ -743,5 +743,48 @@ class RollTestKeyTest(StructuringConfigTestCase):
 
 
 
+class WeeklyExpirationsTest(StructuringConfigTestCase):
+    """Roadmap 2.5, the owner's answer to open question 8: ``expirations = "weekly"`` narrows the window to 21 days, so
+    it holds at most four expirations and the four-chain cap holds."""
+
+    def weekly(self, section: str, dte: str = "dte = [30, 51]", base: str = V2) -> str:
+        text = in_section(section, "dte = [40, 75]" if section != "protective_put" and section != "collar"
+                          else section_dte(section, base), dte, base)
+        return in_section(section, dte, dte + '\nexpirations = "weekly"', text)
+
+    def test_every_structure_section_takes_it_and_the_default_is_monthly(self) -> None:
+        for section in sc.STRUCTURE_SECTIONS:
+            with self.subTest(section=section):
+                cfg = self.assert_loads(self.weekly(section))
+                self.assertEqual(("weekly", (30, 51)), (cfg.section(section).expirations, cfg.section(section).dte))
+                self.assertEqual("weekly", cfg.as_dict()[section]["expirations"])
+                self.assertEqual("monthly", self.assert_loads(V2).section(section).expirations)
+                self.assertNotIn("expirations", self.assert_loads(V2).as_dict()[section])
+
+    def test_it_needs_no_band_centre(self) -> None:
+        cfg = self.assert_loads(self.weekly("covered_call"))
+        self.assertEqual("extrinsic_per_day", cfg.covered_call.objective)
+
+    def test_a_weekly_window_wider_than_21_days_is_refused(self) -> None:
+        self.assert_rejected(self.weekly("covered_call", "dte = [40, 75]"),
+                             '[covered_call] dte spans 35 days, but expirations = "weekly" needs hi - lo <= 21')
+        self.assert_loads(self.weekly("covered_call", "dte = [40, 61]"))
+        self.assert_rejected(self.weekly("covered_call", "dte = [40, 62]"), "hi - lo <= 21")
+        self.assertEqual(21, sc.WEEKLY_DTE_SPAN_MAX)
+
+    def test_refusals(self) -> None:
+        self.assert_rejected(in_section("covered_call", "dte = [40, 75]", 'dte = [40, 50]\nexpirations = "weekly"'),
+                             "unknown key 'expirations' in section [covered_call]")
+        self.assert_rejected(in_section("covered_call", "dte = [40, 75]", 'dte = [40, 50]\nexpirations = "daily"', V2),
+                             "expirations")
+        self.assertEqual(("monthly", "weekly"), sc.EXPIRATIONS_MODES)
+
+
+def section_dte(section: str, base: str) -> str:
+    """The ``dte = [...]`` line of ``[section]`` in ``base``."""
+    block = section_text(section, base)
+    return next(line for line in block.split("\n") if line.startswith("dte = "))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -196,7 +196,7 @@ tool (2.9).
 - The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with
   scenario and event stress and a decision calendar, are planned for Stage 2 (not in this release). Volatility
   context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
-- For the Aegis Structuring Desk, weekly expirations, a cash-balance check and per-account approval levels are
-  planned for Stage 2 (not in this release).
+- For the Aegis Structuring Desk, a cash-balance check and per-account approval levels are planned for Stage 2 (not
+  in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).

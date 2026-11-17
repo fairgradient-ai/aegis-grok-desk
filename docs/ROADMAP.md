@@ -92,7 +92,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.2 | Discrete cash dividends in the lattice, engine only (proposed here) | 2.1 | dropped by your decision (open question 3) |
 | 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | landed |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
-| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | planned |
+| 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
 | 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | planned |
 | 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
@@ -292,8 +292,14 @@ context, sourced dates) and widens the Structuring Desk's scope.
   put and its absence on an out-of-the-money one, the alert lint's structuring mode over every new text, the QuantLib
   oracle over the new best legs, and counsel's sign-off.
 
-### 2.5 Weekly expirations
+### 2.5 Weekly expirations (landed)
 
+- **What landed.** `structuring_config` reads `expirations = "monthly" | "weekly"` in every structure section
+  (schema version 2, default `monthly`) and refuses a `weekly` section whose `dte` spans more than 21 days;
+  `structuring.is_week_end` and `candidate_expirations(weekly=True)` add the week-end expirations; the notes print
+  `expirations: weekly and monthly in your N to M day window`; `desk_init.py` takes the key. Tests cover a holiday
+  Friday's Thursday weekly, the 21-day refusal, the dailies left out and, over every window of 2026 and 2027, at most
+  four week-ends (the four-chain cap holds; a chain past the cap still answers UNAVAILABLE).
 - **What lands.** The structuring tools list weekly expirations as well as the standard monthly ones.
 - **The chain budget (your answer to open question 8): narrow the window, keep the cap.** One chain is one
   expiration, and a run may fetch at most 4 chains and 40 requests (`PER_RUN_MAX_CHAINS`, `PER_RUN_MAX_REQUESTS` in
@@ -571,7 +577,7 @@ only the files that do.
 | The parity-carry bound's own tree (proposed here) | 2.3 | `scripts/aegis_desk/carry.py` (`_tree`, `early_exercise_gap`, `TREE_STEPS`), `docs/STRUCTURING.md` (the carry of each expiration) |
 | Roll analyses (a long put's, a short put's and a collar's landed; a vertical rolls by ticket) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
 | Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
-| Weekly expirations | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
+| Weekly expirations (landed) | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
 | Cash-balance check, per-account approval levels | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
 | Beta-weighted delta, exposures, limits and limit messages | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Scenario and event stress, a hedge through an event | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
@@ -599,7 +605,7 @@ both counts reach zero.
 | `agents/position-control.md` | 1 | 0 |
 | `docs/ARCHITECTURE.md` | 2 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
-| `docs/STRUCTURING.md` | 2 | 0 |
+| `docs/STRUCTURING.md` | 1 | 0 |
 | `scripts/aegis_desk/book.py` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
@@ -611,5 +617,4 @@ both counts reach zero.
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
 | `skills/aegis-role-position-control/SKILL.md` | 1 | 0 |
-| `skills/aegis-roll-decision-framework/SKILL.md` | 1 | 0 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

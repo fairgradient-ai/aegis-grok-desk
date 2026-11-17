@@ -52,6 +52,19 @@ def closed(writer: "T.Writer", lines: List[str], as_of: datetime.datetime = STAM
     return "\n".join(list(lines) + [writer.footer(as_of)])
 
 
+class ExpirationsLineTest(unittest.TestCase):
+    def test_a_weekly_section_names_its_mode_and_a_monthly_one_nothing(self) -> None:
+        # roadmap 2.5: the set of expirations follows from the owner's window alone, and the text says so
+        w = T.Writer()
+        weekly = T.structuring.structuring_config.CoveredCallSection(
+            enabled=True, dte=(30, 51), abs_delta=(D("0.15"), D("0.35")), min_credit=D("0.50"), strike_floor="cost_basis",
+            earnings="exclude", ex_dividend="exclude", objective="extrinsic_per_day", expirations="weekly")
+        line = T.expirations_line(w, weekly)
+        self.assertEqual("expirations: weekly and monthly in your 30 to 51 day window", line)
+        self.assertTrue(lint(closed(w, [line]), w).ok, lint(closed(w, [line]), w).problems)
+        self.assertIsNone(T.expirations_line(T.Writer(), dataclasses.replace(weekly, expirations="monthly")))
+
+
 CSP_ROW = ("option,SPY,SPY261218P00620000,-1,,,,Brokerage (margin),AG-20261101-05,2026-11-01,-1000.00,,10.00,open,,,,,"
            "cash-secured put")
 

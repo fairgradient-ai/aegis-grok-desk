@@ -19,11 +19,13 @@ Loading (designer Q's D3)
    ``market_closed``; an unusable spot (the underlying's ``mark_mid`` at grade A-D) or held leg stops here.
 2. :func:`load_expirations`: ``quote_cache.get_expirations`` of the underlying (cached for the ET date); the candidate
    expirations are the listed standard monthlies (:func:`is_standard_monthly`: the settlement day of the month's
-   :func:`third_friday`) inside the section's ``dte`` window, in calendar days to the last trading day, and for a roll
+   :func:`third_friday`), and with ``expirations = "weekly"`` every listed week-end (:func:`is_week_end`), inside the
+   section's ``dte`` window, in calendar days to the last trading day, and for a roll
    later than the held leg's expiration, ascending (:func:`candidate_expirations`).
 3. :func:`load_chains`: ``quote_cache.get_chain`` per candidate expiration, ascending; the first expiration not served
    makes the answer UNAVAILABLE ``chain_not_served`` (no best is named on partial data) and the rest are listed
-   ``not requested``. The window spans at most 90 days, so at most four monthlies: the per-run chain cap holds.
+   ``not requested``. The window spans at most 90 days, so at most four monthlies, and a weekly window at most 21, so
+   at most four week-ends: the per-run chain cap holds.
 4. :func:`align_spot`: when the underlying's stamp is more than 60 s older than the newest option stamp of the chains
    (a copy the cache served from an earlier run, inside the TTL), the group's quotes are refetched once with
    ``force`` and the book, the before-state and the spot are rebuilt from them, so the run prices against a stock
@@ -656,15 +658,27 @@ def is_standard_monthly(day: datetime.date, extra_holidays: market_clock.ExtraHo
     return day == market_clock.settlement_day(third_friday(day), False, extra_holidays)
 
 
+def is_week_end(day: datetime.date, extra_holidays: market_clock.ExtraHolidays = ()) -> bool:
+    """``day`` is the last trading day of its week (roadmap 2.5): a trading day whose next trading day falls in a later
+    week, so a Friday, or the Thursday when that Friday is a holiday. A standard monthly is one too."""
+    if not market_clock.is_trading_day(day, extra_holidays):
+        return False
+    following = market_clock.next_trading_day(day, extra_holidays)
+    return following.isocalendar()[:2] != day.isocalendar()[:2]
+
+
 def candidate_expirations(dates: Iterable[datetime.date], today: datetime.date, window: Tuple[int, int], *,
                           later_than: Optional[datetime.date] = None,
-                          extra_holidays: market_clock.ExtraHolidays = ()) -> List[datetime.date]:
-    """The listed standard monthlies whose calendar DTE (to the last trading day) lies in ``window`` (inclusive) and,
-    for a roll, that expire after ``later_than``; ascending and de-duplicated."""
+                          extra_holidays: market_clock.ExtraHolidays = (),
+                          weekly: bool = False) -> List[datetime.date]:
+    """The listed standard monthlies (with ``weekly``, every listed week-end expiration: :func:`is_week_end`) whose
+    calendar DTE (to the last trading day) lies in ``window`` (inclusive) and, for a roll, that expire after
+    ``later_than``; ascending and de-duplicated. A daily expiration (Monday to Thursday, but a holiday week's Thursday)
+    is never listed."""
     low, high = window
     out = set()
     for day in dates:
-        if not is_standard_monthly(day, extra_holidays):
+        if not (is_standard_monthly(day, extra_holidays) or (weekly and is_week_end(day, extra_holidays))):
             continue
         if later_than is not None and day <= later_than:
             continue
@@ -2286,7 +2300,8 @@ class ExpirationsBlock:
 
 
 def load_expirations(target: Target, window: Tuple[int, int],
-                     later_than: Optional[datetime.date] = None) -> Tuple[Optional[List[datetime.date]], Optional[str], List[str]]:
+                     later_than: Optional[datetime.date] = None,
+                     weekly: bool = False) -> Tuple[Optional[List[datetime.date]], Optional[str], List[str]]:
     """``(candidate expirations | None, missing reason | None, warnings)`` from ``quote_cache.get_expirations``."""
     market = target.market
     assert target.group is not None
@@ -2295,7 +2310,7 @@ def load_expirations(target: Target, window: Tuple[int, int],
     if result.missing_reason is not None:
         return None, result.missing_reason, list(result.warnings)
     return (candidate_expirations(result.dates, target.today, window, later_than=later_than,
-                                  extra_holidays=target.extra_holidays), None, list(result.warnings))
+                                  extra_holidays=target.extra_holidays, weekly=weekly), None, list(result.warnings))
 
 
 def load_chains(target: Target, expirations: Sequence[datetime.date]) -> Tuple[Dict[datetime.date, List[Quote]],
@@ -2688,16 +2703,18 @@ def _evaluate(answer: Answer, later_than: Optional[datetime.date]) -> Answer:
     """Expirations, chains, candidates and the ranking (module notes, "Loading" 2-3)."""
     target = answer.target
     assert target is not None and answer.pricing is not None and answer.group_context is not None
-    expirations, missing, warnings = load_expirations(target, answer.section.dte, later_than)
+    weekly = getattr(answer.section, "expirations", None) == structuring_config.EXPIRATIONS_WEEKLY
+    expirations, missing, warnings = load_expirations(target, answer.section.dte, later_than, weekly)
     answer.warnings.extend(warnings)
     if expirations is None:
         return _unavailable(answer, CAUSE_EXPIRATIONS_NOT_SERVED)
     if not expirations:
         low, high = answer.section.dte
         answer.expirations = ExpirationsBlock([], [], [])
+        kinds = "weekly or standard monthly" if weekly else "standard monthly"
         return _close(answer, VERDICT_NOT_APPLICABLE, NA_NO_EXPIRATION,
-                      "no listed standard monthly expiration lies inside your %s window of %d to %d calendar days"
-                      % (answer.section_name, low, high))
+                      "no listed %s expiration lies inside your %s window of %d to %d calendar days"
+                      % (kinds, answer.section_name, low, high))
     chains, block, chain_warnings = load_chains(target, expirations)
     answer.warnings.extend(chain_warnings)
     answer.expirations = block

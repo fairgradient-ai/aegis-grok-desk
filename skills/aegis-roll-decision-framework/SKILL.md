@@ -57,7 +57,10 @@ python3 /workspace/aegis-grok-desk/scripts/roll_analysis.py --trade AG-20261020-
   open the new call (protected and covered at every step); its checks add the roll's net per share, and with no best
   candidate both held legs' closes are quoted. A ticket for one pair names its expiration and both strikes.
 - Any other structure is NOT_APPLICABLE with its reason; a vertical's roll is a ROLL ticket the owner names, at the
-  same width (`aegis-ticket-and-unwind-order`). Weekly expirations are planned for Stage 2 (not in this release).
+  same width (`aegis-ticket-and-unwind-order`).
+- Weekly expirations: a section with `expirations = "weekly"` adds the week-end expirations (a Friday, or the Thursday
+  before a holiday Friday) to the standard monthlies, in a `dte` window of at most 21 days, and the notes name the
+  mode. Daily expirations are never listed.
 - An index underlying (the data source cannot quote index options) and the structure's section disabled
   (`[roll] enabled = false` for a covered call or a cash-secured put, `[protective_put] enabled = false` for a
   protective put, `[collar] enabled = false` for a collar) are NOT_APPLICABLE too.
