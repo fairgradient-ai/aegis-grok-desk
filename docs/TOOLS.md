@@ -1193,6 +1193,40 @@ Payload (`--json` envelope key `payload`):
 - `verdicts_changed`: `"integer"`
 - `warnings`: `["string"]`
 
+## rules_replay
+
+- script: `scripts/rules_replay.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: a candidate rulebook replayed over the desk's past end-of-day snapshots against the adopted one: the days and groups whose verdict would have differed, and how many days; no profit or loss, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--candidate` | `PATH` | the candidate rulebook file (a TOML rulebook; never one under rules/ that is adopted) |
+| `--days` | `N` | the last N end-of-day snapshots (1-260, default 5) |
+| `--from` | `YYYY-MM-DD` | the first snapshot date (with --to, the last; without, through today) |
+| `--to` | `YYYY-MM-DD` | the last snapshot date |
+
+Payload (`--json` envelope key `payload`):
+
+- `adopted`: `{"sha256": "hex", "version": "string"}`
+- `as_of`: `"RFC 3339 | null (the newest snapshot's instant)"`
+- `candidate`: `{"path": "string", "sha256": "hex", "version": "string"}`
+- `counts`: `{"days": "integer", "days_differed": "integer", "days_unavailable": "integer"}`
+- `days`: `[{"changes": [{"after": "verdict | null", "before": "verdict | null", "group_id": "string", "structure": "string", "trade_id": "string", "underlying": "string"}], "et_date": "YYYY-MM-DD", "reason": "string | null", "status": "ok | unavailable", "unavailable_groups": ["group id"]}]`
+- `exit_code`: `"0 | 10 | 20"`
+- `limits`: `"string"`
+- `message`: `"string (the text printed)"`
+- `verdict`: `"differs | same | unavailable"`
+
 ## scenario
 
 - script: `scripts/scenario.py`

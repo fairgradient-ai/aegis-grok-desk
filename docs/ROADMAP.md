@@ -513,7 +513,7 @@ would have decided on past days, and who looks after the rulebook.
 | Step | What lands | Needs | Status |
 | --- | --- | --- | --- |
 | 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | landed |
-| 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | planned |
+| 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | landed |
 | 3.3 | The Aegis Rules Steward seat | 3.2 | planned |
 | 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | planned |
 
@@ -539,7 +539,17 @@ would have decided on past days, and who looks after the rulebook.
   tag; if counsel rejects counts, the review shows per-signal facts and per-day replay verdicts only.
 - **Gate.** Journal goldens from fixture histories; a torn or missing snapshot is UNAVAILABLE for that day.
 
-### 3.2 Rules replay
+### 3.2 Rules replay (landed)
+
+- **What landed.** `scripts/rules_replay.py --candidate PATH [--days N | --from D --to D]`.
+  - **The evaluation.** Each end-of-day snapshot of record is evaluated under the adopted rulebook and the candidate,
+    exactly as `rules_diff.py` evaluates one saved book. The groups whose verdict would have differed are listed day
+    by day, then `verdict differed from your adopted rule on K of N trading days`.
+  - **A limit, decided in the landing.** Each day is one closed session with a scratch rule state, so a confirmation
+    spread over days, a re-arm or a cooldown is not carried from day to day. The tool prints this limit beside "end
+    of day only" and "no profit or loss".
+  - **Safety.** A torn snapshot is UNAVAILABLE for its day. Nothing is written, `rules/` included. The adopted
+    rulebook replayed against itself differs on no day.
 
 - **What lands.** `rules_replay` (not yet in the tree): a candidate rulebook evaluated over the end-of-day book
   snapshots the Exit Sentinel already writes, reporting for each day which verdicts would have differed from the

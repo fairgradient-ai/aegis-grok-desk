@@ -702,6 +702,16 @@ JOURNEYS += (
                  now="2026-11-07T15:00:00Z",
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"},
                                   now=PREV_EOD_NOW),)),
+    # The replay of a candidate over the end-of-day snapshots (roadmap 3.2): no money figure, nothing written.
+    tool_journey("rules_replay candidate-1.1.0 over the 2026-11-02 and 2026-11-03 snapshots -> 0 of 2 days differ",
+                 ("rules_replay.py", "--candidate", CANDIDATE_RULES), 0,
+                 {"status": "ok", "tool": "rules_replay", "payload.verdict": "same",
+                  "payload.counts": {"days": 2, "days_differed": 0, "days_unavailable": 0}},
+                 now="2026-11-04T23:00:00Z",
+                 steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"},
+                                  now=PREV_EOD_NOW),
+                        tool_step(("book.py", "--snapshot", "--fixture-set", "after_close"), 0, {"status": "ok"},
+                                  now="2026-11-03T21:35:00Z"))),
     # The signal journal (roadmap 3.1): counts only; journal-close writes the day's facts and posts nothing.
     tool_journey("signal_journal on a desk with no signal -> 0 signals this week", ("signal_journal.py",), 0,
                  {"status": "ok", "tool": "signal_journal", "payload.signals": [],

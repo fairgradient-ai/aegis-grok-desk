@@ -168,7 +168,9 @@ refused: lint_failed: 29 lint findings block the adoption (not_accepted, owner_m
    python3 /workspace/aegis-grok-desk/scripts/rules_diff.py --candidate /workspace/aegis-desk/rules/candidate-1.1.0.toml --desk-root /workspace/aegis-desk
    ```
 
-   It exits 10 when a group's verdict would change. After the close, `--latest-snapshot` compares on the newest
+   It exits 10 when a group's verdict would change. `rules_replay.py --candidate <file>` asks the same over the last
+   end-of-day snapshots: the days a verdict would have differed, with its limits line (no profit or loss).
+   It exits 10 when a group's verdict would change today. After the close, `--latest-snapshot` compares on the newest
    snapshot of record in `data/book/`, the book the adoption's digest also reads. From the fixture's candidate 1.1.0
    (TP50 at 60 %), on the regular quotes of 2026-11-03 at 19:50 UTC, after its first line:
 

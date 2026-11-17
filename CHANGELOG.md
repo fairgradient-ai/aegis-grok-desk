@@ -2,6 +2,10 @@
 
 ## 1.0.0 (unreleased)
 
+- **Rules replay** (roadmap step 3.2): `rules_replay.py` (new) replays a candidate rulebook over the desk's end-of-day
+  snapshots beside the adopted one. It lists the days and groups whose verdict would have differed, then one count
+  line. It states its limits (end of day only, no rule state carried across days, no profit or loss) and writes
+  nothing.
 - **The signal journal** (roadmap step 3.1; counts only, the owner's answer to open question 6).
   - **`signal_journal.py`** (new) prints each signal's facts: when it was posted, its rules, the owner's
     ack/acted/snooze mark, and the group's end-of-day P/L at the mid, UNAVAILABLE for a day without a usable snapshot.
