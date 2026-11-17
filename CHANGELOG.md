@@ -2,6 +2,16 @@
 
 ## 1.0.0 (unreleased)
 
+- **Exposures and two limit metrics** (roadmap step 2.7; the owner's answer to open question 4).
+  - **Beta.** `aegis_desk.beta` fits the OLS beta of daily simple returns against SPY over the 252 split-adjusted
+    closes ending the previous trading day. Under 126 paired returns, or past a 40 % daily return in either series, it
+    is UNAVAILABLE; `r2_flag` is `ok` at r2 >= 0.30 and `low` below.
+  - **`beta_refresh.py`** (new, read-only) fetches those bars once a day with `adjustment=split` on the existing bars
+    path and writes `data/beta/<date>.json`; exit 20 when a fit is UNAVAILABLE.
+  - **The book** fills each underlying's `net_delta`, `beta` and `beta_r2_flag` and the portfolio's
+    `beta_weighted_delta` in dollars from that file, and prints it on the portfolio line. It sends no extra request.
+  - **The exit rulebook** gains `beta_weighted_delta_pct` and `delta_exposure_pct`, with the example rules `BWD` and
+    `UDELTA` in `rules/examples/limits-1.0.0.toml` (both `owner_must_set`).
 - **Stated cash and per-account approval levels** (roadmap step 2.6; the owner's answers to open questions 5 and 7).
   - **New account keys.** Each `[[owner.accounts]]` entry may state its own `approval_level`, which the structuring
     tools read before `[owner] approval_level`. It may also state `cash` with `cash_as_of`, the two given together.

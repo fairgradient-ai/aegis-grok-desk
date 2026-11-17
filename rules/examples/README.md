@@ -52,6 +52,14 @@ rulebook `#assign-ok` (the owner accepted assignment) silences `EXDIV`, `DELTA_W
 and `#earnings-ok` silences `EARN2`. The example gives `PIN3` no `suppress_if_tag`, because whether assignment
 happens stays uncertain near the strike; an owner's own rulebook decides this rule by rule.
 
+## Limits
+
+[`limits-1.0.0.toml`](limits-1.0.0.toml) holds two example limits written as exit rules (roadmap step 2.7). `BWD`
+reads `beta_weighted_delta_pct`, the book's beta-weighted delta as a share of the declared equity; `UDELTA` reads
+`delta_exposure_pct`, one underlying's net delta times its price as a share of it. Both are WATCH only, with
+`plan = "hold_review"`, and both carry `owner_must_set = true`. Each is UNAVAILABLE when a delta is missing; `BWD` is
+also UNAVAILABLE without the day's beta file from `beta_refresh.py`. A net-short book adds a mirrored `<=` rule.
+
 ## Thresholds are the owner's choices
 
 Each example names its public reference class in its `source`: tastylive's research on managing short

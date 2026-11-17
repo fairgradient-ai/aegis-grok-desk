@@ -278,7 +278,7 @@ ORDER_WORDS_RE = re.compile(r"(?i)\b(?:buy|sell|sells|selling|submit|limit order
                             r"time in force|day order)\b")
 FILE_NAME_RE = re.compile(r"^(?:(stock_quotes|option_quotes)__([A-Z0-9,]+)"
                           r"|(snapshots|contracts)__([A-Z]+)__(\d{4}-\d{2}-\d{2})(?:__(\d{4}-\d{2}-\d{2}))?"
-                          r"|bars__([A-Z]+)__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})"
+                          r"|bars__([A-Z]+)__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})(?:__split)?"
                           r"|calendar__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})"
                           r"|(clock))\.json$")
 

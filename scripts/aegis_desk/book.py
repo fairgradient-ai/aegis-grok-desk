@@ -120,8 +120,13 @@ Definitions (plan section 8)
   unavailable or lacks ``net_greeks``: a partial delta total is worse than none. Realized today / MTD / YTD
   are :func:`aegis_desk.pnl.realized_by_period` over every loaded row. ``concentration.by_underlying`` is
   ``sum |open quantity x multiplier x mark_mid| / declared_equity`` in percent (2 dp) per underlying, and
-  ``None`` for an underlying with an unmarked open leg. ``beta_weighted_delta`` is the Stage-2 placeholder
-  ``{"value": null, "r2_flag": "unavailable"}``. ``quarantined_groups`` lists the groups the parser or the
+  ``None`` for an underlying with an unmarked open leg. Exposures (roadmap 2.7): each underlying carries
+  ``net_delta`` (the sum of its open groups' net delta in shares, ``None`` when one is unavailable, ``0.0`` with no
+  open group), ``beta`` and
+  ``beta_r2_flag`` from the day's beta file (``data/beta/<ET date>.json``, written by ``beta_refresh.py``; without it
+  ``unavailable``); ``beta_weighted_delta`` is ``{"value": the sum of net delta x spot x beta in dollars, "r2_flag":
+  ok | low}`` (an underlying with no net delta needs no beta), or ``{"value": null, "r2_flag": "unavailable"}`` when an
+  underlying with a net delta lacks one of the three. ``quarantined_groups`` lists the groups the parser or the
   grouping quarantined with their reasons; they are listed, not fatal, and make the book exit 20.
 
 Exit codes (:func:`exit_code_for`): 0 when every open group is ``ok`` and nothing is quarantined, 20 when
@@ -140,7 +145,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import american, calendar_events, data_source, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
+from . import american, beta as beta_module, calendar_events, data_source, expiry, grouping, iv, market_clock, payoff, pnl, positions_csv, quote_cache, quote_qc, state, units
 from .calendar_events import CalendarFile
 from .desk_config import DeskConfig
 from .desk_paths import DeskPaths
@@ -177,7 +182,9 @@ GROUP_KEYS: Tuple[str, ...] = (
     "greeks_quality",
 )
 UNDERLYING_KEYS: Tuple[str, ...] = ("mark_mid", "bid", "ask", "as_of", "quote_grade", "prev_eod_mid",
-                                    "move_pct_from_prev_eod", "day_change_source")
+                                    "move_pct_from_prev_eod", "day_change_source", "net_delta", "beta", "beta_r2_flag")
+UNDERLYING_EXPOSURE_KEYS: Tuple[str, ...] = ("net_delta", "beta", "beta_r2_flag")
+"""The underlying keys roadmap 2.7 added; a snapshot written before it lacks them."""
 PORTFOLIO_KEYS: Tuple[str, ...] = ("unrealized_pl_liq", "unrealized_pl_mid", "day_pl", "realized_pl_today", "realized_pl_mtd",
                                    "realized_pl_ytd", "net_delta", "beta_weighted_delta", "concentration", "open_groups",
                                    "quarantined_groups")
@@ -670,6 +677,41 @@ class _Builder:
             }
         return out
 
+    def exposures(self, underlyings: Dict[str, Dict[str, Any]], group_recs: Sequence[Dict[str, Any]]) -> None:
+        """Roadmap 2.7: each underlying's net delta in shares (the sum of its open groups' net delta, ``0.0`` with no open
+        group, ``None`` when one of them is unavailable or has no net delta) and its beta from the day's beta file (``None`` and
+        ``unavailable`` without one)."""
+        betas = getattr(self, "betas", None) or {}
+        for symbol, entry in underlyings.items():
+            groups = [rec for rec in group_recs if rec["underlying"] == symbol
+                      and any(self.positions_row(row).is_open for row in rec["legs"])]
+            totals = [rec["net_greeks"]["delta"] if rec["data_quality"] == DATA_QUALITY_OK and rec["net_greeks"]
+                      else None for rec in groups]
+            entry["net_delta"] = None if any(value is None for value in totals) else float(sum(totals))
+            fit = betas.get(symbol)
+            entry["beta"] = None if fit is None else fit.beta
+            entry["beta_r2_flag"] = beta_module.FLAG_UNAVAILABLE if fit is None else fit.r2_flag
+
+    @staticmethod
+    def beta_weighted_delta(underlyings: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
+        """``{"value", "r2_flag"}``: the sum over the underlyings of net delta x spot x beta, in dollars (roadmap 2.7);
+        ``None`` and ``unavailable`` when an underlying with a net delta other than zero lacks one of the three, or
+        when no underlying has one; ``low`` when any fit used is low."""
+        total = 0.0
+        flags = []
+        for entry in underlyings.values():
+            spot, delta, beta = entry.get("mark_mid"), entry.get("net_delta"), entry.get("beta")
+            if delta == 0.0:
+                continue  # no exposure to weigh: its beta is not needed
+            if spot is None or delta is None or beta is None:
+                return dict(BETA_WEIGHTED_DELTA)
+            total += float(delta) * float(spot) * float(beta)
+            flags.append(entry.get("beta_r2_flag"))
+        if not flags:
+            return dict(BETA_WEIGHTED_DELTA)
+        flag = beta_module.FLAG_LOW if beta_module.FLAG_LOW in flags else beta_module.FLAG_OK
+        return {"value": total, "r2_flag": flag}
+
     def data_quality(self) -> Dict[str, Any]:
         grades = {grade: 0 for grade in quote_qc.GRADES}
         usable = unavailable = 0
@@ -791,7 +833,9 @@ class _Builder:
         legs = [self.leg_records[leg.row_number] for leg in self.positions.rows]
         group_recs = [self.group(group) for group in self.groups]
         underlyings = self.underlyings()
+        self.exposures(underlyings, group_recs)
         portfolio = self.portfolio(group_recs)
+        portfolio["beta_weighted_delta"] = self.beta_weighted_delta(underlyings)
         market = self.cfg.market_data
         return Book(
             generated_at=self.now,
@@ -817,7 +861,8 @@ def build_book(*, now: datetime.datetime, cfg: DeskConfig, paths: DeskPaths, pos
                calendar: Optional[CalendarFile], prev_snapshot: Optional[Mapping[str, Any]], session: SessionInfo,
                prior_close_utc: Optional[datetime.datetime] = None, bound_min: Optional[int] = None,
                receipt_utc: Optional[datetime.datetime] = None, cache_warnings: Sequence[str] = (),
-               prev_snapshot_date: Optional[datetime.date] = None, prev_snapshot_status: Optional[str] = None) -> Book:
+               prev_snapshot_date: Optional[datetime.date] = None, prev_snapshot_status: Optional[str] = None,
+               betas: Optional[Mapping[str, Any]] = None) -> Book:
     """Assemble the book from its inputs (module notes); pure, no I/O.
 
     ``quotes`` and ``qcs`` are keyed by the quote symbol (the compact OCC form for options); a symbol absent
@@ -833,6 +878,7 @@ def build_book(*, now: datetime.datetime, cfg: DeskConfig, paths: DeskPaths, pos
                        prev_snapshot=prev_snapshot, session=session, prior_close_utc=prior_close_utc, bound_min=bound_min,
                        receipt_utc=receipt_utc, cache_warnings=cache_warnings, prev_snapshot_date=prev_snapshot_date,
                        prev_snapshot_status=prev_snapshot_status)
+    builder.betas = betas
     return builder.build()
 
 
@@ -950,7 +996,15 @@ def portfolio_line(document: Mapping[str, Any]) -> str:
             "open groups %d | quarantined %d") % (
         _money(portfolio["unrealized_pl_mid"]), _money(portfolio["unrealized_pl_liq"]), _money(portfolio["day_pl"]),
         _money(portfolio["realized_pl_today"]), _money(portfolio["realized_pl_mtd"]), _money(portfolio["realized_pl_ytd"]),
-        "-" if delta is None else "%.2f" % delta, portfolio["open_groups"], len(portfolio["quarantined_groups"]))
+        "-" if delta is None else "%.2f" % delta, portfolio["open_groups"], len(portfolio["quarantined_groups"])) + (
+        _beta_weighted_text(portfolio.get("beta_weighted_delta")))
+
+
+def _beta_weighted_text(weighted: Any) -> str:
+    """`` | beta-weighted delta 84335.44 (r2 low)`` when the day's beta file fills it (roadmap 2.7), else nothing."""
+    if not isinstance(weighted, Mapping) or weighted.get("value") is None:
+        return ""
+    return " | beta-weighted delta %.2f (r2 %s)" % (weighted["value"], weighted.get("r2_flag"))
 
 
 def render_lines(document: Mapping[str, Any]) -> List[str]:
@@ -1100,12 +1154,13 @@ def load_book(market: MarketData) -> BookRun:
                                         paths=market.paths, allow_fetch=session.trading_day, run=market.run)
         quotes, verdicts = assess_quotes(result, symbols, now=market.now, session=session, bound_min=market.bound_min,
                                          prior_close_utc=prior_close)
+    betas = beta_module.load_betas(market.paths.beta_dir, today)
     built = build_book(now=market.now, cfg=market.cfg, paths=market.paths, positions=positions, groups=groups,
                        quotes=quotes, qcs=verdicts, calendar=calendar, prev_snapshot=previous, session=session,
                        prior_close_utc=prior_close, bound_min=market.bound_min,
                        receipt_utc=result.receipt_utc if result is not None else None,
                        cache_warnings=result.warnings if result is not None else (),
-                       prev_snapshot_date=prev_date, prev_snapshot_status=prev_status)
+                       prev_snapshot_date=prev_date, prev_snapshot_status=prev_status, betas=betas)
     document = book_to_json(built)
     return BookRun(market=market, session=session, prior_close_utc=prior_close, book=built, document=document,
                    positions=positions, groups=groups, calendar=calendar, symbols=symbols, quotes=result,

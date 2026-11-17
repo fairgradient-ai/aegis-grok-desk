@@ -337,6 +337,13 @@ JOURNEYS: Tuple[Journey, ...] = (
                  {"status": "ok", "payload.portfolio.day_pl": "400.00"},
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"},
                                   now=PREV_EOD_NOW),)),
+    # The daily beta fit (roadmap 2.7): split-adjusted bars, the day's beta file, then the book reads it.
+    tool_journey("beta_refresh regular -> NVDA ok, WMT low", ("beta_refresh.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "beta_refresh", "payload.verdict": "ok",
+                  "payload.written": "data/beta/2026-11-03.json"}),
+    tool_journey("book after beta_refresh -> beta-weighted delta (r2 low)", ("book.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "payload.portfolio.beta_weighted_delta.r2_flag": "low"},
+                 steps=(tool_step(("beta_refresh.py", "--fixture-set", "regular"), 0, {"status": "ok"}),)),
     # The calendar lint (no market data: no --fixture-set flag), the assignment and expiry tools.
     tool_journey("calendar_check -> clean", ("calendar_check.py",), 0,
                  {"status": "ok", "tool": "calendar_check", "payload.verdict": "clean"}),

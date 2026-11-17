@@ -83,6 +83,9 @@ class DeskPaths:
     rolls_dir: str
     proposals_dir: str
     structuring_journal: str
+    beta_dir: str = ""
+    """``data/beta/``: one beta file per ET date, written by ``beta_refresh.py`` only (roadmap 2.7); created on
+    demand, not a runtime directory."""
 
     @property
     def alpaca_fixtures_dir(self) -> str:
@@ -139,6 +142,7 @@ def for_root(desk_root: str) -> DeskPaths:
         rolls_dir=under("reports", "rolls"),
         proposals_dir=under("reports", "proposals"),
         structuring_journal=under("journal", "structuring.jsonl"),
+        beta_dir=under("data", "beta"),
     )
 
 

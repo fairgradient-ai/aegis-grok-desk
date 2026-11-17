@@ -19,7 +19,7 @@ import unittest
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from aegis_desk import american, book, calendar_events, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, quote_qc, state, units
+from aegis_desk import american, beta, book, calendar_events, desk_config, desk_paths, expiry, iv, market_clock, quote_cache, quote_qc, state, units
 from aegis_desk.grouping import PositionGroup, group_positions
 from aegis_desk.market_types import Quote
 from aegis_desk.positions_csv import PositionsFile, parse_positions_text
@@ -113,7 +113,7 @@ def qcs_for(quotes: Dict[str, Quote], now: datetime.datetime) -> Dict[str, Quote
 def build(lines: Sequence[str] = FIXTURE_LINES, prices: Dict[str, Any] = REGULAR_PRICES, now: datetime.datetime = NOW,
           stamp: datetime.datetime = STAMP, calendar: Optional[calendar_events.CalendarFile] = CAL,
           prev_snapshot: Optional[dict] = None, stamps: Optional[Dict[str, datetime.datetime]] = None,
-          quotes: Optional[Dict[str, Quote]] = None) -> Dict[str, Any]:
+          quotes: Optional[Dict[str, Quote]] = None, betas: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     positions = positions_of(lines, today=market_clock.to_et(now).date())
     groups = group_positions(positions.rows)
     quotes = quotes_for(prices, stamp, **(stamps or {})) if quotes is None else quotes
@@ -122,7 +122,7 @@ def build(lines: Sequence[str] = FIXTURE_LINES, prices: Dict[str, Any] = REGULAR
     built = book.build_book(now=now, cfg=CFG, paths=PATHS, positions=positions, groups=groups, quotes=quotes, qcs=qcs,
                             calendar=calendar, prev_snapshot=prev_snapshot, session=session,
                             prior_close_utc=market_clock.previous_close_utc(now), bound_min=25, receipt_utc=now,
-                            prev_snapshot_date=market_clock.previous_trading_day(session.et_date))
+                            prev_snapshot_date=market_clock.previous_trading_day(session.et_date), betas=betas)
     return book.book_to_json(built)
 
 
@@ -190,7 +190,8 @@ class KeysTest(unittest.TestCase):
         self.assertEqual({"WMT", "NVDA", "SPY"}, set(self.document["underlyings"]))
         for entry in self.document["underlyings"].values():
             self.assertEqual({"mark_mid", "bid", "ask", "as_of", "quote_grade", "prev_eod_mid", "move_pct_from_prev_eod",
-                              "day_change_source"}, set(entry))
+                              "day_change_source", "net_delta", "beta", "beta_r2_flag"}, set(entry))
+            self.assertEqual((None, "unavailable"), (entry["beta"], entry["beta_r2_flag"]), "no beta file, no beta")
             self.assertEqual("desk snapshot", entry["day_change_source"])
         portfolio = self.document["portfolio"]
         self.assertEqual({"unrealized_pl_liq", "unrealized_pl_mid", "day_pl", "realized_pl_today", "realized_pl_mtd",
@@ -1135,6 +1136,55 @@ class AssessQuotesTest(unittest.TestCase):
         self.assertEqual(("F", "missing", "NYSE closed", False), (call.grade, call.status, call.label, call.usable_for_rules))
 
 
+class ExposuresTest(unittest.TestCase):
+    """Roadmap 2.7: each underlying's net delta and beta, and the book's beta-weighted delta in dollars."""
+
+    FITS = {"WMT": beta.BetaFit("WMT", 0.5, 0.2, beta.FLAG_LOW, 251), "NVDA": beta.BetaFit("NVDA", 2.0, 0.5, beta.FLAG_OK, 251),
+            "SPY": beta.BetaFit("SPY", 1.0, 1.0, beta.FLAG_OK, 0)}
+
+    def test_net_delta_is_the_sum_of_the_open_groups(self) -> None:
+        document = build(betas=self.FITS)
+        for symbol, entry in document["underlyings"].items():
+            groups = [group for group in document["groups"] if group["underlying"] == symbol
+                      and group["net_greeks"] is not None]
+            self.assertTrue(groups, symbol)
+            self.assertAlmostEqual(sum(group["net_greeks"]["delta"] for group in groups), entry["net_delta"], places=9)
+            self.assertEqual((self.FITS[symbol].beta, self.FITS[symbol].r2_flag), (entry["beta"], entry["beta_r2_flag"]))
+        self.assertAlmostEqual(document["portfolio"]["net_delta"],
+                               sum(entry["net_delta"] for entry in document["underlyings"].values()), places=9)
+
+    def test_the_beta_weighted_delta_in_dollars(self) -> None:
+        document = build(betas=self.FITS)
+        expected = sum(entry["net_delta"] * float(entry["mark_mid"]) * entry["beta"]
+                       for entry in document["underlyings"].values())
+        weighted = document["portfolio"]["beta_weighted_delta"]
+        self.assertAlmostEqual(expected, weighted["value"], places=6)
+        self.assertEqual("low", weighted["r2_flag"], "WMT's fit is low")
+        ok = build(betas={**self.FITS, "WMT": beta.BetaFit("WMT", 0.5, 0.4, beta.FLAG_OK, 251)})
+        self.assertEqual("ok", ok["portfolio"]["beta_weighted_delta"]["r2_flag"])
+        line = book.portfolio_line(document)
+        self.assertTrue(line.endswith(" | beta-weighted delta %.2f (r2 low)" % weighted["value"]), line)
+
+    def test_a_missing_beta_or_delta_is_unavailable(self) -> None:
+        unavailable = {"value": None, "r2_flag": "unavailable"}
+        for fits in ({}, {"WMT": self.FITS["WMT"], "SPY": self.FITS["SPY"]},
+                     {**self.FITS, "NVDA": beta.BetaFit("NVDA", None, None, beta.FLAG_UNAVAILABLE, 40, beta.REASON_SHORT)}):
+            with self.subTest(fits=sorted(fits)):
+                document = build(betas=fits)
+                self.assertEqual(unavailable, document["portfolio"]["beta_weighted_delta"])
+                self.assertNotIn("beta-weighted", book.portfolio_line(document))
+        stale = build(betas=self.FITS, prices={key: value for key, value in REGULAR_PRICES.items() if key != WMT_CALL})
+        self.assertIsNone(stale["underlyings"]["WMT"]["net_delta"], "an unavailable group has no delta")
+        self.assertEqual(unavailable, stale["portfolio"]["beta_weighted_delta"])
+
+    def test_an_underlying_with_no_open_group_needs_no_beta(self) -> None:
+        closed = book._Builder.beta_weighted_delta({"WMT": {"mark_mid": D("104.23"), "net_delta": 0.0, "beta": None},
+                                                       "SPY": {"mark_mid": D("600"), "net_delta": 10.0, "beta": 1.0,
+                                                               "beta_r2_flag": "ok"}})
+        self.assertEqual({"value": 6000.0, "r2_flag": "ok"}, closed)
+        self.assertEqual({"value": None, "r2_flag": "unavailable"}, book._Builder.beta_weighted_delta({}))
+
+
 class LoadBookTest(unittest.TestCase):
     """The library entry point against a copied fixture desk root: one quotes request, the addendum's goldens."""
 
@@ -1177,6 +1227,20 @@ class LoadBookTest(unittest.TestCase):
         self.assertEqual("regular", run.market.fixture_set)
         self.assertEqual(4, len(run.groups))
         self.assertIsNotNone(run.calendar)
+
+    def test_the_days_beta_file_fills_the_exposures(self) -> None:
+        market = self.market("regular", NOW)
+        os.makedirs(market.paths.beta_dir)
+        fits = [beta.BetaFit("WMT", 0.5, 0.2, beta.FLAG_LOW, 251), beta.BetaFit("NVDA", 2.0, 0.5, beta.FLAG_OK, 251),
+                beta.BetaFit("SPY", 1.0, 1.0, beta.FLAG_OK, 0)]
+        state.atomic_write_json(beta.beta_path(market.paths.beta_dir, TODAY),
+                                beta.document(TODAY, datetime.date(2026, 11, 2), NOW, fits))
+        document = book.load_book(market).document
+        self.assertEqual((2.0, "ok"), (document["underlyings"]["NVDA"]["beta"],
+                                       document["underlyings"]["NVDA"]["beta_r2_flag"]))
+        self.assertEqual("low", document["portfolio"]["beta_weighted_delta"]["r2_flag"])
+        self.assertIsNotNone(document["portfolio"]["beta_weighted_delta"]["value"])
+        self.assertEqual(2, len(self.ledger()), "the beta file is read, no bars are fetched")
 
     def test_stale_set_is_unavailable(self) -> None:
         run = book.load_book(self.market("stale", NOW))

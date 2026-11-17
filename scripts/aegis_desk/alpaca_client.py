@@ -110,7 +110,8 @@ records, built into the shared ``market_types`` types with their ``from_record``
   listing without an upper bound stops at the coming weekend, so the window is always explicit.
 * Strikes (``option_strikes``): the distinct strikes of one expiration's contract listing.
 * History (``history``): :data:`PATH_STOCK_BARS` with ``timeframe=1Day`` (or ``1Week`` /
-  ``1Month``), ``adjustment=raw``, ``feed=<stock_feed>``; a bar's ``date`` is the America/New_York
+  ``1Month``), ``adjustment=raw`` (``split`` only when the caller asks: the beta fit of roadmap 2.7, the same GET
+  path; :data:`HISTORY_ADJUSTMENTS`), ``feed=<stock_feed>``; a bar's ``date`` is the America/New_York
   date of its ``t``.
 * Minute bars (``minute_bars``): the same path with ``timeframe=1Min`` between two UTC instants; a bar's
   ``start_utc`` is its ``t`` (the start of its minute) and its ``close`` the last trade of that minute on the stock
@@ -147,7 +148,7 @@ Offline fixtures. :class:`OfflineTransport` maps a request to ``<fixture_dir>/<s
   ``contracts__<UNDERLYING>__<expiration_date_gte>__<expiration_date_lte>.json`` (the
   ``underlying_symbols`` parameter upper-cased; ``status``, ``type`` and ``limit`` are not part of
   the key);
-* ``bars__<SYMBOL>__<start>__<end>.json``;
+* ``bars__<SYMBOL>__<start>__<end>.json`` (``bars__<SYMBOL>__<start>__<end>__split.json`` for split-adjusted bars);
 * ``clock.json`` and ``calendar__<start>__<end>.json``;
 * a ``page_token`` adds ``__page-<token>`` before ``.json`` (the token must match
   ``[A-Za-z0-9_-]{1,64}``).
@@ -287,6 +288,8 @@ HEADER_SECRET: str = "APCA-API-SECRET-KEY"
 HEADER_ACCEPT: str = "application/json"
 CREDENTIAL_SOURCES: Tuple[str, ...] = ("env", "file")
 HISTORY_INTERVALS: Tuple[str, ...] = ("daily", "weekly", "monthly")
+HISTORY_ADJUSTMENTS: Tuple[str, ...] = ("raw", "split")
+"""The bar adjustments the client sends: ``raw`` by default, ``split`` for the beta fit (roadmap 2.7)."""
 HISTORY_TIMEFRAMES: Dict[str, str] = {"daily": "1Day", "weekly": "1Week", "monthly": "1Month"}
 MINUTE_TIMEFRAME: str = "1Min"
 """The ``timeframe`` of :meth:`AlpacaClient.minute_bars`."""
@@ -652,6 +655,8 @@ def fixture_file_name(path: str, params: Dict[str, str]) -> str:
                                             _compact_instant(params.get("end", "")))
     elif template == PATH_STOCK_BARS:
         stem = "bars__%s__%s__%s" % (params.get("symbols", "").upper(), params.get("start", ""), params.get("end", ""))
+        if params.get("adjustment", "raw") != "raw":
+            stem += "__%s" % params["adjustment"]
     elif template == PATH_CLOCK:
         stem = "clock"
     elif template == PATH_CALENDAR:
@@ -1628,17 +1633,20 @@ class AlpacaClient:
         return StrikesResult(sorted(strikes), receipts[-1], {"option_contracts": contracts}, tuple(receipts))
 
     def history(self, symbol: str, start: datetime.date, end: datetime.date, *,
-                interval: str = "daily") -> HistoryResult:
-        """Daily (or weekly/monthly) bars from ``start`` to ``end``, raw (unadjusted), on the stock feed."""
+                interval: str = "daily", adjustment: str = "raw") -> HistoryResult:
+        """Daily (or weekly/monthly) bars from ``start`` to ``end``, raw (unadjusted) unless ``adjustment`` is
+        ``split``, on the stock feed."""
         if interval not in HISTORY_INTERVALS:
             raise ValueError("interval must be one of %s, got %r" % (", ".join(HISTORY_INTERVALS), interval))
+        if adjustment not in HISTORY_ADJUSTMENTS:
+            raise ValueError("adjustment must be one of %s, got %r" % (", ".join(HISTORY_ADJUSTMENTS), adjustment))
         start_text = _iso_date(start, "start")
         end_text = _iso_date(end, "end")
         if end < start:
             raise ValueError("end %s is before start %s" % (end_text, start_text))
         ticker = _validate_symbol(symbol)
         params: Dict[str, str] = {"symbols": ticker, "timeframe": HISTORY_TIMEFRAMES[interval], "start": start_text,
-                                  "end": end_text, "adjustment": "raw", "feed": self._stock_feed,
+                                  "end": end_text, "adjustment": adjustment, "feed": self._stock_feed,
                                   "limit": str(BARS_PAGE_LIMIT)}
         pages, receipts, documents = self._paged(PATH_STOCK_BARS, params, 1, _bars_page_parser(ticker))
         try:

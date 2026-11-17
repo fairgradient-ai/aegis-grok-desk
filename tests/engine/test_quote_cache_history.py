@@ -92,8 +92,10 @@ class FakeHistoryClient:
         self.raw_less = raw_less
         self.calls: List[tuple] = []
 
-    def history(self, symbol: str, start: date, end: date, *, interval: str = "daily") -> FakeHistoryResult:
-        self.calls.append((symbol, start, end, interval))
+    def history(self, symbol: str, start: date, end: date, *, interval: str = "daily",
+                adjustment: str = "raw") -> FakeHistoryResult:
+        self.calls.append((symbol, start, end, interval) if adjustment == "raw" else (symbol, start, end, interval,
+                                                                                      adjustment))
         status = self.errors.pop(0) if self.errors else None
         if status in self.NO_RECEIPT:
             raise ClientError(status, None, HISTORY_PATH)
@@ -177,6 +179,30 @@ class PathAndResultTest(HistoryTestCase):
         result = self.history(self.offline_client())
         with self.assertRaises(dataclasses.FrozenInstanceError):
             result.symbol = "X"  # type: ignore[misc]
+
+
+class SplitAdjustedTest(HistoryTestCase):
+    """Roadmap 2.7: split-adjusted bars for the beta fit, cached apart from the raw bars of the same range."""
+
+    def test_the_split_file_and_the_call(self) -> None:
+        raw_path = quote_cache.history_path(self.paths, "WMT", START, END)
+        split_path = quote_cache.history_path(self.paths, "wmt", START, END, adjustment="split")
+        self.assertEqual(raw_path[:-len(".json")] + "__split.json", split_path)
+        client = self.fake_client()
+        result = quote_cache.get_history("WMT", START, END, now=NOW, cfg=self.cfg, client=client, paths=self.paths,
+                                         run=None, adjustment="split")
+        self.assertEqual(("fetch", 2), (result.served_from, len(result.bars)))
+        self.assertEqual([("WMT", START, END, "daily", "split")], client.calls)
+        self.assertTrue(os.path.exists(split_path))
+        self.assertFalse(os.path.exists(raw_path), "the raw cache is untouched")
+        again = quote_cache.get_history("WMT", START, END, now=NOW, cfg=self.cfg, client=client, paths=self.paths,
+                                        run=None, adjustment="split")
+        self.assertEqual(("cache", 1), (again.served_from, len(client.calls)), "closed bars are fetched once")
+        self.history(client)
+        self.assertEqual(("WMT", START, END, "daily"), client.calls[-1], "the default stays raw")
+        with self.assertRaises(ValueError):
+            quote_cache.history_path(self.paths, "WMT", START, END, adjustment="all")
+        self.assertEqual(alpaca_client.HISTORY_ADJUSTMENTS, quote_cache.HISTORY_ADJUSTMENTS)
 
 
 class FetchAndCacheTest(HistoryTestCase):

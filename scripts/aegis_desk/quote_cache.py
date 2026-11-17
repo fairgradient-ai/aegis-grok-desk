@@ -906,9 +906,18 @@ class HistoryCacheResult:
     fetched_utc: Optional[datetime.datetime] = None
 
 
-def history_path(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date) -> str:
+HISTORY_ADJUSTMENTS: Tuple[str, ...] = ("raw", "split")
+"""The bar adjustments (equals ``alpaca_client.HISTORY_ADJUSTMENTS``; asserted by the tests)."""
+
+
+def history_path(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date,
+                 adjustment: str = "raw") -> str:
+    """The cache file of one history answer; a ``split``-adjusted answer (roadmap 2.7) has its own file."""
+    if adjustment not in HISTORY_ADJUSTMENTS:
+        raise ValueError("adjustment must be one of %s, got %r" % (", ".join(HISTORY_ADJUSTMENTS), adjustment))
+    tail = "" if adjustment == "raw" else "__%s" % adjustment
     return os.path.join(paths.cache_dir, HISTORY_SUBDIR,
-                        "%s__%s__%s.json" % (symbol.strip().upper(), start.isoformat(), end.isoformat()))
+                        "%s__%s__%s%s.json" % (symbol.strip().upper(), start.isoformat(), end.isoformat(), tail))
 
 
 def _require_date(value: Any, what: str) -> datetime.date:
@@ -918,9 +927,9 @@ def _require_date(value: Any, what: str) -> datetime.date:
 
 
 def _load_history(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date,
-                  warnings: List[str]) -> Optional[Tuple[List[Bar], datetime.datetime]]:
+                  warnings: List[str], adjustment: str = "raw") -> Optional[Tuple[List[Bar], datetime.datetime]]:
     label = "history cache %s %s..%s" % (symbol, start.isoformat(), end.isoformat())
-    document = _load_document(history_path(paths, symbol, start, end), warnings, label)
+    document = _load_document(history_path(paths, symbol, start, end, adjustment), warnings, label)
     if document is None:
         return None
     stamp = _parse_utc(document.get("fetched_utc"))
@@ -940,7 +949,7 @@ def _load_history(paths: DeskPaths, symbol: str, start: datetime.date, end: date
 
 
 def _store_history(paths: DeskPaths, symbol: str, start: datetime.date, end: datetime.date, now: datetime.datetime,
-                   bars: List[Bar], warnings: List[str]) -> None:
+                   bars: List[Bar], warnings: List[str], adjustment: str = "raw") -> None:
     raws = [bar.raw for bar in bars if isinstance(bar.raw, dict) and bar.raw]
     if len(raws) != len(bars):
         warnings.append("history %s %s..%s not cached: %d bar(s) carry no vendor record"
@@ -950,13 +959,14 @@ def _store_history(paths: DeskPaths, symbol: str, start: datetime.date, end: dat
                 "fetched_utc": state.format_utc(now), "bars": raws}
     try:
         with state.locked(paths.lock_path, timeout_s=LOCK_TIMEOUT_S):
-            state.atomic_write_json(history_path(paths, symbol, start, end), document)
+            state.atomic_write_json(history_path(paths, symbol, start, end, adjustment), document)
     except state.LockBusy as exc:
         warnings.append("history cache not written: %s" % _one_line(exc))
 
 
 def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: datetime.datetime, cfg: CacheConfig,
-                client: Any, paths: DeskPaths, run: Optional[RunCounters] = None) -> HistoryCacheResult:
+                client: Any, paths: DeskPaths, run: Optional[RunCounters] = None,
+                adjustment: str = "raw") -> HistoryCacheResult:
     """Serve the daily bars of ``symbol`` from ``start`` to ``end`` (inclusive) from ``history/``
     or the client (module notes).
 
@@ -985,7 +995,7 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
         warnings.append("%s is not a valid symbol (%s): nothing sent" % (symbol, SYMBOL_RE.pattern))
         return HistoryCacheResult(symbol, start, end, [], None, REASON_BAD_SYMBOL, 0, None, warnings)
     ttl = datetime.timedelta(minutes=cfg.ttl_min)
-    cached = _load_history(paths, symbol, start, end, warnings)
+    cached = _load_history(paths, symbol, start, end, warnings, adjustment)
     if cached is not None:
         bars, stamp = cached
         final = bool(bars) and end < market_clock.to_et(stamp).date()
@@ -1011,7 +1021,8 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
         return not_fetched(REASON_QUOTA_GUARD)
     before = len(run.receipt_stamps)
     try:
-        result = client.history(symbol, start, end)
+        result = (client.history(symbol, start, end) if adjustment == "raw"
+                  else client.history(symbol, start, end, adjustment=adjustment))
     except Exception as exc:  # noqa: BLE001 - only the client's own errors are handled
         status = _client_error_status(exc)
         if status is None:
@@ -1030,7 +1041,7 @@ def get_history(symbol: str, start: datetime.date, end: datetime.date, *, now: d
     bars = list(result.bars)
     if not bars:
         warnings.append("%s is empty: the vendor returned no bars" % label)
-    _store_history(paths, symbol, start, end, now, bars, warnings)
+    _store_history(paths, symbol, start, end, now, bars, warnings, adjustment)
     return HistoryCacheResult(symbol, start, end, bars, SERVED_FETCH, None if bars else REASON_NO_BARS, spent,
                               receipt_utc, warnings, now)
 

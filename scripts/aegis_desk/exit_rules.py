@@ -470,6 +470,12 @@ METRICS: Dict[str, Metric] = {
     "max_concentration_pct": Metric("max_concentration_pct", "percent", "M", (LEVEL_PORTFOLIO,),
                                     ("portfolio.concentration",), None, False,
                                     "the largest underlying share of the declared equity"),
+    "beta_weighted_delta_pct": Metric("beta_weighted_delta_pct", "percent", "G", (LEVEL_PORTFOLIO,),
+                                      ("portfolio.beta_weighted_delta", "portfolio.concentration"), None, False,
+                                      "the book's SPY-equivalent exposure as a share of the declared equity"),
+    "delta_exposure_pct": Metric("delta_exposure_pct", "percent", "G", (LEVEL_UNDERLYING,),
+                                 ("underlyings.net_delta", "underlyings.mark_mid", "portfolio.concentration"), None,
+                                 False, "an underlying's delta exposure as a share of the declared equity"),
 }
 """The metric catalogue (module notes); the lint reads it at call time."""
 
@@ -1907,6 +1913,39 @@ class _Context:
                     return _no_history("day P/L of %s needs %s: %s has none" % (group["group_id"], missing, _label(leg)))
         return _stamped(_value(value, [Input("day_pl", value, "portfolio.day_pl")]), self.book_stamps())
 
+    def _declared_equity(self) -> Optional[Decimal]:
+        equity = (self.portfolio.get("concentration") or {}).get("declared_equity")
+        return equity if isinstance(equity, Decimal) and equity > 0 else None
+
+    def m_beta_weighted_delta_pct(self, subject: _Subject, condition: Condition) -> _Reading:
+        """Roadmap 2.7: ``beta_weighted_delta.value / declared_equity x 100`` (signed, 2 dp)."""
+        weighted = self.portfolio.get("beta_weighted_delta") or {}
+        value, flag = weighted.get("value"), weighted.get("r2_flag")
+        equity = self._declared_equity()
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or equity is None:
+            return _unavailable("beta-weighted delta unavailable (r2_flag %s: a leg without a delta or a symbol "
+                                "without a beta fit)" % (flag or "unavailable"))
+        pct = (Decimal(repr(value)) / equity * _HUNDRED).quantize(_CENT, rounding=ROUND_HALF_EVEN)
+        notes = ["the beta fit of an underlying is weak (r2 below 0.30)"] if flag == "low" else []
+        return _stamped(_value(pct, [Input("beta_weighted_delta", value, "portfolio.beta_weighted_delta.value"),
+                                     Input("declared_equity", equity, "portfolio.concentration.declared_equity")],
+                               notes), self.book_stamps())
+
+    def m_delta_exposure_pct(self, subject: _Subject, condition: Condition) -> _Reading:
+        """Roadmap 2.7: an underlying's ``net_delta x mark_mid / declared_equity x 100`` (signed, 2 dp)."""
+        symbol = str(subject.symbol)
+        entry = self.underlyings.get(symbol) or {}
+        delta, spot, equity = entry.get("net_delta"), entry.get("mark_mid"), self._declared_equity()
+        if spot is None:
+            return _unavailable("underlying %s: no usable mark (quote grade %s)" % (symbol, entry.get("quote_grade") or "none"))
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool) or equity is None:
+            return _unavailable("underlying %s: net delta unavailable (an open group without a delta)" % symbol)
+        pct = (Decimal(repr(delta)) * spot / equity * _HUNDRED).quantize(_CENT, rounding=ROUND_HALF_EVEN)
+        return _value(pct, [Input("net_delta", delta, "underlyings[%s].net_delta" % symbol),
+                            Input("mark_mid", spot, "underlyings[%s].mark_mid" % symbol, entry.get("as_of"),
+                                  entry.get("quote_grade")),
+                            Input("declared_equity", equity, "portfolio.concentration.declared_equity")])
+
     def m_max_concentration_pct(self, subject: _Subject, condition: Condition) -> _Reading:
         concentration = self.portfolio.get("concentration") or {}
         by_underlying = concentration.get("by_underlying") or {}
@@ -2573,7 +2612,8 @@ GROUP_OPTIONAL_KEYS: Tuple[str, ...] = ("greeks_quality",)
 """Group keys a snapshot written before the American model of record (roadmap 2.3) does not have (read as null)."""
 UNDERLYING_FIELDS: Dict[str, str] = {
     "mark_mid": "dec?", "bid": "dec?", "ask": "dec?", "as_of": "dt?", "quote_grade": "str?", "prev_eod_mid": "dec?",
-    "move_pct_from_prev_eod": "dec?", "day_change_source": "str",
+    "move_pct_from_prev_eod": "dec?", "day_change_source": "str", "net_delta": "float?", "beta": "float?",
+    "beta_r2_flag": "str?",
 }
 PORTFOLIO_FIELDS: Dict[str, str] = {
     "unrealized_pl_liq": "dec?", "unrealized_pl_mid": "dec?", "day_pl": "dec?", "realized_pl_today": "dec",
@@ -2699,7 +2739,8 @@ def _read_value(kind: str, value: Any, where: str) -> Any:
     if kind == "underlyings":
         if not isinstance(value, dict):
             raise _bad(where, "not an object", value)
-        return {str(symbol): _read_table(entry, UNDERLYING_FIELDS, "%s.%s" % (where, symbol)) for symbol, entry in value.items()}
+        return {str(symbol): _read_table(entry, UNDERLYING_FIELDS, "%s.%s" % (where, symbol),
+                                         book_module.UNDERLYING_EXPOSURE_KEYS) for symbol, entry in value.items()}
     if kind == "portfolio":
         return _read_table(value, PORTFOLIO_FIELDS, where)
     if kind == "grades":

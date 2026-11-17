@@ -141,6 +141,36 @@ Payload (`--json` envelope key `payload`):
 - `week_end`: `"YYYY-MM-DD (Sunday)"`
 - `week_start`: `"YYYY-MM-DD (Monday)"`
 
+## beta_refresh
+
+- script: `scripts/beta_refresh.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: each held underlying's beta against SPY from split-adjusted daily closes (252 closes to the previous trading day), written to data/beta/<ET date>.json for the book's beta-weighted delta
+- network access: GET https://data.alpaca.markets/v2/stocks/bars (adjustment=split) only, through the quote cache; none with --offline
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
+
+Payload (`--json` envelope key `payload`):
+
+- `bars_end`: `"YYYY-MM-DD (the previous trading day)"`
+- `bars_start`: `"YYYY-MM-DD"`
+- `betas`: `[{"beta": "float | null", "r2": "float | null", "r2_flag": "ok | low | unavailable", "reason": "string | null", "returns": "integer", "symbol": "string"}]`
+- `et_date`: `"YYYY-MM-DD"`
+- `exit_code`: `"0 | 20"`
+- `verdict`: `"ok | unavailable"`
+- `warnings`: `["string"]`
+- `written`: `"data/beta/<ET date>.json"`
+
 ## book
 
 - script: `scripts/book.py`
@@ -171,11 +201,11 @@ Payload (`--json` envelope key `payload`):
 - `generated_at`: `"ISO-8601 UTC"`
 - `groups`: `[{"account": "string", "basis_kind": "credit | debit | stock", "breakevens": ["decimal string"], "data_quality": "ok | unavailable", "greeks_quality": "ok | near_boundary | null (near_boundary: an open leg is in the band, so net delta is approximate)", "group_id": "string", "legs": ["row_number"], "max_loss": "decimal string (positive) | null", "max_profit": "decimal string | null", "net_cost": "decimal string (positive debit, negative credit)", "net_greeks": {"delta": "float (approximate when greeks_quality is near_boundary)", "gamma": "float | null (null in the boundary band)", "rho": "float per 1 %", "theta": "float per day | null (null in the band)", "vega": "float per vol point"}, "pct_captured_liq": "decimal string | null", "pct_captured_mid": "decimal string | null", "realized_pl": "decimal string", "structure": "long_stock | short_stock | long_call | long_put | short_call | cash_secured_put | covered_call | protective_put | collar | vertical_credit_call | vertical_credit_put | vertical_debit_call | vertical_debit_put | custom | invalid", "trade_id": "string | null", "unbounded_down": "boolean", "unbounded_up": "boolean", "underlying": "string", "underlying_stop": "decimal string | null", "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null", "warnings": ["string"]}]`
 - `legs`: `[{"account": "string", "as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "ask_date": "ISO-8601 UTC | null", "bid": "decimal string | null", "bid_date": "ISO-8601 UTC | null", "cost_basis_total": "decimal string (signed cash flow)", "day_pl": "decimal string | null", "dte_calendar": "integer | null", "dte_trading": "integer | null", "early_exercise_premium": "float | null (American less European per share, from one tree)", "entry_price_per_share": "decimal string", "exercise_now": "boolean | null (the lattice: immediate exercise is optimal now)", "expiry": "YYYY-MM-DD | null", "extrinsic_bid": "decimal string | null (fresh_bid - intrinsic at the underlying's usable mid stamped within 60 s of the option: the assignment watch's geometry)", "fresh_ask": "decimal string | null (QuoteQC.mark_liq_short: the ask when it is fresh, any grade A-E, kept for grade E although mark_liq is null; a 0 ask stays 0: no offer, not a price to close at; null for F, closed, expired or unquoted legs)", "fresh_bid": "decimal string | null (QuoteQC.mark_liq_long: the bid when it is fresh, any grade A-E, kept for grade E although mark_liq is null; null for F, closed, expired or unquoted legs)", "greeks": {"delta": "float (approximate when greeks_quality is near_boundary)", "gamma": "float | null (null in the boundary band)", "rho": "float per 1 %", "theta": "float per day | null (null in the band)", "vega": "float per vol point"}, "greeks_quality": "ok | near_boundary | null (near_boundary: delta approximate within 0.05, gamma and theta null)", "group_id": "string", "instrument_type": "equity | option | etf | index | crypto", "itm": "boolean | null", "iv": "float | null (American: the lattice price inverted from the mid)", "iv_status": "ok | expiring | spot_unaligned | spot_unavailable | unavailable | expired | closed | not_option | dividend_unknown | below_intrinsic | above_bound | no_root", "mark_liq": "decimal string | null", "mark_mid": "decimal string | null", "mark_source": "mid | unavailable (mid exactly for grade A-D with both sides fresh: the only P/L basis)", "model": "american_crr_200 | null (the model of record the leg was priced with)", "multiplier": "integer", "near_boundary": "boolean | null (the lattice: within about two node spacings of the exercise boundary)", "occ": "compact OCC | null", "open_quantity": "decimal string (the signed open quantity, the part the marks and P/L apply to)", "position_greeks": {"delta": "float (approximate when greeks_quality is near_boundary)", "gamma": "float | null (null in the boundary band)", "rho": "float per 1 %", "theta": "float per day | null (null in the band)", "vega": "float per vol point"}, "quantity": "decimal string (signed)", "quote_grade": "A-F | null", "quote_status": "fresh | stale | one_side_stale | undated | closed_day | missing | expired | closed", "realized_day_pl": "decimal string | null", "remaining_cost_basis": "decimal string (the open part's pro-rata cost basis)", "right": "CALL | PUT | null", "row_number": "integer (physical line)", "settlement": "pm | am | null", "spread_pct": "decimal string | null", "status": "open | closed", "strike": "decimal string | null", "symbol": "string", "tau_years": "float | null", "trade_id": "string | null", "underlying": "string", "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null", "warnings": ["string"]}]`
-- `portfolio`: `{"beta_weighted_delta": {"r2_flag": "unavailable", "value": null}, "concentration": {"by_underlying": {"SYMBOL": "percent (2 dp) | null"}, "declared_equity": "decimal string"}, "day_pl": "decimal string | null (sum over the ok groups whose every open leg has a day P/L; an ok group with a gap is excluded whole and named in warnings; null when none counts)", "net_delta": "float | null", "open_groups": "integer", "quarantined_groups": [{"group_id": "string", "reasons": ["string"]}], "realized_pl_mtd": "decimal string", "realized_pl_today": "decimal string", "realized_pl_ytd": "decimal string", "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null"}`
+- `portfolio`: `{"beta_weighted_delta": {"r2_flag": "ok | low | unavailable", "value": "float | null (dollars: net delta x spot x beta summed)"}, "concentration": {"by_underlying": {"SYMBOL": "percent (2 dp) | null"}, "declared_equity": "decimal string"}, "day_pl": "decimal string | null (sum over the ok groups whose every open leg has a day P/L; an ok group with a gap is excluded whole and named in warnings; null when none counts)", "net_delta": "float | null", "open_groups": "integer", "quarantined_groups": [{"group_id": "string", "reasons": ["string"]}], "realized_pl_mtd": "decimal string", "realized_pl_today": "decimal string", "realized_pl_ytd": "decimal string", "unrealized_pl_liq": "decimal string | null", "unrealized_pl_mid": "decimal string | null"}`
 - `rates`: `{"as_of": "YYYY-MM-DD", "risk_free_rate": "decimal string", "source": "string"}`
 - `session`: `"pre | open | closed | holiday | early_close | weekend (--now classified with the calendar's full closures: an injected closure is holiday)"`
 - `sources`: `[{"delay_min": "integer minutes", "name": "alpaca:paper", "receipt_utc": "ISO-8601 UTC | null"}]`
-- `underlyings`: `{"SYMBOL": {"as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "bid": "decimal string | null", "day_change_source": "desk snapshot", "mark_mid": "decimal string | null", "move_pct_from_prev_eod": "decimal string (2 dp) | null", "prev_eod_mid": "decimal string | null (the previous snapshot's mid)", "quote_grade": "A-F | null"}}`
+- `underlyings`: `{"SYMBOL": {"as_of": "ISO-8601 UTC | null", "ask": "decimal string | null", "beta": "float | null (the day's beta file, beta_refresh.py)", "beta_r2_flag": "ok | low | unavailable", "bid": "decimal string | null", "day_change_source": "desk snapshot", "mark_mid": "decimal string | null", "move_pct_from_prev_eod": "decimal string (2 dp) | null", "net_delta": "float | null (shares: the open groups' net delta, roadmap 2.7)", "prev_eod_mid": "decimal string | null (the previous snapshot's mid)", "quote_grade": "A-F | null"}}`
 - `warnings`: `["string"]`
 
 ## book_check

@@ -46,7 +46,9 @@ a live key is deleted, no Ask-first rule guards it.
    Every request it makes is a literal GET with no body, to one of two pinned hosts on one of seven allow-listed
    paths: on the market-data host `data.alpaca.markets`, `/v2/stocks/quotes/latest`, `/v2/stocks/bars`,
    `/v1beta1/options/quotes/latest` and `/v1beta1/options/snapshots/<UNDERLYING>` (the underlying checked); on the
-   paper trading host `paper-api.alpaca.markets`, only `/v2/clock`, `/v2/calendar` and `/v2/options/contracts`. The
+   paper trading host `paper-api.alpaca.markets`, only `/v2/clock`, `/v2/calendar` and `/v2/options/contracts`.
+   `/v2/stocks/bars` asks for raw bars, or split-adjusted bars (`adjustment=split`) only for the daily beta fit of
+   `beta_refresh.py` (roadmap step 2.7): the same host and path with one more value of an existing parameter. The
    live trading host `api.alpaca.markets` is refused. There are no redirects, no proxy, TLS 1.2 or later, a cap on
    the answer's size, and an answer that echoes the key ID or the secret is refused. `scripts/check_no_write_paths.py` proves this on every gate run by
    reading the syntax tree of every module under `scripts/`, `hooks/` and `tests/`: network modules only in the

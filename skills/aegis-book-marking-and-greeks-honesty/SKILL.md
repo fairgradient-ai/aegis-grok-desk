@@ -105,8 +105,11 @@ unavailable)`.
   open option leg has no Greeks; a single Greek is empty when a leg lacks it (a band leg's gamma and theta), and the
   group's `greeks_quality` says its net delta is approximate.
 - The portfolio's `net_delta` is set only when every open group has Greeks: a partial total is worse than none.
-- `beta_weighted_delta` is always `{"value": null, "r2_flag": "unavailable"}` in Stage 1. Beta-weighted delta and
-  exposures are planned for Stage 2 (not in this release).
+- Each underlying's `net_delta` is its open groups' net delta in shares, and its `beta` and `beta_r2_flag` come from
+  the day's `data/beta/<date>.json`, written by `beta_refresh.py` from split-adjusted daily closes against SPY.
+  `beta_weighted_delta` is net delta x spot x beta summed, in dollars, with `r2_flag` `low` when any fit is weak. It
+  is `{"value": null, "r2_flag": "unavailable"}` without the day's file or when a beta or a delta is missing. Quote
+  the flag with the figure.
 - `vol_context.py` places a symbol's implied volatility on the latest end-of-day snapshot (the median of its solved
   option legs on the American model, never the vendor's Greeks) among the earlier recorded American days. It is information only: no rule, alert,
   ticket or ranking reads it, and fewer than 5 earlier days is UNAVAILABLE, never a guess.

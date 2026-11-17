@@ -90,6 +90,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `state/heartbeat/` | `routine.py`, `book_check.py --post`, `heartbeat.py` | one heartbeat per routine and the history |
 | `data/cache/` | the quote cache | quotes, the request ledger |
 | `data/book/<date>.json` | `book.py --snapshot` | the end-of-day snapshot of record (the next day's day P/L reads it) |
+| `data/beta/<date>.json` | `beta_refresh.py` | each held underlying's beta against SPY (the book's beta-weighted delta reads it) |
 | `data/positions/<date>.csv`, `.sha256`, `.recon.json` | `csv_recon.py` | a copy of `positions.csv` and the reconciliation |
 | `journal/signals.jsonl`, `journal/alerts.jsonl`, `journal/<date>.md` | `book_check.py --post`, `routine.py` | every signal and every posted message |
 | `levels/<date>.md`, `levels/<date>.json` | `trigger_levels.py` | the threshold-level sheet |
@@ -140,6 +141,13 @@ Without `--desk-root` a tool reads the current directory; `routine.py` alone def
   it into the model of record (step 2.3) and `early_exercise.py` into the early-exercise line beside the expiry tiers.
   It is tested against the American put Hull prints, and the CI oracle compares it with QuantLib's finite-difference
   American engine.
+- **Beta and the limits.** `beta.py` (roadmap step 2.7): the OLS beta of a symbol's daily simple returns against SPY's
+  over the 252 split-adjusted closes ending the previous trading day. Fewer than 126 paired returns, or one daily return
+  beyond 40 % in either series, is UNAVAILABLE; `r2_flag` is `ok` at r2 >= 0.30 and `low` below. `beta_refresh.py`
+  writes the day's fits to `data/beta/<date>.json` once a day, so the book stays a quotes-only read. The book fills
+  each underlying's `net_delta` and `beta` and the portfolio's `beta_weighted_delta` in dollars, and the exit
+  rulebook reads them as two metrics, `beta_weighted_delta_pct` and `delta_exposure_pct`. A limit is an exit rule the
+  owner adopts (`rules/examples/limits-1.0.0.toml`), with WATCH verdicts only.
 - **The market clock.** `market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed
   from the NYSE hours calendar, with the America/New_York daylight-saving rule (no `tzdata` needed). The table expires
   on 2027-12-31; the doctor's check 3 fails 60 days before that.
@@ -190,8 +198,9 @@ The owner's decisions behind the design (2026-10-30):
 ## Later stages (planned)
 
 [ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
-the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4) and the volatility context
-tool (2.9).
+the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4), weekly expirations (2.5),
+the stated cash check and per-account approval levels (2.6), the exposures and the two limit metrics (2.7) and the
+volatility context tool (2.9).
 
 - The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with
   scenario and event stress and a decision calendar, are planned for Stage 2 (not in this release). Volatility

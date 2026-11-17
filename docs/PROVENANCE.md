@@ -17,7 +17,7 @@ reference class in its own `source` field:
 | OIC/Cboe pin mechanics | `PIN3`, `VBETWEEN` |
 | OIC/Cboe early-exercise mechanics | `EXDIV` (a short call whose extrinsic value (bid) is below the coming dividend may be assigned early; an unknown dividend is never zero) |
 | OCC exercise by exception | `AUTOEX` (a long option at least 0.01 in the money on its last trading day is exercised automatically) |
-| owner risk control | `LOSSX`, `LAPSE14`, `MONETIZE`, `FLOOR`, `LLOSS50`, `VLOSS`, `USTOP`, `MOVE5_DOWN`, `MOVE5_UP`, `EARN2`, `DAILY`, `CONC` and the hedge review rule `ROLL30` |
+| owner risk control | `LOSSX`, `LAPSE14`, `MONETIZE`, `FLOOR`, `LLOSS50`, `VLOSS`, `USTOP`, `MOVE5_DOWN`, `MOVE5_UP`, `EARN2`, `DAILY`, `CONC`, the limits `BWD` and `UDELTA` (`rules/examples/limits-1.0.0.toml`) and the hedge review rule `ROLL30` |
 | owner threshold | `LTP100`, `LDTE30` |
 
 Those references describe how such thresholds are commonly reasoned about. The numbers in the file are documented

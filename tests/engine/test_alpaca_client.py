@@ -95,6 +95,8 @@ def expected_name(path: str, query: Dict[str, str]) -> Optional[str]:
                                               query.get("expiration_date_lte", ""))
     elif path == "/v2/stocks/bars":
         stem = "bars__%s__%s__%s" % (query.get("symbols", "").upper(), query.get("start", ""), query.get("end", ""))
+        if query.get("adjustment") == "split":
+            stem += "__split"
     elif path == "/v2/clock":
         stem = "clock"
     elif path == "/v2/calendar":
@@ -580,6 +582,8 @@ class OfflineTransportTest(unittest.TestCase):
              "contracts__SPY__2026-11-03__2027-12-08__page-p2.json"),
             ("/v2/stocks/bars", {"symbols": "spy", "timeframe": "1Day", "start": "2026-10-27", "end": "2026-11-02",
                                  "adjustment": "raw", "feed": "iex"}, "bars__SPY__2026-10-27__2026-11-02.json"),
+            ("/v2/stocks/bars", {"symbols": "spy", "timeframe": "1Day", "start": "2025-09-28", "end": "2026-11-02",
+                                 "adjustment": "split", "feed": "iex"}, "bars__SPY__2025-09-28__2026-11-02__split.json"),
             ("/v2/clock", {}, "clock.json"),
             ("/v2/calendar", {"start": "2026-11-01", "end": "2026-11-30"}, "calendar__2026-11-01__2026-11-30.json"),
         )
@@ -732,6 +736,19 @@ class OfflineTransportTest(unittest.TestCase):
             offline_client().history("SPY", date(2026, 11, 2), date(2026, 10, 27))
         with self.assertRaises(ValueError):
             offline_client().history("SPY", date(2026, 10, 27), date(2026, 11, 2), interval="hourly")
+
+    def test_split_adjusted_history_is_asked_for_by_name_only(self) -> None:
+        self.assertEqual(("raw", "split"), ac.HISTORY_ADJUSTMENTS)
+        desk_set = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures", "desk",
+                                "fixtures", "alpaca")
+        result = offline_client(fixture_dir=desk_set).history("SPY", date(2025, 9, 28), date(2026, 11, 2),
+                                                              adjustment="split")
+        self.assertEqual((276, date(2025, 9, 29), date(2026, 11, 2)),
+                         (len(result.bars), result.bars[0].date, result.bars[-1].date))
+        with self.assertRaises(ValueError):
+            offline_client().history("SPY", date(2026, 10, 27), date(2026, 11, 2), adjustment="all")
+        with self.assertRaises(ac.AlpacaError):  # the raw fixture of this range does not exist: the default stays raw
+            offline_client(fixture_dir=desk_set).history("SPY", date(2025, 9, 28), date(2026, 11, 2))
 
     def test_clock(self) -> None:
         result = offline_client().clock()

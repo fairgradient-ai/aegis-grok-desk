@@ -24,8 +24,8 @@ import unittest
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from aegis_desk import (alert_lint, book, calendar_events, contract, exit_rules, expiry, grouping, market_clock,
-                        quote_cache, rule_state)
+from aegis_desk import (alert_lint, beta, book, calendar_events, contract, exit_rules, expiry, grouping, market_clock,
+                        quote_cache, rule_state, state)
 
 import assignment_watch  # the tool module scripts/assignment_watch.py (the agreement test runs it in-process)
 
@@ -34,6 +34,7 @@ FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
 FIXTURE_DESK_RECON = os.path.join(ROOT, "tests", "fixtures", "desk_recon")
 EXAMPLE_RULES = os.path.join(ROOT, "rules", "examples", "exit_rules-1.0.0.toml")
 EXAMPLE_README = os.path.join(ROOT, "rules", "examples", "README.md")
+LIMIT_RULES = os.path.join(ROOT, "rules", "examples", "limits-1.0.0.toml")
 CANDIDATE_RULES = os.path.join(ROOT, "tests", "fixtures", "rules", "candidate-1.1.0.toml")
 REGULAR_NOW = "2026-11-03T19:50:00Z"
 PREV_EOD_NOW = "2026-11-02T21:30:00Z"
@@ -1320,6 +1321,79 @@ class ConcentrationTest(FixtureCopy):
         unknown = result_of(expiry_day, "portfolio", "CONC")
         self.assertEqual("unavailable", unknown.result, "WMT unmarked: it could still reach 30")
         self.assertIn("WMT", unknown.reason)
+
+
+class LimitsTest(FixtureCopy):
+    """Roadmap 2.7 (the owner's answer to open question 4): the two limit metrics on the regular book, and the example
+    limit rules."""
+
+    FITS = [beta.BetaFit("WMT", 0.5, 0.2, beta.FLAG_LOW, 251), beta.BetaFit("NVDA", 2.0, 0.5, beta.FLAG_OK, 251),
+            beta.BetaFit("SPY", 1.0, 1.0, beta.FLAG_OK, 0)]
+
+    def write_betas(self) -> None:
+        os.makedirs(self.paths.beta_dir)
+        state.atomic_write_json(beta.beta_path(self.paths.beta_dir, datetime.date(2026, 11, 3)),
+                                beta.document(datetime.date(2026, 11, 3), datetime.date(2026, 11, 2),
+                                              contract.parse_utc_instant(REGULAR_NOW), self.FITS))
+
+    def limits(self) -> exit_rules.Rulebook:
+        return exit_rules.load_rulebook(LIMIT_RULES)
+
+    def test_the_example_limit_rules_load_and_need_only_the_owners_values(self) -> None:
+        rulebook = self.limits()
+        self.assertEqual(("1.0.0", ("BWD", "UDELTA")), (rulebook.rulebook_version, rulebook.rule_ids))
+        by_id = {rule.id: rule for rule in rulebook.rules}
+        self.assertEqual((("portfolio",), ("any_underlying",)), (by_id["BWD"].applies_to, by_id["UDELTA"].applies_to))
+        for rule in rulebook.rules:
+            self.assertEqual(("WATCH", "hold_review", True, "example"),
+                             (rule.verdict, rule.plan, rule.owner_must_set, rule.origin), rule.id)
+        self.assertEqual((Decimal("100"), Decimal("20")), (by_id["BWD"].when[0].value, by_id["UDELTA"].when[0].value))
+        self.assertEqual(sorted([("not_accepted", "BWD", None), ("not_accepted", "UDELTA", None),
+                                 ("owner_must_set", "BWD", None), ("owner_must_set", "UDELTA", None)]),
+                         codes(exit_rules.lint(rulebook, [])))
+        for name in ("beta_weighted_delta_pct", "delta_exposure_pct"):
+            self.assertEqual(("percent", "G"), (exit_rules.METRICS[name].unit, exit_rules.METRICS[name].input_class))
+
+    def test_the_metrics_on_the_regular_book(self) -> None:
+        self.write_betas()
+        run, evaluation = self.evaluate("regular", REGULAR_NOW, rulebook=self.limits())
+        portfolio = run.document["portfolio"]
+        equity = portfolio["concentration"]["declared_equity"]
+        weighted = portfolio["beta_weighted_delta"]["value"]
+        bwd = result_of(evaluation, "portfolio", "BWD")
+        self.assertEqual((Decimal(repr(weighted)) / equity * 100).quantize(Decimal("0.01")), bwd.value)
+        for symbol, entry in run.document["underlyings"].items():
+            reading = result_of(evaluation, symbol, "UDELTA")
+            expected = (Decimal(repr(entry["net_delta"])) * entry["mark_mid"] / equity * 100).quantize(Decimal("0.01"))
+            self.assertEqual(expected, reading.value, symbol)
+            self.assertEqual("clear", reading.result, symbol)
+        self.assertEqual("clear", bwd.result)
+
+    def test_without_the_beta_file_only_the_beta_weighted_metric_is_unavailable(self) -> None:
+        _, evaluation = self.evaluate("regular", REGULAR_NOW, rulebook=self.limits())
+        bwd = result_of(evaluation, "portfolio", "BWD")
+        self.assertEqual("unavailable", bwd.result)
+        self.assertIn("beta-weighted delta unavailable", bwd.reason)
+        self.assertEqual({"clear"}, {result_of(evaluation, symbol, "UDELTA").result for symbol in ("WMT", "NVDA", "SPY")})
+
+    def test_a_low_threshold_watches(self) -> None:
+        self.write_betas()
+        with open(LIMIT_RULES, encoding="utf-8") as handle:
+            text = handle.read()
+        rulebook = parse(text.replace("value = 20, unit", "value = 1, unit").replace("value = 100, unit", "value = 1, unit"))
+        _, evaluation = self.evaluate("regular", REGULAR_NOW, rulebook=rulebook)
+        self.assertEqual("pending", result_of(evaluation, "portfolio", "BWD").result, "the first of two confirmations")
+        self.assertEqual("pending", result_of(evaluation, "NVDA", "UDELTA").result)
+
+    def test_an_old_snapshot_without_the_exposure_keys_reads(self) -> None:
+        run = self.load("regular", REGULAR_NOW)
+        raw = json.loads(contract.json_dumps(run.document))
+        for entry in raw["underlyings"].values():
+            for key in book.UNDERLYING_EXPOSURE_KEYS:
+                del entry[key]
+        back = exit_rules.book_from_json(raw)
+        self.assertTrue(all(entry["net_delta"] is None and entry["beta"] is None
+                            for entry in back["underlyings"].values()))
 
 
 class ExdivAgreementTest(FixtureCopy):

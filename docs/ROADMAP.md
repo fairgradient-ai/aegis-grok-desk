@@ -94,7 +94,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
-| 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | planned |
+| 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | landed |
 | 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
 | 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
@@ -348,8 +348,18 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** The approval-level check's tests for each account; the peak-cash goldens, the WMT credit roll among them;
   every UNAVAILABLE case; the `desk_init.py` intake; the acknowledgement set; counsel's sign-off on the cash line.
 
-### 2.7 Exposures and limits
+### 2.7 Exposures and limits (landed)
 
+- **What landed.** `aegis_desk.beta` fits each symbol's OLS beta against SPY on split-adjusted daily closes (the 252
+  closes ending the previous trading day; UNAVAILABLE under 126 paired returns or past the 40 % guard; `r2_flag` `ok`
+  at r2 >= 0.30, else `low`). `beta_refresh.py`, a new read-only tool, fetches those bars through the quote cache with
+  `history(..., adjustment="split")` (the default stays `"raw"`) and writes the day's fits to `data/beta/<date>.json`;
+  a second run the same day reads the cache. The book reads that file, so a book run still sends only its quotes
+  batch: each underlying carries `net_delta`, `beta` and `beta_r2_flag`, and `beta_weighted_delta` is filled in dollars
+  with its `r2_flag` (an underlying with no net delta needs no beta; the portfolio line prints the figure when there is
+  one). The exit rulebook gains `beta_weighted_delta_pct` (portfolio) and `delta_exposure_pct` (underlying), and
+  `rules/examples/limits-1.0.0.toml` holds `BWD` and `UDELTA`, both `owner_must_set`. The fixture desk's regular set
+  carries split-adjusted bars (NVDA fits 2.04 with r2 0.50, ok; WMT 0.53 with r2 0.23, low).
 - **What lands.** `beta_weighted_delta`, today always `{"value": null, "r2_flag": "unavailable"}` in `book.json`,
   filled in dollars with its `r2_flag`, and two new rule metrics.
 - **The limits (your answer to open question 4): two metrics in the exit rulebook.** Limits live where `CONC` and
@@ -588,7 +598,7 @@ only the files that do.
 | Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
 | Weekly expirations (landed) | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
 | Cash-balance check, per-account approval levels (landed) | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
-| Beta-weighted delta, exposures, limits and limit messages | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
+| Beta-weighted delta, exposures, limits and limit messages (landed) | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Scenario and event stress, a hedge through an event | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
 | The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
@@ -614,10 +624,8 @@ both counts reach zero.
 | `agents/position-control.md` | 1 | 0 |
 | `docs/ARCHITECTURE.md` | 1 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
-| `scripts/aegis_desk/book.py` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |
-| `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` | 1 | 0 |
 | `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
