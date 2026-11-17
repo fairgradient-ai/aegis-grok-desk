@@ -512,12 +512,20 @@ would have decided on past days, and who looks after the rulebook.
 
 | Step | What lands | Needs | Status |
 | --- | --- | --- | --- |
-| 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | planned |
+| 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | landed |
 | 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | planned |
 | 3.3 | The Aegis Rules Steward seat | 3.2 | planned |
 | 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | planned |
 
-### 3.1 The signal journal
+### 3.1 The signal journal (landed)
+
+- **What landed.** `aegis_desk.journal` and `scripts/signal_journal.py`.
+  - **Per signal.** One fact line: when it was posted, its rules, the owner's mark from `state/acks.jsonl` (the latest
+    ack, acted or snooze, else open), and the group's P/L at the mid in each end-of-day snapshot. A trading day without
+    a usable snapshot is UNAVAILABLE, and a group the snapshot no longer holds is named as closed.
+  - **The counts.** One line per rule and one for all rules, in the fixed words of open question 6.
+  - **`journal-close`.** The Exit Sentinel's routine (17:30 ET, trading weekdays) writes the day's facts to
+    `journal/outcomes/<ET date>.json` and posts nothing (lean 59, active 79).
 
 - **What lands.** For each signal: when it fired, your acknowledgement, snooze or acted mark (which `ack.py` records
   today), and the position's later marks from the desk's own end-of-day snapshots. A `journal-close` routine closes
@@ -578,7 +586,7 @@ is an inference, not a statement of the tree.
 | --- | --- |
 | `opening-marks`, `pre-event-stress`, `weekend-stress` | 2.10 (landed) |
 | `calendar-build`, `event-sheet` | 2.12 (landed) |
-| `journal-close` | 3.1 |
+| `journal-close` | 3.1 (landed) |
 | `rules-sanity`, `rulebook-memo` | 3.3 |
 | `weekly-review` | 3.4 |
 

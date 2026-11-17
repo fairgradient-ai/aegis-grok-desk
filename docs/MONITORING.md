@@ -20,6 +20,7 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 | `book-check` | Aegis Exit Sentinel | 10:05, 12:05, 14:05, 15:35, Mon-Fri | the book check of your adopted rules; 10:05 also refreshes the threshold levels; 12:05 may post watch alive; 15:35 adds the pre-close line |
 | `final-call` | Aegis Position Control | 15:20, Mon-Fri | the Final Call, the T-1 preview and the assignment watch |
 | `eod` | Aegis Exit Sentinel | 16:35, Mon-Fri | the end-of-day book snapshot and `reports/book.md`, the threshold-level sheet from the snapshot, the reconciliation |
+| `journal-close` | Aegis Exit Sentinel | 17:30, Mon-Fri | closes the day's signal journal (`journal/outcomes/<date>.json`); posts nothing |
 | `eod-brief` | Aegis Desk Lead | 17:10, Mon-Fri | the EOD Desk Brief |
 | `post-expiry` | Aegis Position Control | 09:30, Saturday | the post-expiry reconciliation |
 | `opening-marks` | Aegis Book & Risk Analyst | 10:20, Mon-Fri | the daily beta fit, then YOUR BOOK at the opening marks |
@@ -62,6 +63,8 @@ Each routine has a posting policy and one written quiet rule. The quiet rules, v
   cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
 - `event-sheet`: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last
   trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+- `journal-close`: "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and
+  prints quiet; a failure is an incident line."
 
 A routine with nothing to post prints the single word `quiet`, and its Bot posts that word. A closed day (a weekend,
 an NYSE holiday, or a full closure you entered in `research/calendar.toml`) runs no step and prints `quiet`.
@@ -162,8 +165,8 @@ Every run spends weekly platform usage. `routine_audit.py --budget` prints the r
 deducted):
 
 ```text
-lean: 54 runs per week (every routine at its regular slots)
-active: 74 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 59 runs per week (every routine at its regular slots)
+active: 79 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 The active profile is lean plus four Exit Sentinel book checks at 11:05, 13:05, 14:35 and 15:05, created paused at

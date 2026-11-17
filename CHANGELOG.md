@@ -2,6 +2,12 @@
 
 ## 1.0.0 (unreleased)
 
+- **The signal journal** (roadmap step 3.1; counts only, the owner's answer to open question 6).
+  - **`signal_journal.py`** (new) prints each signal's facts: when it was posted, its rules, the owner's
+    ack/acted/snooze mark, and the group's end-of-day P/L at the mid, UNAVAILABLE for a day without a usable snapshot.
+    It then prints the counts per rule in fixed words, never a money total.
+  - **`journal-close`.** The Exit Sentinel's 17:30 ET routine closes each day into `journal/outcomes/<ET date>.json`
+    and posts nothing.
 - **The Aegis Events and Calendar Analyst** (roadmap step 2.12): the sixth Floor seat, so the Floor is full. It
   comes with its role skill and the skill `aegis-event-calendar-sourcing`, and owns two Monday routines:
   - `calendar-build` (07:40): `calendar_check` reminders, then `dividend_source` proposals for the owner's tap.

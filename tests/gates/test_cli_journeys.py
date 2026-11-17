@@ -222,14 +222,14 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "tool": "opening_bell", "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18",
         "payload.dte_calendar": 45, "payload.strike": "640", "payload.call.mid": "28.65", "payload.put.mid": "17.30",
         "payload.expected_move.straddle": "36.76", "payload.expected_move.one_sigma": "56.98", "payload.requests_made": 4}),
-    "routine_audit --budget -> lean 54, active 74 runs per week": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
-        "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 54, "active": 74}}),
+    "routine_audit --budget -> lean 59, active 79 runs per week": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 59, "active": 79}}),
     "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-        "payload.lengths": {"allow": 589, "ask_first_writes": 487, "ask_first_owner_authority": 391},
+        "payload.lengths": {"allow": 604, "ask_first_writes": 487, "ask_first_owner_authority": 391},
         "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry",
                                           "opening-marks", "pre-event-stress", "weekend-stress", "calendar-build",
-                                          "event-sheet"]}),
+                                          "event-sheet", "journal-close"]}),
     J2D_PREOPEN: ("routine.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
         "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
@@ -713,7 +713,7 @@ class CatalogueTest(unittest.TestCase):
             "desk_init answers -> desk.toml": ("desk_init.py", "--answers", answers),
             "desk_init on the main root -> desk_toml_exists": ("desk_init.py", "--answers", answers),
             "opening_bell SPY regular": ("opening_bell.py", "--symbol", "SPY"),
-            "routine_audit --budget -> lean 54, active 74 runs per week": ("routine_audit.py", "--budget"),
+            "routine_audit --budget -> lean 59, active 79 runs per week": ("routine_audit.py", "--budget"),
             "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", "--rules-text"),
             J2D_PREOPEN: ("routine.py", "preopen", "--slot", "07:30", "--allow-dirty", "--fixture-set", "pre_open"),
             J2D_EVENING: ("routine.py", "eod-brief", "--slot", "17:10", "--allow-dirty"),
@@ -832,7 +832,7 @@ class CatalogueTest(unittest.TestCase):
                     source = handle.read()
                 if "def " + "build_parser(" in source and "def main(" in source:
                     tools.add(name)
-        self.assertEqual(31, len(tools))
+        self.assertEqual(32, len(tools))
         scripts = {argv[0] for journey in harness.JOURNEYS for argv, _exit in commands(journey)}
         self.assertEqual(set(), tools - scripts, "every desk tool runs in at least one journey")
         # check.sh steps 9 and 10 run the generators' --check on the tree under test; a journey without a desk root

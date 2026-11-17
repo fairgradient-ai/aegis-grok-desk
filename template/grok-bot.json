@@ -21,7 +21,7 @@
     "aegis-positions-csv-book-of-record": "aa5e2adb4da12c9969df246e1f3c27ae9d3723b94b88bbf8a85c5531e827e29b",
     "aegis-protective-put-and-collar-management": "2339dab7162c7b1ce15bc1c7fd54a4592c8934f44267414134ed93c228db6194",
     "aegis-roll-decision-framework": "1d61a7744f5bbfe6162712c7bd827e991dcef71d1d517463463d6c0e1a4728e3",
-    "aegis-routines-and-quiet-rules": "2c52cd9b8a0f5c5149e2517e823f946e1c7843eb5be29ed85fba6be024082561",
+    "aegis-routines-and-quiet-rules": "d65fd99b57376e525059bb23764db64fa713f824099f7c88cb6917211bc5bdfe",
     "aegis-rules-dsl-and-change-control": "9a9b7524ae04db7a1d9bcf3d558c4774e7733a8920ff4610e6b12b283e19d92e",
     "aegis-threshold-levels": "f550323e11881d547e6d25c8734d7f8a56e86fb98a0a20560c4445d61866d442",
     "aegis-ticket-and-unwind-order": "359c2d17f5cfaf7307ea9800a2f03b8f5877978eb18273b8cd3097f9578ba193",
@@ -32,7 +32,7 @@
     "aegis-role-book-risk-analyst": "6f51d1e8170b851abdaf271069a858e0fd7c324f8912a866e6fc46258f5c819e",
     "aegis-role-desk-lead": "7b88c97f98bf2db450161527db0604e8f642108c560909c3d125e7d8786837c4",
     "aegis-role-events-calendar-analyst": "2aeafd7a1e7d11b0a0d03d9f6f142f9cb937a1d534b13cac7066b5653607eb31",
-    "aegis-role-exit-sentinel": "4b34f0440b1eb4dfa083ef7293c7909c3b536e9553bbebf5f5a2635445bff3f1",
+    "aegis-role-exit-sentinel": "2b90c1cd6dd542f44026dfc96902663645a8c5f943c980dc79bbc8c717f791df",
     "aegis-role-position-control": "595cd220598e4b49e939ed2dfcfed1d4f39dfa14fb53a705ec1b3a376e6e6253",
     "aegis-role-structuring-desk": "ba077c9cb2a6bd99487911947a5afc1c99d1b4895e3c7b4e9cfd55cb9df5e3a5"
   }

@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
-  source_sha256: 26fe31c48406e0b398dbcee87b51582841dce14caf43ab65d0dc3c153a439923
+  source_sha256: 1427001e4f91f402af4e636f9a55ac5712b2cf37c3227fbea9a205b7bfa211fb
 ---
 
 # Aegis Exit Sentinel: role skill
@@ -71,6 +71,7 @@ You never write these files yourself, and you never edit one.
 | `book-check` | 14:05 | `book_check --post` | transitions |
 | `book-check` | 15:35 | `book_check --post --summary` | transitions, and always the pre-close line |
 | `eod` | 16:35 | `book --snapshot --report`, `trigger_levels --from-snapshot`, `csv_recon` | always: the threshold-level sheet |
+| `journal-close` | 17:30 | `signal_journal --close` | never: it writes the day's signal facts to `journal/outcomes/` |
 
 All run Mon-Fri on trading days. Each book check runs at least 20 minutes after the 07:30 preopen. The active profile
 adds four book-check slots, 11:05, 13:05, 14:35 and 15:05, created paused. Unpause them only when the owner says so

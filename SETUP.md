@@ -265,7 +265,7 @@ if missing.
    automatically" rule, exactly as printed:
 
 ```text
-Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
 ```
 
 4. **You, only if git refuses the checkout** (`git refuses this checkout: it is owned by another user (see SETUP)`):
@@ -274,10 +274,10 @@ Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/rout
    `GIT_CONFIG_GLOBAL` is ignored). Rerun the doctor; check 1 then passes. No desk code writes git configuration.
 5. **Routines, created paused.** Each owning Bot creates its own from `routines/manifest.toml`, one per slot, each
    prompt the manifest's template with the slot filled in, and reads each back. Lean, Mon-Fri: Desk Lead `preopen`
-   07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35; Position Control
+   07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35, `journal-close` 17:30; Position Control
    `final-call` 15:20, plus `post-expiry` 09:30 Saturday; Book & Risk Analyst `opening-marks` 10:20,
    `pre-event-stress` 14:50, plus `weekend-stress` 10:00 Saturday; Events and Calendar Analyst `calendar-build`
-   07:40 and `event-sheet` 07:50, Mondays. `routine_audit.py --budget`: `lean: 54 runs per week ...`.
+   07:40 and `event-sheet` 07:50, Mondays. `routine_audit.py --budget`: `lean: 59 runs per week ...`.
 6. **One Test run** of the Lead's `preopen` proves routines see the key and the desk files; report any Ask-first
    card. Read back with `heartbeat.py --list` and `routine_audit.py` (with `--desk-root`).
 7. **Unpause.** Each Bot unpauses its lean routines and reads them back; then the full doctor.

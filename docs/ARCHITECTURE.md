@@ -93,6 +93,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `data/beta/<date>.json` | `beta_refresh.py` | each held underlying's beta against SPY (the book's beta-weighted delta reads it) |
 | `data/positions/<date>.csv`, `.sha256`, `.recon.json` | `csv_recon.py` | a copy of `positions.csv` and the reconciliation |
 | `journal/signals.jsonl`, `journal/alerts.jsonl`, `journal/<date>.md` | `book_check.py --post`, `routine.py` | every signal and every posted message |
+| `journal/outcomes/<date>.json` | `signal_journal.py --close` | the day's signal facts: the owner's marks and the end-of-day P/L |
 | `levels/<date>.md`, `levels/<date>.json` | `trigger_levels.py` | the threshold-level sheet |
 | `plans/<group>.md` | `trigger_levels.py --plan` | an exit-plan card |
 | `reports/book.md` | `book.py --report` | the full book table (never posted) |

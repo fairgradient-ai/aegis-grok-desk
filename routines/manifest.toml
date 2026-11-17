@@ -177,3 +177,18 @@ posts = "always"
 quiet_rule = "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
 approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py event-sheet --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "journal-close"
+owner = "exit-sentinel"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["17:30"], active = ["17:30"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["signal_journal --close"]
+post = ["signal_journal"]
+posts = "fired"
+quiet_rule = "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and prints quiet; a failure is an incident line."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py journal-close --slot {slot} and post its output verbatim."

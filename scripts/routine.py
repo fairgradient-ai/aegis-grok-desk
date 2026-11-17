@@ -265,13 +265,15 @@ def step_modules() -> Dict[str, Any]:
         import eod_summary
         import expiry_checklist
         import scenario
+        import signal_journal
         import trigger_levels
 
         STEP_MODULES.update({
             "assignment_watch": assignment_watch, "beta_refresh": beta_refresh, "book": book, "book_check": book_check,
             "calendar_check": calendar_check, "csv_recon": csv_recon, "decision_calendar": decision_calendar,
             "desk_doctor": desk_doctor, "dividend_source": dividend_source, "eod_summary": eod_summary,
-            "expiry_checklist": expiry_checklist, "scenario": scenario, "trigger_levels": trigger_levels,
+            "expiry_checklist": expiry_checklist, "scenario": scenario,
+            "signal_journal": signal_journal, "trigger_levels": trigger_levels,
         })
     return STEP_MODULES
 

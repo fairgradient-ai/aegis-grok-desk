@@ -91,7 +91,7 @@ INCIDENT | book-check | the desk checkout is not the pinned release v1.0.0: deve
 | Bot | Grok routines (lean profile) | Slots (America/New_York) |
 | --- | --- | --- |
 | Aegis Desk Lead | `preopen`, `eod-brief` | 07:30 and 17:10, Mon-Fri |
-| Aegis Exit Sentinel | `book-check` (four routines), `eod` | 10:05, 12:05, 14:05, 15:35 and 16:35, Mon-Fri |
+| Aegis Exit Sentinel | `book-check` (four routines), `eod`, `journal-close` | 10:05, 12:05, 14:05, 15:35, 16:35 and 17:30, Mon-Fri |
 | Aegis Position Control | `final-call`, `post-expiry` | 15:20 Mon-Fri, and 09:30 Saturday |
 | Aegis Structuring Desk | none: it answers only when the owner asks | none |
 | Aegis Book & Risk Analyst | `opening-marks`, `pre-event-stress`, `weekend-stress` | 10:20 and 14:50 Mon-Fri, and 10:00 Saturday |
@@ -131,6 +131,8 @@ Every routine has one written quiet rule in the manifest:
   cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
 - event-sheet: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading
   days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+- journal-close: "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and
+  prints quiet; a failure is an incident line."
 
 ## Heartbeats, the day audit and missed runs
 
@@ -187,8 +189,8 @@ python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root
 On this release's manifest it prints, among its lines (holidays are not deducted):
 
 ```text
-lean: 54 runs per week (every routine at its regular slots)
-active: 74 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 59 runs per week (every routine at its regular slots)
+active: 79 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 - `desk.toml`'s `cadence_profile` names the profile, `lean` or `active`. `active` is strictly additive: lean plus
