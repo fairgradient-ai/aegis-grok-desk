@@ -1127,6 +1127,41 @@ Payload (`--json` envelope key `payload`):
 - `verdicts_changed`: `"integer"`
 - `warnings`: `["string"]`
 
+## scenario
+
+- script: `scripts/scenario.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: the book re-priced under spot and volatility moves (21 cells), or an event stress of one symbol through its earnings or ex-dividend date, on the book's model of record: a computation, not a forecast
+- network access: the book's one quotes request: GET https://data.alpaca.markets/v2/stocks/quotes/latest and /v1beta1/options/quotes/latest, through the quote cache; none with --offline
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--event` | `earnings \| ex_dividend` | price the symbol's groups one trading day after this event (needs --symbol) |
+| `--symbol` | `SYM` | limit the stress to this underlying's groups |
+| `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
+
+Payload (`--json` envelope key `payload`):
+
+- `cells`: `[{"change": "decimal string | null", "groups": [{"change": "decimal string", "group_id": "string", "options": "decimal string", "stock": "decimal string", "stressed_pl_mid": "decimal string | null"}], "spot_pct": "integer", "stressed_pl_mid": "decimal string | null", "vol_points": "integer"}]`
+- `excluded`: `[{"group_id": "string", "reason": "string"}]`
+- `exit_code`: `"0 | 20"`
+- `grid`: `{"spot_pct": ["integer"], "vol_points": ["integer"]}`
+- `horizon`: `{"event": "earnings | ex_dividend | null", "event_date": "YYYY-MM-DD | null", "event_time": "pre | post | unknown | null", "horizon_date": "YYYY-MM-DD | null", "symbol": "string | null", "utc": "RFC 3339 | null (instantaneous)"}`
+- `label`: `"string (a computation, not a forecast)"`
+- `notes`: `["string"]`
+- `reason`: `"string | null (why the stress is unavailable)"`
+- `stressed`: `["group id"]`
+- `verdict`: `"ok | unavailable"`
+- `warnings`: `["string"]`
+
 ## trigger_levels
 
 - script: `scripts/trigger_levels.py`

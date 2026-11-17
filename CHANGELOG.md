@@ -2,6 +2,13 @@
 
 ## 1.0.0 (unreleased)
 
+- **Scenario and event stress** (roadmap step 2.8). `scenario.py`, a new read-only tool, marks the book as `book.py`
+  does and re-prices every open group through `book.leg_price`, the book's own leg pricer.
+  - **The grid.** Spot -10 to +10 % crossed with volatility -5 to +5 points, 21 cells (the desk's proposal).
+  - **Event stresses.** `--event earnings|ex_dividend --symbol SYM` prices the close of the first trading day after
+    the event, without cutting spot by the dividend.
+  - **Output.** A zero move equals the book. Each group's change is split into stock and options, so a hedge's
+    offset shows. A group without usable inputs is excluded with its reason (exit 20). Nothing is written.
 - **Exposures and two limit metrics** (roadmap step 2.7; the owner's answer to open question 4).
   - **Beta.** `aegis_desk.beta` fits the OLS beta of daily simple returns against SPY over the 252 split-adjusted
     closes ending the previous trading day. Under 126 paired returns, or past a 40 % daily return in either series, it

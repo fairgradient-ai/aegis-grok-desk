@@ -856,6 +856,13 @@ class _Builder:
         )
 
 
+def leg_price(right: str, spot: float, strike: float, tau: float, rate: float, q: float, sigma: float) -> float:
+    """The book's leg pricer: one option's price per share on the American model of record
+    (``american.value(...).price``, the lattice price the book's implied volatility inverts). The scenario tool
+    (roadmap 2.8) prices every stressed leg with it, so a stressed price never uses another model."""
+    return american.value(right, spot, strike, tau, rate, q, sigma).price
+
+
 def build_book(*, now: datetime.datetime, cfg: DeskConfig, paths: DeskPaths, positions: PositionsFile,
                groups: Sequence[PositionGroup], quotes: Mapping[str, Quote], qcs: Mapping[str, QuoteQC],
                calendar: Optional[CalendarFile], prev_snapshot: Optional[Mapping[str, Any]], session: SessionInfo,
@@ -1169,6 +1176,7 @@ def load_book(market: MarketData) -> BookRun:
 
 __all__ = [
     "BETA_WEIGHTED_DELTA",
+    "leg_price",
     "BOOK_KEYS",
     "Book",
     "BookInputError",

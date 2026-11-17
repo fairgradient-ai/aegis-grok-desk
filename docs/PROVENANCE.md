@@ -67,6 +67,13 @@ They are different quantities and never interchangeable. Under Black-Scholes an 
 0.80 x S x sigma x sqrt(tau) (the constant is the square root of 2/pi, about 0.798), so the straddle-based figure is
 about 0.64 times the one-sigma figure. On the synthetic fixture the two print `36.76` and `56.98`.
 
+## Scenario grid: the desk's proposal
+
+`scenario.py` (roadmap step 2.8) re-prices the book at spot moves of -10, -5, -2, 0, +2, +5 and +10 % crossed with
+volatility moves of -5, 0 and +5 volatility points, with no stressed volatility below 1 %. The grid is the desk's
+proposal, not a market convention: it brackets common daily and event moves of single stocks and broad ETFs, and
+counsel signs its labels. Each cell is a computation on the book's model of record, never a forecast or a probability.
+
 ## Market calendar
 
 - `scripts/aegis_desk/market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed

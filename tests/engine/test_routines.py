@@ -190,6 +190,18 @@ class RealManifestTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             routines.budget(self.manifest, "turbo")
 
+    def test_the_planned_stress_routines_fit_the_budget(self) -> None:
+        # Roadmap 2.8 (proposed there): pre-event-stress once a trading weekday at 15:05 ET and weekend-stress once on
+        # Saturday, both in the lean profile, add six runs a week (test_allow_text_fits_all_planned_routines covers the
+        # Auto-review text).
+        base = self.manifest.by_id("eod")
+        added = (dataclasses.replace(base, id="pre-event-stress", et={name: ("15:05",) for name in base.profiles},
+                                     days=("Mon", "Tue", "Wed", "Thu", "Fri")),
+                 dataclasses.replace(base, id="weekend-stress", et={name: ("10:00",) for name in base.profiles},
+                                     days=("Sat",), trading_days_only=False))
+        planned = dataclasses.replace(self.manifest, routines=self.manifest.routines + added)
+        self.assertEqual((47, 67), (routines.budget(planned, "lean"), routines.budget(planned, "active")))
+
     def test_runs_on(self) -> None:
         preopen = self.manifest.by_id("preopen")
         self.assertTrue(preopen.runs_on(TUESDAY))

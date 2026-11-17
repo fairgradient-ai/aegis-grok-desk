@@ -229,7 +229,8 @@ owner; the Desk Lead runs the same tools in its chat on the owner's request.
 | a ticket, a roll analysis or a proposal, only when the owner asked | Aegis Structuring Desk |
 
 A limit message is a WATCH rule message from the Aegis Exit Sentinel: an adopted rule on `beta_weighted_delta_pct` or
-`delta_exposure_pct`. Stress messages are planned for Stage 2 (not in this release).
+`delta_exposure_pct`. Stress messages are planned for Stage 2 (not in this release); `scenario.py` computes the stress
+and posts nothing.
 
 The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading day
 means the desk is not running. The owner then relies on the broker's own alerts, set from the last threshold-level

@@ -95,7 +95,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
 | 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | landed |
-| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
+| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed: the tool; its routines are 2.10 |
 | 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
 | 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | planned |
@@ -383,8 +383,24 @@ context, sourced dates) and widens the Structuring Desk's scope.
   split-adjusted bars fit; UNAVAILABLE when bars are missing; the example rules passing the lint; counsel's sign-off on
   the two metric names, the beta source line and the WATCH wording.
 
-### 2.8 Scenario and event stress
+### 2.8 Scenario and event stress (landed: the tool)
 
+- **What landed.** `aegis_desk.scenario` and `scripts/scenario.py`. The book is marked once, as `book.py` marks it,
+  and every open group is re-priced through `book.leg_price`, the book's own leg pricer (the American lattice).
+  - **The grid (proposed here).** Spot moves of -10, -5, -2, 0, +2, +5 and +10 % crossed with volatility moves of -5,
+    0 and +5 points (never below 1 %): 21 cells. Counsel signs its labels.
+  - **A zero move equals the book.** Each change is measured between two model prices, so the stressed P/L at a zero
+    move is the book's `unrealized_pl_mid` exactly.
+  - **Exclusions.** A group the book marks unavailable, a leg without implied volatility, or an unknown dividend
+    yield excludes its group, and the portfolio total is then empty.
+  - **Event stresses.** `--event earnings|ex_dividend --symbol SYM` prices the close of the first trading day after
+    the date. A leg that expires first is valued at its intrinsic value at the moved spot, spot is never cut by the
+    dividend, and the dividend tier is named when a short call is in scope.
+  - **A hedge through an event.** Each group's change is split into stock and options.
+  - **The routines.** `pre-event-stress` (15:05 ET each trading weekday) and `weekend-stress` (Saturday 10:00 ET) are
+    proposed here. They add 6 runs a week (lean 47, active 67, pinned in `tests/engine/test_routines.py`), and their
+    ids already fit the Auto-review text. They post in the Aegis Book & Risk Analyst's chat, so they land with that
+    seat (2.10).
 - **What lands.** A scenario tool (not yet in the tree) that re-prices the book under spot and volatility moves, and an
   event stress of a position through an earnings or ex-dividend date, including a hedge through an event. Every price
   comes from the engine; a scenario is labelled as a computation, not a forecast.
@@ -599,7 +615,7 @@ only the files that do.
 | Weekly expirations (landed) | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
 | Cash-balance check, per-account approval levels (landed) | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
 | Beta-weighted delta, exposures, limits and limit messages (landed) | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
-| Scenario and event stress, a hedge through an event | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
+| Scenario and event stress, a hedge through an event (landed: the tool) | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
 | The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
 | Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |

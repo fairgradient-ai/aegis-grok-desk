@@ -344,6 +344,15 @@ JOURNEYS: Tuple[Journey, ...] = (
     tool_journey("book after beta_refresh -> beta-weighted delta (r2 low)", ("book.py", "--fixture-set", "regular"), 0,
                  {"status": "ok", "payload.portfolio.beta_weighted_delta.r2_flag": "low"},
                  steps=(tool_step(("beta_refresh.py", "--fixture-set", "regular"), 0, {"status": "ok"}),)),
+    # The scenario grid and an event stress (roadmap 2.8): the book re-priced on its own model, nothing written.
+    tool_journey("scenario regular -> 21 cells, zero move equals the book", ("scenario.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "scenario", "payload.verdict": "ok", "payload.excluded": []}),
+    tool_journey("scenario --event earnings --symbol WMT regular -> priced at the 2026-11-18 close",
+                 ("scenario.py", "--fixture-set", "regular", "--event", "earnings", "--symbol", "WMT"), 0,
+                 {"status": "ok", "payload.horizon.horizon_date": "2026-11-18"}),
+    tool_journey("scenario --event earnings --symbol SPY -> UNAVAILABLE (no earnings)",
+                 ("scenario.py", "--fixture-set", "regular", "--event", "earnings", "--symbol", "SPY"), 20,
+                 {"status": "unavailable", "payload.verdict": "unavailable"}),
     # The calendar lint (no market data: no --fixture-set flag), the assignment and expiry tools.
     tool_journey("calendar_check -> clean", ("calendar_check.py",), 0,
                  {"status": "ok", "tool": "calendar_check", "payload.verdict": "clean"}),
