@@ -1473,7 +1473,7 @@ class StructuringChainTest(unittest.TestCase):
                 listed = {"%s__%s" % key for key in STRUCTURING_CHAINS.get(name, {})}
                 self.assertEqual(anchors | listed, found)
                 chain_listings = {os.path.basename(p)[len("contracts__"):-len(".json")]
-                                  for p in files_named(set_dir(name), "contracts__") if p.count("__") == 2}
+                                  for p in files_named(set_dir(name), "contracts__") if os.path.basename(p).count("__") == 2}
                 self.assertEqual(anchors | listed, chain_listings)
                 self.assertNotIn("SPY__2027-01-15", found, "designer Q's D2: SPY's chain is 2027-03-19")
 

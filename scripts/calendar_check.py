@@ -54,6 +54,8 @@ OUTPUT: Dict[str, Any] = {
     "findings": [{"kind": " | ".join(calendar_events.FINDING_KINDS), "symbol": "string | null", "message": "string"}],
     "counts": {kind: "integer" for kind in calendar_events.FINDING_KINDS},
     "warnings": ["string"],
+    "message": "string (the text printed, for a routine's post)",
+    "as_of": "RFC 3339 (the run instant)",
 }
 
 
@@ -152,26 +154,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     verdict = VERDICT_UNAVAILABLE if exit_code else VERDICT_CLEAN
     listed = sorted(cal.symbols)
 
-    if args.json:
-        payload: Dict[str, Any] = {
-            "verdict": verdict,
-            "exit_code": exit_code,
-            "today": today.isoformat(),
-            "max_age_days": max_age_days,
-            "calendar_path": paths.relative(paths.calendar_toml),
-            "calendar_sha256": cal.sha256,
-            "listed_symbols": listed,
-            "held_symbols": held,
-            "short_call_symbols": short_calls,
-            "findings": [{"kind": finding.kind, "symbol": finding.symbol, "message": finding.message} for finding in findings],
-            "counts": counts,
-            "warnings": warnings,
-        }
-        body = contract.envelope(TOOL, version, payload, generated_at=now,
-                                 status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
-        print(contract.json_dumps(body))
-        return exit_code
-
     lines = ["calendar check %s: %s (sha256 %s), max age %s" % (
         "%s %s" % (("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[today.weekday()], today.isoformat()),
         paths.relative(paths.calendar_toml), cal.sha256[:12], days_text(max_age_days))]
@@ -189,6 +171,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         lines.append("CLEAN: research/calendar.toml lists %s; %s; 0 findings within %s as of %s" % (
             symbols_text(listed), held_text, days_text(max_age_days), today.isoformat()))
+    if args.json:
+        payload: Dict[str, Any] = {
+            "verdict": verdict,
+            "exit_code": exit_code,
+            "today": today.isoformat(),
+            "max_age_days": max_age_days,
+            "calendar_path": paths.relative(paths.calendar_toml),
+            "calendar_sha256": cal.sha256,
+            "listed_symbols": listed,
+            "held_symbols": held,
+            "short_call_symbols": short_calls,
+            "findings": [{"kind": finding.kind, "symbol": finding.symbol, "message": finding.message} for finding in findings],
+            "counts": counts,
+            "warnings": warnings,
+            "message": "\n".join(lines),
+            "as_of": now,
+        }
+        body = contract.envelope(TOOL, version, payload, generated_at=now,
+                                 status=contract.status_for(exit_code) if exit_code else contract.STATUS_OK)
+        print(contract.json_dumps(body))
+        return exit_code
+
     print("\n".join(lines))
     return exit_code
 

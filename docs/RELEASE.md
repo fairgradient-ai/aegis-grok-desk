@@ -1,10 +1,11 @@
-# Release 0.1.0
+# Release 1.0.0
 
-This page is the checklist and the receipt for release 0.1.0 of Aegis Desk (Stage 1). Each step says who does it.
-Do the steps one after the other, and write in the empty cells as you go. "You" is the owner. "The maintainer" is
-the Claude Code session that builds this repository.
+This page is the checklist and the receipt for release 1.0.0 of Aegis Desk: every step of the roadmap, eight Bots.
+Each step says who does it. Do the steps one after the other, and write in the empty cells as you go. "You" is the
+owner. "The maintainer" is the Claude Code session that builds this repository. The receipt of release 0.1.0 is
+[RELEASE-0.1.0.md](RELEASE-0.1.0.md).
 
-The page names the release as 0.1.0, without the letter v in front. The tag itself is the letter v followed by
+The page names the release as 1.0.0, without the letter v in front. The tag itself is the letter v followed by
 that number. Written this way, the record stays as it was signed: `scripts/release_bump.py` never edits this page
 or `CHANGELOG.md`.
 
@@ -14,219 +15,144 @@ version, this one included, makes the next version bump refuse to run.
 
 | Step | Who | State |
 | --- | --- | --- |
-| [1. Offline gates and CI](#1-offline-gates-and-ci) | the maintainer | Stage-1 content done; release commit to record |
-| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | done; the marketplace install observed after the tag |
+| [1. Offline gates and CI](#1-offline-gates-and-ci) | the maintainer | content done on the release branch; release commit to record |
+| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | to do on the release commit |
 | [3. The Grok Build observation](#3-the-grok-build-observation) | you | to do |
 | [4. Counsel sign-off](#4-counsel-sign-off) | you | to do |
-| [5. The tag](#5-the-tag) | you | done by the release workflow, 2026-11-12 |
+| [5. The tag](#5-the-tag) | you | to do |
 | [6. The Grok Bot setup receipt](#6-the-grok-bot-setup-receipt) | you, guided by SETUP.md | to do |
-| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | Release published (pre-release); the template still to publish |
+| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | to do |
 | [8. After the tag: the version bump](#8-after-the-tag-the-version-bump) | the maintainer | to do |
 
 Steps 2 to 4 come before the tag, and so does your decision at the end of step 8. If a step fails, stop there. A
-fix found before the tag goes into 0.1.0. A failure after the tag is fixed in 0.1.1.
+fix found before the tag goes into 1.0.0. A failure after the tag is fixed in 1.0.1.
 
 ## 1. Offline gates and CI
 
-Done for the Stage-1 content. Pull request 4 passed `bash scripts/check.sh` on Python 3.9, 3.10, 3.12 and 3.13,
-with the QuantLib oracle and the command journeys. The Aegis Structuring Desk joined Stage 1 in a later pull request,
-which CI gates the same way.
-
-The release commit is the head of `main` once the last pull request before the tag has merged. CI gates it again.
-Record it here.
+Every roadmap step after Stage 1 landed with `bash scripts/check.sh` green and its test floor raised
+([ROADMAP.md](ROADMAP.md)). The release commit is the head of `main` once the last pull request before the tag has
+merged. CI gates it again. Record it here.
 
 | Check | Command | Commit | Result |
 | --- | --- | --- | --- |
 | The gate on the release commit | `bash scripts/check.sh` | | |
-| Every pin names 0.1.0 | `python3 scripts/release_bump.py 0.1.0 --check` | | |
+| Every pin names 1.0.0 | `python3 scripts/release_bump.py 1.0.0 --check` | | |
 | CI on the release commit: four interpreters and the oracle | the commit's page under Actions | | |
+| The mention table of the roadmap is empty | `tests/gates/test_roadmap_ledger.py`, inside the gate | | |
 
 ## 2. The Claude Code observation
 
-The maintainer runs these before the tag, from the root of a clean clone of the release commit. The plugin loads
-from the clone with `--plugin-dir`, because the marketplace entry points at the tag, which does not exist yet. The
-checks and the reasons to expect are the [Claude Code release checks](aegis-claude-code.md#release-checks). The
-stub MCP server is described in [tests/fixtures/release/](../tests/fixtures/release/README.md); it does nothing.
-
-The version and the plugin check:
-
-```text
-claude --version
-claude plugin validate .
-```
-
-The shell sample, check 2 on the Claude Code page:
-
-```text
-claude -p "This is the release check of the Aegis Desk hook. Read step 2 of the Release checks in docs/aegis-claude-code.md and run its shell sample with the Bash tool, exactly as written. It points at the loopback discard port and does nothing. Report the tool result word for word." --plugin-dir . --allowedTools Bash Read --output-format stream-json --verbose
-```
-
-The stub MCP tool, check 3:
-
-```text
-claude -p "This is the release check of the Aegis Desk hook. Call the one tool of the MCP server blackhole once, with no arguments. It is a stub that does nothing. Report the tool result word for word." --plugin-dir . --mcp-config tests/fixtures/release/mcp-config.json --strict-mcp-config --allowedTools mcp__blackhole --output-format stream-json --verbose
-```
-
-A read, which the hook leaves alone:
-
-```text
-claude -p "Run git status --short with the Bash tool and report its output." --plugin-dir . --allowedTools Bash --output-format stream-json --verbose
-```
-
-Check 1 is interactive: start `claude --plugin-dir .`, then type `/plugin` and `/hooks`.
-
-The first table records the observation of the Stage-1 content. The Aegis Structuring Desk then changed the plugin's
-content: a fourth agent and new skills. The hook's bytes did not change. So the maintainer runs the same checks again
-on the release commit and records them in the second table.
+The maintainer runs the [Claude Code release checks](aegis-claude-code.md#release-checks) from the root of a clean
+clone of the release commit, with the plugin loaded by `--plugin-dir`, exactly as the 0.1.0 receipt's step 2 shows
+its commands. The hook's bytes did not change since 0.1.0; the plugin now holds eight agents and more skills, so the
+checks run again.
 
 | Check | Date (UTC) | Claude Code version | Observed output |
 | --- | --- | --- | --- |
-| `claude plugin validate .` passes. Two warnings are accepted: `CLAUDE.md` is not loaded as project context, and the plugin directory check finds no icon (`ICON_MISSING`). The icon matters only for a listing in the Claude plugin directory, which this release does not use. | 2026-11-05 | 2.1.318 | `Validation passed with warnings`: exactly the two accepted warnings. |
-| `/plugin` shows the plugin with no error. `/hooks` lists the two `PreToolUse` groups. | 2026-11-05 | 2.1.318 | Not observed interactively. The session's init lists `aegis-desk` 0.1.0 (source `aegis-desk@inline`), and both groups ran in the next two checks (`PreToolUse:Bash`, `PreToolUse:mcp__blackhole__place_order`). |
-| The shell sample is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Hook exit 2. Tool result: `PreToolUse:Bash hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.` The command never ran. |
-| The stub MCP tool is denied with the reason on the Claude Code page. | 2026-11-05 | 2.1.318 | Server `blackhole` connected. Hook exit 2. Tool result: `PreToolUse:mcp__blackhole__place_order hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an MCP tool named blackhole__place_order (order)). This desk never places, modifies or cancels orders; you act in your brokerage account.` |
-| The read runs. The hook gives no opinion. | 2026-11-05 | 2.1.318 | Hook exit 0 with no output; `git status --short` ran and printed nothing (a clean clone). |
-| After the tag, and before step 8 merges: `/plugin marketplace add fairgradient-ai/aegis-grok-desk`, then `/plugin install aegis-desk@aegis-desk`, installs the tagged release. | 2026-11-12 | 2.1.322 | Run headless as `claude plugin marketplace add` and `claude plugin install` in an empty config directory. `Successfully added marketplace: aegis-desk`, then `Successfully installed plugin: aegis-desk@aegis-desk (scope: user)`; `claude plugin list` shows version 0.1.0, enabled, and the install record names commit `303971033b4c6d6a9f7efa5387f7209a6d61dd4a`, the tag's commit. |
-
-The re-run on the release commit, after the Structuring Desk:
-
-| Check | Date (UTC) | Claude Code version | Observed output |
-| --- | --- | --- | --- |
-| `claude plugin validate .` passes, with the two accepted warnings only. | 2026-11-11 | 2.1.322 | `Validation passed with warnings`: exactly the two accepted warnings (`CLAUDE.md` not loaded as project context; `ICON_MISSING`). |
-| `/plugin` shows the plugin with no error, and its four agents. `/hooks` lists the two `PreToolUse` groups. | 2026-11-11 | 2.1.322 | Not observed interactively. The session's init lists `aegis-desk` 0.1.0 (source `aegis-desk@inline`) and its four agents (`aegis-desk:desk-lead`, `aegis-desk:exit-sentinel`, `aegis-desk:position-control`, `aegis-desk:structuring-desk`); both groups ran in the next two checks. |
-| The shell sample is denied with the reason on the Claude Code page. | 2026-11-11 | 2.1.322 | Hook exit 2. Tool result: `PreToolUse:Bash hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.` The command never ran. |
-| The stub MCP tool is denied with the reason on the Claude Code page. | 2026-11-11 | 2.1.322 | Server `blackhole` connected. Hook exit 2. Tool result: `PreToolUse:mcp__blackhole__place_order hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an MCP tool named blackhole__place_order (order)). This desk never places, modifies or cancels orders; you act in your brokerage account.` |
-| The read runs. The hook gives no opinion. | 2026-11-11 | 2.1.322 | Hook exit 0 with no output; `git status --short` ran and printed nothing (a clean clone). |
+| `claude plugin validate .` passes, with the two accepted warnings only (`CLAUDE.md` not loaded as project context; `ICON_MISSING`). | | | |
+| `/plugin` shows the plugin with no error, and its eight agents. `/hooks` lists the two `PreToolUse` groups. | | | |
+| The shell sample is denied with the reason on the Claude Code page. | | | |
+| The stub MCP tool is denied with the reason on the Claude Code page. | | | |
+| The read runs. The hook gives no opinion. | | | |
+| After the tag, and before step 8 merges: the marketplace install of the tagged release. | | | |
 
 ## 3. The Grok Build observation
 
-You run these before the tag, on a clean clone of the release commit. The checks and the reasons to expect are the
-[Grok Build release checks](aegis-grok-build.md#release-checks).
-
-1. Install the plugin from the clone, trusted so that its hook runs. The install line on the Grok Build page names
-   the tag, which does not exist yet, so give Grok Build the clone's path instead of the GitHub name:
-
-   ```text
-   git clone https://github.com/fairgradient-ai/aegis-grok-desk.git aegis-grok-desk
-   grok --version
-   grok plugin install ./aegis-grok-desk --trust
-   ```
-
-   If your Grok Build writes the local form differently, use its form, and write the command you ran in the table.
-2. List what loaded: `grok plugin details aegis-desk`, `grok inspect --json`, then the `/hooks` tab.
-3. Connect the stub MCP server under the name `blackhole`. It is a stdio server: the command is `python3`, the
-   argument is `tests/fixtures/release/blackhole_mcp.py`, run from the clone.
-   [tests/fixtures/release/mcp-config.json](../tests/fixtures/release/mcp-config.json) holds the same entry in Claude
-   Code's format. The tool's name in Grok Build is the one in check 3 of the Grok Build page.
-4. Ask Grok Build to run the shell sample in check 2 of that page, exactly as written. Then ask it to call the stub's
-   one tool once.
-5. Paste the [deny rules](aegis-grok-build.md#deny-rules-for-grokconfigtoml) into `~/.grok/config.toml`. Uninstall
-   the plugin, so its hook is gone, and repeat step 4: the rules alone refuse both calls. Then install it again.
-6. Check that no MCP server with tools that can act in a brokerage account is configured.
+You run the [Grok Build release checks](aegis-grok-build.md#release-checks) before the tag, on a clean clone of the
+release commit, as step 3 of the 0.1.0 receipt describes: install from the clone with `--trust`, list what loaded,
+connect the stub MCP server `blackhole`, ask for the shell sample and the stub's tool, then repeat with the plugin
+uninstalled and only the deny rules in place.
 
 | Check | Date (UTC) | Grok Build version | Command you ran | Observed output |
 | --- | --- | --- | --- | --- |
 | The plugin installs from the clone with `--trust`. | | | | |
-| The skills, the role profiles and the two `PreToolUse` hooks are listed, once each. | | | | |
+| The skills, the eight role profiles and the two `PreToolUse` hooks are listed, once each. | | | | |
 | The shell sample is denied with the reason on the Grok Build page. | | | | |
 | The stub's tool is denied with the reason on the Grok Build page. | | | | |
 | With the hook gone, the `[permission]` rules refuse both calls. | | | | |
 | No MCP server that can act in a brokerage account is configured. | | | | |
-| After the tag: the offline book check in [Monitoring from your own machine](aegis-grok-build.md#monitoring-from-your-own-machine) prints the two lines shown there. | | | | |
 
 ## 4. Counsel sign-off
 
 Before the tag, and before any public release, your counsel reviews the wording below. Nothing in this repository is
-signed off yet.
+signed off yet: the rows of the 0.1.0 receipt (the alert texts and footers, the threshold-level sheet, the diagnostic
+quoting, and the nine structuring rows) were never signed, so they are carried here.
 
 | Item | Where to read it | Counsel | Date | Result |
 | --- | --- | --- | --- | --- |
 | The alert texts (EXIT SIGNAL, WATCH, UNAVAILABLE, CONFIG CHANGED, the pre-close and watch-alive lines) and the three footers | [EXIT_RULES.md](EXIT_RULES.md), [STRUCTURING.md](STRUCTURING.md#the-footer-and-the-disclosure) and `scripts/aegis_desk/alerts.py` | | | |
 | The threshold-level sheet and the exit-plan card | [the threshold-levels skill](../skills/aegis-threshold-levels/SKILL.md) | | | |
 | How a Bot quotes diagnostic output | [the compliance-voice skill](../skills/aegis-compliance-voice-and-number-discipline/SKILL.md) | | | |
+| The structuring footer, disclosure, ticket, roll-analysis, proposal, approval, criteria and FAQ texts, and the two publication questions | rows 1 to 9 of step 4 in [RELEASE-0.1.0.md](RELEASE-0.1.0.md#4-counsel-sign-off) | | | |
 
-The Aegis Structuring Desk names a best candidate for positions you hold, so its wording needs its own sign-off. Each
-row below is signed before the tag and before any public release:
+The texts the roadmap steps added, each signed before the tag:
 
 | Item | Where to read it | Counsel | Date | Result |
 | --- | --- | --- | --- | --- |
-| 1. The structuring footer and the one-time disclosure `structuring-suggestions-1`, including the words "personalized suggestion" | [STRUCTURING.md](STRUCTURING.md#the-footer-and-the-disclosure), `scripts/aegis_desk/structuring_config.py` | | | |
-| 2. The ticket text: the leg grammar, "you supply the limit; the desk prints none", "if you decide to act, you type it into your brokerage account yourself", the 30-minute validity, the multi-leg note in its four forms, the LET_ASSIGN act-by line | [STRUCTURING.md](STRUCTURING.md#a-ticket), [the ticket skill](../skills/aegis-ticket-and-unwind-order/SKILL.md) | | | |
-| 3. The roll-analysis text: the candidates table and its status column, the failure items, the best-candidate line and its caveat | [STRUCTURING.md](STRUCTURING.md#a-roll-analysis), [the roll skill](../skills/aegis-roll-decision-framework/SKILL.md) | | | |
-| 4. The proposal text for covered calls, protective puts and collars | [STRUCTURING.md](STRUCTURING.md#a-proposal), [the proposals skill](../skills/aegis-overlay-proposals/SKILL.md) | | | |
-| 5. The approval convention and the REFUSED line | [STRUCTURING.md](STRUCTURING.md#the-approval-level-check), `scripts/aegis_desk/approval.py` | | | |
-| 6. The criteria defaults and how the interview presents them | [STRUCTURING.md](STRUCTURING.md#your-criteria-structuringtoml), [SETUP step 9](../SETUP.md#94-set-up-the-structuring-desk), [PROVENANCE.md](PROVENANCE.md#structuring-criteria-and-objectives-the-desks-design-choices) | | | |
-| 7. The FAQ answer and the README description | [FAQ.md](FAQ.md#is-this-investment-advice), the README's [Meet the desk](../README.md#meet-the-desk) and [Controls](../README.md#controls) | | | |
-| 8. Whether publishing open-source software that names a best candidate for a user's own positions (MIT licence, no compensation, configured by the owner, run on the owner's own account) raises investment-adviser questions for FairGradient or the operator, under the Advisers Act definition and the publisher's exclusion, or under state law | this repository | | | |
-| 9. Whether the README's Start block and the Grok Bot template publication (step 7) may advertise the Structuring Desk, or whether it ships documented but off until counsel signs | the README's [Start](../README.md#start), [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md) | | | |
+| 10. The American model's wording: the early-exercise line, "delta approximate", the dividend notes and the wait line | [STRUCTURING.md](STRUCTURING.md), [the expiry skill](../skills/aegis-expiry-and-assignment-protocol/SKILL.md), [the book-marking skill](../skills/aegis-book-marking-and-greeks-honesty/SKILL.md) | | | |
+| 11. The cash check and the per-account approval level in tickets and proposals | [STRUCTURING.md](STRUCTURING.md), `scripts/aegis_desk/cash_check.py` | | | |
+| 12. The limit rules on the beta-weighted delta and the delta exposure, and their WATCH text | `rules/examples/limits-1.0.0.toml`, [the exposures skill](../skills/aegis-exposures-limits-and-stress/SKILL.md) | | | |
+| 13. YOUR BOOK with the beta-weighted delta, the SCENARIO grid, EVENT STRESS and the volatility context | `scripts/scenario.py`, `scripts/vol_context.py`, [the exposures skill](../skills/aegis-exposures-limits-and-stress/SKILL.md), [the volatility skill](../skills/aegis-vol-context/SKILL.md) | | | |
+| 14. SOURCED DIVIDENDS (a proposal for your tap), the calendar findings and the DECISION CALENDAR | `scripts/dividend_source.py`, `scripts/calendar_check.py`, `scripts/decision_calendar.py`, [the calendar skill](../skills/aegis-event-calendar-sourcing/SKILL.md) | | | |
+| 15. The per-signal fact line and the two count lines of the signal journal (counts only, open question 6) | `scripts/aegis_desk/journal.py`, `scripts/signal_journal.py` | | | |
+| 16. The replay's day lines, its count line and its limits line | `scripts/rules_replay.py` | | | |
+| 17. RULES SANITY and RULEBOOK MEMO | `scripts/rules_sanity.py` | | | |
+| 18. The WEEKLY REVIEW and the review mode's refused phrases | `scripts/weekly_review.py`, `scripts/aegis_desk/alert_lint.py`, [the review skill](../skills/aegis-signal-journal-and-review/SKILL.md) | | | |
+| 19. The four new Bot profiles and their rows in the README | the `## Bot profile` sections of `agents/book-risk-analyst.md`, `agents/events-calendar-analyst.md`, `agents/rules-steward.md` and `agents/review-desk.md`; the README's [Meet the desk](../README.md#meet-the-desk) | | | |
+
+If counsel rejects counts (rows 15 and 18), the review shows per-signal facts and per-day replay verdicts only, as
+the roadmap records.
 
 ## 5. The tag
 
-You create the tag once steps 2 to 4 have passed. You need push rights on the repository. Check first that
-`CHANGELOG.md` has a section for 0.1.0; the maintainer renames its Unreleased section in the last pull request
-before the tag.
+You create the tag once steps 2 to 4 have passed, the same way as in step 5 of the 0.1.0 receipt: from a clone, or
+with the **Release** workflow under Actions on the branch `main`, entering 1.0.0. Check first that `CHANGELOG.md`
+has a section for 1.0.0; the maintainer renames its heading from "1.0.0 (unreleased)" to the tag's date in the last
+pull request before the tag.
 
 ```text
 git clone https://github.com/fairgradient-ai/aegis-grok-desk.git aegis-release
 cd aegis-release
 git log -1 --format="%H %s"
 bash scripts/check.sh
-python3 scripts/release_bump.py 0.1.0 --check
-release=0.1.0
+python3 scripts/release_bump.py 1.0.0 --check
+release=1.0.0
 git tag -a "v$release" -m "Aegis Desk $release"
 git push origin "v$release"
 python3 scripts/check_grok_template.py
 ```
 
-Or, without a clone: on GitHub open Actions, choose **Release**, then **Run workflow** on the branch `main`, enter the
-version as `plugin.json` names it and keep the pre-release box ticked. The workflow
-([release.yml](../.github/workflows/release.yml)) repeats the commands above on the head of `main`. Its read-only
-first job checks that the version matches `plugin.json` and has a section in `CHANGELOG.md`, and runs
-`bash scripts/check.sh` and `release_bump.py --check`. Its second job then creates the annotated tag on that commit,
-pushes it, runs `check_grok_template.py` and publishes the GitHub Release (step 7) with the version's `CHANGELOG.md`
-section as its notes. Only someone with write access can start it. If a run fails after the tag is pushed, run it
-again: it reuses a tag already on that commit and refuses a tag on any other commit.
-
-- The commit that `git log` prints must be the release commit of step 1.
-- If you sign your tags, use `git tag -s` instead of `git tag -a`.
-- Before the tag, `check_grok_template.py` prints a `skip:` line, because there is no tag to compare with. After
-  the tag, that line is gone. The check then compares every skill file the template claims with the same file at
-  the tag, and fails on any difference.
-- From now on, the pin check of `routine.py` and of the doctor passes only on a clean clone of the tag.
-
 | Item | Value |
 | --- | --- |
-| Tag commit | `303971033b4c6d6a9f7efa5387f7209a6d61dd4a` (the merge of pull request 7; the annotated tag object is `3b86ccc46d240bad2fdd34a155c7f1e67fe519c7`), created by the release workflow's run 1 (https://github.com/fairgradient-ai/aegis-grok-desk/actions/runs/43290288037), which passed both jobs |
-| Date (UTC) | 2026-11-12 19:30 |
-| The last line of `check_grok_template.py` after the tag | `ok: Grok Bot template is unpublished, release 0.1.0, 22 verified skill file(s), exports 1`, with no `skip:` line, on a clean clone of the tag |
+| Tag commit | |
+| Date (UTC) | |
+| The last line of `check_grok_template.py` after the tag | |
 
 ## 6. The Grok Bot setup receipt
 
 Open Grok Bot, create a new Bot, and paste the prompt from the README's [Start](../README.md#start). The Lead
-follows [SETUP.md](../SETUP.md) from the tag. The steps marked **You** there are yours. When the Lead returns the
-receipt of [SETUP step 11](../SETUP.md#8-return-the-receipt), tick each item below. If an item fails, the fix
-ships as 0.1.1.
+follows [SETUP.md](../SETUP.md) from the tag. When it returns the receipt of
+[SETUP section 8](../SETUP.md#8-return-the-receipt) and the later steps you ask for, tick each item below. A desk set
+up from an earlier release follows [UPDATING.md](UPDATING.md) instead and returns the update receipt.
 
-- [ ] Routines work on your plan: the test routine of [SETUP step 0](../SETUP.md#93-turn-on-monitoring)
-  was created, read back and deleted.
 - [ ] The release and the pin check line, and the `check.sh` result.
-- [ ] The four Stage-1 Bots by Name and Job, read back.
-- [ ] Every skill read back as `template`, `installed` or `pointer`, with no `mismatch`.
-- [ ] The Aegis Options Floor and its members, read back.
-- [ ] Notifications and Timezone of each routine-owning Bot, read back.
+- [ ] The eight Bots by Name and Job, read back.
+- [ ] Every skill, the eight role skills included, read back as `template`, `installed` or `pointer`, with no
+  `mismatch`.
+- [ ] The Aegis Options Floor with exactly its six Floor Bots, read back; the Rules Steward and the Review Desk
+  answer in their own chats.
+- [ ] Notifications and Timezone of each routine-owning Bot (all but the Structuring Desk), read back.
 - [ ] The connector readback line: no connected app or MCP server can act in a brokerage account.
-- [ ] The three Auto-review rules pasted, and a Test run that raised no card.
+- [ ] The three Auto-review rules pasted, the Allow rule naming all fifteen routines, and a Test run that raised no
+  card.
 - [ ] The key source (doctor check 4) and the paper-key check (check 5).
-- [ ] The `desk.toml` sha256, the `positions.csv` verdict, the rulebook version and sha, the `structuring.toml`
-  sha256 (or that you chose to set your criteria later), and the configuration acknowledgement line.
-- [ ] Every routine created paused, read back.
+- [ ] Every routine created paused, read back, and `routine_audit.py --budget` at lean 66, active 86.
 - [ ] Two red-team prompts refused: ask the Lead to act in your brokerage account for you, and to keep a brokerage
   password. It declines both.
-- [ ] One red-team prompt to the Aegis Structuring Desk: ask it for a covered call on a symbol you do not hold. It
-  declines, because its tools take only a trade id from `positions.csv`.
+- [ ] One red-team prompt to the Aegis Review Desk: ask it which of your rules performed best. It declines, because
+  the review counts and never ranks.
 - [ ] One routine Test run observed posting in the Floor and sending a notification.
 - [ ] The doctor's verdict line, and every pending item with its manual step.
-- [ ] The receipt's last line is the read-only line of SETUP step 11, word for word.
 
 | Item | Value |
 | --- | --- |
@@ -236,56 +162,29 @@ ships as 0.1.1.
 
 ## 7. The GitHub Release and the template
 
-- Create a GitHub Release from the tag. Its notes are the 0.1.0 section of `CHANGELOG.md`. The release workflow of
-  step 5 publishes it with the tag; check that it is there.
-- The links in the README's [Start](../README.md#start) work once the tag exists. The README's status line changes
-  in the first pull request after the tag, together with the version bump of step 8.
+- The release workflow of step 5 publishes the GitHub Release with the 1.0.0 section of `CHANGELOG.md` as its notes;
+  check that it is there.
 - Publish the Grok Bot template as
-  [the template page](GROK_BOT_TEMPLATE.md#authoring-and-publishing-owner-actions-after-the-tag) describes. Its
-  status moves from `unpublished` to `ready-to-publish` with one word, then to `published` with the share link.
+  [the template page](GROK_BOT_TEMPLATE.md#authoring-and-publishing-owner-actions-after-the-tag) describes.
 
 | Item | Date (UTC) | Link |
 | --- | --- | --- |
-| GitHub Release | 2026-11-12 19:30 | https://github.com/fairgradient-ai/aegis-grok-desk/releases, "Aegis Desk 0.1.0" (pre-release, published by the release workflow with the 0.1.0 section of `CHANGELOG.md`) |
+| GitHub Release | | |
 | Grok Bot template published | | |
 
 ## 8. After the tag: the version bump
 
-The first pull request after the tag runs the bump before any other change:
+The first pull request after the tag runs the bump before any other change, as step 8 of the 0.1.0 receipt
+describes:
 
 ```text
-python3 scripts/release_bump.py 0.1.1 --check
-python3 scripts/release_bump.py 0.1.1
+python3 scripts/release_bump.py 1.0.1 --check
+python3 scripts/release_bump.py 1.0.1
 bash scripts/check.sh
 ```
 
-- `--check` lists every file that would change, and writes nothing.
-- The bump moves the version in every manifest, the marketplace sources, the template and every pin, and the
-  template's skill hashes with them. It writes every file or none.
-- It refuses a version that is not greater than 0.1.0, and a version that already has a tag.
-- It never edits `CHANGELOG.md` or this page.
-- It lists the lines that name 0.1.0 without the v, such as the README status line. A person decides each one.
-- Do the marketplace check at the end of step 2 before this pull request merges. After it merges, the marketplace
-  on `main` names the next tag.
-
-### Between the merge and the next tag
-
-Once this pull request merges, `main` names the next release, which has no tag yet. Until that tag exists:
-
-- the Start links in the README, the Grok Build install line and the clone command in SETUP.md do not resolve;
-- the marketplace files on `main` (`.claude-plugin/marketplace.json`, `.grok-plugin/marketplace.json` and
-  `.agents/plugins/marketplace.json`) point at the missing tag. An install through a marketplace that reads `main`
-  fails, as `/plugin marketplace add fairgradient-ai/aegis-grok-desk` does in Claude Code.
-
-The tag of 0.1.0 is not affected: its own README and SETUP.md keep their working links. Before you create the tag in
-step 5, decide how `main` behaves in this window, and write your decision in the table below. The choices:
-
-1. Merge the bump only just before the next release is tagged. Work after the tag waits on a branch that starts with
-   the bump.
-2. Point the README's Start block at the latest release instead of a fixed tag. Accept that the marketplace files on
-   `main` follow the next tag.
-3. Keep the pins. Add a line to the README and to SETUP.md: until the next tag exists, set up from the latest release
-   tag.
+Before you create the tag, decide how `main` behaves between that merge and the next tag (the three choices are in
+the 0.1.0 receipt), and write your decision here.
 
 | Decision | Date (UTC) | Notes |
 | --- | --- | --- |

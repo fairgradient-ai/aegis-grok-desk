@@ -2,6 +2,53 @@
 
 ## 1.0.0 (unreleased)
 
+- **Release preparation: Stages 2 and 3 complete.** Eight Bots: six on the Floor and two by direct message.
+  - **Present tense.** Every line that called a landed item planned is rewritten, and the roadmap's mention table is
+    empty. The roadmap's introduction, the manifests' descriptions, the runtime pages and the README count eight role
+    profiles.
+  - **`docs/UPDATING.md`** gains the step that creates a new Bot during an update, and the notes for a desk moving
+    from 0.2.1: four new Bots, nine new routines, the new Allow text, the American model, the new optional keys.
+  - **`docs/RELEASE.md`** is the 1.0.0 checklist, with ten new counsel rows for the texts the roadmap added. The 0.1.0
+    receipt is kept as `docs/RELEASE-0.1.0.md`.
+- **The Aegis Review Desk** (roadmap step 3.4): a direct-message seat (`seat: off-floor`) with its role skill and the
+  skill `aegis-signal-journal-and-review`.
+  - **`weekly_review.py`** (new) posts the week's signal facts, the counts per rule and a waiting candidate's replay
+    over the week, counts only.
+  - **The alert lint's review mode** refuses a currency amount outside a per-signal fact line and the grading phrases.
+  - **The routine.** `weekly-review` (Saturday 11:00 ET). Lean 66, active 86.
+- **The Aegis Rules Steward** (roadmap step 3.3): a direct-message seat (`seat: off-floor`) with its role skill. It
+  holds rulebook change control (candidate file, dry run, replay, lint, adoption on the owner's phrase and tap); the
+  Desk Lead runs the same steps on request.
+  - **`rules_sanity.py`** (new) verifies the adopted rulebook and lints it against the structures held today, or
+    prints the weekly memo.
+  - **The routines.** `rules-sanity` (16:45 ET; posts only a finding) and `rulebook-memo` (Friday 17:20). Lean 65,
+    active 85.
+- **Rules replay** (roadmap step 3.2): `rules_replay.py` (new) replays a candidate rulebook over the desk's end-of-day
+  snapshots beside the adopted one. It lists the days and groups whose verdict would have differed, then one count
+  line. It states its limits (end of day only, no rule state carried across days, no profit or loss) and writes
+  nothing.
+- **The signal journal** (roadmap step 3.1; counts only, the owner's answer to open question 6).
+  - **`signal_journal.py`** (new) prints each signal's facts: when it was posted, its rules, the owner's
+    ack/acted/snooze mark, and the group's end-of-day P/L at the mid, UNAVAILABLE for a day without a usable snapshot.
+    It then prints the counts per rule in fixed words, never a money total.
+  - **`journal-close`.** The Exit Sentinel's 17:30 ET routine closes each day into `journal/outcomes/<ET date>.json`
+    and posts nothing.
+- **The Aegis Events and Calendar Analyst** (roadmap step 2.12): the sixth Floor seat, so the Floor is full. It
+  comes with its role skill and the skill `aegis-event-calendar-sourcing`, and owns two Monday routines:
+  - `calendar-build` (07:40): `calendar_check` reminders, then `dividend_source` proposals for the owner's tap.
+    `dividend_source.py` now exits 10 when it proposes a dividend.
+  - `event-sheet` (07:50): the decision calendar of the next two weeks.
+  - `calendar_check`, `dividend_source` and `decision_calendar` become routine step tools with a postable `message`.
+    Both profiles gain 2 runs a week (lean 54, active 74).
+- **The Aegis Book & Risk Analyst** (roadmap step 2.10): the fifth Floor seat, with its role skill and the skills
+  `aegis-exposures-limits-and-stress` and `aegis-vol-context`, claimed by the template. It owns three routines:
+  - `opening-marks` (10:20 ET, trading weekdays): the daily beta fit, then YOUR BOOK. YOUR BOOK now prints the
+    beta-weighted delta and its r2 flag when the day's beta file holds them.
+  - `pre-event-stress` (14:50 ET): `scenario.py --upcoming 2`, an event stress for each held symbol with an earnings
+    or ex-dividend date within two trading days; quiet otherwise.
+  - `weekend-stress` (Saturday 10:00): `scenario.py --from-snapshot`, the grid of the last end-of-day snapshot.
+  - `scenario.py` gains `--upcoming`, `--from-snapshot` and a postable `message`, and `beta_refresh` and `scenario`
+    become routine step tools. Both profiles gain 11 runs a week (lean 52, active 72).
 - **Sourced cash dividends and the decision calendar** (roadmap step 2.11; the owner's answer to open question 1).
   - **One new read path.** The market-data client gains `/v1/corporate-actions` (`types=cash_dividend`), the eighth
     allow-listed path (`SECURITY.md`).

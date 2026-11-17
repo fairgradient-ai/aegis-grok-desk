@@ -592,7 +592,9 @@ class ConnectorReadbackTest(DeskCopy):
 class HeartbeatsTest(DeskCopy):
     def setUp(self) -> None:
         super().setUp()
-        self.manifest = routines.load_manifest()
+        manifest = routines.load_manifest()
+        # Stage 1's routines: the check's cases keep their own slots as later stages add routines.
+        self.manifest = dataclasses.replace(manifest, routines=tuple(r for r in manifest.routines if r.stage == 1))
 
     def beat(self, routine_id: str, slot: str, run_utc: str) -> None:
         moment = datetime.datetime.strptime(run_utc, "%Y-%m-%dT%H:%MZ").replace(tzinfo=UTC)

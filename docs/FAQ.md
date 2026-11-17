@@ -143,8 +143,8 @@ See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-
 The desk treats an index underlying as one it cannot quote: an index row gets the warning `UNQUOTABLE_INDEX`, and a
 rule that needs the index level is UNAVAILABLE. Alpaca serves index option data on its paid exchange feed; whether
 its free indicative feed serves index options to a paper account is not confirmed, so the desk does not rely on it. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
-settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. Sourcing
-those values is planned for Stage 2 (not in this release).
+settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. The desk
+does not source those values: the data source cannot quote index options.
 
 ## Can I use live-account data?
 
@@ -173,9 +173,13 @@ README. See [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md).
 
 ## How much usage does it take?
 
-Every routine run spends weekly Grok usage. The lean profile is 41 runs per week; the active profile, with four more
-book checks a day, is 61 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run. The
-Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its answers is one request of yours.
+Every routine run spends weekly Grok usage. The lean profile is 66 runs per week; the active profile, with four more
+book checks a day, is 86 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run. The
+Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its answers is one request of yours. The
+Aegis Book & Risk Analyst's three routines (the opening marks and the pre-event stress each trading weekday, the
+weekend stress on Saturday) and the Aegis Events and Calendar Analyst's two Monday routines are part of both
+profiles, as are the Aegis Rules Steward's two (the daily rules sanity and the Friday memo) and the
+Aegis Review Desk's Saturday review.
 
 ## What are my choices for a position?
 

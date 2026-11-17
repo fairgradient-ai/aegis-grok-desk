@@ -1,7 +1,7 @@
 # Set up Aegis Desk
 
 You are a Grok Bot building the owner's read-only options desk. Sections 1 to 8 are the first run (your checklist:
-`aegis-desk-bootstrap-and-onboarding`): four Bots, the desk skills, a demo on a sample book and live delayed market
+`aegis-desk-bootstrap-and-onboarding`): the desk's Bots, the desk skills, a demo on a sample book and live delayed market
 data. It asks the owner for one thing: a free Alpaca paper key (a key ID and its secret), added through the secure
 secret card, never pasted in chat. Section 9 holds the later steps, each started by a phrase the owner says:
 "add my positions", "adopt my exit rules", "turn on monitoring", or optionally "set up the structuring desk". Steps
@@ -68,24 +68,31 @@ section 1. Post each output verbatim, labelled "synthetic demo on a sample book:
 | `agents/exit-sentinel.md` | Aegis Exit Sentinel | Exit-rule monitor of the options desk |
 | `agents/position-control.md` | Aegis Position Control | Book-of-record and expiry controller of the options desk |
 | `agents/structuring-desk.md` | Aegis Structuring Desk | On-request choices desk of the options desk |
+| `agents/book-risk-analyst.md` | Aegis Book & Risk Analyst | The live view of the book: marks, Greeks, exposures and stress |
+| `agents/events-calendar-analyst.md` | Aegis Events and Calendar Analyst | The event calendar of the options desk |
+| `agents/rules-steward.md` | Aegis Rules Steward | Rulebook change control of the options desk (direct message only) |
+| `agents/review-desk.md` | Aegis Review Desk | The weekly review of the options desk (direct message only) |
 
 If you were created for this desk, you are the Desk Lead; otherwise create one. Create the others and read back each
 native Name and Job. A Bot's standing instructions are its role skill, enabled for it only. The Desk Lead is the
-owner's one front door; the other three keep their routines and post in their own chats and the Floor. Until
+owner's one front door; the others keep their routines and post in their own chats and the Floor. Until
 `desk.toml` exists, each of them introduces itself in one line and waits: no tool against the empty desk, no
 announced schedule, no routine. The Structuring Desk answers only when asked and owns no routine. Asked for a
-later-stage seat, a Bot says it is not in this release.
+seat this table does not list, a Bot says it is not in this release.
 
 ## 5. Install the skills
 
-Install the 18 desk skills; each Bot enables the ones its agent file lists under `skills:`. Every Bot:
+Install the 21 desk skills; each Bot enables the ones its agent file lists under `skills:`. Every Bot:
 `aegis-desk-charter`, `aegis-compliance-voice-and-number-discipline`, `aegis-routines-and-quiet-rules`,
 `aegis-market-data-budget-and-quality`, `aegis-desk-incident-playbooks`. The others: `aegis-desk-bootstrap-and-onboarding`
 (Lead), `aegis-rules-dsl-and-change-control` (Lead, Sentinel), `aegis-exit-watch-and-signal-protocol`,
 `aegis-threshold-levels`, `aegis-vertical-spread-management` (Sentinel), `aegis-book-marking-and-greeks-honesty`,
 `aegis-covered-call-and-cash-secured-put-management`, `aegis-protective-put-and-collar-management` (Sentinel,
 Structuring Desk), `aegis-positions-csv-book-of-record`, `aegis-expiry-and-assignment-protocol` (Position Control),
-`aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order` (Structuring Desk). As the
+`aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order` (Structuring Desk),
+`aegis-exposures-limits-and-stress`, `aegis-vol-context` (Book & Risk Analyst, with `aegis-book-marking-and-greeks-honesty`
+and `aegis-protective-put-and-collar-management`), `aegis-event-calendar-sourcing` (Events and Calendar Analyst,
+with `aegis-expiry-and-assignment-protocol`), `aegis-rules-dsl-and-change-control` (Rules Steward), `aegis-signal-journal-and-review` (Review Desk). As the
 front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-threshold-levels`,
 `aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order`,
 `aegis-covered-call-and-cash-secured-put-management` and `aegis-protective-put-and-collar-management`.
@@ -94,12 +101,13 @@ front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-t
 `pointer` (points to the checkout file) or `mismatch` (not ready; a shared skill with another body is never enabled).
 
 <!-- role-skills:start -->
-Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-structuring-desk`
+Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-book-risk-analyst`, `aegis-role-desk-lead`, `aegis-role-events-calendar-analyst`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-review-desk`, `aegis-role-rules-steward`, `aegis-role-structuring-desk`
 <!-- role-skills:end -->
 
 ## 6. Create the Aegis Options Floor
 
-Create one private group, "Aegis Options Floor", with exactly the four Bots, and read back its members. Nothing is
+Create one private group, "Aegis Options Floor", with exactly the Floor Bots of section 4 (the six whose agent files
+say `seat: floor`; the direct-message seats stay out of it), and read back its members. Nothing is
 shared publicly. Routine output goes to each Bot's own chat ([docs/MONITORING.md](docs/MONITORING.md)).
 
 ## 7. Connect market data
@@ -142,7 +150,7 @@ Record the key source (the card with `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`
 One message, opening with three plain lines, for example:
 
 ```text
-Your Aegis desk is built: four Bots on the Aegis Options Floor and the desk skills, release v1.0.0.
+Your Aegis desk is built: eight Bots, six of them on the Aegis Options Floor, and the desk skills, release v1.0.0.
 Live market data works: SPY was quoted from Alpaca's paper market data, labelled 15-minute delayed.
 Nothing else is needed now. Talk to me here for everything; when you want the desk to watch your positions, say "add my positions".
 ```
@@ -253,14 +261,14 @@ if missing.
 
 1. **Routines.** Create one paused test routine whose prompt is only "Reply with the single word quiet.", read it
    back, delete it, and read back that it is gone. With no routines the desk cannot monitor: say so and stop.
-2. **You: Notifications and Timezone.** In each Bot's own settings (the Desk Lead, the Exit Sentinel and Position
-   Control; the exact path is not confirmed: open the Bot, then its settings), turn Notifications on and set Timezone
+2. **You: Notifications and Timezone.** In each routine-owning Bot's own settings (every Bot but the Structuring
+   Desk; the exact path is not confirmed: open the Bot, then its settings), turn Notifications on and set Timezone
    to America/New_York, then say "done".
 3. **You: the Allow rule.** In **Settings, General, Auto-review**, rule 1 of `--rules-text` as an "Allow
    automatically" rule, exactly as printed:
 
 ```text
-Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo, weekly-review. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
 ```
 
 4. **You, only if git refuses the checkout** (`git refuses this checkout: it is owned by another user (see SETUP)`):
@@ -269,8 +277,11 @@ Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/rout
    `GIT_CONFIG_GLOBAL` is ignored). Rerun the doctor; check 1 then passes. No desk code writes git configuration.
 5. **Routines, created paused.** Each owning Bot creates its own from `routines/manifest.toml`, one per slot, each
    prompt the manifest's template with the slot filled in, and reads each back. Lean, Mon-Fri: Desk Lead `preopen`
-   07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35; Position Control
-   `final-call` 15:20, plus `post-expiry` 09:30 Saturday. `routine_audit.py --budget`: `lean: 41 runs per week ...`.
+   07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35, `journal-close` 17:30; Position Control
+   `final-call` 15:20, plus `post-expiry` 09:30 Saturday; Book & Risk Analyst `opening-marks` 10:20,
+   `pre-event-stress` 14:50, plus `weekend-stress` 10:00 Saturday; Events and Calendar Analyst `calendar-build`
+   07:40 and `event-sheet` 07:50, Mondays; Rules Steward `rules-sanity` 16:45, plus `rulebook-memo` 17:20
+   Friday; Review Desk `weekly-review` 11:00 Saturday. `routine_audit.py --budget`: `lean: 66 runs per week ...`.
 6. **One Test run** of the Lead's `preopen` proves routines see the key and the desk files; report any Ask-first
    card. Read back with `heartbeat.py --list` and `routine_audit.py` (with `--desk-root`).
 7. **Unpause.** Each Bot unpauses its lean routines and reads them back; then the full doctor.

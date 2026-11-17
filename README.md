@@ -71,8 +71,13 @@ as they are. [docs/UPDATING.md](docs/UPDATING.md) has every step, how to go back
 | **Aegis Exit Sentinel** | Checks your positions against your rules four times a trading day and tells you when one is met, or when it cannot tell. |
 | **Aegis Position Control** | Keeps your list of positions right and walks you through expiry week (the final call and the Saturday reconciliation). |
 | **Aegis Structuring Desk** | Holds the rules for pricing your choices for a position you hold (close it, roll it, or add protection); the Desk Lead runs them when you ask. |
+| **Aegis Events and Calendar Analyst** | Keeps the dates of your held symbols honest: proposes the cash dividends Alpaca declares for your tap, reminds you of a stale or unknown date, and sends your decision calendar every Monday. |
+| **Aegis Book & Risk Analyst** | Shows your book as the desk marks it each morning, with your beta-weighted exposure, and stresses it over a grid of moves and through a coming earnings or ex-dividend date: computations, never forecasts. |
+| **Aegis Rules Steward** | Looks after your exit rules: helps you write a new version, shows what it would change today and on past days, and checks every trading day that your rules still reach every position you hold. Nothing changes until you type the adoption phrase and tap. You reach it by direct message. |
+| **Aegis Review Desk** | Every Saturday, the review of your week from the desk's own records: each signal, what you marked it and the position's end-of-day P/L, the counts per rule, and how a waiting candidate rulebook would have decided. Counts only: never a money total, a rate or a ranking. You reach it by direct message. |
 
-All four sit together in one private group chat, the **Aegis Options Floor**. Every message starts from your
+The first six sit together in one private group chat, the **Aegis Options Floor**; the Rules Steward
+and the Review Desk answer in their own chats. Every message starts from your
 positions and delayed market data, and every number in it comes from a tool:
 
 <p align="center">
@@ -163,7 +168,7 @@ Grok Bot runs the daily schedule. The other runtimes are for reading the desk an
 
 ```text
 SETUP.md    the runbook a Grok Bot follows to build the desk
-agents/     the four Bot profiles
+agents/     the eight Bot profiles
 skills/     the skills the Bots load
 scripts/    standard-library Python tools and the repository gates
 routines/   the daily schedule and the Auto-review rule texts
@@ -183,7 +188,7 @@ docs/       the pages below
 | [Positions file](docs/POSITIONS_CSV.md) | the format of your positions |
 | [Structuring Desk](docs/STRUCTURING.md) | criteria, answers and limits |
 | [How it fits together](docs/ARCHITECTURE.md) | files, roles, trust boundaries |
-| [Roadmap](docs/ROADMAP.md) | what is planned after Stage 1, in order, and what each step must prove |
+| [Roadmap](docs/ROADMAP.md) | every step after Stage 1, in order, what each one had to prove, and your answers to its questions |
 | [Tool reference](docs/TOOLS.md) | every tool's flags and output, generated from the tools |
 | [Skills index](skills/README.md) | every skill and who loads it |
 | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) | |

@@ -4,7 +4,7 @@
 schema_version = 1
 
 [profiles.lean]
-description = "about 8 runs per weekday plus Saturday"
+description = "every routine at its regular slots"
 
 [profiles.active]
 description = "lean plus four paused book-check slots, unpaused only on the conditions the owner chose"
@@ -102,3 +102,138 @@ posts = "fired"
 quiet_rule = "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits (csv_recon.py --diff shows the rows); confirm against your broker."
 approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py post-expiry --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "opening-marks"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["10:20"], active = ["10:20"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["beta_refresh", "book --view"]
+post = ["book"]
+posts = "always"
+quiet_rule = "Always one message: YOUR BOOK as marked after the delayed open, with the net delta and, when the day's beta fit holds, the beta-weighted delta and its r2 flag."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py opening-marks --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "pre-event-stress"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["14:50"], active = ["14:50"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["scenario --upcoming 2"]
+post = ["scenario"]
+posts = "fired"
+quiet_rule = "Posts only when a held symbol's earnings or ex-dividend date is within 2 trading days: the event stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py pre-event-stress --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "weekend-stress"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["10:00"], active = ["10:00"] }
+days = ["Sat"]
+trading_days_only = false
+chain = ["scenario --from-snapshot"]
+post = ["scenario"]
+posts = "always"
+quiet_rule = "Always one message on Saturday: the scenario grid of the book as of the last close, a computation on the book's model, not a forecast; a group without usable marks is named and the total left out."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py weekend-stress --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "calendar-build"
+owner = "events-calendar-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["07:40"], active = ["07:40"] }
+days = ["Mon"]
+trading_days_only = true
+chain = ["calendar_check", "dividend_source"]
+post = ["calendar_check", "dividend_source"]
+posts = "fired"
+quiet_rule = "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py calendar-build --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "event-sheet"
+owner = "events-calendar-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["07:50"], active = ["07:50"] }
+days = ["Mon"]
+trading_days_only = true
+chain = ["decision_calendar --days 14"]
+post = ["decision_calendar"]
+posts = "always"
+quiet_rule = "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py event-sheet --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "journal-close"
+owner = "exit-sentinel"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["17:30"], active = ["17:30"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["signal_journal --close"]
+post = ["signal_journal"]
+posts = "fired"
+quiet_rule = "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and prints quiet; a failure is an incident line."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py journal-close --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "rules-sanity"
+owner = "rules-steward"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["16:45"], active = ["16:45"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["rules_sanity"]
+post = ["rules_sanity"]
+posts = "fired"
+quiet_rule = "Posts only when the adopted rulebook no longer covers a structure you hold today (a position opened after the adoption), with each lint finding; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py rules-sanity --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "rulebook-memo"
+owner = "rules-steward"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["17:20"], active = ["17:20"] }
+days = ["Fri"]
+trading_days_only = true
+chain = ["rules_sanity --memo"]
+post = ["rules_sanity"]
+posts = "always"
+quiet_rule = "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it, its rules by role, the structures you hold) and the lint's verdict against today's positions."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py rulebook-memo --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "weekly-review"
+owner = "review-desk"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["11:00"], active = ["11:00"] }
+days = ["Sat"]
+trading_days_only = false
+chain = ["weekly_review"]
+post = ["weekly_review"]
+posts = "always"
+quiet_rule = "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only, never a money total, a rate or a ranking."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py weekly-review --slot {slot} and post its output verbatim."

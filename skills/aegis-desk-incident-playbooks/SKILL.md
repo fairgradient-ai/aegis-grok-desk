@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-incident-playbooks
-description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Stage-1 Bot. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong key or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
+description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Bot of the desk. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong key or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -235,12 +235,14 @@ Floor; it never answers with another Bot's numbers.
 | --- | --- |
 | signals, alerts, the threshold-level sheet, the book snapshot | Aegis Exit Sentinel |
 | `positions.csv`, the expiry week, assignment and settlement | Aegis Position Control |
-| `desk.toml`, the rulebook, the doctor, whether the desk ran | Aegis Desk Lead |
+| `desk.toml`, the doctor, whether the desk ran | Aegis Desk Lead |
 | the owner's choices: tickets, the roll analyses and proposals, `structuring.toml` | Aegis Structuring Desk, only on the owner's request |
+| the marks, the beta-weighted delta, a scenario or event stress, the volatility context | Aegis Book & Risk Analyst |
+| `research/calendar.toml`, a proposed dividend, the decision calendar | Aegis Events and Calendar Analyst |
+| the rulebook: a candidate, a dry run, a replay, the lint, the adoption | Aegis Rules Steward, by direct message |
+| the signal journal, the weekly review | Aegis Review Desk, by direct message |
 
-A request for a planned seat's work gets the answer that it is not available in this release. Book and risk
-analysis and sourced events are planned for Stage 2 (not in this release); rule stewardship and the review desk are
-planned for Stage 3 (not in this release).
+Every seat of the desk is in this release; a request for work no seat owns gets the answer that it is not available.
 
 ## The owner's checklist: check your broker directly
 

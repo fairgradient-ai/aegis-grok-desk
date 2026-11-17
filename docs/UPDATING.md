@@ -62,8 +62,14 @@ any skill the new agent file lists under `skills:` that the Bot does not have ye
 disable one the agent file no longer lists. Report one status per skill: `unchanged`, `updated`, `added`, `removed`
 or `mismatch` (not ready: the readback differs).
 
-The role skills (`aegis-role-desk-lead`, `aegis-role-exit-sentinel`, `aegis-role-position-control`,
-`aegis-role-structuring-desk`) are each Bot's standing instructions: refresh them like any other skill.
+The role skills (`aegis-role-<the agent file's name>`, one per Bot; SETUP section 5 lists them) are each Bot's
+standing instructions: refresh them like any other skill.
+
+**A new Bot.** When SETUP section 4 lists an agent file the desk has no Bot for, create that Bot first, with the Name
+and Job of that table, and read them back. Enable its skills and its role skill as above. A seat whose agent file
+says `seat: floor` joins the Aegis Options Floor (read back its members); a `seat: off-floor` seat stays in its own
+chat. Set the Timezone America/New_York and notifications on for each new Bot that owns a routine (SETUP section
+9.3), and read them back. Its routines are created in step 6.
 
 ### 5. Re-check the Auto-review rules
 
@@ -127,8 +133,25 @@ Auto-review texts of that release are restored the same way (steps 4 and 5). You
 
 ## Release 1.0.0, for a desk set up from release 0.2.1
 
-- **The roadmap.** [ROADMAP.md](ROADMAP.md) lists what the later stages plan, in order, with the questions only
-  you can answer. Nothing on it is available yet, and no answer of the desk changes because of it.
+- **Four new Bots** (step 4). The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst join the Floor,
+  which is then full at six. The Aegis Rules Steward and the Aegis Review Desk answer by direct message only.
+- **Nine new routines** (step 6), fifteen in all: the opening marks, the pre-event and weekend stress, the Monday
+  calendar build and event sheet, the journal close, the rules sanity, the Friday rulebook memo and the Saturday
+  weekly review. A week is 66 runs in the lean profile and 86 in the active one (41 and 61 before).
+- **One Auto-review text changes** (step 5): rule 1, the Allow rule, now names the fifteen routine ids. Replace it
+  with the printed text; rules 2 and 3 are unchanged.
+- **The American model of record.** Implied volatilities, Greeks and the structuring prices are computed on the
+  American model, so some figures move; a leg near its early-exercise boundary says so.
+- **Your files keep their bytes.** New optional keys: each account in `desk.toml` may state its own
+  `approval_level` and its `cash` with `cash_as_of`; a structuring section may set `expirations = "weekly"`.
+  Three `desk.toml` values (`engagement`, `chatty_or_quiet`, `attention_thresholds`) are read by nothing now; your
+  file keeps them and its hash. Step 7 offers each new key; nothing changes unless you say so.
+- **Sourced dividends.** On Mondays the Events and Calendar Analyst proposes the cash dividends Alpaca declares for
+  your held symbols, for your tap. Earnings dates, yields and AM settlement values stay yours to state.
+- **Rulebook change control** moves to the Rules Steward, with a replay of a candidate over your past end-of-day
+  snapshots before you adopt it. Adoption still needs your typed phrase and tap; the Desk Lead runs the same steps
+  when you ask it. The example limit rules (`BWD`, `UDELTA`) are yours to set before they can be adopted.
+- **The weekly review** on Saturday counts your signals and marks per rule, never a money total, a rate or a ranking.
 - **New objectives for your structuring criteria.** A covered call, a protective put and a collar can be ranked by
   `band_centre` (closeness to the centre of your own bands, with each leg's quote spread counted), and a roll by
   `net_extrinsic_per_added_day` (the time value the roll adds or gives up). The update asks you, section by section,
@@ -136,7 +159,6 @@ Auto-review texts of that release are restored the same way (steps 4 and 5). You
 - **Two information notes** can appear in structuring answers: when the runner-up lies within the best's own quote
   spread, and, under `band_centre`, the share prices at which another candidate would be best. Neither changes the
   ranking.
-- Routines, alerts and your other desk files do not change.
 
 ## Release 0.2.1, for a desk set up from an earlier release
 

@@ -286,6 +286,7 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 (the run instant)"`
 - `calendar_path`: `"research/calendar.toml (root-relative)"`
 - `calendar_sha256`: `"hex"`
 - `counts`: `{"MISSING": "integer", "NO_YIELD": "integer", "PAST": "integer", "STALE": "integer", "UNKNOWN_DIVIDEND": "integer"}`
@@ -294,6 +295,7 @@ Payload (`--json` envelope key `payload`):
 - `held_symbols`: `["underlyings of the open rows"]`
 - `listed_symbols`: `["symbols in the file"]`
 - `max_age_days`: `"integer"`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `short_call_symbols`: `["underlyings carrying an open short call"]`
 - `today`: `"YYYY-MM-DD (ET date of --now)"`
 - `verdict`: `"clean | unavailable"`
@@ -361,9 +363,11 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 (the run instant)"`
 - `end`: `"YYYY-MM-DD"`
 - `exit_code`: `"0 | 20"`
 - `gaps`: `[{"kind": "ex_dividend | earnings", "reason": "string", "symbol": "string"}]`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `points`: `[{"date": "YYYY-MM-DD", "detail": "string", "kind": "act_by | last_trading_day | ex_dividend | earnings", "source": "string | null", "status": "confirmed | estimated | null", "symbol": "string", "time_et": "HH:MM | null"}]`
 - `start`: `"YYYY-MM-DD (today's ET date)"`
 - `verdict`: `"ok | unavailable"`
@@ -460,13 +464,15 @@ Payload (`--json` envelope key `payload`):
 
 - `answers`: `{"sourced_dividends": {"SYMBOL": {"amount": "decimal string", "checked_utc": "RFC 3339", "date": "YYYY-MM-DD"}}}`
 - `apply`: `"string | null (the desk_init.py command the owner's tap runs)"`
+- `as_of`: `"RFC 3339 (the fetch time, else the run instant)"`
 - `ex_end`: `"YYYY-MM-DD"`
 - `ex_start`: `"YYYY-MM-DD"`
-- `exit_code`: `"0 | 20"`
+- `exit_code`: `"0 | 10 | 20"`
 - `ignored_without_ex_date`: `"integer"`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `reason`: `"string | null"`
 - `symbols`: `[{"amount": "decimal string | null", "calendar": "string | null", "ex_date": "YYYY-MM-DD | null", "special": "boolean", "state": "AGREES | NEW | DIFFERS | NONE FOUND", "symbol": "string"}]`
-- `verdict`: `"ok | unavailable"`
+- `verdict`: `"ok | proposed | unavailable"`
 
 ## eod_summary
 
@@ -1052,7 +1058,7 @@ Payload (`--json` envelope key `payload`):
 - `run_record`: `"reports/routines/<ET date>/<routine>-<HHMM of the slot>.json | null (not written)"`
 - `run_utc`: `"ISO-8601 UTC (--now or the clock read once)"`
 - `slot`: `"HH:MM (America/New_York)"`
-- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | book | book_check | csv_recon | desk_doctor | eod_summary | expiry_checklist | trigger_levels"}]`
+- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | calendar_check | csv_recon | decision_calendar | desk_doctor | dividend_source | eod_summary | expiry_checklist | rules_sanity | scenario | signal_journal | trigger_levels | weekly_review"}]`
 - `warnings`: `["string"]`
 - `withheld`: `[{"codes": ["alert_lint finding codes"], "step": "slug", "tool": "string"}]`
 - `written`: `["desk-root relative paths this tool wrote (the steps' own writes are in their copies)"]`
@@ -1187,6 +1193,71 @@ Payload (`--json` envelope key `payload`):
 - `verdicts_changed`: `"integer"`
 - `warnings`: `["string"]`
 
+## rules_replay
+
+- script: `scripts/rules_replay.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: a candidate rulebook replayed over the desk's past end-of-day snapshots against the adopted one: the days and groups whose verdict would have differed, and how many days; no profit or loss, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--candidate` | `PATH` | the candidate rulebook file (a TOML rulebook; never one under rules/ that is adopted) |
+| `--days` | `N` | the last N end-of-day snapshots (1-260, default 5) |
+| `--from` | `YYYY-MM-DD` | the first snapshot date (with --to, the last; without, through today) |
+| `--to` | `YYYY-MM-DD` | the last snapshot date |
+
+Payload (`--json` envelope key `payload`):
+
+- `adopted`: `{"sha256": "hex", "version": "string"}`
+- `as_of`: `"RFC 3339 | null (the newest snapshot's instant)"`
+- `candidate`: `{"path": "string", "sha256": "hex", "version": "string"}`
+- `counts`: `{"days": "integer", "days_differed": "integer", "days_unavailable": "integer"}`
+- `days`: `[{"changes": [{"after": "verdict | null", "before": "verdict | null", "group_id": "string", "structure": "string", "trade_id": "string", "underlying": "string"}], "et_date": "YYYY-MM-DD", "reason": "string | null", "status": "ok | unavailable", "unavailable_groups": ["group id"]}]`
+- `exit_code`: `"0 | 10 | 20"`
+- `limits`: `"string"`
+- `message`: `"string (the text printed)"`
+- `verdict`: `"differs | same | unavailable"`
+
+## rules_sanity
+
+- script: `scripts/rules_sanity.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: the adopted rulebook, verified, linted against the structures held today (a new structure no rule reaches); --memo prints its weekly memo; no market data, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--memo` | none | print the weekly memo of the adopted rulebook |
+
+Payload (`--json` envelope key `payload`):
+
+- `as_of`: `"RFC 3339 (the run instant)"`
+- `exit_code`: `"0 | 20"`
+- `findings`: `[{"code": "string", "message": "string", "rule_id": "string | null", "structure": "string | null"}]`
+- `held_structures`: `["structure"]`
+- `memo`: `"boolean"`
+- `message`: `"string (the text printed, for a routine's post)"`
+- `roles`: `{"ROLE": "integer"}`
+- `rulebook`: `{"adopted_utc": "RFC 3339", "rules": "integer", "sha256": "hex", "version": "X.Y.Z"}`
+- `verdict`: `"sane | findings"`
+
 ## scenario
 
 - script: `scripts/scenario.py`
@@ -1206,21 +1277,60 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--event` | `earnings \| ex_dividend` | price the symbol's groups one trading day after this event (needs --symbol) |
 | `--symbol` | `SYM` | limit the stress to this underlying's groups |
+| `--upcoming` | `N` | one event stress per held symbol with an earnings or ex-dividend date within N trading days (1-10); quiet when none |
+| `--from-snapshot` | none | stress the latest end-of-day snapshot of record instead of marking the book from quotes |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 | null (the newest quote stamp of the book)"`
 - `cells`: `[{"change": "decimal string | null", "groups": [{"change": "decimal string", "group_id": "string", "options": "decimal string", "stock": "decimal string", "stressed_pl_mid": "decimal string | null"}], "spot_pct": "integer", "stressed_pl_mid": "decimal string | null", "vol_points": "integer"}]`
 - `excluded`: `[{"group_id": "string", "reason": "string"}]`
-- `exit_code`: `"0 | 20"`
+- `exit_code`: `"0 | 10 | 20"`
 - `grid`: `{"spot_pct": ["integer"], "vol_points": ["integer"]}`
 - `horizon`: `{"event": "earnings | ex_dividend | null", "event_date": "YYYY-MM-DD | null", "event_time": "pre | post | unknown | null", "horizon_date": "YYYY-MM-DD | null", "symbol": "string | null", "utc": "RFC 3339 | null (instantaneous)"}`
 - `label`: `"string (a computation, not a forecast)"`
+- `message`: `"string | null (the text printed; null when --upcoming finds no event)"`
 - `notes`: `["string"]`
 - `reason`: `"string | null (why the stress is unavailable)"`
 - `stressed`: `["group id"]`
+- `stresses`: `[{"cells": ["object (as cells)"], "excluded": ["object"], "horizon": "object (as horizon)", "notes": ["string"], "stressed": ["group id"]}]`
+- `verdict`: `"ok | stressed | quiet | unavailable"`
+- `warnings`: `["string"]`
+
+## signal_journal
+
+- script: `scripts/signal_journal.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: each signal's outcome from the desk's own records: when it was posted, the owner's mark and the group's end-of-day P/L at the mid; counts per rule in fixed words, never a money total; --close writes the day's facts
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--date` | `YYYY-MM-DD` | one ET day instead of the week so far |
+| `--week` | none | the ET week so far, Monday to today (the default) |
+| `--close` | none | write today's facts to journal/outcomes/<ET date>.json (the journal-close routine) |
+
+Payload (`--json` envelope key `payload`):
+
+- `as_of`: `"RFC 3339 (the run instant)"`
+- `counts`: `{"RULE_ID | all rules": {"acknowledged": "integer", "acted": "integer", "signals": "integer", "snoozed": "integer"}}`
+- `end`: `"YYYY-MM-DD"`
+- `exit_code`: `"0 | 20"`
+- `message`: `"string | null (null with --close)"`
+- `signals`: `[{"marks": [{"et_date": "YYYY-MM-DD", "reason": "string | null", "unrealized_pl_mid": "decimal string | null"}], "owner_mark": "acknowledged | marked acted | snoozed | open", "owner_mark_utc": "string | null", "posted_at": "RFC 3339", "rule_ids": ["string"], "signal_id": "string", "structure": "string", "trade_id": "string", "verdict": "string"}]`
+- `start`: `"YYYY-MM-DD"`
 - `verdict`: `"ok | unavailable"`
 - `warnings`: `["string"]`
+- `written`: `"journal/outcomes/<ET date>.json | null"`
 
 ## trigger_levels
 
@@ -1286,3 +1396,35 @@ Payload (`--json` envelope key `payload`):
 - `skipped`: `["data/book/<file> (a snapshot that could not be read)"]`
 - `snapshots`: `"integer (readable book snapshots)"`
 - `verdict`: `"ok | unavailable"`
+
+## weekly_review
+
+- script: `scripts/weekly_review.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: the weekly review of your signals and your rules from the desk's own records: each signal's facts and the counts in fixed words, and a candidate rulebook replayed over the week; counts only, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--week-of` | `YYYY-MM-DD` | a date in the week to review (default: today's ET week; on a weekend, the week just ended) |
+| `--candidate` | `PATH` | the candidate rulebook to replay (default: the newest rules/candidate-X.Y.Z.toml) |
+
+Payload (`--json` envelope key `payload`):
+
+- `as_of`: `"RFC 3339 (the run instant)"`
+- `counts`: `{"RULE_ID | all rules": {"acknowledged": "integer", "acted": "integer", "signals": "integer", "snoozed": "integer"}}`
+- `exit_code`: `"0 | 20"`
+- `message`: `"string (the text printed, for a routine's post)"`
+- `replay`: `{"candidate": "path | null", "days": ["object (as rules_replay.py)"], "days_differed": "integer | null"}`
+- `signals`: `["object (as signal_journal.py)"]`
+- `verdict`: `"ok | unavailable"`
+- `warnings`: `["string"]`
+- `week`: `{"end": "YYYY-MM-DD (Friday)", "start": "YYYY-MM-DD (Monday)"}`

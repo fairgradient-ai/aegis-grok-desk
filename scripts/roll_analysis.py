@@ -15,9 +15,9 @@ never fires an alert. For the open short call of a ``covered_call`` group in ``p
 the later standard monthly expirations inside ``[roll] dte`` of the owner's ``structuring.toml``, labels each against
 the owner's criteria and ranks them by the declared objective (``aegis_desk.structuring.run_roll_analysis``). For the
 open long put of a ``protective_put`` group it does the same with every put, under ``[protective_put]``, and for the
-open short put of a ``cash_secured_put`` group with every put, under ``[roll]`` (roadmap step 2.4). Any other
-structure, an index underlying or the structure's section disabled is NOT_APPLICABLE with its reason (the roll
-analysis of collars is planned for Stage 2).
+open short put of a ``cash_secured_put`` group with every put, under ``[roll]``, and for a ``collar`` group both legs
+together, under ``[collar]`` (roadmap step 2.4). Any other structure (a vertical rolls through its ROLL ticket), an
+index underlying or the structure's section disabled is NOT_APPLICABLE with its reason.
 
 The order of designer C's D3.6, each step before the next:
 

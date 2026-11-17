@@ -136,6 +136,42 @@ class OfflineTest(DeskCopy):
         self.assertIn("excluded | AG-20261020-01 | the book marks it unavailable", out.splitlines())
         self.assertIn("P/L change | spot +0% | vol -5 - | vol +0 - | vol +5 -", out.splitlines())
 
+    def test_upcoming_events_are_stressed_or_quiet(self) -> None:
+        code, out = self.offline("--upcoming", "2")
+        self.assertEqual((0, "quiet: no held symbol has an earnings or ex-dividend date within 2 trading days"),
+                         (code, out.rstrip("\n")))
+        code, out = self.offline("--upcoming", "2", json_mode=True)
+        payload = json.loads(out)["payload"]
+        self.assertEqual((0, "quiet", None, []), (code, payload["verdict"], payload["message"], payload["stresses"]))
+        code, out = run_tool(["--offline", "--desk-root", self.root, "--now", "2026-11-19T19:50:00Z", "--fixture-set",
+                              "t1", "--upcoming", "2", "--json"])
+        payload = json.loads(out)["payload"]
+        self.assertEqual((10, "stressed", ["NVDA"]), (code, payload["verdict"],
+                                                      [item["horizon"]["symbol"] for item in payload["stresses"]]))
+        self.assertTrue(payload["message"].startswith("EVENT STRESS | NVDA earnings 2026-11-19 (post)"))
+        self.assertEqual("2026-11-19T19:31:12+00:00", payload["as_of"])
+        for argv in (["--upcoming", "0"], ["--upcoming", "11"], ["--upcoming", "2", "--symbol", "WMT"]):
+            self.assertEqual(2, run_tool(argv + ["--desk-root", self.root, "--json"])[0], argv)
+
+    def test_from_snapshot_stresses_the_last_close_and_sends_nothing(self) -> None:
+        code, out = run_tool(["--from-snapshot", "--desk-root", self.root, "--now", "2026-11-07T15:00:00Z", "--json"])
+        self.assertEqual((20, "snapshot_missing"), (code, json.loads(out)["error"]["code"]))
+        import book as book_tool
+        with contextlib.redirect_stdout(io.StringIO()):
+            book_tool.main(["--snapshot", "--offline", "--fixture-set", "pre_open", "--desk-root", self.root,
+                            "--now", "2026-11-02T21:30:00Z"])
+        ledger = os.path.join(self.root, "data", "cache", "ledger.jsonl")
+        before = os.path.getsize(ledger) if os.path.exists(ledger) else 0
+        code, out = run_tool(["--from-snapshot", "--desk-root", self.root, "--now", "2026-11-07T15:00:00Z"])
+        lines = out.splitlines()
+        self.assertEqual(0, code, out)
+        self.assertEqual("SCENARIO | the book re-priced, the end-of-day snapshot of 2026-11-02, as of close 16:00 ET | "
+                         "a computation on the book's model of record, not a forecast", lines[0])
+        self.assertEqual("P/L change | spot +0% | vol -5 -158.39 | vol +0 +0.00 | vol +5 +179.46", lines[4])
+        self.assertEqual(before, os.path.getsize(ledger) if os.path.exists(ledger) else 0, "no request")
+        self.assertEqual(2, run_tool(["--from-snapshot", "--offline", "--fixture-set", "regular", "--desk-root",
+                                      self.root, "--json"])[0])
+
     def test_an_unusable_positions_file_is_exit_1(self) -> None:
         os.remove(os.path.join(self.root, "positions.csv"))
         code, out = self.offline(json_mode=True)

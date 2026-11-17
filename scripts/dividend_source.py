@@ -21,8 +21,9 @@ dividend, so nothing is proposed for it. ``NEW`` and ``DIFFERS`` are proposed as
 is kept with its own source. Earnings dates, the yield and AM settlement values stay owner-stated.
 
 If the endpoint is not served to the key (401, 403, a plan without it), nothing is sourced and the owner keeps stating
-dividends: exit 20 UNAVAILABLE, no other source replaces it. Exit codes: 0 answered (even when nothing is new); 20
-not served or unusable; 1 a desk file that cannot be used; 2 usage. ``--json`` payload: as ``--schema`` describes.
+dividends: exit 20 UNAVAILABLE, no other source replaces it. Exit codes: 0 answered with nothing to propose; 10 a proposal; 20
+not served or unusable; 1 a desk file that cannot be used; 2 usage. Exit 10 when a dividend is proposed (NEW or
+DIFFERS): the ``calendar-build`` routine of the Aegis Events and Calendar Analyst posts it for the owner's tap. ``--json`` payload: as ``--schema`` describes.
 """
 
 from __future__ import annotations
@@ -50,8 +51,10 @@ PROCESS_LEAD_DAYS: int = 10
 PROCESS_LAG_DAYS: int = 60
 AGREES, NEW, DIFFERS, NONE_FOUND = "AGREES", "NEW", "DIFFERS", "NONE FOUND"
 OUTPUT: Dict[str, Any] = {
-    "verdict": "ok | unavailable",
-    "exit_code": "0 | 20",
+    "verdict": "ok | proposed | unavailable",
+    "exit_code": "0 | 10 | 20",
+    "message": "string (the text printed, for a routine's post)",
+    "as_of": "RFC 3339 (the fetch time, else the run instant)",
     "ex_start": "YYYY-MM-DD",
     "ex_end": "YYYY-MM-DD",
     "symbols": [{"symbol": "string", "state": "AGREES | NEW | DIFFERS | NONE FOUND", "ex_date": "YYYY-MM-DD | null",
@@ -170,11 +173,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             rows.append({"symbol": symbol, "state": status, "ex_date": first.ex_date.isoformat(), "amount": first.rate,
                          "special": first.special, "calendar": calendar_text(entry)})
     unavailable = result is None
-    exit_code = contract.EXIT_UNAVAILABLE if unavailable else contract.EXIT_QUIET
+    if unavailable:
+        verdict, exit_code = "unavailable", contract.EXIT_UNAVAILABLE
+    elif answers:
+        verdict, exit_code = "proposed", contract.EXIT_FIRED
+    else:
+        verdict, exit_code = "ok", contract.EXIT_QUIET
     payload_answers = {"sourced_dividends": answers} if answers else {}
     apply = APPLY if answers else None
+    if result is None:
+        lines = ["UNAVAILABLE | sourced dividends | %s" % reason]
+    else:
+        lines = ["SOURCED DIVIDENDS | ex-dates %s to %s | Alpaca corporate actions (cash_dividend), as of %s"
+                 % (ex_start.isoformat(), ex_end.isoformat(), checked)]
+        for row in rows:
+            if row["state"] == NONE_FOUND:
+                lines.append("%s | NONE FOUND in the window (nothing proposed; calendar: %s)"
+                             % (row["symbol"], row["calendar"] or "no entry"))
+                continue
+            text = "%s | %s | ex-date %s, %s per share%s" % (row["symbol"], row["state"], row["ex_date"], row["amount"],
+                                                             " (special)" if row["special"] else "")
+            if row["state"] != NEW:
+                text += " | calendar: %s" % row["calendar"]
+            lines.append(text)
+        if answers:
+            lines.append("proposed for research/calendar.toml, written only on your tap: %s" % ", ".join(sorted(answers)))
+            lines.append("to record them: %s" % APPLY)
+        else:
+            lines.append("nothing to propose: the calendar agrees with every declaration found")
+        if result.skipped:
+            lines.append("ignored: %d record(s) without an ex-date" % result.skipped)
+    message = "\n".join(lines)
     if args.json:
-        payload = {"verdict": "unavailable" if unavailable else "ok", "exit_code": exit_code,
+        payload = {"verdict": verdict, "exit_code": exit_code, "message": message, "as_of": stamp,
                    "ex_start": ex_start.isoformat(), "ex_end": ex_end.isoformat(), "symbols": rows,
                    "answers": payload_answers, "apply": apply,
                    "ignored_without_ex_date": 0 if result is None else result.skipped, "reason": reason}
@@ -182,29 +213,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                                     status=contract.status_for(exit_code) if exit_code
                                                     else contract.STATUS_OK)))
         return exit_code
-    if result is None:
-        print("UNAVAILABLE | sourced dividends | %s" % reason)
-        return exit_code
-    lines = ["SOURCED DIVIDENDS | ex-dates %s to %s | Alpaca corporate actions (cash_dividend), as of %s"
-             % (ex_start.isoformat(), ex_end.isoformat(), checked)]
-    for row in rows:
-        if row["state"] == NONE_FOUND:
-            lines.append("%s | NONE FOUND in the window (nothing proposed; calendar: %s)" % (row["symbol"],
-                                                                                         row["calendar"] or "no entry"))
-            continue
-        text = "%s | %s | ex-date %s, %s per share%s" % (row["symbol"], row["state"], row["ex_date"], row["amount"],
-                                                         " (special)" if row["special"] else "")
-        if row["state"] != NEW:
-            text += " | calendar: %s" % row["calendar"]
-        lines.append(text)
-    if answers:
-        lines.append("proposed for research/calendar.toml, written only on your tap: %s" % ", ".join(sorted(answers)))
-        lines.append("apply: %s" % APPLY)
-    else:
-        lines.append("nothing to propose: the calendar agrees with every declaration found")
-    if result.skipped:
-        lines.append("ignored: %d record(s) without an ex-date" % result.skipped)
-    print("\n".join(lines))
+    print(message)
     return exit_code
 
 

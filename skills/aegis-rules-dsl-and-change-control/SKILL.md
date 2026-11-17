@@ -1,6 +1,6 @@
 ---
 name: aegis-rules-dsl-and-change-control
-description: The Aegis exit rulebook as data and how it changes, for the Aegis Desk Lead (who holds rulebook change control in Stage 1) and the Aegis Exit Sentinel (who reads it). The strict TOML grammar with no eval, the defaults and their safe bounds, rule keys, conditions, units and dte_unit, applies_to and the metric catalogue, origin marks and owner_must_set, the adoption lint and the refusal codes, the candidate-file interview, the rules_diff dry run, the owner phrase and tap, adoption outside regular trading hours, immutability, per-rule shas and state carry-forward, tamper detection, the digest and CONFIG CHANGED, and rollback.
+description: The Aegis exit rulebook as data and how it changes, for the Aegis Rules Steward (who holds rulebook change control), the Aegis Desk Lead (who runs its steps on the owner's request) and the Aegis Exit Sentinel (who reads it). The strict TOML grammar with no eval, the defaults and their safe bounds, rule keys, conditions, units and dte_unit, applies_to and the metric catalogue, origin marks and owner_must_set, the adoption lint and the refusal codes, the candidate-file interview, the rules_diff dry run, the owner phrase and tap, adoption outside regular trading hours, immutability, per-rule shas and state carry-forward, tamper detection, the digest and CONFIG CHANGED, and rollback.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -11,8 +11,8 @@ metadata:
 # Rules DSL and change control
 
 The owner's exit rules are data in one TOML file per version. A fixed grammar reads them and a fixed catalogue
-evaluates them; nothing in a rule is ever run as code. Every rule is the owner's, adopted one by one. In Stage 1 the
-Aegis Desk Lead holds rulebook change control. The Aegis Exit Sentinel runs the adopted rules and never edits one.
+evaluates them; nothing in a rule is ever run as code. Every rule is the owner's, adopted one by one. The Aegis Rules
+Steward holds rulebook change control; the Aegis Desk Lead runs the same steps when the owner asks it. The Aegis Exit Sentinel runs the adopted rules and never edits one.
 
 The examples are synthetic: tool runs on copies of `tests/fixtures/desk` at the instants named beside them.
 [rules/examples/README.md](../../rules/examples/README.md) explains the example rulebook and its sources.
@@ -168,7 +168,9 @@ refused: lint_failed: 29 lint findings block the adoption (not_accepted, owner_m
    python3 /workspace/aegis-grok-desk/scripts/rules_diff.py --candidate /workspace/aegis-desk/rules/candidate-1.1.0.toml --desk-root /workspace/aegis-desk
    ```
 
-   It exits 10 when a group's verdict would change. After the close, `--latest-snapshot` compares on the newest
+   It exits 10 when a group's verdict would change. `rules_replay.py --candidate <file>` asks the same over the last
+   end-of-day snapshots: the days a verdict would have differed, with its limits line (no profit or loss).
+   It exits 10 when a group's verdict would change today. After the close, `--latest-snapshot` compares on the newest
    snapshot of record in `data/book/`, the book the adoption's digest also reads. From the fixture's candidate 1.1.0
    (TP50 at 60 %), on the regular quotes of 2026-11-03 at 19:50 UTC, after its first line:
 
@@ -253,8 +255,8 @@ previous: rules 1.1.0, sha 131490c8
 
 ## Not in this release
 
-- A Rules Steward Bot is planned for Stage 3 (not in this release); the Desk Lead holds the duty until then.
-- Replaying a candidate over past end-of-day snapshots (`rules_replay`) is planned for Stage 3 (not in this release).
+- No path writes `rules/` except `rules_adopt.py` with the owner's typed phrase and tap: not the Rules Steward, not
+  `rules_replay.py`, not `rules_sanity.py`.
 - A rule holds no order shape and no destination of a roll. The grammar has no field for either.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

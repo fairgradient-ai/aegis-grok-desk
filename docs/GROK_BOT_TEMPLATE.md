@@ -73,7 +73,7 @@ its name, description and body.
 
 Add the template as a new Bot and say "Start the desk." The Lead follows the bootstrap skill and
 [SETUP.md](../SETUP.md). A passing install returns the receipt of SETUP step 8: a short summary first, then the
-evidence: the release and the pin check line, the four Bots, every skill as `template`, `installed` or `pointer` with
+evidence: the release and the pin check line, the Bots, every skill as `template`, `installed` or `pointer` with
 no `mismatch`, the Floor, the readbacks, the doctor's verdict, every pending item and the phrases for the next steps.
 Its last line is exactly:
 

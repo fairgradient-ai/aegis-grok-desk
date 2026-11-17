@@ -14,7 +14,7 @@ what protects you on Grok Bot and how you can check it.
 
 ### The first run
 
-The Lead clones the pinned release, runs the repository gate, creates the four Bots and their group chat, the Aegis
+The Lead clones the pinned release, runs the repository gate, creates the eight Bots and the group chat of six of them, the Aegis
 Options Floor, and installs the skills with a readback of each. It shows you a demo on a copy of the made-up sample
 desk, so you see real tool output before you are asked anything. Then it asks you for one thing: a free Alpaca
 paper key (a key ID and its secret), added through the secure secret card, never pasted in chat. The
@@ -99,7 +99,7 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    On this release, the three texts are:
 
    ```text
-   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo, weekly-review. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, and any request to a brokerage's order, position or account endpoints, including any request to api.alpaca.markets, and any request to paper-api.alpaca.markets other than /v2/clock, /v2/calendar and /v2/options/contracts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
    Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or replacing /workspace/aegis-desk/positions.csv. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
@@ -168,15 +168,15 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   paper-key check: the interactive full doctor verified the paper key.
 - **Readbacks** in the first run of every Bot's Name and Job, every skill (`template`, `installed`, `pointer` or
   `mismatch`) and the Floor's members; of the connected apps and MCP servers when you say "add my positions"; and of
-  Notifications and Timezone on the three routine-owning Bots when you say "turn on monitoring".
+  Notifications and Timezone on the routine-owning Bots when you say "turn on monitoring".
 - **The weekly cost** in runs:
 
   ```text
   python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root /workspace/aegis-desk
   ```
 
-  On this release it prints, among its lines, `lean: 41 runs per week (about 8 runs per weekday plus Saturday)` and
-  `active: 61 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)`.
+  On this release it prints, among its lines, `lean: 66 runs per week (every routine at its regular slots)` and
+  `active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)`.
 
 ## Limits
 

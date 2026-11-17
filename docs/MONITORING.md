@@ -20,8 +20,17 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 | `book-check` | Aegis Exit Sentinel | 10:05, 12:05, 14:05, 15:35, Mon-Fri | the book check of your adopted rules; 10:05 also refreshes the threshold levels; 12:05 may post watch alive; 15:35 adds the pre-close line |
 | `final-call` | Aegis Position Control | 15:20, Mon-Fri | the Final Call, the T-1 preview and the assignment watch |
 | `eod` | Aegis Exit Sentinel | 16:35, Mon-Fri | the end-of-day book snapshot and `reports/book.md`, the threshold-level sheet from the snapshot, the reconciliation |
+| `journal-close` | Aegis Exit Sentinel | 17:30, Mon-Fri | closes the day's signal journal (`journal/outcomes/<date>.json`); posts nothing |
 | `eod-brief` | Aegis Desk Lead | 17:10, Mon-Fri | the EOD Desk Brief |
 | `post-expiry` | Aegis Position Control | 09:30, Saturday | the post-expiry reconciliation |
+| `opening-marks` | Aegis Book & Risk Analyst | 10:20, Mon-Fri | the daily beta fit, then YOUR BOOK at the opening marks |
+| `pre-event-stress` | Aegis Book & Risk Analyst | 14:50, Mon-Fri | an event stress of each held symbol whose earnings or ex-dividend date is within 2 trading days |
+| `weekend-stress` | Aegis Book & Risk Analyst | 10:00, Saturday | the scenario grid of the last end-of-day snapshot |
+| `calendar-build` | Aegis Events and Calendar Analyst | 07:40, Monday | the calendar lint, then the cash dividends declared in Alpaca's corporate actions, proposed for your tap |
+| `event-sheet` | Aegis Events and Calendar Analyst | 07:50, Monday | the decision calendar of the next two weeks |
+| `rules-sanity` | Aegis Rules Steward | 16:45, Mon-Fri | the adopted rulebook verified and linted against the structures held today |
+| `rulebook-memo` | Aegis Rules Steward | 17:20, Friday | the memo of the adopted rulebook, then the same lint |
+| `weekly-review` | Aegis Review Desk | 11:00, Saturday | the weekly review of your signals and rules, counts only |
 
 The weekday routines run on trading days only. No weekday routine runs between 08:00 and 10:00 ET, the window in which
 platform queue delays are worst and the delayed quotes of the open are not in yet. `book-check` starts at least 20
@@ -47,6 +56,25 @@ Each routine has a posting policy and one written quiet rule. The quiet rules, v
   missed runs named, the owner's to-do list."
 - `post-expiry`: "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits
   (csv_recon.py --diff shows the rows); confirm against your broker."
+- `opening-marks`: "Always one message: YOUR BOOK as marked after the delayed open, with the net delta and, when the
+  day's beta fit holds, the beta-weighted delta and its r2 flag."
+- `pre-event-stress`: "Posts only when a held symbol's earnings or ex-dividend date is within 2 trading days: the
+  event stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
+- `weekend-stress`: "Always one message on Saturday: the scenario grid of the book as of the last close, a computation
+  on the book's model, not a forecast; a group without usable marks is named and the total left out."
+- `calendar-build`: "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a
+  cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+- `event-sheet`: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last
+  trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+- `journal-close`: "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and
+  prints quiet; a failure is an incident line."
+- `rules-sanity`: "Posts only when the adopted rulebook no longer covers a structure you hold today (a position opened after the
+  adoption), with each lint finding; otherwise quiet."
+- `rulebook-memo`: "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it,
+  its rules by role, the structures you hold) and the lint's verdict against today's positions."
+- `weekly-review`: "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts
+  per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only,
+  never a money total, a rate or a ranking."
 
 A routine with nothing to post prints the single word `quiet`, and its Bot posts that word. A closed day (a weekend,
 an NYSE holiday, or a full closure you entered in `research/calendar.toml`) runs no step and prints `quiet`.
@@ -62,14 +90,19 @@ never inside its rule's cooldown. A standing UNAVAILABLE banner re-posts on ever
 
 ## Which chat says what
 
-A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the three routine-owning Bots:
-the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position Control.
+A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the routine-owning Bots: the
+Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control, the Aegis Book & Risk Analyst and the Aegis Events
+and Calendar Analyst.
 
 | Message | Chat |
 | --- | --- |
 | each EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED message, the rulebook digest, the pre-close line, watch alive, THRESHOLD LEVELS | Aegis Exit Sentinel |
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the post-expiry reconciliation | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF | Aegis Desk Lead |
+| YOUR BOOK at the opening marks, EVENT STRESS, the Saturday SCENARIO | Aegis Book & Risk Analyst |
+| the Monday calendar findings, SOURCED DIVIDENDS, the DECISION CALENDAR | Aegis Events and Calendar Analyst |
+| RULES SANITY (a finding only), the Friday RULEBOOK MEMO | Aegis Rules Steward, in its own chat |
+| WEEKLY REVIEW (Saturday) | Aegis Review Desk, in its own chat |
 | An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
 | A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
@@ -144,8 +177,8 @@ Every run spends weekly platform usage. `routine_audit.py --budget` prints the r
 deducted):
 
 ```text
-lean: 41 runs per week (about 8 runs per weekday plus Saturday)
-active: 61 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 66 runs per week (every routine at its regular slots)
+active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 The active profile is lean plus four Exit Sentinel book checks at 11:05, 13:05, 14:35 and 15:05, created paused at

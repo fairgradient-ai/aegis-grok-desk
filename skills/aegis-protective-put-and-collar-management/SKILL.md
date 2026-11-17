@@ -126,7 +126,7 @@ unavailable: your rule FLOOR: underlying SPY: no usable mark (quote grade F)
   `aegis-overlay-proposals`).
 - `scenario.py --event earnings|ex_dividend --symbol SYM` prices a hedge through the symbol's next event, one trading
   day after it, on the book's own model, and splits each group's change into stock and options so the offset shows.
-  It is a computation, not a forecast; the seat that relays it is planned for Stage 2 (not in this release).
+  It is a computation, not a forecast; the Aegis Book & Risk Analyst relays it.
 - The example rules read absolute delta; none of them reads a signed delta.
 
 This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules fired and why; you act in your brokerage account.

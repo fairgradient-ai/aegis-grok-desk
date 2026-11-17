@@ -439,6 +439,40 @@ class LintResult:
 # --------------------------------------------------------------------------------------------
 
 
+REVIEW_CODE_CURRENCY: str = "review_currency"
+REVIEW_CODE_PHRASE: str = "review_phrase"
+REVIEW_CODES: Tuple[str, ...] = (REVIEW_CODE_CURRENCY, REVIEW_CODE_PHRASE)
+REVIEW_REFUSED_PHRASES: Tuple[str, ...] = ("return", "returns", "performance", "win rate", "hit rate", "success rate",
+                                           "saved", "avoided", "outperform", "outperformed", "outperforms",
+                                           "total p/l")
+"""The review mode's refused phrases (roadmap 3.4, open question 6): a review counts what happened to the owner's rules
+and never grades them."""
+REVIEW_FACT_LINE_RE = re.compile(r"^SIG-[0-9]{8}-[0-9]{3} \| ")
+"""A per-signal fact line, the only line of a review that may carry a currency amount."""
+_REVIEW_CURRENCY_RE = re.compile(r"\$\s?[0-9]")
+_REVIEW_PHRASE_RES: Tuple["re.Pattern[str]", ...] = tuple(
+    re.compile(r"(?<![A-Za-z])%s(?![A-Za-z])" % re.escape(phrase).replace(r"\ ", r"\s+"), re.IGNORECASE)
+    for phrase in REVIEW_REFUSED_PHRASES)
+
+
+def review_findings(text: str) -> List[Finding]:
+    """The review mode (roadmap 3.4): a currency amount on any line that is not a per-signal fact line
+    (:data:`REVIEW_FACT_LINE_RE`), and any of :data:`REVIEW_REFUSED_PHRASES`, in any case. The finding names the phrase
+    by its number, never by its text. Runs beside :func:`check`, never instead of it."""
+    findings: List[Finding] = []
+    for number, line in enumerate(text.split("\n"), 1):
+        if _REVIEW_CURRENCY_RE.search(line) and not REVIEW_FACT_LINE_RE.match(line):
+            findings.append(Finding(REVIEW_CODE_CURRENCY, number, 1, "line %d: a currency amount outside a per-signal "
+                                    "fact line (a review totals nothing in money)" % number))
+        for index, pattern in enumerate(_REVIEW_PHRASE_RES, 1):
+            match = pattern.search(line)
+            if match:
+                findings.append(Finding(REVIEW_CODE_PHRASE, number, match.start() + 1,
+                                        "line %d: review phrase RV%02d refused (a review never grades the rules)"
+                                        % (number, index)))
+    return findings
+
+
 def footer_line(as_of: datetime.datetime, delay_min: int = FOOTER_DELAY_MIN) -> str:
     """The fixed footer with the data's as-of time of day in UTC (``HH:MM``); ``as_of`` must be aware."""
     if not isinstance(as_of, datetime.datetime) or as_of.tzinfo is None or as_of.utcoffset() is None:

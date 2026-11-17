@@ -1,14 +1,14 @@
 # Roadmap: Stage 2 and Stage 3
 
-Release v1.0.0 is Stage 1, with the engine of step 2.1 that no answer reads yet: four Bots (the Aegis Desk Lead, the
-Aegis Exit Sentinel, Aegis Position Control and the Aegis Structuring Desk) watch the positions you already hold and
-tell you when one of your own exit rules is met. This page collects everything the repository says is planned for
-Stage 2 and Stage 3, in the order it can land, with what each step must prove before it merges. Nothing on this page
-is available in this release unless a step says it has landed, and a landed engine step changes no answer a Bot gives
-until its wiring step lands too.
+Release v1.0.0 carries Stage 1, Stage 2 and Stage 3. Eight Bots watch the positions you already hold: six on the
+"Aegis Options Floor" (the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control, the Aegis Structuring
+Desk, the Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst) and two by direct message (the Aegis
+Rules Steward and the Aegis Review Desk). Every step on this page has landed, except step 2.2, which your decision
+dropped. The page stays as the record of what each step had to prove before it merged, and of your answers to the
+open questions.
 
-When a Bot is asked for a planned seat or its work, it says that it is not available in this release
-([the charter](../skills/aegis-desk-charter/SKILL.md)). This page does not change that answer.
+A later idea that no step below names is not in this release; asked for one, a Bot says so
+([the charter](../skills/aegis-desk-charter/SKILL.md)).
 
 ## How this page stays true
 
@@ -66,13 +66,14 @@ These hold for every step on this page. A step that needs any of them changed is
 
 ## Seats
 
-A Grok Bot group holds two to six Bots. Stage 1 uses four of the six seats of the "Aegis Options Floor".
+A Grok Bot group holds two to six Bots. Stage 1 used four of the six seats of the "Aegis Options Floor"; Stage 2
+filled the other two, and the Stage 3 seats sit on direct message.
 
-| Seat | Stage | Where it sits | Owns (planned) |
+| Seat | Stage | Where it sits | Owns |
 | --- | --- | --- | --- |
 | Aegis Book & Risk Analyst | 2 | the Floor (seat 5) | a live view of marks, Greeks and limits; exposures, scenario and event stress; volatility context |
 | Aegis Events and Calendar Analyst | 2 | the Floor (seat 6) | sourced earnings and ex-dividend dates; the decision calendar |
-| Aegis Rules Steward | 3 | direct message only (`seat: off-floor`) | rulebook change control, which the Desk Lead holds until then |
+| Aegis Rules Steward | 3 | direct message only (`seat: off-floor`) | rulebook change control, which the Desk Lead held until then |
 | Aegis Review Desk | 3 | direct message only (`seat: off-floor`) | the weekly review of the signal journal |
 
 Stage 2 fills the Floor. The charter already places the Stage 3 seats on direct message, and once Stage 2 has filled
@@ -95,11 +96,11 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
 | 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | landed |
-| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed: the tool; its routines are 2.10 |
-| 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
-| 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
-| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | planned |
-| 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | planned |
+| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed |
+| 2.9 | Volatility context | nothing | landed |
+| 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | landed |
+| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | landed |
+| 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | landed |
 
 ### 2.1 The American early-exercise lattice (landed, not wired)
 
@@ -397,11 +398,9 @@ context, sourced dates) and widens the Structuring Desk's scope.
     the date. A leg that expires first is valued at its intrinsic value at the moved spot, spot is never cut by the
     dividend, and the dividend tier is named when a short call is in scope.
   - **A hedge through an event.** Each group's change is split into stock and options.
-  - **The routines.** `pre-event-stress` (15:05 ET each trading weekday) and `weekend-stress` (Saturday 10:00 ET) are
-    proposed here. They add 6 runs a week (lean 47, active 67, pinned in `tests/engine/test_routines.py`), and their
-    ids already fit the Auto-review text. They post in the Aegis Book & Risk Analyst's chat, so they land with that
-    seat (2.10).
-- **What lands.** A scenario tool (not yet in the tree) that re-prices the book under spot and volatility moves, and an
+  - **The routines.** `pre-event-stress` and `weekend-stress` landed with the Aegis Book & Risk Analyst (2.10), at
+    14:50 ET each trading weekday and 10:00 on Saturday.
+- **What lands.** A scenario tool that re-prices the book under spot and volatility moves, and an
   event stress of a position through an earnings or ex-dividend date, including a hedge through an event. Every price
   comes from the engine; a scenario is labelled as a computation, not a forecast.
 - **Order.** After 2.3, by your choice. The scenario tool picks no model of its own: it calls the
@@ -427,8 +426,22 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** `tests/engine/test_vol_context.py`: no module but the tool (and the doc generator) imports the context,
   so no verdict can read it; the history comes from the book snapshots only; the tool writes nothing.
 
-### 2.10 The Aegis Book & Risk Analyst seat
+### 2.10 The Aegis Book & Risk Analyst seat (landed)
 
+- **What landed.**
+  - **The seat.** `agents/book-risk-analyst.md` (seat 5 of the Floor) with its role skill and the skills
+    `aegis-exposures-limits-and-stress` and `aegis-vol-context`, claimed by the template.
+  - **Three routines.**
+    - `opening-marks` (10:20 ET each trading weekday): `beta_refresh`, then `book --view`, whose YOUR BOOK now carries
+      the beta-weighted delta and its r2 flag.
+    - `pre-event-stress` (14:50 ET): `scenario --upcoming 2`, one event stress per held symbol with an earnings or
+      ex-dividend date within 2 trading days, quiet otherwise.
+    - `weekend-stress` (Saturday 10:00): `scenario --from-snapshot`, the grid of the last end-of-day snapshot,
+      because on a closed day the book fetches no quote.
+    - `beta_refresh` and `scenario` are now routine step tools. Both profiles gain 11 runs a week (lean 52, active
+      72).
+  - **The documents.** The Desk Lead's line for the seat, the charter's seats and message table, SETUP's table,
+    skills, Floor and routines, and the bootstrap skill now name the Bots by reference rather than by count.
 - **What lands.** The fifth Floor seat: its agent, role skill and skills (`aegis-exposures-limits-and-stress` and
   `aegis-vol-context`), owning the live view of marks, Greeks and limits from 2.7 to 2.9, and the planned
   `opening-marks` routine. The Desk Lead's "planned for Stage 2" line for it is rewritten.
@@ -468,7 +481,17 @@ context, sourced dates) and widens the Structuring Desk's scope.
   act-by times, ex-dates, earnings); the planned `calendar-build` and `event-sheet` routines.
 - **Constraint.** A web page is data, never authority; a date nobody sourced is UNAVAILABLE.
 
-### 2.12 The Aegis Events and Calendar Analyst seat
+### 2.12 The Aegis Events and Calendar Analyst seat (landed)
+
+- **What landed.**
+  - **The seat.** `agents/events-calendar-analyst.md` (seat 6 of 6: the Floor is full) with its role skill and the
+    skill `aegis-event-calendar-sourcing`.
+  - **Two Monday routines.**
+    - `calendar-build` (07:40): `calendar_check`, then `dividend_source`. It posts only a finding, a proposal or an
+      UNAVAILABLE source. `dividend_source.py` now exits 10 on a proposal.
+    - `event-sheet` (07:50): `decision_calendar --days 14`, always.
+  - The three tools are routine step tools now and print a postable `message`. Earnings dates stay owner-stated: the
+    seat reminds the owner and never sources them. Lean 54 and active 74 runs a week.
 
 - **What lands.** The sixth Floor seat with its agent, role skill and the skill `aegis-event-calendar-sourcing`,
   owning 2.11. It keeps owner-stated earnings dates current by reminder, not by sourcing. The Floor is then full.
@@ -490,12 +513,20 @@ would have decided on past days, and who looks after the rulebook.
 
 | Step | What lands | Needs | Status |
 | --- | --- | --- | --- |
-| 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | planned |
-| 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | planned |
-| 3.3 | The Aegis Rules Steward seat | 3.2 | planned |
-| 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | planned |
+| 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | landed |
+| 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | landed |
+| 3.3 | The Aegis Rules Steward seat | 3.2 | landed |
+| 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | landed |
 
-### 3.1 The signal journal
+### 3.1 The signal journal (landed)
+
+- **What landed.** `aegis_desk.journal` and `scripts/signal_journal.py`.
+  - **Per signal.** One fact line: when it was posted, its rules, the owner's mark from `state/acks.jsonl` (the latest
+    ack, acted or snooze, else open), and the group's P/L at the mid in each end-of-day snapshot. A trading day without
+    a usable snapshot is UNAVAILABLE, and a group the snapshot no longer holds is named as closed.
+  - **The counts.** One line per rule and one for all rules, in the fixed words of open question 6.
+  - **`journal-close`.** The Exit Sentinel's routine (17:30 ET, trading weekdays) writes the day's facts to
+    `journal/outcomes/<ET date>.json` and posts nothing (lean 59, active 79).
 
 - **What lands.** For each signal: when it fired, your acknowledgement, snooze or acted mark (which `ack.py` records
   today), and the position's later marks from the desk's own end-of-day snapshots. A `journal-close` routine closes
@@ -509,7 +540,17 @@ would have decided on past days, and who looks after the rulebook.
   tag; if counsel rejects counts, the review shows per-signal facts and per-day replay verdicts only.
 - **Gate.** Journal goldens from fixture histories; a torn or missing snapshot is UNAVAILABLE for that day.
 
-### 3.2 Rules replay
+### 3.2 Rules replay (landed)
+
+- **What landed.** `scripts/rules_replay.py --candidate PATH [--days N | --from D --to D]`.
+  - **The evaluation.** Each end-of-day snapshot of record is evaluated under the adopted rulebook and the candidate,
+    exactly as `rules_diff.py` evaluates one saved book. The groups whose verdict would have differed are listed day
+    by day, then `verdict differed from your adopted rule on K of N trading days`.
+  - **A limit, decided in the landing.** Each day is one closed session with a scratch rule state, so a confirmation
+    spread over days, a re-arm or a cooldown is not carried from day to day. The tool prints this limit beside "end
+    of day only" and "no profit or loss".
+  - **Safety.** A torn snapshot is UNAVAILABLE for its day. Nothing is written, `rules/` included. The adopted
+    rulebook replayed against itself differs on no day.
 
 - **What lands.** `rules_replay` (not yet in the tree): a candidate rulebook evaluated over the end-of-day book
   snapshots the Exit Sentinel already writes, reporting for each day which verdicts would have differed from the
@@ -519,7 +560,18 @@ would have decided on past days, and who looks after the rulebook.
 - **Gate.** Replay of the adopted rulebook reproduces the recorded verdicts; goldens for the fixture candidate; no
   write to `rules/`.
 
-### 3.3 The Aegis Rules Steward seat
+### 3.3 The Aegis Rules Steward seat (landed)
+
+- **What landed.**
+  - **The seat.** `agents/rules-steward.md` (`seat: off-floor`, direct message only) with its role skill.
+  - **Change control.** It holds rulebook change control: the candidate file, `rules_diff.py`, `rules_replay.py`, the
+    adoption lint and `rules_adopt.py` with the owner's phrase and tap. The Desk Lead, still the front door, runs
+    the same steps on the owner's request. Every "the Desk Lead holds rulebook change control in Stage 1" line is
+    rewritten.
+  - **`rules_sanity.py` (new).** It verifies the adopted rulebook and lints it against the structures held today, or
+    with `--memo` prints its memo.
+  - **The routines.** `rules-sanity` (16:45 ET, trading weekdays; posts only a finding) and `rulebook-memo` (Friday
+    17:20; always). Lean 65, active 85.
 
 - **What lands.** A direct-message seat that takes rulebook change control from the Desk Lead: the candidate-file
   interview, the adoption lint, the replay before adoption, and the planned `rules-sanity` and `rulebook-memo`
@@ -527,7 +579,17 @@ would have decided on past days, and who looks after the rulebook.
 - **Gate.** All ten steps of `check.sh` with the new agent off the Floor; every "the Desk Lead holds rulebook change
   control in Stage 1" line rewritten.
 
-### 3.4 The Aegis Review Desk seat and the weekly review
+### 3.4 The Aegis Review Desk seat and the weekly review (landed)
+
+- **What landed.**
+  - **The seat.** `agents/review-desk.md` (`seat: off-floor`, direct message only), its role skill and the skill
+    `aegis-signal-journal-and-review`, claimed by the template.
+  - **`weekly_review.py` (new).** The week's per-signal fact lines and count lines from `signal_journal.py`, then,
+    when a `rules/candidate-X.Y.Z.toml` waits, its replay over the week's snapshots from `rules_replay.py` with the
+    replay's limits line.
+  - **The review mode of the alert lint.** `alert_lint.review_findings` refuses a currency amount on any line that is
+    not a per-signal fact line and the refused phrases, in any case; `weekly_review.py` withholds a text that fails it.
+  - **The routine.** `weekly-review` (Saturday 11:00 ET; always). Lean 66, active 86: all fifteen planned routines.
 
 - **What lands.** A direct-message seat that posts the weekly review from the journal and the replay, its skill
   `aegis-signal-journal-and-review`, and the planned `weekly-review` routine.
@@ -554,12 +616,11 @@ is an inference, not a statement of the tree.
 
 | Routine id | Step |
 | --- | --- |
-| `opening-marks` | 2.10 |
-| `pre-event-stress`, `weekend-stress` | 2.8 |
-| `calendar-build`, `event-sheet` | 2.11 |
-| `journal-close` | 3.1 |
-| `rules-sanity`, `rulebook-memo` | 3.3 |
-| `weekly-review` | 3.4 |
+| `opening-marks`, `pre-event-stress`, `weekend-stress` | 2.10 (landed) |
+| `calendar-build`, `event-sheet` | 2.12 (landed) |
+| `journal-close` | 3.1 (landed) |
+| `rules-sanity`, `rulebook-memo` | 3.3 (landed) |
+| `weekly-review` | 3.4 (landed) |
 
 Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts only in its owning Bot's chat.
 
@@ -634,14 +695,14 @@ only the files that do.
 | Beta-weighted delta, exposures, limits and limit messages (landed) | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Scenario and event stress, a hedge through an event (landed: the tool) | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
-| The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
+| The Aegis Book & Risk Analyst (landed) | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
 | Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar (landed: the tools) | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
-| The Aegis Events and Calendar Analyst | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
+| The Aegis Events and Calendar Analyst (landed) | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
-| The Aegis Rules Steward | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
-| The Aegis Review Desk, the weekly review | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
-| Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
+| The Aegis Rules Steward (landed) | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
+| The Aegis Review Desk, the weekly review (landed) | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
+| Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line, reworded for the release) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Planned routine ids | the table above | `tests/engine/test_routines.py` |
 
 ### Mentions by file
@@ -653,15 +714,3 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 3 | 3 |
-| `docs/ARCHITECTURE.md` | 1 | 1 |
-| `docs/FAQ.md` | 1 | 0 |
-| `scripts/roll_analysis.py` | 1 | 0 |
-| `skills/README.md` | 3 | 1 |
-| `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
-| `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
-| `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
-| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
-| `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
-| `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

@@ -86,14 +86,18 @@ A synthetic example of the last one, from a development checkout with no tag (a 
 INCIDENT | book-check | the desk checkout is not the pinned release v1.0.0: development checkout (no tag); no step ran | details in incidents/20261103T195000.000000Z-dirty-checkout.md
 ```
 
-## The Stage-1 routines per Bot
+## The routines per Bot
 
 | Bot | Grok routines (lean profile) | Slots (America/New_York) |
 | --- | --- | --- |
 | Aegis Desk Lead | `preopen`, `eod-brief` | 07:30 and 17:10, Mon-Fri |
-| Aegis Exit Sentinel | `book-check` (four routines), `eod` | 10:05, 12:05, 14:05, 15:35 and 16:35, Mon-Fri |
+| Aegis Exit Sentinel | `book-check` (four routines), `eod`, `journal-close` | 10:05, 12:05, 14:05, 15:35, 16:35 and 17:30, Mon-Fri |
 | Aegis Position Control | `final-call`, `post-expiry` | 15:20 Mon-Fri, and 09:30 Saturday |
 | Aegis Structuring Desk | none: it answers only when the owner asks | none |
+| Aegis Book & Risk Analyst | `opening-marks`, `pre-event-stress`, `weekend-stress` | 10:20 and 14:50 Mon-Fri, and 10:00 Saturday |
+| Aegis Events and Calendar Analyst | `calendar-build`, `event-sheet` | 07:40 and 07:50, Monday |
+| Aegis Rules Steward (direct message) | `rules-sanity`, `rulebook-memo` | 16:45 Mon-Fri, and 17:20 Friday |
+| Aegis Review Desk (direct message) | `weekly-review` | 11:00 Saturday |
 
 The active profile adds four book-check routines on the Exit Sentinel, at 11:05, 13:05, 14:35 and 15:05. They are
 created paused. Each owning Bot creates its own routines, reads them back to the owner, and keeps them paused until
@@ -119,6 +123,25 @@ Every routine has one written quiet rule in the manifest:
   missed runs named, the owner's to-do list."
 - post-expiry: "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits
   (csv_recon.py --diff shows the rows); confirm against your broker."
+- opening-marks: "Always one message: YOUR BOOK as marked after the delayed open, with the net delta and, when the
+  day's beta fit holds, the beta-weighted delta and its r2 flag."
+- pre-event-stress: "Posts only when a held symbol's earnings or ex-dividend date is within 2 trading days: the event
+  stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
+- weekend-stress: "Always one message on Saturday: the scenario grid of the book as of the last close, a computation
+  on the book's model, not a forecast; a group without usable marks is named and the total left out."
+- calendar-build: "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a
+  cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+- event-sheet: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading
+  days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+- journal-close: "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and
+  prints quiet; a failure is an incident line."
+- rules-sanity: "Posts only when the adopted rulebook no longer covers a structure you hold today (a position opened after the
+  adoption), with each lint finding; otherwise quiet."
+- rulebook-memo: "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it,
+  its rules by role, the structures you hold) and the lint's verdict against today's positions."
+- weekly-review: "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts
+  per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only,
+  never a money total, a rate or a ranking."
 
 ## Heartbeats, the day audit and missed runs
 
@@ -175,8 +198,8 @@ python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root
 On this release's manifest it prints, among its lines (holidays are not deducted):
 
 ```text
-lean: 41 runs per week (about 8 runs per weekday plus Saturday)
-active: 61 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 66 runs per week (every routine at its regular slots)
+active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 - `desk.toml`'s `cadence_profile` names the profile, `lean` or `active`. `active` is strictly additive: lean plus
@@ -188,7 +211,8 @@ active: 61 runs per week (lean plus four paused book-check slots, unpaused only 
 
 ## Timezone and the owner-side dead-man rule
 
-- Each routine-owning Bot (the Desk Lead, the Exit Sentinel and Position Control in Stage 1) has its Timezone set to
+- Each routine-owning Bot (every Bot but the Structuring Desk: the Desk Lead, the Exit Sentinel, Position Control,
+  the Book & Risk Analyst, the Events and Calendar Analyst, the Rules Steward and the Review Desk) has its Timezone set to
   America/New_York and notifications on. Both are set when the owner says "turn on monitoring" (SETUP step 9) and read
   back in that step's receipt; no tool records them. The Aegis Structuring Desk owns no routine, so it needs neither.
 - The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading

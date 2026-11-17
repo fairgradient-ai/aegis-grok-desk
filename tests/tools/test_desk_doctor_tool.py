@@ -42,8 +42,8 @@ FULL_IDS = ["release_pin", "interpreter", "holiday_table", "key_source", "paper_
 DESK_FILES_PASS = ("desk.toml loads (sha f08a18dc); positions.csv parses: 7 rows in 4 groups, none quarantined; "
                    "rules 1.0.0, sha cc09859c; research/calendar.toml loads")
 MISSED_AT_REGULAR = ("preopen 07:30 ET: no heartbeat 45 min after the slot; book-check 10:05 ET: no heartbeat 45 min "
-                     "after the slot; book-check 12:05 ET: no heartbeat 45 min after the slot; book-check 14:05 ET: no "
-                     "heartbeat 45 min after the slot")
+                     "after the slot; opening-marks 10:20 ET: no heartbeat 45 min after the slot; book-check 12:05 ET: "
+                     "no heartbeat 45 min after the slot; book-check 14:05 ET: no heartbeat 45 min after the slot")
 
 
 class Answer:
@@ -290,6 +290,7 @@ class FullModeTest(DeskCopy):
     def test_a_pinned_checkout_with_heartbeats_and_a_recent_readback_passes_clean(self) -> None:
         state.atomic_write_json(self.paths.desk_state_json, {"connector_readback_utc": "2026-10-20T15:00:00Z"})
         for routine_id, slot, run in (("preopen", "07:30", "2026-11-03T12:31Z"), ("book-check", "10:05", "2026-11-03T15:06Z"),
+                                      ("opening-marks", "10:20", "2026-11-03T15:21Z"),
                                       ("book-check", "12:05", "2026-11-03T17:06Z"), ("book-check", "14:05", "2026-11-03T19:06Z")):
             moment = datetime.datetime.strptime(run, "%Y-%m-%dT%H:%MZ").replace(tzinfo=datetime.timezone.utc)
             heartbeat.write_heartbeat(self.paths, routine_id, now=moment, exit_code=0, status="ok", started_utc=moment,
@@ -302,8 +303,8 @@ class FullModeTest(DeskCopy):
                          (checks["release_pin"]["status"], checks["release_pin"]["reason"]))
         self.assertEqual(("PASS", "connected apps and MCP servers confirmed 2026-10-20 (14 days ago)"),
                          (checks["connector_readback"]["status"], checks["connector_readback"]["reason"]))
-        self.assertEqual(("PASS", "4 of 4 due slots ran today (profile lean); latest heartbeats: book-check 44 min ago, "
-                                  "preopen 439 min ago"),
+        self.assertEqual(("PASS", "5 of 6 due slots ran today (profile lean); latest heartbeats: book-check 44 min ago, "
+                                  "opening-marks 269 min ago, preopen 439 min ago"),
                          (checks["heartbeats"]["status"], checks["heartbeats"]["reason"]))
         self.assertEqual(["key_source", "paper_key"], body["payload"]["warned"])
 

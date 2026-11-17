@@ -18,8 +18,8 @@ How the desk is built, for an owner who wants to know what runs where. The tool 
   `python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot HH:MM`, and posts what it prints.
 - **The Bots**, Grok Bots with role profiles (`agents/`) and skills (`skills/`). They route your questions, run tools,
   and post tool text verbatim. They never compute a number and never decide a verdict. Bots pass information through
-  files and tool output on the desk computer, never through opinions. Three Bots own routines; the fourth, the Aegis
-  Structuring Desk, runs its tools only when you ask.
+  files and tool output on the desk computer, never through opinions. Every Bot but the Aegis Structuring Desk owns
+  routines; the Structuring Desk runs its tools only when you ask.
 - **The repository gates**, `scripts/check.sh` and its sub-gates, prove the structure and the no-write property before
   anything ships.
 
@@ -93,6 +93,7 @@ belongs to the alerts. [STRUCTURING.md](STRUCTURING.md) has the criteria, the ou
 | `data/beta/<date>.json` | `beta_refresh.py` | each held underlying's beta against SPY (the book's beta-weighted delta reads it) |
 | `data/positions/<date>.csv`, `.sha256`, `.recon.json` | `csv_recon.py` | a copy of `positions.csv` and the reconciliation |
 | `journal/signals.jsonl`, `journal/alerts.jsonl`, `journal/<date>.md` | `book_check.py --post`, `routine.py` | every signal and every posted message |
+| `journal/outcomes/<date>.json` | `signal_journal.py --close` | the day's signal facts: the owner's marks and the end-of-day P/L |
 | `levels/<date>.md`, `levels/<date>.json` | `trigger_levels.py` | the threshold-level sheet |
 | `plans/<group>.md` | `trigger_levels.py --plan` | an exit-plan card |
 | `reports/book.md` | `book.py --report` | the full book table (never posted) |
@@ -212,13 +213,8 @@ The owner's decisions behind the design (2026-10-30):
 [ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
 the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4), weekly expirations (2.5),
 the stated cash check and per-account approval levels (2.6), the exposures and the two limit metrics (2.7), the
-scenario and event stress tool (2.8), the volatility context tool (2.9), and the sourced cash dividends and the
-decision calendar (2.11).
+scenario and event stress tool (2.8), the volatility context tool (2.9), the Aegis Book & Risk Analyst (2.10), the
+sourced cash dividends and the decision calendar (2.11) and the Aegis Events and Calendar Analyst (2.12).
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with the stress routines and the
-  `calendar-build` and `event-sheet` routines, are planned for Stage 2 (not in this release). Their tools have landed:
-  `scripts/scenario.py`, `scripts/dividend_source.py` and `scripts/decision_calendar.py`; the seats that relay them
-  are part of that plan. Volatility
-  context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
-- The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
-  journal review, are planned for Stage 3 (not in this release).
+- The review of your rules: the signal journal (3.1), the replay of a candidate rulebook over past snapshots (3.2), the Aegis Rules
+  Steward (3.3) and the Aegis Review Desk with the weekly review and the alert lint's review mode (3.4).
