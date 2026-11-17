@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-11-17)
 
 - **Release preparation: Stages 2 and 3 complete.** Eight Bots: six on the Floor and two by direct message.
   - **Present tense.** Every line that called a landed item planned is rewritten, and the roadmap's mention table is
