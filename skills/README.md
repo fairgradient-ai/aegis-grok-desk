@@ -36,14 +36,11 @@ a readback each. `template/grok-bot.json` records the sha256 of every `SKILL.md`
 | [aegis-exposures-limits-and-stress](aegis-exposures-limits-and-stress/SKILL.md) | the daily beta fit and its UNAVAILABLE cases, the beta-weighted delta and its r2 flag, the limits as adopted exit rules, the scenario grid on the book's own model, the event stress and a hedge's stock and options split | Aegis Book & Risk Analyst |
 | [aegis-vol-context](aegis-vol-context/SKILL.md) | the desk's own implied volatility against its recorded days, information only, never a judgment of cheap or rich | Aegis Book & Risk Analyst |
 | [aegis-event-calendar-sourcing](aegis-event-calendar-sourcing/SKILL.md) | every date as a fact with a source, the declared cash dividends proposed from Alpaca's corporate actions and the owner's tap, earnings dates and yields as reminders, the calendar findings and the decision calendar | Aegis Events and Calendar Analyst |
+| [aegis-signal-journal-and-review](aegis-signal-journal-and-review/SKILL.md) | each signal's facts from the desk's own records, the counts in fixed words, the replay of a candidate over the week and its limits, and counts only: no money total, rate, ranking or grade | Aegis Review Desk |
 | [aegis-ticket-and-unwind-order](aegis-ticket-and-unwind-order/SKILL.md) | the ticket line by line: the fixed leg grammar, the canonical leg order, the approval-level convention, the cash and realized lines, the 30-minute validity, exercise by exception and what follows a fill; you supply the limit | Aegis Structuring Desk |
 
 The skills describe your adopted rules, your criteria and the tools' output. None of them chooses a rule, a threshold
 or a criterion for you.
-
-## Later stages
-
-- `aegis-signal-journal-and-review`, the signal journal and the weekly review, is planned for Stage 3 (not in this release).
 
 ## Role skills
 
@@ -59,6 +56,7 @@ gets its own role skill as its standing instructions.
 | [aegis-role-events-calendar-analyst](aegis-role-events-calendar-analyst/SKILL.md) | `agents/events-calendar-analyst.md` | floor |
 | [aegis-role-exit-sentinel](aegis-role-exit-sentinel/SKILL.md) | `agents/exit-sentinel.md` | floor |
 | [aegis-role-position-control](aegis-role-position-control/SKILL.md) | `agents/position-control.md` | floor |
+| [aegis-role-review-desk](aegis-role-review-desk/SKILL.md) | `agents/review-desk.md` | off-floor |
 | [aegis-role-rules-steward](aegis-role-rules-steward/SKILL.md) | `agents/rules-steward.md` | off-floor |
 | [aegis-role-structuring-desk](aegis-role-structuring-desk/SKILL.md) | `agents/structuring-desk.md` | floor |
 <!-- role-skills:end -->

@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 6a7402ec3f14eceba32a2e48f307e02d6b5b95827a1b25024fcbf4f661d8d094
+  source_sha256: 8e94b15cedabc831d52242af223cd72e7467437b0350d642a08d02b65296a9e3
 ---
 
 # Aegis Desk Lead: role skill
@@ -163,7 +163,7 @@ places the owner has to go.
 - The event calendar is the Aegis Events and Calendar Analyst's (reminders, dividend proposals, the decision
   calendar). You write the dates the owner states ("update the calendar"). A date nobody sourced is UNAVAILABLE: never
   say a company "has not declared" a dividend or name a date from memory.
-- The weekly review (the Aegis Review Desk) is planned for Stage 3 (not in this release).
+- The weekly review is the Aegis Review Desk's (Saturday 11:00, by direct message): counts only, never a grade.
 
 ### Interactive commands
 

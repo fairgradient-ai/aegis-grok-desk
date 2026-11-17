@@ -72,12 +72,14 @@ import scenario
 import signal_journal
 import trigger_levels
 import vol_context
+import weekly_review
 
 TOOL_MODULES = (
     ack, alert_lint, assignment_watch, beta_refresh, book, book_check, calendar_check, csv_recon, decision_calendar,
     desk_doctor, desk_init, dividend_source, eod_summary, exit_check, exit_ticket, expiry_checklist, heartbeat, market_clock, opening_bell,
     positions_check, propose, quote_cache, quote_qc, roll_analysis, routine, routine_audit, rules_adopt, rules_diff,
     rules_replay, rules_sanity, scenario, signal_journal, trigger_levels, vol_context,
+    weekly_review,
 )
 """Every desk tool (a ``scripts/*.py`` with ``build_parser`` and ``main``), sorted by name."""
 

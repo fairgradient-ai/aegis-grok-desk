@@ -240,9 +240,9 @@ Floor; it never answers with another Bot's numbers.
 | the marks, the beta-weighted delta, a scenario or event stress, the volatility context | Aegis Book & Risk Analyst |
 | `research/calendar.toml`, a proposed dividend, the decision calendar | Aegis Events and Calendar Analyst |
 | the rulebook: a candidate, a dry run, a replay, the lint, the adoption | Aegis Rules Steward, by direct message |
+| the signal journal, the weekly review | Aegis Review Desk, by direct message |
 
-A request for a planned seat's work gets the answer that it is not available in this release. The review desk is
-planned for Stage 3 (not in this release).
+Every seat of the desk is in this release; a request for work no seat owns gets the answer that it is not available.
 
 ## The owner's checklist: check your broker directly
 

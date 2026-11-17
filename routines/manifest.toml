@@ -222,3 +222,18 @@ posts = "always"
 quiet_rule = "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it, its rules by role, the structures you hold) and the lint's verdict against today's positions."
 approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py rulebook-memo --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "weekly-review"
+owner = "review-desk"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["11:00"], active = ["11:00"] }
+days = ["Sat"]
+trading_days_only = false
+chain = ["weekly_review"]
+post = ["weekly_review"]
+posts = "always"
+quiet_rule = "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only, never a money total, a rate or a ranking."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py weekly-review --slot {slot} and post its output verbatim."

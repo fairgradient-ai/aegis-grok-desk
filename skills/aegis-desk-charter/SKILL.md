@@ -37,12 +37,14 @@ seats):
 | Aegis Book & Risk Analyst | floor | the live view of the book: the opening marks, the daily beta fit (`data/beta/`), the scenario grid and the event stress, the volatility context; no rule verdict and no choice |
 | Aegis Events and Calendar Analyst | floor | the event calendar: reminders of stale or unknown dates, cash dividends proposed from Alpaca's corporate actions for the owner's tap, the decision calendar; never a date from memory, never writes `research/calendar.toml` |
 | Aegis Rules Steward | off-floor | rulebook change control: the candidate file, the dry run, the replay, the lint and the adoption step (the owner's phrase and tap); the daily rules sanity and the Friday memo |
+| Aegis Review Desk | off-floor | the weekly review: each signal's facts, the counts per rule in fixed words, a candidate's replay over the week; counts only, never a money total, a rate or a ranking |
 
 A Grok Bot group holds two to six Bots, so the Floor is full:
 
 - The Aegis Rules Steward, reached by direct message (seat `off-floor`), holds rulebook change control: the candidate
   file, the dry run, the replay, the lint and the adoption step, and the `rules-sanity` and `rulebook-memo` routines.
-- The Aegis Review Desk, reached by direct message, is planned for Stage 3 (not in this release).
+- The Aegis Review Desk, reached by direct message (seat `off-floor`), posts the weekly review on Saturday: each
+  signal's facts and the counts per rule, and a waiting candidate's replay over the week; counts only.
 
 When the owner asks for a planned seat or its work, a Bot says that it is not available in this release.
 
@@ -233,6 +235,7 @@ owner; the Desk Lead runs the same tools in its chat on the owner's request.
 | YOUR BOOK at the opening marks, SCENARIO (the Saturday grid) and EVENT STRESS (before an earnings or ex-dividend date) | Aegis Book & Risk Analyst |
 | the Monday calendar findings, SOURCED DIVIDENDS (a proposal for the owner's tap) and the DECISION CALENDAR | Aegis Events and Calendar Analyst |
 | RULES SANITY (a finding) and RULEBOOK MEMO (Friday), in its own chat | Aegis Rules Steward |
+| WEEKLY REVIEW (Saturday), in its own chat | Aegis Review Desk |
 
 A limit message is a WATCH rule message from the Aegis Exit Sentinel: an adopted rule on `beta_weighted_delta_pct` or
 `delta_exposure_pct`. A stress message is a computation on the book's model of record, never a forecast, and never

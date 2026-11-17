@@ -71,6 +71,7 @@ section 1. Post each output verbatim, labelled "synthetic demo on a sample book:
 | `agents/book-risk-analyst.md` | Aegis Book & Risk Analyst | The live view of the book: marks, Greeks, exposures and stress |
 | `agents/events-calendar-analyst.md` | Aegis Events and Calendar Analyst | The event calendar of the options desk |
 | `agents/rules-steward.md` | Aegis Rules Steward | Rulebook change control of the options desk (direct message only) |
+| `agents/review-desk.md` | Aegis Review Desk | The weekly review of the options desk (direct message only) |
 
 If you were created for this desk, you are the Desk Lead; otherwise create one. Create the others and read back each
 native Name and Job. A Bot's standing instructions are its role skill, enabled for it only. The Desk Lead is the
@@ -91,7 +92,7 @@ Structuring Desk), `aegis-positions-csv-book-of-record`, `aegis-expiry-and-assig
 `aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order` (Structuring Desk),
 `aegis-exposures-limits-and-stress`, `aegis-vol-context` (Book & Risk Analyst, with `aegis-book-marking-and-greeks-honesty`
 and `aegis-protective-put-and-collar-management`), `aegis-event-calendar-sourcing` (Events and Calendar Analyst,
-with `aegis-expiry-and-assignment-protocol`). As the
+with `aegis-expiry-and-assignment-protocol`), `aegis-rules-dsl-and-change-control` (Rules Steward), `aegis-signal-journal-and-review` (Review Desk). As the
 front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-threshold-levels`,
 `aegis-overlay-proposals`, `aegis-roll-decision-framework`, `aegis-ticket-and-unwind-order`,
 `aegis-covered-call-and-cash-secured-put-management` and `aegis-protective-put-and-collar-management`.
@@ -100,7 +101,7 @@ front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-t
 `pointer` (points to the checkout file) or `mismatch` (not ready; a shared skill with another body is never enabled).
 
 <!-- role-skills:start -->
-Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-book-risk-analyst`, `aegis-role-desk-lead`, `aegis-role-events-calendar-analyst`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-rules-steward`, `aegis-role-structuring-desk`
+Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-book-risk-analyst`, `aegis-role-desk-lead`, `aegis-role-events-calendar-analyst`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-review-desk`, `aegis-role-rules-steward`, `aegis-role-structuring-desk`
 <!-- role-skills:end -->
 
 ## 6. Create the Aegis Options Floor
@@ -267,7 +268,7 @@ if missing.
    automatically" rule, exactly as printed:
 
 ```text
-Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo, weekly-review. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
 ```
 
 4. **You, only if git refuses the checkout** (`git refuses this checkout: it is owned by another user (see SETUP)`):
@@ -280,7 +281,7 @@ Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/rout
    `final-call` 15:20, plus `post-expiry` 09:30 Saturday; Book & Risk Analyst `opening-marks` 10:20,
    `pre-event-stress` 14:50, plus `weekend-stress` 10:00 Saturday; Events and Calendar Analyst `calendar-build`
    07:40 and `event-sheet` 07:50, Mondays; Rules Steward `rules-sanity` 16:45, plus `rulebook-memo` 17:20
-   Friday. `routine_audit.py --budget`: `lean: 65 runs per week ...`.
+   Friday; Review Desk `weekly-review` 11:00 Saturday. `routine_audit.py --budget`: `lean: 66 runs per week ...`.
 6. **One Test run** of the Lead's `preopen` proves routines see the key and the desk files; report any Ask-first
    card. Read back with `heartbeat.py --list` and `routine_audit.py` (with `--desk-root`).
 7. **Unpause.** Each Bot unpauses its lean routines and reads them back; then the full doctor.

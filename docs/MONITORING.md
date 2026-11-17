@@ -30,6 +30,7 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 | `event-sheet` | Aegis Events and Calendar Analyst | 07:50, Monday | the decision calendar of the next two weeks |
 | `rules-sanity` | Aegis Rules Steward | 16:45, Mon-Fri | the adopted rulebook verified and linted against the structures held today |
 | `rulebook-memo` | Aegis Rules Steward | 17:20, Friday | the memo of the adopted rulebook, then the same lint |
+| `weekly-review` | Aegis Review Desk | 11:00, Saturday | the weekly review of your signals and rules, counts only |
 
 The weekday routines run on trading days only. No weekday routine runs between 08:00 and 10:00 ET, the window in which
 platform queue delays are worst and the delayed quotes of the open are not in yet. `book-check` starts at least 20
@@ -71,6 +72,9 @@ Each routine has a posting policy and one written quiet rule. The quiet rules, v
   adoption), with each lint finding; otherwise quiet."
 - `rulebook-memo`: "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it,
   its rules by role, the structures you hold) and the lint's verdict against today's positions."
+- `weekly-review`: "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts
+  per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only,
+  never a money total, a rate or a ranking."
 
 A routine with nothing to post prints the single word `quiet`, and its Bot posts that word. A closed day (a weekend,
 an NYSE holiday, or a full closure you entered in `research/calendar.toml`) runs no step and prints `quiet`.
@@ -98,6 +102,7 @@ and Calendar Analyst.
 | YOUR BOOK at the opening marks, EVENT STRESS, the Saturday SCENARIO | Aegis Book & Risk Analyst |
 | the Monday calendar findings, SOURCED DIVIDENDS, the DECISION CALENDAR | Aegis Events and Calendar Analyst |
 | RULES SANITY (a finding only), the Friday RULEBOOK MEMO | Aegis Rules Steward, in its own chat |
+| WEEKLY REVIEW (Saturday) | Aegis Review Desk, in its own chat |
 | An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
 | A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
@@ -172,8 +177,8 @@ Every run spends weekly platform usage. `routine_audit.py --budget` prints the r
 deducted):
 
 ```text
-lean: 65 runs per week (every routine at its regular slots)
-active: 85 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 66 runs per week (every routine at its regular slots)
+active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 The active profile is lean plus four Exit Sentinel book checks at 11:05, 13:05, 14:35 and 15:05, created paused at

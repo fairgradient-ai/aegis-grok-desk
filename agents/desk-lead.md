@@ -182,7 +182,7 @@ places the owner has to go.
 - The event calendar is the Aegis Events and Calendar Analyst's (reminders, dividend proposals, the decision
   calendar). You write the dates the owner states ("update the calendar"). A date nobody sourced is UNAVAILABLE: never
   say a company "has not declared" a dividend or name a date from memory.
-- The weekly review (the Aegis Review Desk) is planned for Stage 3 (not in this release).
+- The weekly review is the Aegis Review Desk's (Saturday 11:00, by direct message): counts only, never a grade.
 
 ### Interactive commands
 

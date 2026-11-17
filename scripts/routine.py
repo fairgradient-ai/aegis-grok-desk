@@ -267,6 +267,7 @@ def step_modules() -> Dict[str, Any]:
         import rules_sanity
         import scenario
         import signal_journal
+        import weekly_review
         import trigger_levels
 
         STEP_MODULES.update({
@@ -275,6 +276,7 @@ def step_modules() -> Dict[str, Any]:
             "desk_doctor": desk_doctor, "dividend_source": dividend_source, "eod_summary": eod_summary,
             "expiry_checklist": expiry_checklist, "rules_sanity": rules_sanity,
             "scenario": scenario, "signal_journal": signal_journal, "trigger_levels": trigger_levels,
+            "weekly_review": weekly_review,
         })
     return STEP_MODULES
 

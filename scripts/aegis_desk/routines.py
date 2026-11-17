@@ -96,7 +96,8 @@ WEEKDAYS: Tuple[str, ...] = DAYS[:5]
 POSTS: Tuple[str, ...] = ("always", "transitions", "fired")
 STEP_TOOLS: Tuple[str, ...] = ("assignment_watch", "beta_refresh", "book", "book_check", "calendar_check", "csv_recon",
                                "decision_calendar", "desk_doctor", "dividend_source", "eod_summary", "expiry_checklist",
-                               "rules_sanity", "scenario", "signal_journal", "trigger_levels")
+                               "rules_sanity", "scenario", "signal_journal", "trigger_levels",
+    "weekly_review")
 """The tools a chain may run; ``routine.py`` imports exactly these (``STEP_MODULES``)."""
 FIXTURE_SET_TOOLS: FrozenSet[str] = frozenset({"book_check", "book", "csv_recon", "expiry_checklist",
                                                "assignment_watch", "trigger_levels", "beta_refresh", "scenario",

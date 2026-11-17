@@ -515,7 +515,7 @@ would have decided on past days, and who looks after the rulebook.
 | 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | landed |
 | 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | landed |
 | 3.3 | The Aegis Rules Steward seat | 3.2 | landed |
-| 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | planned |
+| 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | landed |
 
 ### 3.1 The signal journal (landed)
 
@@ -578,7 +578,17 @@ would have decided on past days, and who looks after the rulebook.
 - **Gate.** All ten steps of `check.sh` with the new agent off the Floor; every "the Desk Lead holds rulebook change
   control in Stage 1" line rewritten.
 
-### 3.4 The Aegis Review Desk seat and the weekly review
+### 3.4 The Aegis Review Desk seat and the weekly review (landed)
+
+- **What landed.**
+  - **The seat.** `agents/review-desk.md` (`seat: off-floor`, direct message only), its role skill and the skill
+    `aegis-signal-journal-and-review`, claimed by the template.
+  - **`weekly_review.py` (new).** The week's per-signal fact lines and count lines from `signal_journal.py`, then,
+    when a `rules/candidate-X.Y.Z.toml` waits, its replay over the week's snapshots from `rules_replay.py` with the
+    replay's limits line.
+  - **The review mode of the alert lint.** `alert_lint.review_findings` refuses a currency amount on any line that is
+    not a per-signal fact line and the refused phrases, in any case; `weekly_review.py` withholds a text that fails it.
+  - **The routine.** `weekly-review` (Saturday 11:00 ET; always). Lean 66, active 86: all fifteen planned routines.
 
 - **What lands.** A direct-message seat that posts the weekly review from the journal and the replay, its skill
   `aegis-signal-journal-and-review`, and the planned `weekly-review` routine.
@@ -609,7 +619,7 @@ is an inference, not a statement of the tree.
 | `calendar-build`, `event-sheet` | 2.12 (landed) |
 | `journal-close` | 3.1 (landed) |
 | `rules-sanity`, `rulebook-memo` | 3.3 (landed) |
-| `weekly-review` | 3.4 |
+| `weekly-review` | 3.4 (landed) |
 
 Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts only in its owning Bot's chat.
 
@@ -690,7 +700,7 @@ only the files that do.
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
 | The Aegis Rules Steward (landed) | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
-| The Aegis Review Desk, the weekly review | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
+| The Aegis Review Desk, the weekly review (landed) | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
 | Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Planned routine ids | the table above | `tests/engine/test_routines.py` |
 
@@ -703,12 +713,9 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 1 | 2 |
-| `docs/ARCHITECTURE.md` | 0 | 2 |
+| `agents/desk-lead.md` | 1 | 1 |
+| `docs/ARCHITECTURE.md` | 0 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
-| `skills/README.md` | 0 | 1 |
-| `skills/aegis-desk-charter/SKILL.md` | 0 | 1 |
-| `skills/aegis-desk-incident-playbooks/SKILL.md` | 0 | 1 |
 | `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 2 |
+| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 1 |

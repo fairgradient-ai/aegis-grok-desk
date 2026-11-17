@@ -2,6 +2,12 @@
 
 ## 1.0.0 (unreleased)
 
+- **The Aegis Review Desk** (roadmap step 3.4): a direct-message seat (`seat: off-floor`) with its role skill and the
+  skill `aegis-signal-journal-and-review`.
+  - **`weekly_review.py`** (new) posts the week's signal facts, the counts per rule and a waiting candidate's replay
+    over the week, counts only.
+  - **The alert lint's review mode** refuses a currency amount outside a per-signal fact line and the grading phrases.
+  - **The routine.** `weekly-review` (Saturday 11:00 ET). Lean 66, active 86.
 - **The Aegis Rules Steward** (roadmap step 3.3): a direct-message seat (`seat: off-floor`) with its role skill. It
   holds rulebook change control (candidate file, dry run, replay, lint, adoption on the owner's phrase and tap); the
   Desk Lead runs the same steps on request.

@@ -97,6 +97,7 @@ INCIDENT | book-check | the desk checkout is not the pinned release v1.0.0: deve
 | Aegis Book & Risk Analyst | `opening-marks`, `pre-event-stress`, `weekend-stress` | 10:20 and 14:50 Mon-Fri, and 10:00 Saturday |
 | Aegis Events and Calendar Analyst | `calendar-build`, `event-sheet` | 07:40 and 07:50, Monday |
 | Aegis Rules Steward (direct message) | `rules-sanity`, `rulebook-memo` | 16:45 Mon-Fri, and 17:20 Friday |
+| Aegis Review Desk (direct message) | `weekly-review` | 11:00 Saturday |
 
 The active profile adds four book-check routines on the Exit Sentinel, at 11:05, 13:05, 14:35 and 15:05. They are
 created paused. Each owning Bot creates its own routines, reads them back to the owner, and keeps them paused until
@@ -138,6 +139,9 @@ Every routine has one written quiet rule in the manifest:
   adoption), with each lint finding; otherwise quiet."
 - rulebook-memo: "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it,
   its rules by role, the structures you hold) and the lint's verdict against today's positions."
+- weekly-review: "Always one message on Saturday: the week's signals, each with its facts from the desk's records, the counts
+  per rule in fixed words and, when a candidate rulebook waits in rules/, its replay over the week; counts only,
+  never a money total, a rate or a ranking."
 
 ## Heartbeats, the day audit and missed runs
 
@@ -194,8 +198,8 @@ python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root
 On this release's manifest it prints, among its lines (holidays are not deducted):
 
 ```text
-lean: 65 runs per week (every routine at its regular slots)
-active: 85 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 66 runs per week (every routine at its regular slots)
+active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 - `desk.toml`'s `cadence_profile` names the profile, `lean` or `active`. `active` is strictly additive: lean plus

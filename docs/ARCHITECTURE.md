@@ -216,5 +216,5 @@ the stated cash check and per-account approval levels (2.6), the exposures and t
 scenario and event stress tool (2.8), the volatility context tool (2.9), the Aegis Book & Risk Analyst (2.10), the
 sourced cash dividends and the decision calendar (2.11) and the Aegis Events and Calendar Analyst (2.12).
 
-- Stage 3 so far: the signal journal (3.1), the replay of a candidate rulebook over past snapshots (3.2) and the Aegis
-  Rules Steward (3.3). The Aegis Review Desk and the weekly review are planned for Stage 3 (not in this release).
+- Stage 3: the signal journal (3.1), the replay of a candidate rulebook over past snapshots (3.2), the Aegis Rules
+  Steward (3.3) and the Aegis Review Desk with the weekly review and the alert lint's review mode (3.4).

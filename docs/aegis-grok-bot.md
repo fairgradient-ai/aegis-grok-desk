@@ -99,7 +99,7 @@ Grok Bot runs no plugin hooks, so the broker-write gate in `hooks/` does not run
    On this release, the three texts are:
 
    ```text
-   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+   Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo, weekly-review. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
    Ask first: placing, modifying or cancelling an order; moving funds; any POST, PUT, PATCH or DELETE request to a brokerage, and any request to a brokerage's order, position or account endpoints, including any request to api.alpaca.markets, and any request to paper-api.alpaca.markets other than /v2/clock, /v2/calendar and /v2/options/contracts; using a connected app or MCP tool that can place or change orders; signing in to a brokerage; browsing outside the desk's sourcing allow-list.
    Ask first: any command that carries --owner-tapped or --allow-rth, including ack.py snooze, ack.py acted and ack.py config; rules_adopt.py; desk_init.py; exit_ticket.py, roll_analysis.py and propose.py; writing or replacing /workspace/aegis-desk/positions.csv. These record the owner's own decisions or answer the owner's own request: run them only after the owner taps approve on this card.
    ```
@@ -175,8 +175,8 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py book-check --slot 10:0
   python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root /workspace/aegis-desk
   ```
 
-  On this release it prints, among its lines, `lean: 65 runs per week (every routine at its regular slots)` and
-  `active: 85 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)`.
+  On this release it prints, among its lines, `lean: 66 runs per week (every routine at its regular slots)` and
+  `active: 86 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)`.
 
 ## Limits
 

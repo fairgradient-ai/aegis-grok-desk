@@ -1058,7 +1058,7 @@ Payload (`--json` envelope key `payload`):
 - `run_record`: `"reports/routines/<ET date>/<routine>-<HHMM of the slot>.json | null (not written)"`
 - `run_utc`: `"ISO-8601 UTC (--now or the clock read once)"`
 - `slot`: `"HH:MM (America/New_York)"`
-- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | calendar_check | csv_recon | decision_calendar | desk_doctor | dividend_source | eod_summary | expiry_checklist | rules_sanity | scenario | signal_journal | trigger_levels"}]`
+- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | calendar_check | csv_recon | decision_calendar | desk_doctor | dividend_source | eod_summary | expiry_checklist | rules_sanity | scenario | signal_journal | trigger_levels | weekly_review"}]`
 - `warnings`: `["string"]`
 - `withheld`: `[{"codes": ["alert_lint finding codes"], "step": "slug", "tool": "string"}]`
 - `written`: `["desk-root relative paths this tool wrote (the steps' own writes are in their copies)"]`
@@ -1396,3 +1396,35 @@ Payload (`--json` envelope key `payload`):
 - `skipped`: `["data/book/<file> (a snapshot that could not be read)"]`
 - `snapshots`: `"integer (readable book snapshots)"`
 - `verdict`: `"ok | unavailable"`
+
+## weekly_review
+
+- script: `scripts/weekly_review.py`
+- tool version: 1.0.0
+- mode: read-only
+- description: the weekly review of your signals and your rules from the desk's own records: each signal's facts and the counts in fixed words, and a candidate rulebook replayed over the week; counts only, nothing written
+- network access: none
+
+| Flag | Value | Help |
+| --- | --- | --- |
+| `-h`, `--help` | none | show this help message and exit |
+| `--json` | none | print one JSON envelope (schema_version 1) instead of prose |
+| `--schema` | none | describe the JSON output and the exit codes, then exit 0 without network or desk access |
+| `--timeout` | `SECONDS` | finite positive timeout for any single network request (default 10.0) |
+| `--desk-root` | `DIR` | desk directory (desk.toml, positions.csv, state/); default: the current directory. --offline runs and fixture runs must pass it explicitly |
+| `--offline` | none | never open a network connection; use only what --desk-root holds (requires --desk-root) |
+| `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
+| `--week-of` | `YYYY-MM-DD` | a date in the week to review (default: today's ET week; on a weekend, the week just ended) |
+| `--candidate` | `PATH` | the candidate rulebook to replay (default: the newest rules/candidate-X.Y.Z.toml) |
+
+Payload (`--json` envelope key `payload`):
+
+- `as_of`: `"RFC 3339 (the run instant)"`
+- `counts`: `{"RULE_ID | all rules": {"acknowledged": "integer", "acted": "integer", "signals": "integer", "snoozed": "integer"}}`
+- `exit_code`: `"0 | 20"`
+- `message`: `"string (the text printed, for a routine's post)"`
+- `replay`: `{"candidate": "path | null", "days": ["object (as rules_replay.py)"], "days_differed": "integer | null"}`
+- `signals`: `["object (as signal_journal.py)"]`
+- `verdict`: `"ok | unavailable"`
+- `warnings`: `["string"]`
+- `week`: `{"end": "YYYY-MM-DD (Friday)", "start": "YYYY-MM-DD (Monday)"}`

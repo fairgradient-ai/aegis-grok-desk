@@ -1261,7 +1261,8 @@ class ReviewFixTest(RoutineCopy):
                  ("event-sheet", "07:50", "2026-11-02T12:55:00Z", "regular"),
                  ("journal-close", "17:30", "2026-11-03T22:30:00Z", "after_close"),
                  ("rules-sanity", "16:45", "2026-11-03T21:45:00Z", "after_close"),
-                 ("rulebook-memo", "17:20", "2026-11-06T22:20:00Z", "after_close"))
+                 ("rulebook-memo", "17:20", "2026-11-06T22:20:00Z", "after_close"),
+                 ("weekly-review", "11:00", "2026-11-21T16:00:00Z", "post_expiry"))
         self.assertEqual(set(manifest.routine_ids), {case[0] for case in cases})
         for routine_id, slot, now, fixture_set in cases:
             with self.subTest(routine=routine_id):
