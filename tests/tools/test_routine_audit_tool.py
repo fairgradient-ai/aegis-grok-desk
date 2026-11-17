@@ -12,6 +12,7 @@ import tests._path  # noqa: F401
 # isort: on
 
 import contextlib
+import dataclasses
 import datetime
 import io
 import json
@@ -28,6 +29,8 @@ import routine_audit as tool  # the tool scripts/routine_audit.py
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
+LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 52, 72, 560
+"""The real manifest's budget: Stage 1's 41 and 61 plus the later stages' routines (roadmap 2.10: 11 more)."""
 TOO_LONG_AUTOREVIEW = os.path.join(ROOT, "tests", "fixtures", "gates", "bad", "autoreview_too_long", "routines",
                                    "autoreview.toml")
 TUESDAY = datetime.date(2026, 11, 3)
@@ -89,16 +92,17 @@ class BudgetTest(ToolTest):
         self.assertEqual(0, code)
         payload = document["payload"]
         self.assertEqual("budget", payload["mode"])
-        self.assertEqual({"lean": 41, "active": 61}, payload["budget"])
+        self.assertEqual({"lean": LEAN_RUNS, "active": ACTIVE_RUNS}, payload["budget"])
         self.assertEqual("routines/manifest.toml", payload["manifest"]["path"])
         self.assertEqual(routines.load_manifest().sha256, payload["manifest"]["sha256"])
         lean = payload["profiles"][0]
-        self.assertEqual(("lean", "about 8 runs per weekday plus Saturday", False, 41),
+        self.assertEqual(("lean", "every routine at its regular slots", False, LEAN_RUNS),
                          (lean["name"], lean["description"], lean["additive"], lean["runs_per_week"]))
         self.assertEqual({"id": "book-check", "owner": "exit-sentinel", "slots": ["10:05", "12:05", "14:05", "15:35"],
                           "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "runs_per_week": 20}, lean["routines"][1])
+        self.assertEqual(list(routines.load_manifest().routine_ids), [item["id"] for item in lean["routines"]])
         self.assertEqual(["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"],
-                         [item["id"] for item in lean["routines"]])
+                         [item["id"] for item in lean["routines"]][:6])
         self.assertEqual(sum(item["runs_per_week"] for item in lean["routines"]), lean["runs_per_week"])
 
     def test_budget_text(self) -> None:
@@ -106,16 +110,17 @@ class BudgetTest(ToolTest):
         self.assertEqual(0, code)
         lines = out.splitlines()
         self.assertTrue(lines[0].startswith("routine budget (routines/manifest.toml, sha "), lines[0])
-        self.assertIn("lean: 41 runs per week (about 8 runs per weekday plus Saturday)", lines)
+        self.assertIn("lean: %d runs per week (every routine at its regular slots)" % LEAN_RUNS, lines)
+        self.assertIn("  opening-marks (book-risk-analyst): 10:20 ET, Mon-Fri: 5", lines)
         self.assertIn("  book-check (exit-sentinel): 10:05, 12:05, 14:05, 15:35 ET, Mon-Fri: 20", lines)
         self.assertIn("  post-expiry (position-control): 09:30 ET, Sat: 1", lines)
-        self.assertIn("active: 61 runs per week (lean plus four paused book-check slots, unpaused only on the "
-                      "conditions the owner chose)", lines)
+        self.assertIn("active: %d runs per week (lean plus four paused book-check slots, unpaused only on the "
+                      "conditions the owner chose)" % ACTIVE_RUNS, lines)
 
     def test_budget_of_one_profile(self) -> None:
         code, document = self.run_json("--budget", "--profile", "active")
         self.assertEqual(0, code)
-        self.assertEqual({"active": 61}, document["payload"]["budget"])
+        self.assertEqual({"active": ACTIVE_RUNS}, document["payload"]["budget"])
         self.assertEqual(["active"], [item["name"] for item in document["payload"]["profiles"]])
 
     def test_invalid_manifest_is_exit_1(self) -> None:
@@ -142,10 +147,10 @@ class RulesTextTest(ToolTest):
         expected = routines.rules_text(routines.load_manifest(), routines.load_autoreview())
         self.assertEqual("rules_text", payload["mode"])
         self.assertEqual(expected, payload["rules"])
-        self.assertEqual({"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391}, payload["lengths"])
+        self.assertEqual({"allow": ALLOW_CHARS, "ask_first_writes": 487, "ask_first_owner_authority": 391},
+                         payload["lengths"])
         self.assertEqual(1000, payload["limit_chars"])
-        self.assertEqual(["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"],
-                         payload["routine_ids"])
+        self.assertEqual(list(routines.load_manifest().routine_ids), payload["routine_ids"])
         self.assertEqual("routines/autoreview.toml", payload["autoreview"]["path"])
         self.assertEqual("eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5",
                          payload["autoreview"]["sha256"])
@@ -158,14 +163,17 @@ class RulesTextTest(ToolTest):
         for number, key in enumerate(routines.RULE_KEYS, 1):
             self.assertIn(texts[key], lines)
             self.assertIn("%d. %s (%d of 1000 characters)" % (number, key, len(texts[key])), lines)
-        self.assertTrue(lines[0].startswith("Auto-review rules (routines/autoreview.toml, rendered for 6 routines)"))
+        self.assertTrue(lines[0].startswith("Auto-review rules (routines/autoreview.toml, rendered for %d routines)"
+                                            % len(routines.load_manifest().routines)))
 
     def test_too_long_rules_are_exit_1(self) -> None:
         with mock.patch.object(tool, "autoreview_file", return_value=TOO_LONG_AUTOREVIEW):
             code, document = self.run_json("--rules-text")
         self.assertEqual(1, code)
         self.assertEqual("rules_invalid", document["error"]["code"])
-        self.assertIn("[allow_routines] renders to 1130 characters (limit 1000)", document["error"]["message"])
+        # the fixture's allow text is 619 characters longer than the real one, whatever the routine ids
+        self.assertIn("[allow_routines] renders to %d characters (limit 1000)" % (ALLOW_CHARS + 619),
+                      document["error"]["message"])
 
     def test_invalid_autoreview_is_exit_1(self) -> None:
         with tempfile.TemporaryDirectory(prefix="aegis-routine-audit-") as tmp:
@@ -179,12 +187,21 @@ class RulesTextTest(ToolTest):
         self.assertIn("[allow_routines].text must be a non-empty string", document["error"]["message"])
 
 
+def stage1_manifest() -> routines.Manifest:
+    """Stage 1's six routines: the day-audit cases keep their own slots as later stages add routines."""
+    manifest = routines.load_manifest()
+    return dataclasses.replace(manifest, routines=tuple(r for r in manifest.routines if r.stage == 1))
+
+
 class DayAuditTest(ToolTest):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory(prefix="aegis-routine-audit-tool-")
         self.root = os.path.join(os.path.realpath(self._tmp.name), "desk")
         shutil.copytree(FIXTURE_DESK, self.root)
         self.paths = desk_paths.for_root(self.root)
+        patcher = mock.patch.object(tool, "load_manifest", stage1_manifest)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()

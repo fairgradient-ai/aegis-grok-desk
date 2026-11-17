@@ -4,7 +4,7 @@
 schema_version = 1
 
 [profiles.lean]
-description = "about 8 runs per weekday plus Saturday"
+description = "every routine at its regular slots"
 
 [profiles.active]
 description = "lean plus four paused book-check slots, unpaused only on the conditions the owner chose"
@@ -102,3 +102,48 @@ posts = "fired"
 quiet_rule = "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits (csv_recon.py --diff shows the rows); confirm against your broker."
 approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py post-expiry --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "opening-marks"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["10:20"], active = ["10:20"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["beta_refresh", "book --view"]
+post = ["book"]
+posts = "always"
+quiet_rule = "Always one message: YOUR BOOK as marked after the delayed open, with the net delta and, when the day's beta fit holds, the beta-weighted delta and its r2 flag."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py opening-marks --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "pre-event-stress"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["14:50"], active = ["14:50"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["scenario --upcoming 2"]
+post = ["scenario"]
+posts = "fired"
+quiet_rule = "Posts only when a held symbol's earnings or ex-dividend date is within 2 trading days: the event stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py pre-event-stress --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "weekend-stress"
+owner = "book-risk-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["10:00"], active = ["10:00"] }
+days = ["Sat"]
+trading_days_only = false
+chain = ["scenario --from-snapshot"]
+post = ["scenario"]
+posts = "always"
+quiet_rule = "Always one message on Saturday: the scenario grid of the book as of the last close, a computation on the book's model, not a forecast; a group without usable marks is named and the total left out."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py weekend-stress --slot {slot} and post its output verbatim."

@@ -254,18 +254,20 @@ def step_modules() -> Dict[str, Any]:
     about to execute its steps: after the pin check passed or ``--allow-dirty`` was given (module notes, step 1)."""
     if not STEP_MODULES:
         import assignment_watch
+        import beta_refresh
         import book
         import book_check
         import csv_recon
         import desk_doctor
         import eod_summary
         import expiry_checklist
+        import scenario
         import trigger_levels
 
         STEP_MODULES.update({
-            "assignment_watch": assignment_watch, "book": book, "book_check": book_check, "csv_recon": csv_recon,
-            "desk_doctor": desk_doctor, "eod_summary": eod_summary, "expiry_checklist": expiry_checklist,
-            "trigger_levels": trigger_levels,
+            "assignment_watch": assignment_watch, "beta_refresh": beta_refresh, "book": book, "book_check": book_check,
+            "csv_recon": csv_recon, "desk_doctor": desk_doctor, "eod_summary": eod_summary,
+            "expiry_checklist": expiry_checklist, "scenario": scenario, "trigger_levels": trigger_levels,
         })
     return STEP_MODULES
 

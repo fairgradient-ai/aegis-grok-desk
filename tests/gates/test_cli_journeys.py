@@ -222,12 +222,13 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "tool": "opening_bell", "payload.quote.mid": "648.12", "payload.expiration": "2026-12-18",
         "payload.dte_calendar": 45, "payload.strike": "640", "payload.call.mid": "28.65", "payload.put.mid": "17.30",
         "payload.expected_move.straddle": "36.76", "payload.expected_move.one_sigma": "56.98", "payload.requests_made": 4}),
-    "routine_audit --budget -> lean 41, active 61 runs per week": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
-        "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 41, "active": 61}}),
+    "routine_audit --budget -> lean 52, active 72 runs per week": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
+        "status": "ok", "tool": "routine_audit", "payload.mode": "budget", "payload.budget": {"lean": 52, "active": 72}}),
     "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-        "payload.lengths": {"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391},
-        "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]}),
+        "payload.lengths": {"allow": 560, "ask_first_writes": 487, "ask_first_owner_authority": 391},
+        "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry",
+                                          "opening-marks", "pre-event-stress", "weekend-stress"]}),
     J2D_PREOPEN: ("routine.py", 0, harness.FIXTURE_DESK, {
         "status": "ok", "tool": "routine", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "07:30",
         "payload.heartbeat": "state/heartbeat/preopen.json", "payload.steps.0.tool": "desk_doctor",
@@ -239,7 +240,7 @@ PR_2D: Dict[str, Tuple[str, int, str, Dict[str, Any]]] = {
         "status": "ok", "payload.exit_code": 0, "payload.lint.ok": True, "payload.slot": "17:10",
         "payload.heartbeat": "state/heartbeat/eod-brief.json", "payload.steps.0.tool": "eod_summary",
         "payload.message": harness.TextMatch(prefix=DEV_HEADER + "\n### EOD DESK BRIEF 2026-11-03\n\n"
-                                             + PL_LINE, contains=("- **Routines** 1 of 7 ran today",),
+                                             + PL_LINE, contains=("- **Routines** 1 of 9 ran today",),
                                              excludes=("UNAVAILABLE:", "INCIDENT", "WITHHELD"))}),
     "routine post-expiry 09:30 post_expiry Saturday -> EDITS_PENDING": ("routine.py", 10, harness.FIXTURE_DESK, {
         "status": "fired", "payload.exit_code": 10, "payload.steps.0.tool": "csv_recon", "payload.steps.0.exit_code": 10,
@@ -711,7 +712,7 @@ class CatalogueTest(unittest.TestCase):
             "desk_init answers -> desk.toml": ("desk_init.py", "--answers", answers),
             "desk_init on the main root -> desk_toml_exists": ("desk_init.py", "--answers", answers),
             "opening_bell SPY regular": ("opening_bell.py", "--symbol", "SPY"),
-            "routine_audit --budget -> lean 41, active 61 runs per week": ("routine_audit.py", "--budget"),
+            "routine_audit --budget -> lean 52, active 72 runs per week": ("routine_audit.py", "--budget"),
             "routine_audit --rules-text -> three Auto-review texts within 1000 characters": ("routine_audit.py", "--rules-text"),
             J2D_PREOPEN: ("routine.py", "preopen", "--slot", "07:30", "--allow-dirty", "--fixture-set", "pre_open"),
             J2D_EVENING: ("routine.py", "eod-brief", "--slot", "17:10", "--allow-dirty"),

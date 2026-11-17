@@ -483,7 +483,8 @@ prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py eod --slot {
 '''
 
 REAL_AUTOREVIEW = os.path.join(tests._path._ROOT, "routines", "autoreview.toml")
-LANDED_STEP_TOOLS = ("assignment_watch", "book", "book_check", "csv_recon", "expiry_checklist")
+LANDED_STEP_TOOLS = ("assignment_watch", "beta_refresh", "book", "book_check", "csv_recon", "expiry_checklist",
+                     "scenario")
 
 
 def routine_tree(root: str, manifest: str = ROUTINE_MANIFEST, autoreview: bool = True) -> None:
@@ -689,7 +690,7 @@ class RoutinesManifestTests(unittest.TestCase):
                     self.assertEqual([], check_manifests.check_step(spec, "scripts/%s.py" % tool,
                                                                     routines.step_tokens(step)), step)
                     checked += 1
-        self.assertEqual(12, checked)
+        self.assertEqual(16, checked)
 
 
 class TemplateContractTests(unittest.TestCase):

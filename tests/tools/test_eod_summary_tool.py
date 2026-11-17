@@ -89,8 +89,10 @@ BRIEF = [
     "- **Open signals** 0",
     "- **positions.csv** CLEAN, 0 proposed edits (`csv_recon.py --diff` lists them)",
     "- **Expiry docket** none recorded today (reports/expiry/2026-11-03.week.json missing)",
-    "- **Routines** 0 of 4 ran today",
-    "  - missed: preopen 07:30 ET, book-check 10:05 ET, book-check 12:05 ET, book-check 14:05 ET",
+    "- **Routines** 0 of 6 ran today",
+    "  - missed: preopen 07:30 ET, book-check 10:05 ET, opening-marks 10:20 ET, book-check 12:05 ET, book-check "
+    "14:05 ET",
+    "  - pending: pre-event-stress 14:50 ET",
     "",
     "**To do**",
     "- CONFIG CHANGED pending: desk.toml, positions.csv, adopted rulebook (acknowledge with ack.py config "
@@ -387,7 +389,7 @@ class EodBriefTest(DeskCopy):
         self.assertEqual(out.rstrip("\n"), payload["message"])
         self.assertEqual("brief", payload["mode"])
         self.assertEqual({"count": 0, "EXIT_SIGNAL": 0, "WATCH": 0, "UNAVAILABLE": 0}, payload["signals_today"])
-        self.assertEqual(("lean", None, 4, 0, 4), (payload["routines"]["profile"], payload["routines"]["through_et"],
+        self.assertEqual(("lean", None, 6, 0, 5), (payload["routines"]["profile"], payload["routines"]["through_et"],
                                                    payload["routines"]["counts"]["expected"],
                                                    payload["routines"]["counts"]["ran"],
                                                    payload["routines"]["counts"]["missed"]))
@@ -424,13 +426,14 @@ class EodBriefTest(DeskCopy):
         code, body = self.run_json("--brief", now=BRIEF_SLOT_NOW)
         self.assertEqual(0, code, body)
         lines = body["payload"]["message"].split("\n")
-        at = lines.index("- **Routines** 2 of 7 ran today")
+        at = lines.index("- **Routines** 2 of 9 ran today")
         self.assertEqual(["  - late: book-check 10:05 ET (31 min late)",
-                          "  - missed: book-check 12:05 ET, book-check 14:05 ET, final-call 15:20 ET, book-check 15:35 "
-                          "ET", "  - pending: eod 16:35 ET"], lines[at + 1:at + 4])
+                          "  - missed: opening-marks 10:20 ET, book-check 12:05 ET, book-check 14:05 ET, pre-event-stress "
+                          "14:50 ET, final-call 15:20 ET, book-check 15:35 ET", "  - pending: eod 16:35 ET"],
+                         lines[at + 1:at + 4])
         routines = body["payload"]["routines"]
         self.assertEqual("17:10", routines["through_et"])
-        self.assertEqual({"expected": 7, "ran": 2, "late": 1, "missed": 4, "pending": 1}, routines["counts"])
+        self.assertEqual({"expected": 9, "ran": 2, "late": 1, "missed": 6, "pending": 1}, routines["counts"])
         self.assertNotIn("eod-brief", body["payload"]["message"])
 
     def test_a_manifest_that_cannot_be_read_is_unavailable(self) -> None:

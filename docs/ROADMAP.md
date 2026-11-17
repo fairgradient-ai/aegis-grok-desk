@@ -95,10 +95,10 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
 | 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
 | 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | landed |
-| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed: the tool; its routines are 2.10 |
-| 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
-| 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | planned |
-| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | planned |
+| 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed |
+| 2.9 | Volatility context | nothing | landed |
+| 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | landed |
+| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | landed: the tools; its routines are 2.12 |
 | 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | planned |
 
 ### 2.1 The American early-exercise lattice (landed, not wired)
@@ -397,11 +397,9 @@ context, sourced dates) and widens the Structuring Desk's scope.
     the date. A leg that expires first is valued at its intrinsic value at the moved spot, spot is never cut by the
     dividend, and the dividend tier is named when a short call is in scope.
   - **A hedge through an event.** Each group's change is split into stock and options.
-  - **The routines.** `pre-event-stress` (15:05 ET each trading weekday) and `weekend-stress` (Saturday 10:00 ET) are
-    proposed here. They add 6 runs a week (lean 47, active 67, pinned in `tests/engine/test_routines.py`), and their
-    ids already fit the Auto-review text. They post in the Aegis Book & Risk Analyst's chat, so they land with that
-    seat (2.10).
-- **What lands.** A scenario tool (not yet in the tree) that re-prices the book under spot and volatility moves, and an
+  - **The routines.** `pre-event-stress` and `weekend-stress` landed with the Aegis Book & Risk Analyst (2.10), at
+    14:50 ET each trading weekday and 10:00 on Saturday.
+- **What lands.** A scenario tool that re-prices the book under spot and volatility moves, and an
   event stress of a position through an earnings or ex-dividend date, including a hedge through an event. Every price
   comes from the engine; a scenario is labelled as a computation, not a forecast.
 - **Order.** After 2.3, by your choice. The scenario tool picks no model of its own: it calls the
@@ -427,8 +425,22 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** `tests/engine/test_vol_context.py`: no module but the tool (and the doc generator) imports the context,
   so no verdict can read it; the history comes from the book snapshots only; the tool writes nothing.
 
-### 2.10 The Aegis Book & Risk Analyst seat
+### 2.10 The Aegis Book & Risk Analyst seat (landed)
 
+- **What landed.**
+  - **The seat.** `agents/book-risk-analyst.md` (seat 5 of the Floor) with its role skill and the skills
+    `aegis-exposures-limits-and-stress` and `aegis-vol-context`, claimed by the template.
+  - **Three routines.**
+    - `opening-marks` (10:20 ET each trading weekday): `beta_refresh`, then `book --view`, whose YOUR BOOK now carries
+      the beta-weighted delta and its r2 flag.
+    - `pre-event-stress` (14:50 ET): `scenario --upcoming 2`, one event stress per held symbol with an earnings or
+      ex-dividend date within 2 trading days, quiet otherwise.
+    - `weekend-stress` (Saturday 10:00): `scenario --from-snapshot`, the grid of the last end-of-day snapshot,
+      because on a closed day the book fetches no quote.
+    - `beta_refresh` and `scenario` are now routine step tools. Both profiles gain 11 runs a week (lean 52, active
+      72).
+  - **The documents.** The Desk Lead's line for the seat, the charter's seats and message table, SETUP's table,
+    skills, Floor and routines, and the bootstrap skill now name the Bots by reference rather than by count.
 - **What lands.** The fifth Floor seat: its agent, role skill and skills (`aegis-exposures-limits-and-stress` and
   `aegis-vol-context`), owning the live view of marks, Greeks and limits from 2.7 to 2.9, and the planned
   `opening-marks` routine. The Desk Lead's "planned for Stage 2" line for it is rewritten.
@@ -554,8 +566,7 @@ is an inference, not a statement of the tree.
 
 | Routine id | Step |
 | --- | --- |
-| `opening-marks` | 2.10 |
-| `pre-event-stress`, `weekend-stress` | 2.8 |
+| `opening-marks`, `pre-event-stress`, `weekend-stress` | 2.10 (landed) |
 | `calendar-build`, `event-sheet` | 2.11 |
 | `journal-close` | 3.1 |
 | `rules-sanity`, `rulebook-memo` | 3.3 |
@@ -634,7 +645,7 @@ only the files that do.
 | Beta-weighted delta, exposures, limits and limit messages (landed) | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Scenario and event stress, a hedge through an event (landed: the tool) | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
-| The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
+| The Aegis Book & Risk Analyst (landed) | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
 | Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar (landed: the tools) | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
 | The Aegis Events and Calendar Analyst | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
@@ -653,15 +664,14 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 3 | 3 |
+| `agents/desk-lead.md` | 2 | 3 |
 | `docs/ARCHITECTURE.md` | 1 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
-| `skills/README.md` | 3 | 1 |
-| `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
-| `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
+| `skills/README.md` | 1 | 1 |
+| `skills/aegis-desk-charter/SKILL.md` | 1 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
 | `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
+| `skills/aegis-role-desk-lead/SKILL.md` | 2 | 3 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

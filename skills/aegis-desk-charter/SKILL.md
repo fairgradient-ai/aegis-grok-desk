@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-charter
-description: The constitution of the read-only Aegis options desk, for every Bot. The four Stage-1 seats and the planned ones, one file and one writer, the verdict-first message grammar with its three fixed footers, UNAVAILABLE as a verdict, the exit-code table, the Floor protocol (the tool wins) and which chat carries which message, the Structuring Desk's answers only on request. Load it before any other desk skill.
+description: The constitution of the read-only Aegis options desk, for every Bot. The five Floor seats and the planned ones, one file and one writer, the verdict-first message grammar with its three fixed footers, UNAVAILABLE as a verdict, the exit-code table, the Floor protocol (the tool wins) and which chat carries which message, the Structuring Desk's answers only on request. Load it before any other desk skill.
 license: MIT
 metadata:
   version: "0.1.0"
@@ -25,7 +25,7 @@ authorizes an action.
 
 ## Seats
 
-Stage 1 runs four Bots, each in its own chat and together in the "Aegis Options Floor" group (four of its six
+The desk runs five Bots, each in its own chat and together in the "Aegis Options Floor" group (five of its six
 seats):
 
 | Bot | Seat | Owns |
@@ -34,11 +34,11 @@ seats):
 | Aegis Exit Sentinel | floor | the rule checks and every alert; the threshold-level sheet and plan cards; the end-of-day book snapshot |
 | Aegis Position Control | floor | the honesty of `positions.csv` (never its edits); the expiry week; the Saturday reconciliation |
 | Aegis Structuring Desk | floor | `structuring.toml` (the owner's criteria); the tickets, the roll analyses and the proposals, only when the owner asks; no routine and no alert |
+| Aegis Book & Risk Analyst | floor | the live view of the book: the opening marks, the daily beta fit (`data/beta/`), the scenario grid and the event stress, the volatility context; no rule verdict and no choice |
 
 A Grok Bot group holds two to six Bots, so the Floor keeps room for the planned seats:
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst are
-  planned for Stage 2 (not in this release).
+- The Aegis Events and Calendar Analyst is planned for Stage 2 (not in this release).
 - The Aegis Rules Steward and the Aegis Review Desk, reached by direct message, are
   planned for Stage 3 (not in this release).
 
@@ -112,7 +112,8 @@ posts CONFIG CHANGED until the owner taps `ack.py config --owner-tapped`, so the
 Every desk message follows one grammar:
 
 1. It starts with its verdict or its kind, such as EXIT SIGNAL, WATCH, UNAVAILABLE, HOLD, CONFIG CHANGED, FINAL
-   CALL, T-1 PREVIEW, MORNING DESK SHEET, EOD DESK BRIEF, THRESHOLD LEVELS, PLAN CARD, `pre-close` or `watch alive`.
+   CALL, T-1 PREVIEW, MORNING DESK SHEET, EOD DESK BRIEF, THRESHOLD LEVELS, PLAN CARD, YOUR BOOK, SCENARIO, EVENT
+   STRESS, `pre-close` or `watch alive`.
    The Structuring Desk's answers start with TICKET, STRUCTURING, PROPOSAL, REFUSED, NOT_APPLICABLE,
    NOTHING_TO_PROPOSE or UNAVAILABLE, or with the rulebook's CONFIG CHANGED line when only the adopted rulebook is
    unacknowledged (the answer follows it), or with WITHHELD when the text failed its lint.
@@ -227,10 +228,11 @@ owner; the Desk Lead runs the same tools in its chat on the owner's request.
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the Saturday reconciliation and its proposed edits | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF, the doctor, whether the desk ran | Aegis Desk Lead |
 | a ticket, a roll analysis or a proposal, only when the owner asked | Aegis Structuring Desk |
+| YOUR BOOK at the opening marks, SCENARIO (the Saturday grid) and EVENT STRESS (before an earnings or ex-dividend date) | Aegis Book & Risk Analyst |
 
 A limit message is a WATCH rule message from the Aegis Exit Sentinel: an adopted rule on `beta_weighted_delta_pct` or
-`delta_exposure_pct`. Stress messages are planned for Stage 2 (not in this release); `scenario.py` computes the stress
-and posts nothing.
+`delta_exposure_pct`. A stress message is a computation on the book's model of record, never a forecast, and never
+carries a rule verdict.
 
 The owner-side dead-man rule: no Morning Desk Sheet by 08:00 ET, or no pre-close line by 16:15 ET, on a trading day
 means the desk is not running. The owner then relies on the broker's own alerts, set from the last threshold-level

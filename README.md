@@ -71,8 +71,9 @@ as they are. [docs/UPDATING.md](docs/UPDATING.md) has every step, how to go back
 | **Aegis Exit Sentinel** | Checks your positions against your rules four times a trading day and tells you when one is met, or when it cannot tell. |
 | **Aegis Position Control** | Keeps your list of positions right and walks you through expiry week (the final call and the Saturday reconciliation). |
 | **Aegis Structuring Desk** | Holds the rules for pricing your choices for a position you hold (close it, roll it, or add protection); the Desk Lead runs them when you ask. |
+| **Aegis Book & Risk Analyst** | Shows your book as the desk marks it each morning, with your beta-weighted exposure, and stresses it over a grid of moves and through a coming earnings or ex-dividend date: computations, never forecasts. |
 
-All four sit together in one private group chat, the **Aegis Options Floor**. Every message starts from your
+All of them sit together in one private group chat, the **Aegis Options Floor**. Every message starts from your
 positions and delayed market data, and every number in it comes from a tool:
 
 <p align="center">

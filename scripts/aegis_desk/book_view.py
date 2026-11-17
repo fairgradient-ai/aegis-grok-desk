@@ -232,6 +232,12 @@ def whole_book_lines(c: summaries.Composer, document: Mapping[str, Any]) -> List
     if isinstance(delta, (int, float)) and not isinstance(delta, bool):
         lines.append("- %s %s share-equivalents" % (summaries.bold_label("Net delta"),
                                                     alerts.fmt_delta(float(delta), c.emitted)))
+    weighted = portfolio.get("beta_weighted_delta") or {}
+    value = weighted.get("value")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        lines.append("- %s %s against SPY (%s)" % (
+            summaries.bold_label("Beta-weighted delta"), c.money(Decimal(repr(value)).quantize(Decimal("0.01"))),
+            "r2 low: a weak beta fit for at least one symbol" if weighted.get("r2_flag") == "low" else "r2 ok"))
     others = [text for text in warnings if not text.startswith(_DAY_PL_PREFIX)
               and not any(prefix in text for prefix in _EXCLUDED_PREFIXES)]
     if others:

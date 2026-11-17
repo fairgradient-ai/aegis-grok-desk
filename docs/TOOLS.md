@@ -1052,7 +1052,7 @@ Payload (`--json` envelope key `payload`):
 - `run_record`: `"reports/routines/<ET date>/<routine>-<HHMM of the slot>.json | null (not written)"`
 - `run_utc`: `"ISO-8601 UTC (--now or the clock read once)"`
 - `slot`: `"HH:MM (America/New_York)"`
-- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | book | book_check | csv_recon | desk_doctor | eod_summary | expiry_checklist | trigger_levels"}]`
+- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | csv_recon | desk_doctor | eod_summary | expiry_checklist | scenario | trigger_levels"}]`
 - `warnings`: `["string"]`
 - `withheld`: `[{"codes": ["alert_lint finding codes"], "step": "slug", "tool": "string"}]`
 - `written`: `["desk-root relative paths this tool wrote (the steps' own writes are in their copies)"]`
@@ -1206,20 +1206,25 @@ Payload (`--json` envelope key `payload`):
 | `--now` | `ISO-8601-UTC` | override the current instant (for example 2026-11-03T19:50:00Z or ...+00:00); testing and replay |
 | `--event` | `earnings \| ex_dividend` | price the symbol's groups one trading day after this event (needs --symbol) |
 | `--symbol` | `SYM` | limit the stress to this underlying's groups |
+| `--upcoming` | `N` | one event stress per held symbol with an earnings or ex-dividend date within N trading days (1-10); quiet when none |
+| `--from-snapshot` | none | stress the latest end-of-day snapshot of record instead of marking the book from quotes |
 | `--fixture-set` | `NAME` | recorded fixture set under <desk-root>/fixtures/alpaca/ (default regular; --offline only) |
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 | null (the newest quote stamp of the book)"`
 - `cells`: `[{"change": "decimal string | null", "groups": [{"change": "decimal string", "group_id": "string", "options": "decimal string", "stock": "decimal string", "stressed_pl_mid": "decimal string | null"}], "spot_pct": "integer", "stressed_pl_mid": "decimal string | null", "vol_points": "integer"}]`
 - `excluded`: `[{"group_id": "string", "reason": "string"}]`
-- `exit_code`: `"0 | 20"`
+- `exit_code`: `"0 | 10 | 20"`
 - `grid`: `{"spot_pct": ["integer"], "vol_points": ["integer"]}`
 - `horizon`: `{"event": "earnings | ex_dividend | null", "event_date": "YYYY-MM-DD | null", "event_time": "pre | post | unknown | null", "horizon_date": "YYYY-MM-DD | null", "symbol": "string | null", "utc": "RFC 3339 | null (instantaneous)"}`
 - `label`: `"string (a computation, not a forecast)"`
+- `message`: `"string | null (the text printed; null when --upcoming finds no event)"`
 - `notes`: `["string"]`
 - `reason`: `"string | null (why the stress is unavailable)"`
 - `stressed`: `["group id"]`
-- `verdict`: `"ok | unavailable"`
+- `stresses`: `[{"cells": ["object (as cells)"], "excluded": ["object"], "horizon": "object (as horizon)", "notes": ["string"], "stressed": ["group id"]}]`
+- `verdict`: `"ok | stressed | quiet | unavailable"`
 - `warnings`: `["string"]`
 
 ## trigger_levels

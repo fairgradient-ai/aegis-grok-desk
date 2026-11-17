@@ -2,6 +2,15 @@
 
 ## 1.0.0 (unreleased)
 
+- **The Aegis Book & Risk Analyst** (roadmap step 2.10): the fifth Floor seat, with its role skill and the skills
+  `aegis-exposures-limits-and-stress` and `aegis-vol-context`, claimed by the template. It owns three routines:
+  - `opening-marks` (10:20 ET, trading weekdays): the daily beta fit, then YOUR BOOK. YOUR BOOK now prints the
+    beta-weighted delta and its r2 flag when the day's beta file holds them.
+  - `pre-event-stress` (14:50 ET): `scenario.py --upcoming 2`, an event stress for each held symbol with an earnings
+    or ex-dividend date within two trading days; quiet otherwise.
+  - `weekend-stress` (Saturday 10:00): `scenario.py --from-snapshot`, the grid of the last end-of-day snapshot.
+  - `scenario.py` gains `--upcoming`, `--from-snapshot` and a postable `message`, and `beta_refresh` and `scenario`
+    become routine step tools. Both profiles gain 11 runs a week (lean 52, active 72).
 - **Sourced cash dividends and the decision calendar** (roadmap step 2.11; the owner's answer to open question 1).
   - **One new read path.** The market-data client gains `/v1/corporate-actions` (`types=cash_dividend`), the eighth
     allow-listed path (`SECURITY.md`).

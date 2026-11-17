@@ -22,6 +22,9 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 | `eod` | Aegis Exit Sentinel | 16:35, Mon-Fri | the end-of-day book snapshot and `reports/book.md`, the threshold-level sheet from the snapshot, the reconciliation |
 | `eod-brief` | Aegis Desk Lead | 17:10, Mon-Fri | the EOD Desk Brief |
 | `post-expiry` | Aegis Position Control | 09:30, Saturday | the post-expiry reconciliation |
+| `opening-marks` | Aegis Book & Risk Analyst | 10:20, Mon-Fri | the daily beta fit, then YOUR BOOK at the opening marks |
+| `pre-event-stress` | Aegis Book & Risk Analyst | 14:50, Mon-Fri | an event stress of each held symbol whose earnings or ex-dividend date is within 2 trading days |
+| `weekend-stress` | Aegis Book & Risk Analyst | 10:00, Saturday | the scenario grid of the last end-of-day snapshot |
 
 The weekday routines run on trading days only. No weekday routine runs between 08:00 and 10:00 ET, the window in which
 platform queue delays are worst and the delayed quotes of the open are not in yet. `book-check` starts at least 20
@@ -47,6 +50,12 @@ Each routine has a posting policy and one written quiet rule. The quiet rules, v
   missed runs named, the owner's to-do list."
 - `post-expiry`: "Posts only in weeks a held contract expired: the inferred outcomes and the number of proposed edits
   (csv_recon.py --diff shows the rows); confirm against your broker."
+- `opening-marks`: "Always one message: YOUR BOOK as marked after the delayed open, with the net delta and, when the
+  day's beta fit holds, the beta-weighted delta and its r2 flag."
+- `pre-event-stress`: "Posts only when a held symbol's earnings or ex-dividend date is within 2 trading days: the
+  event stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
+- `weekend-stress`: "Always one message on Saturday: the scenario grid of the book as of the last close, a computation
+  on the book's model, not a forecast; a group without usable marks is named and the total left out."
 
 A routine with nothing to post prints the single word `quiet`, and its Bot posts that word. A closed day (a weekend,
 an NYSE holiday, or a full closure you entered in `research/calendar.toml`) runs no step and prints `quiet`.
@@ -62,14 +71,15 @@ never inside its rule's cooldown. A standing UNAVAILABLE banner re-posts on ever
 
 ## Which chat says what
 
-A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the three routine-owning Bots:
-the Aegis Desk Lead, the Aegis Exit Sentinel and Aegis Position Control.
+A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the routine-owning Bots: the
+Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control and the Aegis Book & Risk Analyst.
 
 | Message | Chat |
 | --- | --- |
 | each EXIT SIGNAL, WATCH, UNAVAILABLE and CONFIG CHANGED message, the rulebook digest, the pre-close line, watch alive, THRESHOLD LEVELS | Aegis Exit Sentinel |
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the post-expiry reconciliation | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF | Aegis Desk Lead |
+| YOUR BOOK at the opening marks, EVENT STRESS, the Saturday SCENARIO | Aegis Book & Risk Analyst |
 | An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
 | A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
@@ -144,8 +154,8 @@ Every run spends weekly platform usage. `routine_audit.py --budget` prints the r
 deducted):
 
 ```text
-lean: 41 runs per week (about 8 runs per weekday plus Saturday)
-active: 61 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 52 runs per week (every routine at its regular slots)
+active: 72 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 The active profile is lean plus four Exit Sentinel book checks at 11:05, 13:05, 14:35 and 15:05, created paused at

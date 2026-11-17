@@ -31,7 +31,7 @@ This desk never places, modifies or cancels orders. An exit alert tells you whic
 - The only credential is the Alpaca paper key pair. The owner adds it through the secure secret card; it is never
   asked for or pasted in chat.
 - Local writes stay under `/workspace/aegis-grok-desk` (the release checkout), `/workspace/aegis-desk` (the desk root)
-  and `/workspace/aegis-demo` (the sample desk copy). Creating the four Bots and one private group is in scope;
+  and `/workspace/aegis-demo` (the sample desk copy). Creating the desk's Bots (SETUP section 4) and one private group is in scope;
   sharing anything publicly is not.
 - Owner-authority commands (`desk_init.py`, `rules_adopt.py`, `ack.py config`, `ack.py connectors`) belong to the later
   steps. Each runs only after the owner taps approve on its Ask-first card; the Lead never adds `--owner-tapped` or
@@ -89,10 +89,10 @@ python3 scripts/opening_bell.py --demo
 - From `agents/structuring-desk.md`: Name "Aegis Structuring Desk", Job "On-request choices desk of the options
   desk".
 
-Read back each Bot's native Name and Job. Tell the other three Bots that setup is under way: until `desk.toml` exists
-each introduces itself in one line and waits (no tool against the empty desk, no announced schedule, no routine). Its standing instructions are its role skill (`aegis-role-desk-lead`,
-`aegis-role-exit-sentinel`, `aegis-role-position-control` or `aegis-role-structuring-desk`), enabled for that Bot only.
-The Stage-2 and Stage-3 seats are not in this release; asked for one, a Bot says so.
+Read back each Bot's native Name and Job. Tell the other Bots that setup is under way: until `desk.toml` exists each
+introduces itself in one line and waits (no tool against the empty desk, no announced schedule, no routine). Its
+standing instructions are its role skill, `aegis-role-<its agent file's name>` (SETUP section 5 lists them), enabled
+for that Bot only. A seat that SETUP section 4 does not list is not in this release; asked for one, a Bot says so.
 
 ## 5. Install the skills
 
@@ -108,8 +108,8 @@ checkout; `template/grok-bot.json` records each file's sha256 (`skills` and `rol
 
 ## 6. Create the Aegis Options Floor
 
-One private group, "Aegis Options Floor", with exactly the four Bots; read back its members. A group holds two to six
-Bots, which leaves room for the Stage-2 seats. Nothing is shared publicly.
+One private group, "Aegis Options Floor", with exactly the Floor Bots of SETUP section 4 (seat `floor` in their agent
+files); read back its members. A group holds two to six Bots. Nothing is shared publicly.
 
 ## 7. Connect market data
 
@@ -147,12 +147,12 @@ UNAVAILABLE: not a paper key: Alpaca's paper trading host refused the key pair (
 
 ## 8. The receipt
 
-One message. It opens with three plain lines: the desk is built (four Bots, the Floor, the skills, release v1.0.0);
+One message. It opens with three plain lines: the desk is built (its Bots, the Floor, the skills, release v1.0.0);
 whether live market data works; and that nothing else is needed now, that the owner talks to the Desk Lead here for
 everything, with "say 'add my positions'" when the owner wants the desk to watch the book. Then the evidence:
 
 - the release and the pin check line; the `check.sh` result; the demo commands run (synthetic);
-- the four Bots by Name and Job; each skill and its status; the Floor and its members;
+- the Bots by Name and Job; each skill and its status; the Floor and its members;
 - the live Opening Bell output, or the exact step still pending; the key source;
 - the doctor's verdict line; every pending item with its manual step.
 

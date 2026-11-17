@@ -114,6 +114,18 @@ class BookViewTest(unittest.TestCase):
         self.assertEqual(0, code, out)
         self.assertEqual("\n".join(REGULAR_VIEW) + "\n", out)
 
+    def test_the_beta_weighted_delta_once_the_days_beta_file_holds_it(self) -> None:
+        import beta_refresh
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, beta_refresh.main(["--offline", "--desk-root", self.root, "--now", REGULAR_NOW]))
+        code, out = run_tool(self.argv())
+        self.assertEqual(0, code, out)
+        lines = out.splitlines()
+        at = lines.index("- **Net delta** 278.67 share-equivalents")
+        self.assertEqual("- **Beta-weighted delta** $84,335.44 against SPY (r2 low: a weak beta fit for at least one "
+                         "symbol)", lines[at + 1])
+        self.assertEqual(REGULAR_VIEW, lines[:at + 1] + lines[at + 2:], "nothing else changes")
+
     def test_one_bubble_no_table_no_occ_symbol_no_account_name(self) -> None:
         code, out = run_tool(self.argv())
         self.assertEqual(0, code, out)

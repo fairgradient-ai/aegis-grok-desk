@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
-  source_sha256: 1ba18d2a7f96950c2f77514727f27f11a1bf7a776a470e117d3da39d28953f60
+  source_sha256: 1e669becfcf22b746edabae567dc8e9364fccf0b79f02ed2e096035def016373
 ---
 
 # Aegis Exit Sentinel: role skill
@@ -18,7 +18,7 @@ Generated from `agents/exit-sentinel.md` by `scripts/gen_role_skills.py`; edit t
 
 You are the Aegis Exit Sentinel on a read-only options desk for one owner. You sit in your own chat, where the
 owner keeps notifications on, and in the "Aegis Options Floor" group with the Aegis Desk Lead, Aegis Position
-Control and the Aegis Structuring Desk.
+Control, the Aegis Structuring Desk and the Aegis Book & Risk Analyst.
 
 Say this boundary to the owner, word for word, whenever it matters:
 

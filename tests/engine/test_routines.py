@@ -15,6 +15,7 @@ import tests._path  # noqa: F401
 # isort: on
 
 import dataclasses
+import re
 import datetime
 import hashlib
 import json
@@ -28,9 +29,26 @@ from aegis_desk import alert_lint, desk_paths, heartbeat, market_clock, routines
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
-MANIFEST_SHA256 = "07708dcb8b09a2ddde620f9096fa14d852e35857063cfe2f0282860cd1d343c0"
+MANIFEST_SHA256 = "7658da0154bbffc4f68b1fe6e9273a79514d8ff73d641083c1e7811a4947aa71"
 AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
+ROUTINE_IDS = STAGE1_IDS + ["opening-marks", "pre-event-stress", "weekend-stress"]
+LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 52, 72, 560
+"""Every routine of the manifest, in order: Stage 1's six, then the later stages' as each seat lands."""
+OWNERS = {"preopen": "desk-lead", "book-check": "exit-sentinel", "final-call": "position-control", "eod": "exit-sentinel",
+          "eod-brief": "desk-lead", "post-expiry": "position-control", "opening-marks": "book-risk-analyst",
+          "pre-event-stress": "book-risk-analyst", "weekend-stress": "book-risk-analyst"}
+
+
+def stage1(manifest: routines.Manifest) -> routines.Manifest:
+    """The manifest with Stage 1's routines only: the audit and budget cases of Stage 1 keep their own numbers."""
+    return dataclasses.replace(manifest, routines=tuple(r for r in manifest.routines if r.stage == 1))
+
+
+def stage1_text(text: str) -> str:
+    """The manifest text up to its first routine of a later stage (the mutation cases edit Stage 1's blocks)."""
+    match = re.search(r"\n\[\[routine\]\]\n[^\[]*?\nstage = [2-9]", text)
+    return text if match is None else text[:match.start() + 1]
 # PR 3b decision S14: the planned roll-window routine is dropped (the Structuring Desk never posts alerts). The owner
 # dropped t1-call (final-call already runs the T-1 PREVIEW) and midday-limits (limits are exit rules; roadmap 2.7).
 PLANNED_IDS = STAGE1_IDS + ["opening-marks", "event-sheet", "pre-event-stress",
@@ -62,9 +80,9 @@ def order_shaped(text: str) -> List[str]:
 
 class ConstantsTest(unittest.TestCase):
     def test_step_tools_are_the_eight_chain_tools(self) -> None:
-        # O4: no ack and no routine_audit in any chain.
-        self.assertEqual(("assignment_watch", "book", "book_check", "csv_recon", "desk_doctor", "eod_summary",
-                          "expiry_checklist", "trigger_levels"), routines.STEP_TOOLS)
+        # O4: no ack and no routine_audit in any chain; roadmap 2.10 adds beta_refresh and scenario.
+        self.assertEqual(("assignment_watch", "beta_refresh", "book", "book_check", "csv_recon", "desk_doctor",
+                          "eod_summary", "expiry_checklist", "scenario", "trigger_levels"), routines.STEP_TOOLS)
         self.assertNotIn("ack", routines.STEP_TOOLS)
         self.assertNotIn("routine_audit", routines.STEP_TOOLS)
         for name in STRUCTURING_TOOLS:
@@ -77,7 +95,7 @@ class ConstantsTest(unittest.TestCase):
             self.assertEqual(STRUCTURING_REFUSAL, routines.REFUSED_STEP_TOOLS[name])
         self.assertEqual([], order_shaped(STRUCTURING_REFUSAL))
         self.assertEqual(frozenset({"book_check", "book", "csv_recon", "expiry_checklist", "assignment_watch",
-                                    "trigger_levels"}), routines.FIXTURE_SET_TOOLS)
+                                    "trigger_levels", "beta_refresh", "scenario"}), routines.FIXTURE_SET_TOOLS)
         self.assertTrue(routines.FIXTURE_SET_TOOLS <= set(routines.STEP_TOOLS))
 
     def test_flag_tables_and_limits(self) -> None:
@@ -119,15 +137,14 @@ class RealManifestTest(unittest.TestCase):
         self.assertEqual(self.manifest, routines.load_manifest(ROOT))
 
     def test_stage1_routines_in_order(self) -> None:
-        self.assertEqual(STAGE1_IDS, list(self.manifest.routine_ids))
-        owners = {r.id: r.owner for r in self.manifest.routines}
-        self.assertEqual({"preopen": "desk-lead", "book-check": "exit-sentinel", "final-call": "position-control",
-                          "eod": "exit-sentinel", "eod-brief": "desk-lead", "post-expiry": "position-control"}, owners)
-        self.assertEqual({1}, {r.stage for r in self.manifest.routines})
+        self.assertEqual(ROUTINE_IDS, list(self.manifest.routine_ids))
+        self.assertEqual(STAGE1_IDS, list(stage1(self.manifest).routine_ids))
+        self.assertEqual(OWNERS, {r.id: r.owner for r in self.manifest.routines})
+        self.assertEqual({1, 2}, {r.stage for r in self.manifest.routines})
         self.assertEqual(["lean", "active"], list(self.manifest.profiles))
         self.assertFalse(self.manifest.profiles["lean"].additive)
         self.assertTrue(self.manifest.profiles["active"].additive)
-        self.assertEqual("about 8 runs per weekday plus Saturday", self.manifest.profiles["lean"].description)
+        self.assertEqual("every routine at its regular slots", self.manifest.profiles["lean"].description)
 
     def test_chains_follow_o4_and_o5(self) -> None:
         by_id = {r.id: r for r in self.manifest.routines}
@@ -184,23 +201,27 @@ class RealManifestTest(unittest.TestCase):
         self.assertEqual([], order_shaped(read(MANIFEST)))
 
     def test_budget_is_the_plans_count(self) -> None:
-        # O5: lean 41 and active 61 runs a week (no 12:20 early-close routine).
-        self.assertEqual(41, routines.budget(self.manifest, "lean"))
-        self.assertEqual(61, routines.budget(self.manifest, "active"))
+        # O5: Stage 1 is lean 41 and active 61 runs a week (no 12:20 early-close routine); the later stages' routines
+        # add their own (roadmap 2.10: opening-marks and pre-event-stress each trading weekday, weekend-stress on
+        # Saturday).
+        self.assertEqual(41, routines.budget(stage1(self.manifest), "lean"))
+        self.assertEqual(61, routines.budget(stage1(self.manifest), "active"))
+        self.assertEqual(LEAN_RUNS, routines.budget(self.manifest, "lean"))
+        self.assertEqual(ACTIVE_RUNS, routines.budget(self.manifest, "active"))
         with self.assertRaises(ValueError):
             routines.budget(self.manifest, "turbo")
 
-    def test_the_planned_stress_routines_fit_the_budget(self) -> None:
-        # Roadmap 2.8 (proposed there): pre-event-stress once a trading weekday at 15:05 ET and weekend-stress once on
-        # Saturday, both in the lean profile, add six runs a week (test_allow_text_fits_all_planned_routines covers the
-        # Auto-review text).
-        base = self.manifest.by_id("eod")
-        added = (dataclasses.replace(base, id="pre-event-stress", et={name: ("15:05",) for name in base.profiles},
-                                     days=("Mon", "Tue", "Wed", "Thu", "Fri")),
-                 dataclasses.replace(base, id="weekend-stress", et={name: ("10:00",) for name in base.profiles},
-                                     days=("Sat",), trading_days_only=False))
-        planned = dataclasses.replace(self.manifest, routines=self.manifest.routines + added)
-        self.assertEqual((47, 67), (routines.budget(planned, "lean"), routines.budget(planned, "active")))
+    def test_the_book_and_risk_routines(self) -> None:
+        # Roadmap 2.10: the Aegis Book & Risk Analyst's three routines.
+        marks, stress, weekend = (self.manifest.by_id(name) for name in ("opening-marks", "pre-event-stress",
+                                                                       "weekend-stress"))
+        self.assertEqual((("10:20",), ("beta_refresh", "book --view"), ("book",), "always"),
+                         (marks.slots("lean"), marks.chain, marks.post, marks.posts))
+        self.assertEqual((("14:50",), ("scenario --upcoming 2",), "fired", True),
+                         (stress.slots("lean"), stress.chain, stress.posts, stress.trading_days_only))
+        self.assertEqual((("10:00",), ("Sat",), ("scenario --from-snapshot",), False),
+                         (weekend.slots("lean"), weekend.days, weekend.chain, weekend.trading_days_only))
+        self.assertEqual({2}, {r.stage for r in (marks, stress, weekend)})
 
     def test_runs_on(self) -> None:
         preopen = self.manifest.by_id("preopen")
@@ -214,6 +235,10 @@ class RealManifestTest(unittest.TestCase):
         self.assertFalse(post_expiry.runs_on(TUESDAY))
 
     def test_day_slots_are_in_time_order(self) -> None:
+        full = routines.day_slots(self.manifest, "lean", TUESDAY)
+        self.assertEqual(sorted(full, key=lambda slot: slot.scheduled_utc), list(full))
+        self.assertIn(("opening-marks", "10:20"), [(slot.routine_id, slot.scheduled_et) for slot in full])
+        self.manifest = stage1(self.manifest)
         slots = routines.day_slots(self.manifest, "lean", TUESDAY)
         self.assertEqual([("preopen", "07:30"), ("book-check", "10:05"), ("book-check", "12:05"),
                           ("book-check", "14:05"), ("final-call", "15:20"), ("book-check", "15:35"),
@@ -233,7 +258,7 @@ class StructuralRulesTest(unittest.TestCase):
     """One defect per case on a copy of the real manifest's text."""
 
     def setUp(self) -> None:
-        self.text = read(MANIFEST)
+        self.text = stage1_text(read(MANIFEST))
 
     def mutate(self, old: str, new: str, text: Optional[str] = None) -> str:
         base = self.text if text is None else text
@@ -404,7 +429,7 @@ class StructuralRulesTest(unittest.TestCase):
     def test_unknown_tool_and_bad_tokens(self) -> None:
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["positions_check"]'),
                             "routine post-expiry: step 'positions_check': positions_check is not a step tool "
-                            "(assignment_watch, book, book_check")
+                            "(assignment_watch, beta_refresh, book, book_check")
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["csv_recon;id"]'),
                             "routine post-expiry: step 'csv_recon;id': token 'csv_recon;id' must match")
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["csv_recon | sh"]'),
@@ -512,9 +537,9 @@ class AutoreviewTest(unittest.TestCase):
         self.assertEqual(1000, self.autoreview.limit_chars)
         texts = routines.rules_text(self.manifest, self.autoreview)
         self.assertEqual(list(routines.RULE_KEYS), list(texts))
-        self.assertEqual({"allow": 511, "ask_first_writes": 487, "ask_first_owner_authority": 391},
+        self.assertEqual({"allow": ALLOW_CHARS, "ask_first_writes": 487, "ask_first_owner_authority": 391},
                          {key: len(value) for key, value in texts.items()})
-        self.assertIn(": preopen, book-check, final-call, eod, eod-brief, post-expiry. These runs", texts["allow"])
+        self.assertIn(": %s. These runs" % ", ".join(ROUTINE_IDS), texts["allow"])
         self.assertTrue(texts["allow"].startswith("Allow automatically: the command python3 "
                                                   "/workspace/aegis-grok-desk/scripts/routine.py followed by"))
         self.assertTrue(texts["ask_first_writes"].startswith("Ask first: placing, modifying or cancelling an order;"))
@@ -581,7 +606,7 @@ class AuditDayTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory(prefix="aegis-routines-audit-")
         self.paths = desk_paths.for_root(os.path.realpath(self._tmp.name))
         desk_paths.ensure_runtime_dirs(self.paths)
-        self.manifest = routines.load_manifest()
+        self.manifest = stage1(routines.load_manifest())
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
