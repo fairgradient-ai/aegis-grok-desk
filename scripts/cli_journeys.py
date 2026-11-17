@@ -353,6 +353,13 @@ JOURNEYS: Tuple[Journey, ...] = (
     tool_journey("scenario --event earnings --symbol SPY -> UNAVAILABLE (no earnings)",
                  ("scenario.py", "--fixture-set", "regular", "--event", "earnings", "--symbol", "SPY"), 20,
                  {"status": "unavailable", "payload.verdict": "unavailable"}),
+    # Sourced dividends and the decision calendar (roadmap 2.11): a proposal that writes nothing, and the dated points.
+    tool_journey("dividend_source regular -> SPY DIFFERS (proposed), WMT and NVDA agree",
+                 ("dividend_source.py", "--fixture-set", "regular"), 0,
+                 {"status": "ok", "tool": "dividend_source", "payload.verdict": "ok",
+                  "payload.answers.sourced_dividends.SPY.amount": "1.9021"}),
+    tool_journey("decision_calendar regular -> earnings, act-by, ex-dividend points", ("decision_calendar.py",), 0,
+                 {"status": "ok", "tool": "decision_calendar", "payload.verdict": "ok", "payload.end": "2026-12-18"}),
     # The calendar lint (no market data: no --fixture-set flag), the assignment and expiry tools.
     tool_journey("calendar_check -> clean", ("calendar_check.py",), 0,
                  {"status": "ok", "tool": "calendar_check", "payload.verdict": "clean"}),

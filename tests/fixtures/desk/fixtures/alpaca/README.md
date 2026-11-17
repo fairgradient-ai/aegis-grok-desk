@@ -45,7 +45,8 @@ every file here for a key-shaped or token-shaped string and for the two credenti
 | `data.alpaca.markets` `/v1beta1/options/snapshots/<UNDERLYING>` | `snapshots__<UNDERLYING>__<YYYY-MM-DD>.json` | underlying and `expiration_date` (`snapshots__<UNDERLYING>.json` without one) |
 | `paper-api.alpaca.markets` `/v2/options/contracts`, one expiration | `contracts__<UNDERLYING>__<YYYY-MM-DD>.json` | `underlying_symbols` and `expiration_date` (a chain's listing; also the strikes answer) |
 | `paper-api.alpaca.markets` `/v2/options/contracts`, a window | `contracts__<UNDERLYING>__<GTE>__<LTE>.json` | `underlying_symbols`, `expiration_date_gte` and `expiration_date_lte` (the expirations listing) |
-| `data.alpaca.markets` `/v2/stocks/bars` | `bars__<SYMBOL>__<START>__<END>.json` | symbol and the `start`/`end` dates; daily timeframe |
+| `data.alpaca.markets` `/v2/stocks/bars` | `bars__<SYMBOL>__<START>__<END>.json` | symbol and the `start`/`end` dates; daily timeframe (`__split` appended for split-adjusted bars, the beta fit of roadmap 2.7) |
+| `data.alpaca.markets` `/v1/corporate-actions` | `corporate_actions__<SYMBOLS>__<START>__<END>.json` | the symbols `sorted` and comma-joined, and the process-date `start`/`end`; `types=cash_dividend` only (roadmap 2.11: the regular set's answer agrees with the calendar for WMT and NVDA, differs for SPY's amount, and holds one record without an ex-date) |
 | `paper-api.alpaca.markets` `/v2/clock` | `clock.json` | none |
 | `paper-api.alpaca.markets` `/v2/calendar` | `calendar__<YYYY-MM-01>__<YYYY-MM-last>.json` | the month's first and last dates |
 | error bodies | `errors/unauthorized.txt`, `errors/too_many_requests.txt`, `errors/subscription.txt` | served by tests that need a 401, a 429 or a subscription refusal |

@@ -280,6 +280,7 @@ FILE_NAME_RE = re.compile(r"^(?:(stock_quotes|option_quotes)__([A-Z0-9,]+)"
                           r"|(snapshots|contracts)__([A-Z]+)__(\d{4}-\d{2}-\d{2})(?:__(\d{4}-\d{2}-\d{2}))?"
                           r"|bars__([A-Z]+)__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})(?:__split)?"
                           r"|calendar__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})"
+                          r"|corporate_actions__([A-Z,]+)__(\d{4}-\d{2}-\d{2})__(\d{4}-\d{2}-\d{2})"
                           r"|(clock))\.json$")
 
 
@@ -633,6 +634,10 @@ class TreeShapeTest(unittest.TestCase):
                     self.assertLessEqual(date.fromisoformat(match.group(8)), date.fromisoformat(match.group(9)), rel)
                 elif match.group(10):
                     self.assertEqual(("2026-11-01", "2026-11-30"), (match.group(10), match.group(11)), rel)
+                elif match.group(12):
+                    symbols = match.group(12).split(",")
+                    self.assertEqual(sorted(set(symbols)), symbols, rel)
+                    self.assertLess(date.fromisoformat(match.group(13)), date.fromisoformat(match.group(14)), rel)
                 else:
                     self.assertEqual("clock.json", rel)
                 self.assertNotIn("__page-", rel, "no recorded answer here is paginated")

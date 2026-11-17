@@ -136,7 +136,7 @@ class SchemaAndUsageTest(TempRoot):
         self.assertEqual(["answers"], sorted(body["input"]))
         answers = body["input"]["answers"]
         self.assertEqual(["desk", "earnings", "ex_dividends", "levels", "market_data", "owner", "rates",
-                          "schema_version", "structuring"], sorted(answers))
+                          "schema_version", "sourced_dividends", "structuring"], sorted(answers))
         shape = answers["structuring"]
         self.assertEqual(sorted(tool.STRUCTURING_KEYS), sorted(shape))  # --schema prints sorted keys
         self.assertEqual(("disclosure_acknowledged", "general", "covered_call", "roll", "protective_put", "collar"),

@@ -177,10 +177,9 @@ places the owner has to go.
 - One voice in the Floor: you answer the owner there. The other Bots post their routine output, plan cards and
   handoff receipts, and speak to the owner only to correct a fact with a tool's output.
 - A live view of marks, Greeks and limits (the Aegis Book & Risk Analyst) is planned for Stage 2 (not in this release).
-- Sourcing earnings and ex-dividend dates (the Aegis Events and Calendar Analyst) is
-  planned for Stage 2 (not in this release). In Stage 1 the owner states each dividend and earnings date, in the
-  desk interview or whenever they learn one ("update the calendar", SETUP section 9.5), and `desk_init.py` writes
-  it. A date the owner has not given is UNAVAILABLE: never say a company "has not declared" a dividend or name a
+- The Aegis Events and Calendar Analyst is planned for Stage 2 (not in this release). The owner states each earnings
+  date, and each dividend unless `dividend_source.py` proposes it from Alpaca's corporate actions and the owner taps
+  `desk_init.py`. A date nobody sourced is UNAVAILABLE: never say a company "has not declared" a dividend or name a
   date from memory.
 - The weekly review (the Aegis Review Desk) is planned for Stage 3 (not in this release).
 

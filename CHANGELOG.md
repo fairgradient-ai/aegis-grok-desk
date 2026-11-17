@@ -2,6 +2,15 @@
 
 ## 1.0.0 (unreleased)
 
+- **Sourced cash dividends and the decision calendar** (roadmap step 2.11; the owner's answer to open question 1).
+  - **One new read path.** The market-data client gains `/v1/corporate-actions` (`types=cash_dividend`), the eighth
+    allow-listed path (`SECURITY.md`).
+  - **`dividend_source.py`** (new, read-only) compares the held symbols' declared dividends with
+    `research/calendar.toml` and proposes the new or different ones.
+  - **The owner's tap.** `desk_init.py` gains `sourced_dividends` answers. Run with `--replace --owner-tapped`, it
+    rewrites only those `ex_dividend` lines and keeps a stated yield under the new `yield_source` key.
+  - **`decision_calendar.py`** (new, read-only) lists the act-by instants, last trading days, ex-dividend and
+    earnings dates in date order, and an unknown date as UNAVAILABLE.
 - **Scenario and event stress** (roadmap step 2.8). `scenario.py`, a new read-only tool, marks the book as `book.py`
   does and re-prices every open group through `book.leg_price`, the book's own leg pricer.
   - **The grid.** Spot -10 to +10 % crossed with volatility -5 to +5 points, 21 cells (the desk's proposal).

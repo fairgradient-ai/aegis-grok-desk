@@ -435,7 +435,24 @@ context, sourced dates) and widens the Structuring Desk's scope.
 - **Gate.** All ten steps of `check.sh` with five agents; the template claiming the new skills; the bootstrap and
   `SETUP.md` steps for the new Bot with readbacks.
 
-### 2.11 Sourced events and the decision calendar
+### 2.11 Sourced events and the decision calendar (landed: the tools)
+
+- **What landed.**
+  - **The read path.** `alpaca_client.cash_dividends`, on the eighth allow-listed path `/v1/corporate-actions`
+    (`types=cash_dividend`, the market-data host, the same paper key). It keeps the ex-dates of the window and drops
+    a record without an ex-date. `SECURITY.md` lists the path.
+  - **`dividend_source.py`.** It compares the declarations with `research/calendar.toml` (AGREES, NEW, DIFFERS,
+    NONE FOUND) and proposes the new or different ones as `sourced_dividends` answers.
+  - **The owner's tap.** `desk_init.py --replace --owner-tapped` rewrites only those `ex_dividend` lines, with status
+    `confirmed`, `source = "Alpaca corporate actions (cash_dividend)"` and the fetch time as `checked_utc`. A stated
+    `yield` is kept with its new `yield_source` key (calendar schema 2), and every other line is kept.
+  - **`decision_calendar.py`.** It lists the act-by instants, last trading days, ex-dividend and earnings dates with
+    their sources; an unknown or missing date is UNAVAILABLE.
+  - **Not yet confirmed.** The response shape follows Alpaca's documentation of `cash_dividends` (`symbol`, `rate`,
+    `ex_date`, `process_date`, `special`, `foreign`). Whether the free plan serves it to a paper key is confirmed only
+    on a live run: if it is not, the tool answers UNAVAILABLE and the owner keeps stating dividends.
+  - **The routines.** `calendar-build` and `event-sheet` post in the Aegis Events and Calendar Analyst's chat, so
+    they land with that seat (2.12).
 
 - **The data source (your answer to open question 1).** One new GET-only read path on the pinned market-data host,
   Alpaca's corporate actions (`data.alpaca.markets`, `/v1/corporate-actions`, `types=cash_dividend`), with the same
@@ -618,7 +635,7 @@ only the files that do.
 | Scenario and event stress, a hedge through an event (landed: the tool) | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
 | The Aegis Book & Risk Analyst | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
-| Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
+| Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar (landed: the tools) | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
 | The Aegis Events and Calendar Analyst | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
@@ -637,7 +654,6 @@ both counts reach zero.
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
 | `agents/desk-lead.md` | 3 | 3 |
-| `agents/position-control.md` | 1 | 0 |
 | `docs/ARCHITECTURE.md` | 1 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
@@ -645,8 +661,7 @@ both counts reach zero.
 | `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 2 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
-| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 2 | 0 |
+| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
 | `skills/aegis-role-desk-lead/SKILL.md` | 3 | 3 |
-| `skills/aegis-role-position-control/SKILL.md` | 1 | 0 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

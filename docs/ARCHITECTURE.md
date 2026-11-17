@@ -153,6 +153,13 @@ Without `--desk-root` a tool reads the current directory; `routine.py` alone def
   stressed price never uses another model. It measures each change between two model prices, so the stressed book
   equals the book at a zero move. An event stress prices one symbol's groups at the close of the first trading day
   after its earnings or ex-dividend date; spot is never cut by the dividend. A computation, not a forecast.
+- **Sourced dividends and the decision calendar.** `dividend_source.py` (roadmap step 2.11) reads the held symbols'
+  declared cash dividends from Alpaca's corporate actions (`/v1/corporate-actions`, `types=cash_dividend`). It keeps
+  the ex-dates in its window, compares them with `research/calendar.toml`, and proposes the new or different ones as
+  `desk_init.py` answers. Nothing is written until the owner's tap runs `desk_init.py --replace --owner-tapped`,
+  which rewrites only those `ex_dividend` lines (`source = "Alpaca corporate actions (cash_dividend)"`, a stated
+  yield kept with its `yield_source`). `decision_calendar.py` lists the dated decision points: act-by instants, last
+  trading days, ex-dividend and earnings dates with their sources. An unknown date is UNAVAILABLE.
 - **The market clock.** `market_clock.py` embeds the NYSE holiday and early-close table for 2026 and 2027, transcribed
   from the NYSE hours calendar, with the America/New_York daylight-saving rule (no `tzdata` needed). The table expires
   on 2027-12-31; the doctor's check 3 fails 60 days before that.
@@ -167,7 +174,7 @@ for order-shaped text. Where the numbers and thresholds come from is in [PROVENA
 ## Trust boundaries
 
 - **One network path.** `scripts/aegis_desk/alpaca_client.py` is the only module that may open a connection: GET only,
-  two pinned hosts (Alpaca's market-data host and its paper trading host, the live trading host refused), seven
+  two pinned hosts (Alpaca's market-data host and its paper trading host, the live trading host refused), eight
   allow-listed read paths, no redirects, no proxy. `scripts/check_no_write_paths.py`
   proves this by reading every module's syntax tree.
 - **One credential.** An Alpaca paper key pair, used only to read market data, which cannot reach a live account.
@@ -205,11 +212,13 @@ The owner's decisions behind the design (2026-10-30):
 [ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
 the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4), weekly expirations (2.5),
 the stated cash check and per-account approval levels (2.6), the exposures and the two limit metrics (2.7), the
-scenario and event stress tool (2.8) and the volatility context tool (2.9).
+scenario and event stress tool (2.8), the volatility context tool (2.9), and the sourced cash dividends and the
+decision calendar (2.11).
 
-- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with the stress routines and a decision
-  calendar, are planned for Stage 2 (not in this release). The scenario and event stress tool, `scripts/scenario.py`,
-  has landed; the seat that relays it is part of that plan. Volatility
+- The Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst, with the stress routines and the
+  `calendar-build` and `event-sheet` routines, are planned for Stage 2 (not in this release). Their tools have landed:
+  `scripts/scenario.py`, `scripts/dividend_source.py` and `scripts/decision_calendar.py`; the seats that relay them
+  are part of that plan. Volatility
   context has its tool, `scripts/vol_context.py` (information only); the seat that relays it is part of that plan.
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).

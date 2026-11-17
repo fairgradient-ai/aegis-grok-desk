@@ -97,6 +97,8 @@ def expected_name(path: str, query: Dict[str, str]) -> Optional[str]:
         stem = "bars__%s__%s__%s" % (query.get("symbols", "").upper(), query.get("start", ""), query.get("end", ""))
         if query.get("adjustment") == "split":
             stem += "__split"
+    elif path == "/v1/corporate-actions":
+        stem = "corporate_actions__%s__%s__%s" % (symbols(), query.get("start", ""), query.get("end", ""))
     elif path == "/v2/clock":
         stem = "clock"
     elif path == "/v2/calendar":
@@ -165,6 +167,19 @@ def bars(closes: List[Tuple[str, float, int]]) -> List[Dict[str, Any]]:
     return out
 
 
+CASH_DIVIDENDS: List[Dict[str, Any]] = [
+    {"symbol": "WMT", "rate": 0.235, "special": False, "foreign": False, "process_date": "2026-12-08",
+     "ex_date": "2026-11-24", "record_date": "2026-11-24", "payable_date": "2026-12-08", "cusip": "931142103"},
+    {"symbol": "NVDA", "rate": 0.01, "special": False, "foreign": False, "process_date": "2026-12-26",
+     "ex_date": "2026-12-03", "record_date": "2026-12-03", "payable_date": "2026-12-26"},
+    {"symbol": "SPY", "rate": 1.7832, "special": False, "foreign": False, "process_date": "2026-10-31",
+     "ex_date": "2026-09-19", "record_date": "2026-09-19", "payable_date": "2026-10-31"},  # an ex-date before the window
+    {"symbol": "WMT", "rate": 0.235, "special": False, "foreign": False, "process_date": "2027-01-02"},  # no ex-date
+    {"symbol": "AAPL", "rate": 0.26, "ex_date": "2026-11-10", "process_date": "2026-11-13"},  # not asked for
+]
+"""A synthetic ``/v1/corporate-actions`` answer (the shape Alpaca documents for ``cash_dividends``)."""
+
+
 def write_set(set_dir: str) -> None:
     os.makedirs(set_dir, exist_ok=True)
 
@@ -210,6 +225,8 @@ def write_set(set_dir: str) -> None:
     put("/v2/stocks/bars", {"symbols": "NVDA", "start": "2026-10-27", "end": "2026-11-02"},
         {"bars": {"NVDA": bars([("2026-10-27", 180.0, 1), ("2026-10-28", 181.0, 2), ("2026-10-29", 182.0, 3),
                                 ("2026-10-30", 183.0, 4), ("2026-11-02", 184.0, 5)])}, "next_page_token": None})
+    put("/v1/corporate-actions", {"symbols": "NVDA,SPY,WMT", "start": "2026-10-24", "end": "2027-03-02"},
+        {"corporate_actions": {"cash_dividends": CASH_DIVIDENDS}, "next_page_token": None})
     put("/v2/clock", {}, {"timestamp": "2026-11-03T14:50:00.123456789-05:00", "is_open": True,
                           "next_open": "2026-11-04T09:30:00-05:00", "next_close": "2026-11-03T16:00:00-05:00"})
     put("/v2/calendar", {"start": "2026-11-01", "end": "2026-11-30"}, trading_days(2026, 11))
@@ -254,7 +271,7 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual("api.alpaca.markets", ac.LIVE_HOST)
         self.assertEqual(("paper",), ac.HOST_KINDS)
         self.assertEqual(("/v2/stocks/quotes/latest", "/v2/stocks/bars", "/v1beta1/options/snapshots/{underlying}",
-                          "/v1beta1/options/quotes/latest"), ac.DATA_PATHS)
+                          "/v1beta1/options/quotes/latest", "/v1/corporate-actions"), ac.DATA_PATHS)
         self.assertEqual(("/v2/clock", "/v2/calendar", "/v2/options/contracts"), ac.PAPER_PATHS)
         self.assertEqual(ac.DATA_PATHS + ac.PAPER_PATHS, ac.ALLOWED_PATHS)
         self.assertEqual(200, ac.RATE_LIMIT_PER_MIN)
@@ -750,6 +767,21 @@ class OfflineTransportTest(unittest.TestCase):
         with self.assertRaises(ac.AlpacaError):  # the raw fixture of this range does not exist: the default stays raw
             offline_client(fixture_dir=desk_set).history("SPY", date(2025, 9, 28), date(2026, 11, 2))
 
+    def test_cash_dividends_keep_the_ex_dates_in_the_window(self) -> None:
+        result = offline_client().cash_dividends(["wmt", "SPY", "NVDA"], date(2026, 10, 24), date(2027, 3, 2),
+                                                 ex_start=date(2026, 11, 3), ex_end=date(2027, 1, 31))
+        self.assertEqual([ac.CashDividend("NVDA", date(2026, 12, 3), Decimal("0.01"), date(2026, 12, 26)),
+                          ac.CashDividend("WMT", date(2026, 11, 24), Decimal("0.235"), date(2026, 12, 8))],
+                         result.dividends)
+        self.assertEqual(2, result.skipped, "the record without an ex-date and the symbol not asked for")
+        self.assertEqual("/v1/corporate-actions", result.receipt.path)
+        wide = offline_client().cash_dividends(["SPY", "WMT", "NVDA"], date(2026, 10, 24), date(2027, 3, 2))
+        self.assertEqual(["NVDA", "SPY", "WMT"], [item.symbol for item in wide.dividends], "no ex-date filter asked")
+        with self.assertRaises(ValueError):
+            offline_client().cash_dividends(["WMT"], date(2027, 3, 2), date(2026, 10, 24))
+        with self.assertRaises(ValueError):
+            offline_client().cash_dividends([], date(2026, 10, 24), date(2027, 3, 2))
+
     def test_clock(self) -> None:
         result = offline_client().clock()
         self.assertEqual((date(2026, 11, 3), "open", NOW, "16:00", "closed", None),
@@ -1235,6 +1267,7 @@ class LoopbackTest(unittest.TestCase):
         expirations = self.client.option_expirations("SPY", EXPIRATIONS_START)
         strikes = self.client.option_strikes("WMT", EXP)
         history = self.client.history("NVDA", date(2026, 10, 27), date(2026, 11, 2))
+        dividends = self.client.cash_dividends(["WMT", "SPY", "NVDA"], date(2026, 10, 24), date(2027, 3, 2))
         clock = self.client.clock()
         calendar = self.client.calendar(11, 2026)
         self.assertEqual(6, len(quotes.quotes))
@@ -1244,15 +1277,17 @@ class LoopbackTest(unittest.TestCase):
         self.assertEqual(5, len(history.bars))
         self.assertEqual("open", clock.state)
         self.assertEqual(30, len(calendar.days))
-        # 2 quote batches + 1 listing + 2 snapshot pages + 2 expiration pages + 1 listing + bars + clock + calendar
-        self.assertEqual(11, len(seen))
+        self.assertEqual(3, len(dividends.dividends))
+        # 2 quote batches + 1 listing + 2 snapshot pages + 2 expiration pages + 1 listing + bars + corporate actions
+        # + clock + calendar
+        self.assertEqual(12, len(seen))
         self.assertEqual({"GET"}, {method for method, _url, _body in seen})
         self.assertTrue(all(body is None for _method, _url, body in seen))
         paths = [urlsplit(url).path for _method, url, _body in seen]
         self.assertEqual(["/v2/stocks/quotes/latest", "/v1beta1/options/quotes/latest", "/v2/options/contracts",
                           "/v1beta1/options/snapshots/WMT", "/v1beta1/options/snapshots/WMT", "/v2/options/contracts",
-                          "/v2/options/contracts", "/v2/options/contracts", "/v2/stocks/bars", "/v2/clock",
-                          "/v2/calendar"], paths)
+                          "/v2/options/contracts", "/v2/options/contracts", "/v2/stocks/bars", "/v1/corporate-actions",
+                          "/v2/clock", "/v2/calendar"], paths)
         self.assertEqual(set(ac.ALLOWED_PATHS), {p if not p.startswith(ac.SNAPSHOTS_PREFIX)
                                                  else ac.PATH_OPTION_SNAPSHOTS for p in paths})
         queries = [parse_qs(urlsplit(url).query) for _method, url, _body in seen]
@@ -1264,11 +1299,12 @@ class LoopbackTest(unittest.TestCase):
                          (queries[5]["type"], queries[5]["expiration_date_gte"], queries[5]["expiration_date_lte"]))
         self.assertEqual((["1Day"], ["raw"], ["iex"]), (queries[8]["timeframe"], queries[8]["adjustment"],
                                                         queries[8]["feed"]))
-        self.assertEqual((["2026-11-01"], ["2026-11-30"]), (queries[10]["start"], queries[10]["end"]))
-        self.assertEqual(11, len(self.requests()))
+        self.assertEqual((["NVDA,SPY,WMT"], ["cash_dividend"]), (queries[9]["symbols"], queries[9]["types"]))
+        self.assertEqual((["2026-11-01"], ["2026-11-30"]), (queries[11]["start"], queries[11]["end"]))
+        self.assertEqual(12, len(self.requests()))
         self.assertEqual({"GET"}, {request["method"] for request in self.requests()})
-        self.assertEqual(["ok"] * 11, [receipt.status for receipt in self.receipts])
-        self.assertEqual([3, 3, 1, 1, 1, 1, 1, 1, 1, 0, 0], [receipt.symbols_count for receipt in self.receipts])
+        self.assertEqual(["ok"] * 12, [receipt.status for receipt in self.receipts])
+        self.assertEqual([3, 3, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0], [receipt.symbols_count for receipt in self.receipts])
 
     def test_rate_limit_headers_reach_the_receipt(self) -> None:
         body = read_bytes(ALPACA_SET, "clock.json")

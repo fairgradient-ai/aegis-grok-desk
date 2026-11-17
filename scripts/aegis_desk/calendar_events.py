@@ -40,6 +40,9 @@ and means a yield of zero, because that status is a stated fact. Version 1 (a to
 symbol's entries, no ``yield`` key) still loads. :func:`dividend_yield` reads either version's number;
 :func:`sourced_yield` answers the model of record's question, whether the yield is a sourced fact: only a version-2
 ``yield``, or status ``none``, is; a bare version-1 yield has no source and no time, so it counts as unknown there.
+A version-2 entry may carry ``yield_source`` beside its ``yield`` (roadmap 2.11): an entry whose date and amount came
+from Alpaca's corporate actions (``source`` :data:`SOURCE_ALPACA_DIVIDEND`) keeps the yield the owner stated, and
+``yield_source`` names that yield's own source.
 
 Rules
 -----
@@ -140,7 +143,11 @@ SYMBOL_KEYS_V2: Tuple[str, ...] = ("earnings", "ex_dividend")
 EARNINGS_KEYS: Tuple[str, ...] = ("date", "time", "status", "source", "checked_utc")
 EX_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "status", "source", "checked_utc")
 """An ``ex_dividend`` entry's keys in version 1."""
-EX_DIVIDEND_KEYS_V2: Tuple[str, ...] = ("date", "amount", "yield", "status", "source", "checked_utc")
+EX_DIVIDEND_KEYS_V2: Tuple[str, ...] = ("date", "amount", "yield", "yield_source", "status", "source", "checked_utc")
+"""An ``ex_dividend`` entry's keys in version 2; ``yield_source`` (roadmap 2.11) names where a stated ``yield`` came
+from when the entry's own ``source`` is not the owner (a dividend sourced from Alpaca keeps the owner's yield)."""
+SOURCE_ALPACA_DIVIDEND: str = "Alpaca corporate actions (cash_dividend)"
+"""The ``source`` of an ``ex_dividend`` entry written from Alpaca's corporate actions, after the owner's tap."""
 SETTLEMENT_KEYS: Tuple[str, ...] = ("am_settled_roots", "values")
 SETTLEMENT_VALUE_KEYS: Tuple[str, ...] = ("root", "date", "value", "source", "checked_utc")
 CLOSURE_KEYS: Tuple[str, ...] = ("date", "kind", "source")
@@ -184,6 +191,7 @@ class DividendEntry:
     date: Optional[datetime.date] = None
     amount: Optional[Decimal] = None
     dividend_yield: Optional[Decimal] = None
+    yield_source: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -280,7 +288,7 @@ class CalendarFile:
         if entry.status == STATUS_NONE:
             return YieldView(Decimal(0), YIELD_NONE, entry.source, entry.checked_utc)
         if self.schema_version >= 2 and entry.dividend_yield is not None:
-            return YieldView(entry.dividend_yield, YIELD_SOURCED, entry.source, entry.checked_utc)
+            return YieldView(entry.dividend_yield, YIELD_SOURCED, entry.yield_source or entry.source, entry.checked_utc)
         return YieldView(None, YIELD_UNKNOWN, entry.source, entry.checked_utc)
 
     def dividend_before(self, symbol: str, expiry: DateLike, as_of: DateLike) -> DividendView:
@@ -504,11 +512,15 @@ def _parse_dividend(reader: _Reader, raw: Any, where: str, version: int = SCHEMA
     if status == STATUS_NONE:
         reader.forbid(table, "date", where, status)
         reader.forbid(table, "amount", where, status)
-        if "yield" in table:
+        if "yield" in table or "yield_source" in table:
             raise reader.fail("%s status \"none\" takes no yield: no dividend means a yield of zero (got %r)"
-                              % (where, table["yield"]))
+                              % (where, table.get("yield", table.get("yield_source"))))
         return DividendEntry(status, source, checked)
     stated_yield = reader.fraction(table, "yield", where) if "yield" in table else None
+    yield_source = reader.string(table, "yield_source", where) if "yield_source" in table else None
+    if yield_source is not None and stated_yield is None:
+        raise reader.fail("%s yield_source names the source of a yield: give it with yield (got %r)"
+                          % (where, yield_source))
     if status in DATED_STATUSES:
         if "date" not in table:
             raise reader.fail("%s status \"%s\" needs a date (an undated dividend is status \"unknown\")" % (where, status))
@@ -516,12 +528,12 @@ def _parse_dividend(reader: _Reader, raw: Any, where: str, version: int = SCHEMA
             raise reader.fail("%s status \"%s\" needs an amount (use status \"none\" for no dividend)" % (where, status))
         day = reader.local_date(table, "date", where)
         amount = reader.positive_number(table, "amount", where, ": use status \"none\" for no dividend")
-        return DividendEntry(status, source, checked, day, amount, stated_yield)
+        return DividendEntry(status, source, checked, day, amount, stated_yield, yield_source)
     if "amount" in table:
         raise reader.fail("%s status \"unknown\" takes no amount (an amount with an unknown dividend is contradictory: "
                           "use \"estimated\", got %r)" % (where, table["amount"]))
     day = reader.local_date(table, "date", where) if "date" in table else None
-    return DividendEntry(status, source, checked, day, None, stated_yield)
+    return DividendEntry(status, source, checked, day, None, stated_yield, yield_source)
 
 
 def _parse_symbols(reader: _Reader, raw: Any, version: int = SCHEMA_VERSION) -> Dict[str, SymbolEvents]:
@@ -816,6 +828,7 @@ __all__ = [
     "EARNINGS_KEYS",
     "EX_DIVIDEND_KEYS",
     "EX_DIVIDEND_KEYS_V2",
+    "SOURCE_ALPACA_DIVIDEND",
     "EarningsEntry",
     "FINDING_KINDS",
     "FINDING_MISSING",

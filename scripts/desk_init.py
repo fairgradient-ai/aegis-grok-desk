@@ -42,6 +42,13 @@ O9). It creates the desk root when it is missing and renders, byte for byte:
   ``structuring_config.parse_structuring_toml_text`` before anything is written (a failure is exit 1
   ``structuring_invalid`` with the reader's reason).
 
+* ``sourced_dividends`` (roadmap 2.11; alone): ``dividend_source.py``'s proposal, ``{SYMBOL: {date, amount,
+  checked_utc}}``, read from Alpaca's corporate actions. It updates the existing ``research/calendar.toml`` in place
+  (:func:`merge_sourced_dividends`): each symbol's ``ex_dividend`` line becomes ``{ date, amount, status =
+  "confirmed", source = "Alpaca corporate actions (cash_dividend)", checked_utc }``, keeping a stated ``yield`` with its
+  own ``yield_source``; every other line is kept. A missing calendar is ``calendar_missing``, an entry not written on
+  one line ``calendar_layout``. The update replaces an existing file, so it needs ``--replace --owner-tapped``.
+
 An existing ``desk.toml``, ``research/calendar.toml`` or ``structuring.toml`` is refused (exit 1 ``desk_toml_exists``,
 ``calendar_exists`` or ``structuring_exists``) unless both ``--replace`` and ``--owner-tapped`` are given
 (``--owner-tapped`` is the signature of
@@ -119,7 +126,10 @@ CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vend
                              "order_shape_enabled": "false"}
 """The rendered values the interview does not ask."""
 TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends",
-                             "earnings", "structuring")
+                             "earnings", "structuring", "sourced_dividends")
+SOURCED_DIVIDEND_KEYS: Tuple[str, ...] = ("date", "amount", "checked_utc")
+"""A ``sourced_dividends`` entry (roadmap 2.11): what ``dividend_source.py`` read from Alpaca's corporate actions."""
+INSTANT_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)\Z")
 DESK_KEYS: Tuple[str, ...] = ("engagement", "cadence_profile", "chatty_or_quiet")
 DESK_REQUIRED: Tuple[str, ...] = ("cadence_profile",)
 """``engagement`` and ``chatty_or_quiet`` are retired (roadmap 2.6): the interview no longer asks for them, and an
@@ -259,6 +269,9 @@ ANSWERS_SHAPE: Dict[str, Any] = {
                            "{status none, source string} (optional; written to research/calendar.toml with the "
                            "ex_dividends of the same answers)"},
     "structuring": STRUCTURING_SHAPE,
+    "sourced_dividends": {"SYMBOL": "{date YYYY-MM-DD, amount decimal string, checked_utc RFC 3339 UTC} (optional, "
+                                    "alone: dividend_source.py's proposal; updates the symbol's ex_dividend entry in "
+                                    "the existing research/calendar.toml, needs --replace --owner-tapped)"},
 }
 
 
@@ -513,6 +526,66 @@ def render_calendar_toml(intake: Any, now: datetime.datetime, earnings: Any = No
     return "\n".join(lines) + "\n", symbols
 
 
+def _ex_dividend_line(symbol: str, entry: Any, existing: Optional[calendar_events.DividendEntry]) -> str:
+    where = "sourced_dividends.%s" % symbol
+    table(entry, where, SOURCED_DIVIDEND_KEYS, SOURCED_DIVIDEND_KEYS)
+    checked = entry["checked_utc"]
+    if not isinstance(checked, str) or not INSTANT_RE.match(checked):
+        raise answers_error("%s.checked_utc must be a UTC instant YYYY-MM-DDTHH:MM:SSZ" % where)
+    stated = ""
+    if existing is not None and existing.dividend_yield is not None:
+        stated = "yield = %s, yield_source = %s, " % (existing.dividend_yield,
+                                                      json.dumps(existing.yield_source or existing.source))
+    return "ex_dividend = { date = %s, amount = %s, %sstatus = %s, source = %s, checked_utc = %s }" % (
+        date_value(entry["date"], where + ".date"), decimal_value(entry["amount"], where + ".amount"), stated,
+        json.dumps(calendar_events.STATUS_CONFIRMED), json.dumps(calendar_events.SOURCE_ALPACA_DIVIDEND),
+        checked[:19] + "Z")
+
+
+def merge_sourced_dividends(text: str, sourced: Any, path: str) -> Tuple[str, List[str]]:
+    """``(text, symbols)``: ``text`` (the existing ``research/calendar.toml``) with each sourced symbol's
+    ``ex_dividend`` line replaced, or added under its ``[symbols.<SYM>]`` table (a new table at the end when the file
+    has none). Every other line is kept byte for byte, closures and settlement values among them. A symbol whose entry
+    is not one inline line is refused (``calendar_layout``): the owner edits that file by hand."""
+    intake = _intake_table(sourced, "sourced_dividends")
+    try:
+        current = calendar_events.parse_calendar_text(text, path=path)
+    except calendar_events.CalendarError as exc:
+        raise ToolError("calendar_invalid", "the existing research/calendar.toml does not load: %s" % exc) from None
+    lines = text.split("\n")
+    for symbol in sorted(intake):
+        key = symbol if BARE_KEY_RE.match(symbol) else json.dumps(symbol)
+        new = _ex_dividend_line(symbol, intake[symbol], current.events_for(symbol).ex_dividend)
+        headers = ("[symbols.%s]" % symbol, "[symbols.%s]" % json.dumps(symbol))
+        if any(line.strip().startswith("[symbols.%s." % candidate.strip("[]").split(".", 1)[1])
+               for line in lines for candidate in headers):
+            raise ToolError("calendar_layout", "research/calendar.toml writes %s's entries as sub-tables: update its "
+                                               "ex_dividend by hand" % symbol)
+        start = next((index for index, line in enumerate(lines) if line.strip() in headers), None)
+        if start is None:
+            while lines and lines[-1] == "":
+                lines.pop()
+            lines += ["", "[symbols.%s]" % key, new, ""]
+            continue
+        end = next((index for index in range(start + 1, len(lines)) if lines[index].lstrip().startswith("[")),
+                   len(lines))
+        found = [index for index in range(start + 1, end)
+                 if re.match(r"\s*ex_dividend\s*=", lines[index])]
+        if found:
+            line = lines[found[0]]
+            if "{" not in line or not line.rstrip().endswith("}"):
+                raise ToolError("calendar_layout", "research/calendar.toml writes %s's ex_dividend over several lines: "
+                                                   "update it by hand" % symbol)
+            lines[found[0]] = new
+        else:
+            last = max([index for index in range(start, end) if lines[index].strip()] or [start])
+            lines.insert(last + 1, new)
+    merged = "\n".join(lines)
+    if not merged.endswith("\n"):
+        merged += "\n"
+    return merged, sorted(intake)
+
+
 def structuring_value(kind: str, value: Any, where: str) -> str:
     """One structuring answer as its TOML text (``answers_invalid`` for a wrong JSON shape; the values themselves
     are the reader's to judge)."""
@@ -592,7 +665,9 @@ def read_answers(path: str) -> Dict[str, Any]:
     answers = table(answers, "the answers", TOP_KEYS, ("schema_version",))
     if answers["schema_version"] != SCHEMA_VERSION or isinstance(answers["schema_version"], bool):
         raise answers_error("the answers' schema_version must be %d" % SCHEMA_VERSION)
-    if not any(key in answers for key in ("desk", "ex_dividends", "earnings", "structuring")):
+    if "sourced_dividends" in answers and len(answers) != 2:
+        raise answers_error("sourced_dividends stands alone: it updates the existing research/calendar.toml")
+    if not any(key in answers for key in ("desk", "ex_dividends", "earnings", "structuring", "sourced_dividends")):
         raise answers_error("the answers render nothing: give desk (with owner, market_data and rates), ex_dividends, "
                             "earnings, structuring or several of them")
     for key in ("owner", "market_data", "rates", "levels"):
@@ -648,6 +723,18 @@ def run(args: Any, now: datetime.datetime) -> Tuple[Dict[str, Any], List[str]]:
             calendar_events.parse_calendar_text(calendar_text, path=calendar_toml)
         except calendar_events.CalendarError as exc:
             raise ToolError("calendar_invalid", "the rendered research/calendar.toml does not load: %s" % exc) from None
+        planned.append((calendar_toml, calendar_text))
+    if "sourced_dividends" in answers:
+        if not os.path.isfile(calendar_toml):
+            raise ToolError("calendar_missing", "sourced_dividends updates research/calendar.toml, which does not exist "
+                                                "at %s: state the dividends in the desk interview first" % root)
+        with open(calendar_toml, encoding="utf-8") as handle:
+            existing = handle.read()
+        calendar_text, symbols = merge_sourced_dividends(existing, answers["sourced_dividends"], calendar_toml)
+        try:
+            calendar_events.parse_calendar_text(calendar_text, path=calendar_toml)
+        except calendar_events.CalendarError as exc:
+            raise ToolError("calendar_invalid", "the updated research/calendar.toml does not load: %s" % exc) from None
         planned.append((calendar_toml, calendar_text))
     if "structuring" in answers:
         structuring_text = render_structuring_toml(answers["structuring"])
