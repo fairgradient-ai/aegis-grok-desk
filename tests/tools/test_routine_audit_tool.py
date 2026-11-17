@@ -29,7 +29,7 @@ import routine_audit as tool  # the tool scripts/routine_audit.py
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURE_DESK = os.path.join(ROOT, "tests", "fixtures", "desk")
-LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 59, 79, 604
+LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 65, 85, 633
 """The real manifest's budget: Stage 1's 41 and 61 plus the later stages' routines (roadmap 2.10: 11 more)."""
 TOO_LONG_AUTOREVIEW = os.path.join(ROOT, "tests", "fixtures", "gates", "bad", "autoreview_too_long", "routines",
                                    "autoreview.toml")

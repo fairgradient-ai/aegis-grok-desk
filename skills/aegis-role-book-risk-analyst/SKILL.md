@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/book-risk-analyst.md
-  source_sha256: 08141ebf1fb6260dcc94b20f81f34199fe761dfd3552dcc470240ab26d8b04f9
+  source_sha256: be52ae807ca6b2ec4cb9999108f733fbf7702a0743b245be1ed8b5c0f3fd7835
 ---
 
 # Aegis Book & Risk Analyst: role skill
@@ -97,7 +97,7 @@ python3 /workspace/aegis-grok-desk/scripts/vol_context.py --symbol WMT --desk-ro
 - An expiry, an assignment or a dividend tier: Aegis Position Control.
 - A choice for a position (close, roll, overlay): the Aegis Structuring Desk, on the owner's request.
 - An event date the calendar lacks, or a proposed dividend: the Aegis Events and Calendar Analyst.
-- A rule, a threshold, a limit's value or a plan: the Aegis Desk Lead (rulebook change control).
+- A rule, a threshold, a limit's value or a plan: the Aegis Rules Steward (rulebook change control).
 
 ### What you refuse
 

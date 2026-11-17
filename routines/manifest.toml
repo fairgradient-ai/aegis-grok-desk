@@ -192,3 +192,33 @@ posts = "fired"
 quiet_rule = "Never posts on its own: it closes the day's signal journal (journal/outcomes/<ET date>.json) and prints quiet; a failure is an incident line."
 approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py journal-close --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "rules-sanity"
+owner = "rules-steward"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["16:45"], active = ["16:45"] }
+days = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+trading_days_only = true
+chain = ["rules_sanity"]
+post = ["rules_sanity"]
+posts = "fired"
+quiet_rule = "Posts only when the adopted rulebook no longer covers a structure you hold today (a position opened after the adoption), with each lint finding; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py rules-sanity --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "rulebook-memo"
+owner = "rules-steward"
+stage = 3
+profiles = ["lean", "active"]
+et = { lean = ["17:20"], active = ["17:20"] }
+days = ["Fri"]
+trading_days_only = true
+chain = ["rules_sanity --memo"]
+post = ["rules_sanity"]
+posts = "always"
+quiet_rule = "Always one message on Friday: the memo of your adopted rulebook (its version and sha, when you adopted it, its rules by role, the structures you hold) and the lint's verdict against today's positions."
+approval_boundary = "read-only; writes only under state/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py rulebook-memo --slot {slot} and post its output verbatim."

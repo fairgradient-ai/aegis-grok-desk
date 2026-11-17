@@ -73,8 +73,10 @@ as they are. [docs/UPDATING.md](docs/UPDATING.md) has every step, how to go back
 | **Aegis Structuring Desk** | Holds the rules for pricing your choices for a position you hold (close it, roll it, or add protection); the Desk Lead runs them when you ask. |
 | **Aegis Events and Calendar Analyst** | Keeps the dates of your held symbols honest: proposes the cash dividends Alpaca declares for your tap, reminds you of a stale or unknown date, and sends your decision calendar every Monday. |
 | **Aegis Book & Risk Analyst** | Shows your book as the desk marks it each morning, with your beta-weighted exposure, and stresses it over a grid of moves and through a coming earnings or ex-dividend date: computations, never forecasts. |
+| **Aegis Rules Steward** | Looks after your exit rules: helps you write a new version, shows what it would change today and on past days, and checks every trading day that your rules still reach every position you hold. Nothing changes until you type the adoption phrase and tap. You reach it by direct message. |
 
-All of them sit together in one private group chat, the **Aegis Options Floor**. Every message starts from your
+The first six sit together in one private group chat, the **Aegis Options Floor**; the Rules Steward
+answers in its own chat. Every message starts from your
 positions and delayed market data, and every number in it comes from a tool:
 
 <p align="center">

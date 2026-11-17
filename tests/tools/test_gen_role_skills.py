@@ -30,10 +30,11 @@ import gen_role_skills as gen
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SEATS = ("book-risk-analyst", "desk-lead", "events-calendar-analyst", "exit-sentinel", "position-control",
-         "structuring-desk")
+         "rules-steward", "structuring-desk")
 """Every agent file stem, sorted (the generator's own order)."""
 SEAT_KIND = {"book-risk-analyst": "floor", "desk-lead": "floor", "events-calendar-analyst": "floor",
-             "exit-sentinel": "floor", "position-control": "floor", "structuring-desk": "floor"}
+             "exit-sentinel": "floor", "position-control": "floor", "rules-steward": "off-floor",
+             "structuring-desk": "floor"}
 ROLES = ["aegis-role-%s" % seat for seat in SEATS]
 BOUNDARY = ("This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules "
             "fired and why; you act in your brokerage account.")
@@ -226,7 +227,7 @@ class CopyTest(unittest.TestCase):
         self.assertIn("| [aegis-role-golden-seat](aegis-role-golden-seat/SKILL.md) | `agents/golden-seat.md` | off-floor |\n",
                       read(self.root, "skills/README.md"))
         self.assertIn("`aegis-role-exit-sentinel`, `aegis-role-golden-seat`, `aegis-role-position-control`, "
-                      "`aegis-role-structuring-desk`\n",
+                      "`aegis-role-rules-steward`, `aegis-role-structuring-desk`\n",
                       read(self.root, "SETUP.md"), "sorted by agent file name")
 
     def test_write_on_a_tree_without_role_skills_reproduces_the_committed_ones(self) -> None:

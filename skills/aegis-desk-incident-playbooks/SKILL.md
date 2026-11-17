@@ -235,11 +235,13 @@ Floor; it never answers with another Bot's numbers.
 | --- | --- |
 | signals, alerts, the threshold-level sheet, the book snapshot | Aegis Exit Sentinel |
 | `positions.csv`, the expiry week, assignment and settlement | Aegis Position Control |
-| `desk.toml`, the rulebook, the doctor, whether the desk ran | Aegis Desk Lead |
+| `desk.toml`, the doctor, whether the desk ran | Aegis Desk Lead |
 | the owner's choices: tickets, the roll analyses and proposals, `structuring.toml` | Aegis Structuring Desk, only on the owner's request |
+| the marks, the beta-weighted delta, a scenario or event stress, the volatility context | Aegis Book & Risk Analyst |
+| `research/calendar.toml`, a proposed dividend, the decision calendar | Aegis Events and Calendar Analyst |
+| the rulebook: a candidate, a dry run, a replay, the lint, the adoption | Aegis Rules Steward, by direct message |
 
-A request for a planned seat's work gets the answer that it is not available in this release. Book and risk
-analysis and sourced events are planned for Stage 2 (not in this release); rule stewardship and the review desk are
+A request for a planned seat's work gets the answer that it is not available in this release. The review desk is
 planned for Stage 3 (not in this release).
 
 ## The owner's checklist: check your broker directly

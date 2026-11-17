@@ -426,14 +426,14 @@ class EodBriefTest(DeskCopy):
         code, body = self.run_json("--brief", now=BRIEF_SLOT_NOW)
         self.assertEqual(0, code, body)
         lines = body["payload"]["message"].split("\n")
-        at = lines.index("- **Routines** 2 of 9 ran today")
+        at = lines.index("- **Routines** 2 of 10 ran today")
         self.assertEqual(["  - late: book-check 10:05 ET (31 min late)",
                           "  - missed: opening-marks 10:20 ET, book-check 12:05 ET, book-check 14:05 ET, pre-event-stress "
-                          "14:50 ET, final-call 15:20 ET, book-check 15:35 ET", "  - pending: eod 16:35 ET"],
+                          "14:50 ET, final-call 15:20 ET, book-check 15:35 ET", "  - pending: eod 16:35 ET, rules-sanity 16:45 ET"],
                          lines[at + 1:at + 4])
         routines = body["payload"]["routines"]
         self.assertEqual("17:10", routines["through_et"])
-        self.assertEqual({"expected": 9, "ran": 2, "late": 1, "missed": 6, "pending": 1}, routines["counts"])
+        self.assertEqual({"expected": 10, "ran": 2, "late": 1, "missed": 6, "pending": 2}, routines["counts"])
         self.assertNotIn("eod-brief", body["payload"]["message"])
 
     def test_a_manifest_that_cannot_be_read_is_unavailable(self) -> None:

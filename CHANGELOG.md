@@ -2,6 +2,13 @@
 
 ## 1.0.0 (unreleased)
 
+- **The Aegis Rules Steward** (roadmap step 3.3): a direct-message seat (`seat: off-floor`) with its role skill. It
+  holds rulebook change control (candidate file, dry run, replay, lint, adoption on the owner's phrase and tap); the
+  Desk Lead runs the same steps on request.
+  - **`rules_sanity.py`** (new) verifies the adopted rulebook and lints it against the structures held today, or
+    prints the weekly memo.
+  - **The routines.** `rules-sanity` (16:45 ET; posts only a finding) and `rulebook-memo` (Friday 17:20). Lean 65,
+    active 85.
 - **Rules replay** (roadmap step 3.2): `rules_replay.py` (new) replays a candidate rulebook over the desk's end-of-day
   snapshots beside the adopted one. It lists the days and groups whose verdict would have differed, then one count
   line. It states its limits (end of day only, no rule state carried across days, no profit or loss) and writes

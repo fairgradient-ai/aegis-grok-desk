@@ -29,18 +29,18 @@ from aegis_desk import alert_lint, desk_paths, heartbeat, market_clock, routines
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
-MANIFEST_SHA256 = "f1fa92df8511a4bd86502e48aac687a011b4a3b8dd12e8f36c44651fb58194f4"
+MANIFEST_SHA256 = "b7de979e2ace7028726c4ad92c7f7426061fa8d2c9abb1b211ce2e14c1b6f217"
 AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
 ROUTINE_IDS = STAGE1_IDS + ["opening-marks", "pre-event-stress", "weekend-stress", "calendar-build", "event-sheet",
-                            "journal-close"]
-LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 59, 79, 604
+                            "journal-close", "rules-sanity", "rulebook-memo"]
+LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 65, 85, 633
 """Every routine of the manifest, in order: Stage 1's six, then the later stages' as each seat lands."""
 OWNERS = {"preopen": "desk-lead", "book-check": "exit-sentinel", "final-call": "position-control", "eod": "exit-sentinel",
           "eod-brief": "desk-lead", "post-expiry": "position-control", "opening-marks": "book-risk-analyst",
           "pre-event-stress": "book-risk-analyst", "weekend-stress": "book-risk-analyst",
           "calendar-build": "events-calendar-analyst", "event-sheet": "events-calendar-analyst",
-          "journal-close": "exit-sentinel"}
+          "journal-close": "exit-sentinel", "rules-sanity": "rules-steward", "rulebook-memo": "rules-steward"}
 
 
 def stage1(manifest: routines.Manifest) -> routines.Manifest:
@@ -86,7 +86,8 @@ class ConstantsTest(unittest.TestCase):
         # O4: no ack and no routine_audit in any chain; roadmap 2.10 adds beta_refresh and scenario.
         self.assertEqual(("assignment_watch", "beta_refresh", "book", "book_check", "calendar_check", "csv_recon",
                           "decision_calendar", "desk_doctor", "dividend_source", "eod_summary", "expiry_checklist",
-                          "scenario", "signal_journal", "trigger_levels"), routines.STEP_TOOLS)
+                          "rules_sanity", "scenario", "signal_journal", "trigger_levels"),
+                         routines.STEP_TOOLS)
         self.assertNotIn("ack", routines.STEP_TOOLS)
         self.assertNotIn("routine_audit", routines.STEP_TOOLS)
         for name in STRUCTURING_TOOLS:

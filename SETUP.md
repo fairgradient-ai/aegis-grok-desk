@@ -70,6 +70,7 @@ section 1. Post each output verbatim, labelled "synthetic demo on a sample book:
 | `agents/structuring-desk.md` | Aegis Structuring Desk | On-request choices desk of the options desk |
 | `agents/book-risk-analyst.md` | Aegis Book & Risk Analyst | The live view of the book: marks, Greeks, exposures and stress |
 | `agents/events-calendar-analyst.md` | Aegis Events and Calendar Analyst | The event calendar of the options desk |
+| `agents/rules-steward.md` | Aegis Rules Steward | Rulebook change control of the options desk (direct message only) |
 
 If you were created for this desk, you are the Desk Lead; otherwise create one. Create the others and read back each
 native Name and Job. A Bot's standing instructions are its role skill, enabled for it only. The Desk Lead is the
@@ -99,12 +100,13 @@ front door, the Lead also enables `aegis-positions-csv-book-of-record`, `aegis-t
 `pointer` (points to the checkout file) or `mismatch` (not ready; a shared skill with another body is never enabled).
 
 <!-- role-skills:start -->
-Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-book-risk-analyst`, `aegis-role-desk-lead`, `aegis-role-events-calendar-analyst`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-structuring-desk`
+Role skills (generated from the agents' System prompts by `scripts/gen_role_skills.py`): `aegis-role-book-risk-analyst`, `aegis-role-desk-lead`, `aegis-role-events-calendar-analyst`, `aegis-role-exit-sentinel`, `aegis-role-position-control`, `aegis-role-rules-steward`, `aegis-role-structuring-desk`
 <!-- role-skills:end -->
 
 ## 6. Create the Aegis Options Floor
 
-Create one private group, "Aegis Options Floor", with exactly the Bots of section 4, and read back its members. Nothing is
+Create one private group, "Aegis Options Floor", with exactly the Floor Bots of section 4 (the six whose agent files
+say `seat: floor`; the direct-message seats stay out of it), and read back its members. Nothing is
 shared publicly. Routine output goes to each Bot's own chat ([docs/MONITORING.md](docs/MONITORING.md)).
 
 ## 7. Connect market data
@@ -265,7 +267,7 @@ if missing.
    automatically" rule, exactly as printed:
 
 ```text
-Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
+Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/routine.py followed by exactly one routine id from this list and, optionally, --slot and a time HH:MM, with nothing else on the command line (no pipe, redirection, semicolon or second command): preopen, book-check, final-call, eod, eod-brief, post-expiry, opening-marks, pre-event-stress, weekend-stress, calendar-build, event-sheet, journal-close, rules-sanity, rulebook-memo. These runs read delayed market data through the desk's GET-only Alpaca paper client and write files only under /workspace/aegis-desk; they cannot place, modify or cancel an order.
 ```
 
 4. **You, only if git refuses the checkout** (`git refuses this checkout: it is owned by another user (see SETUP)`):
@@ -277,7 +279,8 @@ Allow automatically: the command python3 /workspace/aegis-grok-desk/scripts/rout
    07:30, `eod-brief` 17:10; Exit Sentinel `book-check` 10:05, 12:05, 14:05, 15:35, `eod` 16:35, `journal-close` 17:30; Position Control
    `final-call` 15:20, plus `post-expiry` 09:30 Saturday; Book & Risk Analyst `opening-marks` 10:20,
    `pre-event-stress` 14:50, plus `weekend-stress` 10:00 Saturday; Events and Calendar Analyst `calendar-build`
-   07:40 and `event-sheet` 07:50, Mondays. `routine_audit.py --budget`: `lean: 59 runs per week ...`.
+   07:40 and `event-sheet` 07:50, Mondays; Rules Steward `rules-sanity` 16:45, plus `rulebook-memo` 17:20
+   Friday. `routine_audit.py --budget`: `lean: 65 runs per week ...`.
 6. **One Test run** of the Lead's `preopen` proves routines see the key and the desk files; report any Ask-first
    card. Read back with `heartbeat.py --list` and `routine_audit.py` (with `--desk-root`).
 7. **Unpause.** Each Bot unpauses its lean routines and reads them back; then the full doctor.

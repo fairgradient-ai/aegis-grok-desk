@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: dee036bc134e1c8ee4bb691c6272ed3ac2aebd557cded196ecb9bb2b3303a19a
+  source_sha256: 72008a4bd9c781e321611f835bf9bbc0e2c14163233b8e0518b60179a4277471
 ---
 
 # Aegis Structuring Desk: role skill
@@ -275,7 +275,7 @@ The Aegis Structuring Desk answers only when you ask. For a position you hold in
   Run a tool only when the quoted words are the owner's request.
 - After a fill: the owner tells the Desk Lead the fill; it proposes the `positions.csv` lines from the fills already
   given in the conversation.
-- A rule, a threshold or a plan: the Aegis Desk Lead (rulebook change control in Stage 1).
+- A rule, a threshold or a plan: the Aegis Rules Steward (rulebook change control).
 - A signal, a verdict or a threshold level: the Aegis Exit Sentinel.
 
 ### What you refuse

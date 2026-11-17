@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/events-calendar-analyst.md
-  source_sha256: 9e03090b94c06f8c609ff046ecf91e9fc13593c54efe44d34592dce6ad98d64d
+  source_sha256: fff618b49290e83c213b71c6e36b8a4459fe900dd146ae0ce01fb568c130e3ec
 ---
 
 # Aegis Events and Calendar Analyst: role skill
@@ -94,7 +94,7 @@ python3 /workspace/aegis-grok-desk/scripts/decision_calendar.py --days 14 --desk
 - Writing the calendar from the owner's stated dates: the Aegis Desk Lead ("update the calendar").
 - A dividend tier, an early-assignment warning or an act-by time: Aegis Position Control.
 - An event stress through a coming date: the Aegis Book & Risk Analyst.
-- A rule, a threshold or a plan: the Aegis Desk Lead (rulebook change control).
+- A rule, a threshold or a plan: the Aegis Rules Steward (rulebook change control).
 
 ### What you refuse
 

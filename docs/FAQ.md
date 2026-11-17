@@ -173,12 +173,12 @@ README. See [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md).
 
 ## How much usage does it take?
 
-Every routine run spends weekly Grok usage. The lean profile is 59 runs per week; the active profile, with four more
-book checks a day, is 79 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run. The
+Every routine run spends weekly Grok usage. The lean profile is 65 runs per week; the active profile, with four more
+book checks a day, is 85 (`routine_audit.py --budget`; holidays not deducted). No tool measures the usage of a run. The
 Aegis Structuring Desk runs no routine, so it adds no routine runs; each of its answers is one request of yours. The
 Aegis Book & Risk Analyst's three routines (the opening marks and the pre-event stress each trading weekday, the
 weekend stress on Saturday) and the Aegis Events and Calendar Analyst's two Monday routines are part of both
-profiles.
+profiles, as are the Aegis Rules Steward's two (the daily rules sanity and the Friday memo).
 
 ## What are my choices for a position?
 

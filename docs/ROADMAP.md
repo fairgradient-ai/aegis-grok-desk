@@ -514,7 +514,7 @@ would have decided on past days, and who looks after the rulebook.
 | --- | --- | --- | --- |
 | 3.1 | The signal journal: each signal's outcome | Stage 1's signals and snapshots | landed |
 | 3.2 | `rules_replay`: a candidate rulebook replayed over past end-of-day snapshots | Stage 1's snapshots | landed |
-| 3.3 | The Aegis Rules Steward seat | 3.2 | planned |
+| 3.3 | The Aegis Rules Steward seat | 3.2 | landed |
 | 3.4 | The Aegis Review Desk seat and the weekly review | 3.1, 3.2 | planned |
 
 ### 3.1 The signal journal (landed)
@@ -559,7 +559,18 @@ would have decided on past days, and who looks after the rulebook.
 - **Gate.** Replay of the adopted rulebook reproduces the recorded verdicts; goldens for the fixture candidate; no
   write to `rules/`.
 
-### 3.3 The Aegis Rules Steward seat
+### 3.3 The Aegis Rules Steward seat (landed)
+
+- **What landed.**
+  - **The seat.** `agents/rules-steward.md` (`seat: off-floor`, direct message only) with its role skill.
+  - **Change control.** It holds rulebook change control: the candidate file, `rules_diff.py`, `rules_replay.py`, the
+    adoption lint and `rules_adopt.py` with the owner's phrase and tap. The Desk Lead, still the front door, runs
+    the same steps on the owner's request. Every "the Desk Lead holds rulebook change control in Stage 1" line is
+    rewritten.
+  - **`rules_sanity.py` (new).** It verifies the adopted rulebook and lints it against the structures held today, or
+    with `--memo` prints its memo.
+  - **The routines.** `rules-sanity` (16:45 ET, trading weekdays; posts only a finding) and `rulebook-memo` (Friday
+    17:20; always). Lean 65, active 85.
 
 - **What lands.** A direct-message seat that takes rulebook change control from the Desk Lead: the candidate-file
   interview, the adoption lint, the replay before adoption, and the planned `rules-sanity` and `rulebook-memo`
@@ -597,7 +608,7 @@ is an inference, not a statement of the tree.
 | `opening-marks`, `pre-event-stress`, `weekend-stress` | 2.10 (landed) |
 | `calendar-build`, `event-sheet` | 2.12 (landed) |
 | `journal-close` | 3.1 (landed) |
-| `rules-sanity`, `rulebook-memo` | 3.3 |
+| `rules-sanity`, `rulebook-memo` | 3.3 (landed) |
 | `weekly-review` | 3.4 |
 
 Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts only in its owning Bot's chat.
@@ -678,7 +689,7 @@ only the files that do.
 | The Aegis Events and Calendar Analyst (landed) | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
-| The Aegis Rules Steward | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
+| The Aegis Rules Steward (landed) | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
 | The Aegis Review Desk, the weekly review | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
 | Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Planned routine ids | the table above | `tests/engine/test_routines.py` |
@@ -692,14 +703,12 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 1 | 3 |
-| `docs/ARCHITECTURE.md` | 0 | 1 |
+| `agents/desk-lead.md` | 1 | 2 |
+| `docs/ARCHITECTURE.md` | 0 | 2 |
 | `docs/FAQ.md` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 0 | 1 |
 | `skills/aegis-desk-charter/SKILL.md` | 0 | 1 |
-| `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
+| `skills/aegis-desk-incident-playbooks/SKILL.md` | 0 | 1 |
 | `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
-| `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 3 |
-| `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |
+| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 2 |

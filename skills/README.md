@@ -59,5 +59,6 @@ gets its own role skill as its standing instructions.
 | [aegis-role-events-calendar-analyst](aegis-role-events-calendar-analyst/SKILL.md) | `agents/events-calendar-analyst.md` | floor |
 | [aegis-role-exit-sentinel](aegis-role-exit-sentinel/SKILL.md) | `agents/exit-sentinel.md` | floor |
 | [aegis-role-position-control](aegis-role-position-control/SKILL.md) | `agents/position-control.md` | floor |
+| [aegis-role-rules-steward](aegis-role-rules-steward/SKILL.md) | `agents/rules-steward.md` | off-floor |
 | [aegis-role-structuring-desk](aegis-role-structuring-desk/SKILL.md) | `agents/structuring-desk.md` | floor |
 <!-- role-skills:end -->

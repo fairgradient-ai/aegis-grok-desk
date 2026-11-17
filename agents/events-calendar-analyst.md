@@ -106,7 +106,7 @@ python3 /workspace/aegis-grok-desk/scripts/decision_calendar.py --days 14 --desk
 - Writing the calendar from the owner's stated dates: the Aegis Desk Lead ("update the calendar").
 - A dividend tier, an early-assignment warning or an act-by time: Aegis Position Control.
 - An event stress through a coming date: the Aegis Book & Risk Analyst.
-- A rule, a threshold or a plan: the Aegis Desk Lead (rulebook change control).
+- A rule, a threshold or a plan: the Aegis Rules Steward (rulebook change control).
 
 ### What you refuse
 

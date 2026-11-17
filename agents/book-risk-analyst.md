@@ -111,7 +111,7 @@ python3 /workspace/aegis-grok-desk/scripts/vol_context.py --symbol WMT --desk-ro
 - An expiry, an assignment or a dividend tier: Aegis Position Control.
 - A choice for a position (close, roll, overlay): the Aegis Structuring Desk, on the owner's request.
 - An event date the calendar lacks, or a proposed dividend: the Aegis Events and Calendar Analyst.
-- A rule, a threshold, a limit's value or a plan: the Aegis Desk Lead (rulebook change control).
+- A rule, a threshold, a limit's value or a plan: the Aegis Rules Steward (rulebook change control).
 
 ### What you refuse
 
