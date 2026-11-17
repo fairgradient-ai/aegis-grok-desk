@@ -2,8 +2,8 @@
 
 `template/grok-bot.json` is the release contract for a public Grok Bot template of the Aegis Desk Lead: the Bot's
 profile, the pinned release, the one skill the template carries, and the sha256 of every skill file in the release.
-This release does not publish a template. Its status is `unpublished`, and publishing is your action as the owner,
-after the tag `v1.0.0` exists.
+This release does not publish a template yet. Its status is `ready-to-publish`: it claims every skill and role skill
+and exports the bootstrap skill. Publishing is your action as the owner, now that the tag `v1.0.0` exists.
 
 The README's Start prompt is the main way in, and a template is the second. Grok Bot staff confirmed, through
 2026-10-21, that a template import can drop skills. Whichever way the Lead starts, the bootstrap reads back every
@@ -16,28 +16,28 @@ dropped is installed from the checkout, and one that differs is reported as `mis
 
 | Field | In this release | What the check requires |
 | --- | --- | --- |
-| `status` | `unpublished` | one of `unpublished`, `ready-to-publish`, `published` |
+| `status` | `ready-to-publish` | one of `unpublished`, `ready-to-publish`, `published` |
 | `name` | `Aegis Desk Lead` | exactly this name |
 | `title` | `Head of the options desk` | present |
-| `description` | a short description of the desk, with `release 0.1.1` | 1 to 280 characters; contains `never places, modifies or cancels orders`; any `release X.Y.Z` in it equals the `plugin.json` version |
-| `source` | this repository, release `0.1.1` | the repository URL of this repository; `release` equals the `plugin.json` version, written without a `v` |
+| `description` | a short description of the desk, with `release 1.0.0` | 1 to 280 characters; contains `never places, modifies or cancels orders`; any `release X.Y.Z` in it equals the `plugin.json` version |
+| `source` | this repository, release `1.0.0` | the repository URL of this repository; `release` equals the `plugin.json` version, written without a `v` |
 | `skills` | every desk skill, keyed by name | each value is the sha256 of `skills/<name>/SKILL.md` (or an object with that `path` and its `sha256`); the file exists and its digest matches |
-| `roleSkills` | the four generated role skills | the same rule, for `skills/aegis-role-<seat>/SKILL.md` |
+| `roleSkills` | the eight generated role skills | the same rule, for `skills/aegis-role-<seat>/SKILL.md` |
 | `templateSkillNames` | `aegis-desk-bootstrap-and-onboarding` | unique names, each a key of `skills` (a role skill does not count) |
 | `publicShareUrl` | absent | only on a `published` template; then an `https` link that also appears in `README.md` and `docs/FAQ.md` |
 
-On this checkout, before the tag exists, it prints:
+On a checkout without the tag, it prints a `skip:` line first (the tag comparison is not run). On a clone that holds
+the tag `v1.0.0`, it prints only:
 
 ```text
-skip: template/grok-bot.json source.release 0.1.1 has no local tag v1.0.0; tag comparison not run (expected before the release is tagged)
-ok: Grok Bot template is unpublished, release 0.1.1, 22 verified skill file(s), exports 1
+ok: Grok Bot template is ready-to-publish, release 1.0.0, 30 verified skill file(s), exports 1
 ```
 
 ## From unpublished to published
 
-- **`unpublished`** (this release): every hash the file claims must match. It already claims every skill in the tree,
+- **`unpublished`**: every hash the file claims must match. It already claims every skill in the tree,
   so the next status is a one-word change.
-- **`ready-to-publish`**: the file must also claim every other `skills/aegis-*/SKILL.md` under `skills`, every
+- **`ready-to-publish`** (this release): the file must also claim every other `skills/aegis-*/SKILL.md` under `skills`, every
   role skill `skills/aegis-role-*/SKILL.md` under `roleSkills`, and export at least one skill. No skill ships
   unhashed.
 - **`published`**: it also carries `publicShareUrl`, and that link must appear in `README.md` and `docs/FAQ.md`.

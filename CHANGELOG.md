@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **The 1.0.0 release record** (`docs/RELEASE.md`): the release commit, the gate, the pin check, CI and the oracle on
+  it, the Claude Code checks on the tag (validation, both denials, the read, the marketplace install), the tag, the
+  GitHub Release, and the decision for `main` until the next tag (the bump waits until just before it).
+- **The Grok Bot template is `ready-to-publish`** (`template/grok-bot.json`): it claims every skill and role skill and
+  exports the bootstrap skill. `docs/GROK_BOT_TEMPLATE.md` and `docs/FAQ.md` say so, and the template page names
+  release 1.0.0 and the eight role skills.
+
 ## 1.0.0 (2026-11-17)
 
 - **Release preparation: Stages 2 and 3 complete.** Eight Bots: six on the Floor and two by direct message.

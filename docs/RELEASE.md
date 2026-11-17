@@ -15,14 +15,14 @@ version, this one included, makes the next version bump refuse to run.
 
 | Step | Who | State |
 | --- | --- | --- |
-| [1. Offline gates and CI](#1-offline-gates-and-ci) | the maintainer | content done on the release branch; release commit to record |
-| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | to do on the release commit |
+| [1. Offline gates and CI](#1-offline-gates-and-ci) | the maintainer | done: the release commit is d78ad6b |
+| [2. The Claude Code observation](#2-the-claude-code-observation) | the maintainer | done 2026-11-17, headless; check 1 not observed interactively |
 | [3. The Grok Build observation](#3-the-grok-build-observation) | you | to do |
 | [4. Counsel sign-off](#4-counsel-sign-off) | you | to do |
-| [5. The tag](#5-the-tag) | you | to do |
+| [5. The tag](#5-the-tag) | you | done 2026-11-17, by hand from a clone |
 | [6. The Grok Bot setup receipt](#6-the-grok-bot-setup-receipt) | you, guided by SETUP.md | to do |
-| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | to do |
-| [8. After the tag: the version bump](#8-after-the-tag-the-version-bump) | the maintainer | to do |
+| [7. The GitHub Release and the template](#7-the-github-release-and-the-template) | you | Release published 2026-11-17; the template is `ready-to-publish`, its publication still to do |
+| [8. After the tag: the version bump](#8-after-the-tag-the-version-bump) | the maintainer | decided: the bump waits until just before the next tag |
 
 Steps 2 to 4 come before the tag, and so does your decision at the end of step 8. If a step fails, stop there. A
 fix found before the tag goes into 1.0.0. A failure after the tag is fixed in 1.0.1.
@@ -35,10 +35,10 @@ merged. CI gates it again. Record it here.
 
 | Check | Command | Commit | Result |
 | --- | --- | --- | --- |
-| The gate on the release commit | `bash scripts/check.sh` | | |
-| Every pin names 1.0.0 | `python3 scripts/release_bump.py 1.0.0 --check` | | |
-| CI on the release commit: four interpreters and the oracle | the commit's page under Actions | | |
-| The mention table of the roadmap is empty | `tests/gates/test_roadmap_ledger.py`, inside the gate | | |
+| The gate on the release commit | `bash scripts/check.sh` | d78ad6b | green: 3471 tests (floor 3471), 127 journeys, all repository gates passed; run on b0247c2, whose tree the merge commit d78ad6b repeats, and again with the tag comparison on 1df5e72 |
+| Every pin names 1.0.0 | `python3 scripts/release_bump.py 1.0.0 --check` | d78ad6b | `nothing to change: every pin already names 1.0.0` |
+| CI on the release commit: four interpreters and the oracle | the commit's page under Actions | d78ad6b | CI run 157 and QuantLib oracle run 157 passed (https://github.com/fairgradient-ai/aegis-grok-desk/actions/runs/44120404050, https://github.com/fairgradient-ai/aegis-grok-desk/actions/runs/44120404026) |
+| The mention table of the roadmap is empty | `tests/gates/test_roadmap_ledger.py`, inside the gate | d78ad6b | passed: the table has no row |
 
 ## 2. The Claude Code observation
 
@@ -49,12 +49,12 @@ checks run again.
 
 | Check | Date (UTC) | Claude Code version | Observed output |
 | --- | --- | --- | --- |
-| `claude plugin validate .` passes, with the two accepted warnings only (`CLAUDE.md` not loaded as project context; `ICON_MISSING`). | | | |
-| `/plugin` shows the plugin with no error, and its eight agents. `/hooks` lists the two `PreToolUse` groups. | | | |
-| The shell sample is denied with the reason on the Claude Code page. | | | |
-| The stub MCP tool is denied with the reason on the Claude Code page. | | | |
-| The read runs. The hook gives no opinion. | | | |
-| After the tag, and before step 8 merges: the marketplace install of the tagged release. | | | |
+| `claude plugin validate .` passes, with the two accepted warnings only (`CLAUDE.md` not loaded as project context; `ICON_MISSING`). | 2026-11-17 | 2.1.326 | On a clean clone at the tag: `Validation passed with warnings`, exactly the two accepted warnings. |
+| `/plugin` shows the plugin with no error, and its eight agents. `/hooks` lists the two `PreToolUse` groups. | 2026-11-17 | 2.1.326 | Not observed interactively. The session's init lists `aegis-desk` 1.0.0 (source `aegis-desk@inline`) and its eight agents (`aegis-desk:book-risk-analyst`, `desk-lead`, `events-calendar-analyst`, `exit-sentinel`, `position-control`, `review-desk`, `rules-steward`, `structuring-desk`); both groups ran in the next two checks. |
+| The shell sample is denied with the reason on the Claude Code page. | 2026-11-17 | 2.1.326 | Hook exit 2. Tool result: `PreToolUse:Bash hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an HTTP write to /v1/accounts). This desk never places, modifies or cancels orders; you act in your brokerage account.` The command never ran. |
+| The stub MCP tool is denied with the reason on the Claude Code page. | 2026-11-17 | 2.1.326 | Server `blackhole` connected. Hook exit 2. Tool result: `PreToolUse:mcp__blackhole__place_order hook error: [command hook]: Aegis Desk denied this call: it looks like a broker write (an MCP tool named blackhole__place_order (order)). This desk never places, modifies or cancels orders; you act in your brokerage account.` |
+| The read runs. The hook gives no opinion. | 2026-11-17 | 2.1.326 | Hook exit 0 with no output; `git status --short` ran and printed nothing (a clean clone). |
+| After the tag, and before step 8 merges: the marketplace install of the tagged release. | 2026-11-17 | 2.1.326 | Headless in an empty config directory: `Successfully added marketplace: aegis-desk`, then `Successfully installed plugin: aegis-desk@aegis-desk (scope: user)`; `claude plugin list` shows version 1.0.0, enabled, and the install record names commit `d78ad6b4c30e3e2f739a26629de360705fcc5a6d`, the tag's commit. |
 
 ## 3. The Grok Build observation
 
@@ -124,9 +124,9 @@ python3 scripts/check_grok_template.py
 
 | Item | Value |
 | --- | --- |
-| Tag commit | |
-| Date (UTC) | |
-| The last line of `check_grok_template.py` after the tag | |
+| Tag commit | `d78ad6b4c30e3e2f739a26629de360705fcc5a6d` (the merge of pull request 24), pushed by hand from a clone with `git tag -a` and `git push origin`; the release workflow was not used |
+| Date (UTC) | 2026-11-17, before 16:41 (the exact time was not recorded) |
+| The last line of `check_grok_template.py` after the tag | `ok: Grok Bot template is unpublished, release 1.0.0, 30 verified skill file(s), exports 1`, with no `skip:` line, on the clone of the tag. The changelog's date followed in pull request 25, after the tag. |
 
 ## 6. The Grok Bot setup receipt
 
@@ -169,8 +169,8 @@ up from an earlier release follows [UPDATING.md](UPDATING.md) instead and return
 
 | Item | Date (UTC) | Link |
 | --- | --- | --- |
-| GitHub Release | | |
-| Grok Bot template published | | |
+| GitHub Release | 2026-11-17 16:45 | https://github.com/fairgradient-ai/aegis-grok-desk/releases, "Aegis Desk 1.0.0" (a full release, not a pre-release; its notes are the 1.0.0 section of `CHANGELOG.md`) |
+| Grok Bot template published | | the template is `ready-to-publish` since 2026-11-17; publishing it and its share link are yours |
 
 ## 8. After the tag: the version bump
 
@@ -188,7 +188,7 @@ the 0.1.0 receipt), and write your decision here.
 
 | Decision | Date (UTC) | Notes |
 | --- | --- | --- |
-| | | |
+| Choice 1: the bump to the next version merges only just before that version is tagged; work after the tag waits on a branch that starts with the bump | 2026-11-17 | Decided by the maintainer on the owner's instruction to finish the release. `main` keeps naming 1.0.0, so the README's Start links, the Grok Build install line, the SETUP clone command and the marketplace files all resolve to the published tag. |
 
 The runtime pages: [Grok Bot](aegis-grok-bot.md) · [Grok Build](aegis-grok-build.md) ·
 [Claude Code](aegis-claude-code.md) · [Cursor](aegis-cursor.md) · [Codex](aegis-codex.md) ·
