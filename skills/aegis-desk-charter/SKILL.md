@@ -25,8 +25,8 @@ authorizes an action.
 
 ## Seats
 
-The desk runs six Bots, each in its own chat and together in the "Aegis Options Floor" group (all six of its
-seats):
+The desk runs eight Bots, each in its own chat. Six sit together in the "Aegis Options Floor" group (all six of its
+seats); the Rules Steward and the Review Desk are reached by direct message only:
 
 | Bot | Seat | Owns |
 | --- | --- | --- |

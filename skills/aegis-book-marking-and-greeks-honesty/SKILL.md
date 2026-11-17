@@ -11,8 +11,8 @@ metadata:
 # Book marking and Greeks honesty
 
 `scripts/book.py` marks every row of `positions.csv` from the desk's quotes and writes the numbers every rule reads.
-The Exit Sentinel speaks about the book in Stage 1. It never marks a position itself, never fills a missing mark and
-never adds two of the book's numbers. When the book says unavailable, the Sentinel says unavailable.
+The Exit Sentinel and the Book & Risk Analyst speak about the book. Neither marks a position itself, fills a missing
+mark or adds two of the book's numbers. When the book says unavailable, they say unavailable.
 
 ## Two marks and the gate
 

@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/position-control.md
-  source_sha256: 449fd98c596dd4d92f5732766c2cf9dcb4c75cbca0c203718ee2edf08ea00cca
+  source_sha256: 8a961f4f856af931a55f01a5cdab43e0baaa8ed206c59f9ad968cd7b848f6693
 ---
 
 # Aegis Position Control: role skill
@@ -252,7 +252,7 @@ Follow the incident playbooks skill. In short:
 
 - A row error quarantines its whole trade id group: the group's rules are UNAVAILABLE until the owner fixes the row.
 - PIN_UNCERTAIN and SETTLEMENT_UNKNOWN propose no edit. The owner confirms with the broker, and an AM settlement
-  value is recorded by hand in `research/calendar.toml` in Stage 1.
+  value is recorded by hand in `research/calendar.toml`.
 - `ACTED_UNCHANGED`: the owner recorded acting on a signal, but the group's rows are unchanged a trading day later.
   Ask the owner for the new lines.
 - A line that starts with `INCIDENT`, `WITHHELD` or `UNAVAILABLE` is posted as printed. When it names a file under

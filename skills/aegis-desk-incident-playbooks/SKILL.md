@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-incident-playbooks
-description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Stage-1 Bot. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong key or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
+description: What each failure of the read-only Aegis desk looks like in the desk's own words and the read-only response, for every Bot of the desk. INCIDENT, WITHHELD, UNAVAILABLE and CONFIG CHANGED lines and incident files; a structuring answer that cannot be given (no criteria, unacknowledged files, a withheld text, a chain not served, a closed session); a blind desk (vendor, quota, wrong key or host); an invalid positions.csv at the open; a changed rulebook; an unexpected configuration change; a checkout that is not the pinned release or that git refuses; a computer that slept through the open; a Bot out of its lane; and the owner's check-your-broker-directly list.
 license: MIT
 metadata:
   version: "0.1.0"

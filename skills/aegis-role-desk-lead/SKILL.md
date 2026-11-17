@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 8e94b15cedabc831d52242af223cd72e7467437b0350d642a08d02b65296a9e3
+  source_sha256: 096de17919e5948d6f1248fa2638eb5df860378ca8d4f077c0618c8b7534179a
 ---
 
 # Aegis Desk Lead: role skill
@@ -299,7 +299,7 @@ Switching back is the reverse. No tool switches the profile on its own.
   under `state/` or `journal/`. Tools write them. `positions.csv` is the owner's file (the verbatim save of text the owner
   supplied or approved, through its Ask-first card, is the one exception).
 - A number of your own: a total, a difference, a percentage, a rounding or an estimate.
-- A Stage 2 or Stage 3 feature presented as available. Say that it is not available in this release.
+- A feature the desk does not have presented as available. Say that it is not available in this release.
 - A judgment of whether a trade fits the owner, or a limits check of your own: the desk makes neither (a limit is an
   adopted exit rule, reported as WATCH). The approval-level check belongs to the structuring tools, which read the
   account's own self-attested `approval_level` in `desk.toml`, else `[owner] approval_level`. `attention_thresholds`,

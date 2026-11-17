@@ -168,7 +168,7 @@ Grok Bot runs the daily schedule. The other runtimes are for reading the desk an
 
 ```text
 SETUP.md    the runbook a Grok Bot follows to build the desk
-agents/     the four Bot profiles
+agents/     the eight Bot profiles
 skills/     the skills the Bots load
 scripts/    standard-library Python tools and the repository gates
 routines/   the daily schedule and the Auto-review rule texts
@@ -188,7 +188,7 @@ docs/       the pages below
 | [Positions file](docs/POSITIONS_CSV.md) | the format of your positions |
 | [Structuring Desk](docs/STRUCTURING.md) | criteria, answers and limits |
 | [How it fits together](docs/ARCHITECTURE.md) | files, roles, trust boundaries |
-| [Roadmap](docs/ROADMAP.md) | what is planned after Stage 1, in order, and what each step must prove |
+| [Roadmap](docs/ROADMAP.md) | every step after Stage 1, in order, what each one had to prove, and your answers to its questions |
 | [Tool reference](docs/TOOLS.md) | every tool's flags and output, generated from the tools |
 | [Skills index](skills/README.md) | every skill and who loads it |
 | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) | |

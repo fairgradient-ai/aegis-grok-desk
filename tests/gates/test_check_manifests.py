@@ -401,7 +401,9 @@ class LandedManifestTests(unittest.TestCase):
             with self.subTest(manifest=rel):
                 description = landed(rel)["description"]
                 self.assertIn("never places, modifies or cancels an order", description)
-                self.assertIn("Stage 1", description)
+                # Release 1.0.0 carries every stage of the roadmap, so a description names none (it named Stage 1
+                # while later stages were planned).
+                self.assertIsNone(re.search(r"\bStage[- ]?[0-9]", description), description)
 
     def test_the_count_pattern_catches_the_old_claims(self) -> None:
         for claim in ("Eight roles and twenty-one skills", "eight roles with full system prompts and twenty-one skills",

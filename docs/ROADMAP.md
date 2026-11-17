@@ -1,14 +1,14 @@
 # Roadmap: Stage 2 and Stage 3
 
-Release v1.0.0 is Stage 1, with the engine of step 2.1 that no answer reads yet: four Bots (the Aegis Desk Lead, the
-Aegis Exit Sentinel, Aegis Position Control and the Aegis Structuring Desk) watch the positions you already hold and
-tell you when one of your own exit rules is met. This page collects everything the repository says is planned for
-Stage 2 and Stage 3, in the order it can land, with what each step must prove before it merges. Nothing on this page
-is available in this release unless a step says it has landed, and a landed engine step changes no answer a Bot gives
-until its wiring step lands too.
+Release v1.0.0 carries Stage 1, Stage 2 and Stage 3. Eight Bots watch the positions you already hold: six on the
+"Aegis Options Floor" (the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control, the Aegis Structuring
+Desk, the Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst) and two by direct message (the Aegis
+Rules Steward and the Aegis Review Desk). Every step on this page has landed, except step 2.2, which your decision
+dropped. The page stays as the record of what each step had to prove before it merged, and of your answers to the
+open questions.
 
-When a Bot is asked for a planned seat or its work, it says that it is not available in this release
-([the charter](../skills/aegis-desk-charter/SKILL.md)). This page does not change that answer.
+A later idea that no step below names is not in this release; asked for one, a Bot says so
+([the charter](../skills/aegis-desk-charter/SKILL.md)).
 
 ## How this page stays true
 
@@ -66,13 +66,14 @@ These hold for every step on this page. A step that needs any of them changed is
 
 ## Seats
 
-A Grok Bot group holds two to six Bots. Stage 1 uses four of the six seats of the "Aegis Options Floor".
+A Grok Bot group holds two to six Bots. Stage 1 used four of the six seats of the "Aegis Options Floor"; Stage 2
+filled the other two, and the Stage 3 seats sit on direct message.
 
-| Seat | Stage | Where it sits | Owns (planned) |
+| Seat | Stage | Where it sits | Owns |
 | --- | --- | --- | --- |
 | Aegis Book & Risk Analyst | 2 | the Floor (seat 5) | a live view of marks, Greeks and limits; exposures, scenario and event stress; volatility context |
 | Aegis Events and Calendar Analyst | 2 | the Floor (seat 6) | sourced earnings and ex-dividend dates; the decision calendar |
-| Aegis Rules Steward | 3 | direct message only (`seat: off-floor`) | rulebook change control, which the Desk Lead holds until then |
+| Aegis Rules Steward | 3 | direct message only (`seat: off-floor`) | rulebook change control, which the Desk Lead held until then |
 | Aegis Review Desk | 3 | direct message only (`seat: off-floor`) | the weekly review of the signal journal |
 
 Stage 2 fills the Floor. The charter already places the Stage 3 seats on direct message, and once Stage 2 has filled
@@ -701,7 +702,7 @@ only the files that do.
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
 | The Aegis Rules Steward (landed) | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
 | The Aegis Review Desk, the weekly review (landed) | 3.4 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/README.md` |
-| Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
+| Any Stage 2 or Stage 3 feature presented as available (the Desk Lead's refusal line, reworded for the release) | the last step of each stage | `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Planned routine ids | the table above | `tests/engine/test_routines.py` |
 
 ### Mentions by file
@@ -713,9 +714,3 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 1 | 1 |
-| `docs/ARCHITECTURE.md` | 0 | 1 |
-| `docs/FAQ.md` | 1 | 0 |
-| `scripts/roll_analysis.py` | 1 | 0 |
-| `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 1 |

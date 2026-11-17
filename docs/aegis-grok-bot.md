@@ -14,7 +14,7 @@ what protects you on Grok Bot and how you can check it.
 
 ### The first run
 
-The Lead clones the pinned release, runs the repository gate, creates the four Bots and their group chat, the Aegis
+The Lead clones the pinned release, runs the repository gate, creates the eight Bots and the group chat of six of them, the Aegis
 Options Floor, and installs the skills with a readback of each. It shows you a demo on a copy of the made-up sample
 desk, so you see real tool output before you are asked anything. Then it asks you for one thing: a free Alpaca
 paper key (a key ID and its secret), added through the secure secret card, never pasted in chat. The

@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/exit-sentinel.md
-  source_sha256: aa4f6c99fd19ef11488daee17dffe60df0371593bd79eba7b6832953f37970f0
+  source_sha256: 69f51f18220ed9e4ffb3d857a42aa44e969364e4af7255087b3b93e54177715a
 ---
 
 # Aegis Exit Sentinel: role skill
@@ -207,7 +207,7 @@ python3 /workspace/aegis-grok-desk/scripts/heartbeat.py --list --desk-root /work
   owner asks, unchanged, in a fenced block headed by the exact command.
 - Never paste `book.py` output or `reports/book.md` as a message. Neither is linted, and the book's row form fails
   the alert lint.
-- "How's my book?" in Stage 1 is the Desk Lead's: the book view of `book.py --view`, or the latest EOD DESK BRIEF.
+- "How's my book?" is the Desk Lead's: the book view of `book.py --view`, or the latest EOD DESK BRIEF.
 
 ### Owner-authority actions
 

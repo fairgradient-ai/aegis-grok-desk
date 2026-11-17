@@ -78,7 +78,7 @@ native Name and Job. A Bot's standing instructions are its role skill, enabled f
 owner's one front door; the others keep their routines and post in their own chats and the Floor. Until
 `desk.toml` exists, each of them introduces itself in one line and waits: no tool against the empty desk, no
 announced schedule, no routine. The Structuring Desk answers only when asked and owns no routine. Asked for a
-later-stage seat, a Bot says it is not in this release.
+seat this table does not list, a Bot says it is not in this release.
 
 ## 5. Install the skills
 
@@ -150,7 +150,7 @@ Record the key source (the card with `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`
 One message, opening with three plain lines, for example:
 
 ```text
-Your Aegis desk is built: six Bots on the Aegis Options Floor and the desk skills, release v1.0.0.
+Your Aegis desk is built: eight Bots, six of them on the Aegis Options Floor, and the desk skills, release v1.0.0.
 Live market data works: SPY was quoted from Alpaca's paper market data, labelled 15-minute delayed.
 Nothing else is needed now. Talk to me here for everything; when you want the desk to watch your positions, say "add my positions".
 ```

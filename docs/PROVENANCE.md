@@ -232,7 +232,7 @@ modified copy, which the example says) and is labelled synthetic.
   early close), or that cutoff when it is earlier, because a short option can be closed only while the session
   trades.
 - AM-settled index options settle on the opening value of the settlement morning; their values are recorded by you in
-  `research/calendar.toml` in Stage 1.
+  `research/calendar.toml`.
 
 ## Adapted repository mechanics
 

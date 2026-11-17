@@ -1,6 +1,6 @@
 ---
 name: aegis-desk-bootstrap-and-onboarding
-description: The first run of the read-only Aegis options desk on Grok Bot, for the Aegis Desk Lead. The pinned release and its gate, a demo on a sample book before any question, the four Stage-1 Bots, the desk skills with a readback each, the Aegis Options Floor, the one owner action of the first run (a free Alpaca paper key pair, added through the secure secret card, never pasted in chat, verified by a live Opening Bell) and the receipt. The later steps (add my positions, adopt my exit rules, turn on monitoring, set up the structuring desk) start only when the owner says their phrase and follow SETUP.md section 9. Use for a first setup, a repair or a readiness check.
+description: The first run of the read-only Aegis options desk on Grok Bot, for the Aegis Desk Lead. The pinned release and its gate, a demo on a sample book before any question, the desk's eight Bots, the desk skills with a readback each, the Aegis Options Floor, the one owner action of the first run (a free Alpaca paper key pair, added through the secure secret card, never pasted in chat, verified by a live Opening Bell) and the receipt. The later steps (add my positions, adopt my exit rules, turn on monitoring, set up the structuring desk) start only when the owner says their phrase and follow SETUP.md section 9. Use for a first setup, a repair or a readiness check.
 license: MIT
 metadata:
   version: "0.2.0"
@@ -88,6 +88,14 @@ python3 scripts/opening_bell.py --demo
   options desk".
 - From `agents/structuring-desk.md`: Name "Aegis Structuring Desk", Job "On-request choices desk of the options
   desk".
+- From `agents/book-risk-analyst.md`: Name "Aegis Book & Risk Analyst", Job "The live view of the book: marks,
+  Greeks, exposures and stress".
+- From `agents/events-calendar-analyst.md`: Name "Aegis Events and Calendar Analyst", Job "The event calendar of the
+  options desk".
+- From `agents/rules-steward.md`: Name "Aegis Rules Steward", Job "Rulebook change control of the options desk (direct
+  message only)".
+- From `agents/review-desk.md`: Name "Aegis Review Desk", Job "The weekly review of the options desk (direct message
+  only)".
 
 Read back each Bot's native Name and Job. Tell the other Bots that setup is under way: until `desk.toml` exists each
 introduces itself in one line and waits (no tool against the empty desk, no announced schedule, no routine). Its

@@ -25,7 +25,7 @@ git clone --depth 1 --branch v1.0.0 https://github.com/fairgradient-ai/aegis-gro
 - **The skills** under `skills/`, `aegis-desk-charter` first. The list is in [skills/README.md](../skills/README.md).
   Which components Codex loads from the plugin is checked at release; the safe statement is the skills only.
 - **The role profiles** under `agents/`, read as labelled passes: ask Codex to read `agents/desk-lead.md`,
-  `agents/exit-sentinel.md` or `agents/position-control.md` and answer as that role, one role at a time.
+  `agents/exit-sentinel.md` or any other file there and answer as that role, one role at a time.
 - **`AGENTS.md`**, the contributor guide that agent runtimes read. It repeats the desk rule of
   `rules/aegis-desk.mdc` word for word; `scripts/check_manifests.py` fails the repository gate if the two drift apart.
 

@@ -1,6 +1,6 @@
 # Aegis Desk on Claude Code
 
-Claude Code loads the desk as a plugin: its skills, its four role profiles as subagents, and a hook that denies a
+Claude Code loads the desk as a plugin: its skills, its eight role profiles as subagents, and a hook that denies a
 shell command or MCP tool call that looks like a broker write. Use it to read the desk, run its tools and work on the
 repository. The desk that runs on its own every trading day lives on [Grok Bot](aegis-grok-bot.md).
 
@@ -30,7 +30,8 @@ pinned clone below is the reviewed way in.
 - **The skills** under `skills/`, each as `/aegis-desk:<skill name>`. The list is in
   [skills/README.md](../skills/README.md).
 - **The role profiles** under `agents/` as subagents: the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position
-  Control and the Aegis Structuring Desk. Each declares `tools: Read, Grep, Glob, Bash`, so a subagent inherits no MCP
+  Control, the Aegis Structuring Desk, the Aegis Book & Risk Analyst, the Aegis Events and Calendar Analyst, the Aegis
+  Rules Steward and the Aegis Review Desk. Each declares `tools: Read, Grep, Glob, Bash`, so a subagent inherits no MCP
   tools.
 - **The hook** from `hooks/hooks.json`, which Claude Code loads on its own. `.claude-plugin/plugin.json` declares no
   `hooks` key, because Claude Code rejects a second declaration of the same hooks file. `scripts/check_manifests.py`

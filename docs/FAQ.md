@@ -143,8 +143,8 @@ See the skill [aegis-expiry-and-assignment-protocol](../skills/aegis-expiry-and-
 The desk treats an index underlying as one it cannot quote: an index row gets the warning `UNQUOTABLE_INDEX`, and a
 rule that needs the index level is UNAVAILABLE. Alpaca serves index option data on its paid exchange feed; whether
 its free indicative feed serves index options to a paper account is not confirmed, so the desk does not rely on it. An AM-settled root is named in `research/calendar.toml` under `am_settled_roots`; its
-settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. Sourcing
-those values is planned for Stage 2 (not in this release).
+settlement value is yours to record there, and until you do, the reconciliation says `SETTLEMENT_UNKNOWN`. The desk
+does not source those values: the data source cannot quote index options.
 
 ## Can I use live-account data?
 

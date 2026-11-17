@@ -1,6 +1,6 @@
 # Aegis Desk on Grok Build
 
-Grok Build loads the desk as a plugin: its skills, its four role profiles and a hook that denies a shell command or
+Grok Build loads the desk as a plugin: its skills, its eight role profiles and a hook that denies a shell command or
 MCP tool call that looks like a broker write. For the desk that runs on its own every trading day, use
 [Grok Bot](aegis-grok-bot.md); Grok Build is for reading the desk, running its tools and monitoring from your own
 machine.

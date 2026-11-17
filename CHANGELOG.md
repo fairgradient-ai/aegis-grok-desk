@@ -2,6 +2,14 @@
 
 ## 1.0.0 (unreleased)
 
+- **Release preparation: Stages 2 and 3 complete.** Eight Bots: six on the Floor and two by direct message.
+  - **Present tense.** Every line that called a landed item planned is rewritten, and the roadmap's mention table is
+    empty. The roadmap's introduction, the manifests' descriptions, the runtime pages and the README count eight role
+    profiles.
+  - **`docs/UPDATING.md`** gains the step that creates a new Bot during an update, and the notes for a desk moving
+    from 0.2.1: four new Bots, nine new routines, the new Allow text, the American model, the new optional keys.
+  - **`docs/RELEASE.md`** is the 1.0.0 checklist, with ten new counsel rows for the texts the roadmap added. The 0.1.0
+    receipt is kept as `docs/RELEASE-0.1.0.md`.
 - **The Aegis Review Desk** (roadmap step 3.4): a direct-message seat (`seat: off-floor`) with its role skill and the
   skill `aegis-signal-journal-and-review`.
   - **`weekly_review.py`** (new) posts the week's signal facts, the counts per rule and a waiting candidate's replay
