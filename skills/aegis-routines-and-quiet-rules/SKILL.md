@@ -95,6 +95,7 @@ INCIDENT | book-check | the desk checkout is not the pinned release v1.0.0: deve
 | Aegis Position Control | `final-call`, `post-expiry` | 15:20 Mon-Fri, and 09:30 Saturday |
 | Aegis Structuring Desk | none: it answers only when the owner asks | none |
 | Aegis Book & Risk Analyst | `opening-marks`, `pre-event-stress`, `weekend-stress` | 10:20 and 14:50 Mon-Fri, and 10:00 Saturday |
+| Aegis Events and Calendar Analyst | `calendar-build`, `event-sheet` | 07:40 and 07:50, Monday |
 
 The active profile adds four book-check routines on the Exit Sentinel, at 11:05, 13:05, 14:35 and 15:05. They are
 created paused. Each owning Bot creates its own routines, reads them back to the owner, and keeps them paused until
@@ -126,6 +127,10 @@ Every routine has one written quiet rule in the manifest:
   stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
 - weekend-stress: "Always one message on Saturday: the scenario grid of the book as of the last close, a computation
   on the book's model, not a forecast; a group without usable marks is named and the total left out."
+- calendar-build: "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a
+  cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+- event-sheet: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading
+  days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
 
 ## Heartbeats, the day audit and missed runs
 
@@ -182,8 +187,8 @@ python3 /workspace/aegis-grok-desk/scripts/routine_audit.py --budget --desk-root
 On this release's manifest it prints, among its lines (holidays are not deducted):
 
 ```text
-lean: 52 runs per week (every routine at its regular slots)
-active: 72 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 54 runs per week (every routine at its regular slots)
+active: 74 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 - `desk.toml`'s `cadence_profile` names the profile, `lean` or `active`. `active` is strictly additive: lean plus

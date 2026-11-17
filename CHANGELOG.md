@@ -2,6 +2,13 @@
 
 ## 1.0.0 (unreleased)
 
+- **The Aegis Events and Calendar Analyst** (roadmap step 2.12): the sixth Floor seat, so the Floor is full. It
+  comes with its role skill and the skill `aegis-event-calendar-sourcing`, and owns two Monday routines:
+  - `calendar-build` (07:40): `calendar_check` reminders, then `dividend_source` proposals for the owner's tap.
+    `dividend_source.py` now exits 10 when it proposes a dividend.
+  - `event-sheet` (07:50): the decision calendar of the next two weeks.
+  - `calendar_check`, `dividend_source` and `decision_calendar` become routine step tools with a postable `message`.
+    Both profiles gain 2 runs a week (lean 54, active 74).
 - **The Aegis Book & Risk Analyst** (roadmap step 2.10): the fifth Floor seat, with its role skill and the skills
   `aegis-exposures-limits-and-stress` and `aegis-vol-context`, claimed by the template. It owns three routines:
   - `opening-marks` (10:20 ET, trading weekdays): the daily beta fit, then YOUR BOOK. YOUR BOOK now prints the

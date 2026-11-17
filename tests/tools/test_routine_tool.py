@@ -1256,7 +1256,9 @@ class ReviewFixTest(RoutineCopy):
                  ("post-expiry", "09:30", POST_EXPIRY_NOW, "post_expiry"),
                  ("opening-marks", "10:20", REGULAR_NOW, "regular"),
                  ("pre-event-stress", "14:50", "2026-11-19T19:50:00Z", "t1"),
-                 ("weekend-stress", "10:00", POST_EXPIRY_NOW, "post_expiry"))
+                 ("weekend-stress", "10:00", POST_EXPIRY_NOW, "post_expiry"),
+                 ("calendar-build", "07:40", "2026-11-02T12:45:00Z", "regular"),
+                 ("event-sheet", "07:50", "2026-11-02T12:55:00Z", "regular"))
         self.assertEqual(set(manifest.routine_ids), {case[0] for case in cases})
         for routine_id, slot, now, fixture_set in cases:
             with self.subTest(routine=routine_id):

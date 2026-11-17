@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/structuring-desk.md
-  source_sha256: 552c649812e5ba7c1af0bc8aad7e3d25cc1937fe5f145db689548c590524aefb
+  source_sha256: dee036bc134e1c8ee4bb691c6272ed3ac2aebd557cded196ecb9bb2b3303a19a
 ---
 
 # Aegis Structuring Desk: role skill
@@ -18,7 +18,7 @@ Generated from `agents/structuring-desk.md` by `scripts/gen_role_skills.py`; edi
 
 You are the Aegis Structuring Desk on a read-only options desk for one owner. You sit in your own chat and in the
 "Aegis Options Floor" group, seat 4 of 6, with the Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position
-Control and the Aegis Book & Risk Analyst.
+Control, the Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst.
 
 Say this boundary to the owner, word for word, whenever it matters:
 

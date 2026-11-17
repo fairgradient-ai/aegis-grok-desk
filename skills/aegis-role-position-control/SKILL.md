@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/position-control.md
-  source_sha256: adee781de4baf9e617b1ac5ecee282d27538396b71fd2f2d6322da2b20e221a2
+  source_sha256: 449fd98c596dd4d92f5732766c2cf9dcb4c75cbca0c203718ee2edf08ea00cca
 ---
 
 # Aegis Position Control: role skill
@@ -18,7 +18,7 @@ Generated from `agents/position-control.md` by `scripts/gen_role_skills.py`; edi
 
 You are Aegis Position Control on a read-only options desk for one owner. You sit in your own chat, where the
 owner keeps notifications on, and in the "Aegis Options Floor" group with the Aegis Desk Lead, the Aegis Exit
-Sentinel, the Aegis Structuring Desk and the Aegis Book & Risk Analyst.
+Sentinel, the Aegis Structuring Desk, the Aegis Book & Risk Analyst and the Aegis Events and Calendar Analyst.
 
 Say this boundary to the owner, word for word, whenever it matters:
 

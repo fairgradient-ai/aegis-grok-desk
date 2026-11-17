@@ -286,6 +286,7 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 (the run instant)"`
 - `calendar_path`: `"research/calendar.toml (root-relative)"`
 - `calendar_sha256`: `"hex"`
 - `counts`: `{"MISSING": "integer", "NO_YIELD": "integer", "PAST": "integer", "STALE": "integer", "UNKNOWN_DIVIDEND": "integer"}`
@@ -294,6 +295,7 @@ Payload (`--json` envelope key `payload`):
 - `held_symbols`: `["underlyings of the open rows"]`
 - `listed_symbols`: `["symbols in the file"]`
 - `max_age_days`: `"integer"`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `short_call_symbols`: `["underlyings carrying an open short call"]`
 - `today`: `"YYYY-MM-DD (ET date of --now)"`
 - `verdict`: `"clean | unavailable"`
@@ -361,9 +363,11 @@ Payload (`--json` envelope key `payload`):
 
 Payload (`--json` envelope key `payload`):
 
+- `as_of`: `"RFC 3339 (the run instant)"`
 - `end`: `"YYYY-MM-DD"`
 - `exit_code`: `"0 | 20"`
 - `gaps`: `[{"kind": "ex_dividend | earnings", "reason": "string", "symbol": "string"}]`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `points`: `[{"date": "YYYY-MM-DD", "detail": "string", "kind": "act_by | last_trading_day | ex_dividend | earnings", "source": "string | null", "status": "confirmed | estimated | null", "symbol": "string", "time_et": "HH:MM | null"}]`
 - `start`: `"YYYY-MM-DD (today's ET date)"`
 - `verdict`: `"ok | unavailable"`
@@ -460,13 +464,15 @@ Payload (`--json` envelope key `payload`):
 
 - `answers`: `{"sourced_dividends": {"SYMBOL": {"amount": "decimal string", "checked_utc": "RFC 3339", "date": "YYYY-MM-DD"}}}`
 - `apply`: `"string | null (the desk_init.py command the owner's tap runs)"`
+- `as_of`: `"RFC 3339 (the fetch time, else the run instant)"`
 - `ex_end`: `"YYYY-MM-DD"`
 - `ex_start`: `"YYYY-MM-DD"`
-- `exit_code`: `"0 | 20"`
+- `exit_code`: `"0 | 10 | 20"`
 - `ignored_without_ex_date`: `"integer"`
+- `message`: `"string (the text printed, for a routine's post)"`
 - `reason`: `"string | null"`
 - `symbols`: `[{"amount": "decimal string | null", "calendar": "string | null", "ex_date": "YYYY-MM-DD | null", "special": "boolean", "state": "AGREES | NEW | DIFFERS | NONE FOUND", "symbol": "string"}]`
-- `verdict`: `"ok | unavailable"`
+- `verdict`: `"ok | proposed | unavailable"`
 
 ## eod_summary
 
@@ -1052,7 +1058,7 @@ Payload (`--json` envelope key `payload`):
 - `run_record`: `"reports/routines/<ET date>/<routine>-<HHMM of the slot>.json | null (not written)"`
 - `run_utc`: `"ISO-8601 UTC (--now or the clock read once)"`
 - `slot`: `"HH:MM (America/New_York)"`
-- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | csv_recon | desk_doctor | eod_summary | expiry_checklist | scenario | trigger_levels"}]`
+- `steps`: `[{"argv": ["the exact argv main() received"], "artifact": "reports/routines/<ET date>/steps/<slug>.json | null (not written)", "error_code": "the error envelope's code | step_crashed | bad_envelope | exit_<n> | null", "exit_code": "0 | 1 | 2 | 10 | 20", "status": "the envelope status | error (crashed, no envelope)", "step": "the step's slug (tool and flags joined with -)", "tool": "assignment_watch | beta_refresh | book | book_check | calendar_check | csv_recon | decision_calendar | desk_doctor | dividend_source | eod_summary | expiry_checklist | scenario | trigger_levels"}]`
 - `warnings`: `["string"]`
 - `withheld`: `[{"codes": ["alert_lint finding codes"], "step": "slug", "tool": "string"}]`
 - `written`: `["desk-root relative paths this tool wrote (the steps' own writes are in their copies)"]`

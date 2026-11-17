@@ -147,3 +147,33 @@ posts = "always"
 quiet_rule = "Always one message on Saturday: the scenario grid of the book as of the last close, a computation on the book's model, not a forecast; a group without usable marks is named and the total left out."
 approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
 prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py weekend-stress --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "calendar-build"
+owner = "events-calendar-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["07:40"], active = ["07:40"] }
+days = ["Mon"]
+trading_days_only = true
+chain = ["calendar_check", "dividend_source"]
+post = ["calendar_check", "dividend_source"]
+posts = "fired"
+quiet_rule = "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py calendar-build --slot {slot} and post its output verbatim."
+
+[[routine]]
+id = "event-sheet"
+owner = "events-calendar-analyst"
+stage = 2
+profiles = ["lean", "active"]
+et = { lean = ["07:50"], active = ["07:50"] }
+days = ["Mon"]
+trading_days_only = true
+chain = ["decision_calendar --days 14"]
+post = ["decision_calendar"]
+posts = "always"
+quiet_rule = "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
+approval_boundary = "read-only; writes only under state/, data/, reports/, journal/ and incidents/ of the desk root"
+prompt = "Run python3 /workspace/aegis-grok-desk/scripts/routine.py event-sheet --slot {slot} and post its output verbatim."

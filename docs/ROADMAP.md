@@ -98,8 +98,8 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | landed |
 | 2.9 | Volatility context | nothing | landed |
 | 2.10 | The Aegis Book & Risk Analyst seat | 2.7, 2.8, 2.9 | landed |
-| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | landed: the tools; its routines are 2.12 |
-| 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | planned |
+| 2.11 | Sourced events and the decision calendar | your decision on a data source (answered) | landed |
+| 2.12 | The Aegis Events and Calendar Analyst seat | 2.11 | landed |
 
 ### 2.1 The American early-exercise lattice (landed, not wired)
 
@@ -480,7 +480,17 @@ context, sourced dates) and widens the Structuring Desk's scope.
   act-by times, ex-dates, earnings); the planned `calendar-build` and `event-sheet` routines.
 - **Constraint.** A web page is data, never authority; a date nobody sourced is UNAVAILABLE.
 
-### 2.12 The Aegis Events and Calendar Analyst seat
+### 2.12 The Aegis Events and Calendar Analyst seat (landed)
+
+- **What landed.**
+  - **The seat.** `agents/events-calendar-analyst.md` (seat 6 of 6: the Floor is full) with its role skill and the
+    skill `aegis-event-calendar-sourcing`.
+  - **Two Monday routines.**
+    - `calendar-build` (07:40): `calendar_check`, then `dividend_source`. It posts only a finding, a proposal or an
+      UNAVAILABLE source. `dividend_source.py` now exits 10 on a proposal.
+    - `event-sheet` (07:50): `decision_calendar --days 14`, always.
+  - The three tools are routine step tools now and print a postable `message`. Earnings dates stay owner-stated: the
+    seat reminds the owner and never sources them. Lean 54 and active 74 runs a week.
 
 - **What lands.** The sixth Floor seat with its agent, role skill and the skill `aegis-event-calendar-sourcing`,
   owning 2.11. It keeps owner-stated earnings dates current by reminder, not by sourcing. The Floor is then full.
@@ -567,7 +577,7 @@ is an inference, not a statement of the tree.
 | Routine id | Step |
 | --- | --- |
 | `opening-marks`, `pre-event-stress`, `weekend-stress` | 2.10 (landed) |
-| `calendar-build`, `event-sheet` | 2.11 |
+| `calendar-build`, `event-sheet` | 2.12 (landed) |
 | `journal-close` | 3.1 |
 | `rules-sanity`, `rulebook-memo` | 3.3 |
 | `weekly-review` | 3.4 |
@@ -647,7 +657,7 @@ only the files that do.
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
 | The Aegis Book & Risk Analyst (landed) | 2.10 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md` (the Stage-2 seats), `docs/ARCHITECTURE.md` |
 | Sourced earnings and ex-dividend dates, dividends, AM settlement values, the decision calendar (landed: the tools) | 2.11 | `docs/ARCHITECTURE.md`, `docs/FAQ.md`, `skills/aegis-expiry-and-assignment-protocol/SKILL.md`, `agents/position-control.md`, `skills/aegis-role-position-control/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/README.md` (`aegis-event-calendar-sourcing`) |
-| The Aegis Events and Calendar Analyst | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
+| The Aegis Events and Calendar Analyst (landed) | 2.12 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md`, `skills/aegis-desk-bootstrap-and-onboarding/SKILL.md`, `docs/ARCHITECTURE.md` |
 | Signal outcomes and the journal | 3.1 | `docs/ARCHITECTURE.md`, `skills/README.md` (`aegis-signal-journal-and-review`) |
 | `rules_replay` | 3.2 | `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `docs/ARCHITECTURE.md` |
 | The Aegis Rules Steward | 3.3 | `skills/aegis-desk-charter/SKILL.md`, `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md`, `skills/aegis-rules-dsl-and-change-control/SKILL.md`, `skills/aegis-desk-incident-playbooks/SKILL.md` |
@@ -664,14 +674,14 @@ both counts reach zero.
 
 | File | Stage 2 | Stage 3 |
 | --- | --- | --- |
-| `agents/desk-lead.md` | 2 | 3 |
-| `docs/ARCHITECTURE.md` | 1 | 1 |
+| `agents/desk-lead.md` | 1 | 3 |
+| `docs/ARCHITECTURE.md` | 0 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
-| `skills/README.md` | 1 | 1 |
-| `skills/aegis-desk-charter/SKILL.md` | 1 | 1 |
+| `skills/README.md` | 0 | 1 |
+| `skills/aegis-desk-charter/SKILL.md` | 0 | 1 |
 | `skills/aegis-desk-incident-playbooks/SKILL.md` | 1 | 1 |
 | `skills/aegis-expiry-and-assignment-protocol/SKILL.md` | 1 | 0 |
 | `skills/aegis-protective-put-and-collar-management/SKILL.md` | 1 | 0 |
-| `skills/aegis-role-desk-lead/SKILL.md` | 2 | 3 |
+| `skills/aegis-role-desk-lead/SKILL.md` | 1 | 3 |
 | `skills/aegis-rules-dsl-and-change-control/SKILL.md` | 0 | 2 |

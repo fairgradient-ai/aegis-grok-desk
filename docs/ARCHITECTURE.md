@@ -212,11 +212,8 @@ The owner's decisions behind the design (2026-10-30):
 [ROADMAP.md](ROADMAP.md) orders these items into steps, with what each step must prove before it merges. Landed so far:
 the American model of record (steps 2.1 and 2.3), the Structuring Desk's wider scope (2.4), weekly expirations (2.5),
 the stated cash check and per-account approval levels (2.6), the exposures and the two limit metrics (2.7), the
-scenario and event stress tool (2.8), the volatility context tool (2.9), the Aegis Book & Risk Analyst (2.10), and the
-sourced cash dividends and the decision calendar (2.11).
+scenario and event stress tool (2.8), the volatility context tool (2.9), the Aegis Book & Risk Analyst (2.10), the
+sourced cash dividends and the decision calendar (2.11) and the Aegis Events and Calendar Analyst (2.12).
 
-- The Aegis Events and Calendar Analyst, with the `calendar-build` and `event-sheet` routines, is planned for Stage 2
-  (not in this release). Its tools have landed: `scripts/dividend_source.py` and `scripts/decision_calendar.py`; the
-  seat that relays them is part of that plan.
 - The Aegis Rules Steward and the Aegis Review Desk, with replay of rules over past snapshots, signal outcomes and the
   journal review, are planned for Stage 3 (not in this release).

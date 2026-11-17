@@ -25,6 +25,8 @@ Run python3 /workspace/aegis-grok-desk/scripts/routine.py <id> --slot {slot} and
 | `opening-marks` | Aegis Book & Risk Analyst | 10:20, Mon-Fri | the daily beta fit, then YOUR BOOK at the opening marks |
 | `pre-event-stress` | Aegis Book & Risk Analyst | 14:50, Mon-Fri | an event stress of each held symbol whose earnings or ex-dividend date is within 2 trading days |
 | `weekend-stress` | Aegis Book & Risk Analyst | 10:00, Saturday | the scenario grid of the last end-of-day snapshot |
+| `calendar-build` | Aegis Events and Calendar Analyst | 07:40, Monday | the calendar lint, then the cash dividends declared in Alpaca's corporate actions, proposed for your tap |
+| `event-sheet` | Aegis Events and Calendar Analyst | 07:50, Monday | the decision calendar of the next two weeks |
 
 The weekday routines run on trading days only. No weekday routine runs between 08:00 and 10:00 ET, the window in which
 platform queue delays are worst and the delayed quotes of the open are not in yet. `book-check` starts at least 20
@@ -56,6 +58,10 @@ Each routine has a posting policy and one written quiet rule. The quiet rules, v
   event stress of its groups, a computation on the book's model, not a forecast; otherwise quiet."
 - `weekend-stress`: "Always one message on Saturday: the scenario grid of the book as of the last close, a computation
   on the book's model, not a forecast; a group without usable marks is named and the total left out."
+- `calendar-build`: "Posts only a calendar finding (stale, missing or unknown dates, a held symbol without a yield), a
+  cash dividend proposed from Alpaca's corporate actions for your tap, or an UNAVAILABLE source; otherwise quiet."
+- `event-sheet`: "Always one message on Monday: the decision calendar of the next two weeks (act-by times, last
+  trading days, ex-dividend and earnings dates with their sources); a date nobody sourced is UNAVAILABLE."
 
 A routine with nothing to post prints the single word `quiet`, and its Bot posts that word. A closed day (a weekend,
 an NYSE holiday, or a full closure you entered in `research/calendar.toml`) runs no step and prints `quiet`.
@@ -72,7 +78,8 @@ never inside its rule's cooldown. A standing UNAVAILABLE banner re-posts on ever
 ## Which chat says what
 
 A routine's output lands in the chat of the Bot that owns it. Turn Notifications on for the routine-owning Bots: the
-Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control and the Aegis Book & Risk Analyst.
+Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control, the Aegis Book & Risk Analyst and the Aegis Events
+and Calendar Analyst.
 
 | Message | Chat |
 | --- | --- |
@@ -80,6 +87,7 @@ Aegis Desk Lead, the Aegis Exit Sentinel, Aegis Position Control and the Aegis B
 | FINAL CALL, T-1 PREVIEW, the assignment watch, the post-expiry reconciliation | Aegis Position Control |
 | MORNING DESK SHEET, EOD DESK BRIEF | Aegis Desk Lead |
 | YOUR BOOK at the opening marks, EVENT STRESS, the Saturday SCENARIO | Aegis Book & Risk Analyst |
+| the Monday calendar findings, SOURCED DIVIDENDS, the DECISION CALENDAR | Aegis Events and Calendar Analyst |
 | An INCIDENT or WITHHELD line | the chat of the routine that printed it; a structuring tool's WITHHELD line, the Aegis Structuring Desk's |
 | A ticket, a roll analysis or a proposal, in reply to your request only | Aegis Structuring Desk (its chat, or the Floor where you asked); no notification is needed, because it never posts unasked |
 
@@ -154,8 +162,8 @@ Every run spends weekly platform usage. `routine_audit.py --budget` prints the r
 deducted):
 
 ```text
-lean: 52 runs per week (every routine at its regular slots)
-active: 72 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
+lean: 54 runs per week (every routine at its regular slots)
+active: 74 runs per week (lean plus four paused book-check slots, unpaused only on the conditions the owner chose)
 ```
 
 The active profile is lean plus four Exit Sentinel book checks at 11:05, 13:05, 14:35 and 15:05, created paused at

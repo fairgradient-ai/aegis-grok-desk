@@ -355,8 +355,8 @@ JOURNEYS: Tuple[Journey, ...] = (
                  {"status": "unavailable", "payload.verdict": "unavailable"}),
     # Sourced dividends and the decision calendar (roadmap 2.11): a proposal that writes nothing, and the dated points.
     tool_journey("dividend_source regular -> SPY DIFFERS (proposed), WMT and NVDA agree",
-                 ("dividend_source.py", "--fixture-set", "regular"), 0,
-                 {"status": "ok", "tool": "dividend_source", "payload.verdict": "ok",
+                 ("dividend_source.py", "--fixture-set", "regular"), 10,
+                 {"status": "fired", "tool": "dividend_source", "payload.verdict": "proposed",
                   "payload.answers.sourced_dividends.SPY.amount": "1.9021"}),
     tool_journey("decision_calendar regular -> earnings, act-by, ex-dividend points", ("decision_calendar.py",), 0,
                  {"status": "ok", "tool": "decision_calendar", "payload.verdict": "ok", "payload.end": "2026-12-18"}),
@@ -633,15 +633,16 @@ JOURNEYS += (
                   "payload.expected_move.straddle": "36.76", "payload.requests_made": 4, "payload.lint.ok": True,
                   "payload.message": TextMatch(prefix=DEMO_LINE + "\nSPY 648.12 mid (bid 648.10, ask 648.14), as of 19:31 UTC",
                                                contains=("not a signal",))}),
-    tool_journey("routine_audit --budget -> lean 52, active 72 runs per week", ("routine_audit.py", "--budget"), 0,
+    tool_journey("routine_audit --budget -> lean 54, active 74 runs per week", ("routine_audit.py", "--budget"), 0,
                  {"status": "ok", "tool": "routine_audit", "payload.mode": "budget",
-                  "payload.budget": {"lean": 52, "active": 72}}),
+                  "payload.budget": {"lean": 54, "active": 74}}),
     tool_journey("routine_audit --rules-text -> three Auto-review texts within 1000 characters",
                  ("routine_audit.py", "--rules-text"), 0,
                  {"status": "ok", "payload.mode": "rules_text", "payload.limit_chars": 1000,
-                  "payload.lengths": {"allow": 560, "ask_first_writes": 487, "ask_first_owner_authority": 391},
+                  "payload.lengths": {"allow": 589, "ask_first_writes": 487, "ask_first_owner_authority": 391},
                   "payload.routine_ids": ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry",
-                                          "opening-marks", "pre-event-stress", "weekend-stress"]}),
+                                          "opening-marks", "pre-event-stress", "weekend-stress", "calendar-build",
+                                          "event-sheet"]}),
     tool_journey("book --snapshot pre_open, trigger_levels --from-snapshot, then routine preopen 07:30 pre_open -> "
                  "MORNING DESK SHEET",
                  ("routine.py", "preopen", "--slot", "07:30", "--allow-dirty", "--fixture-set", "pre_open"), 0,
@@ -701,6 +702,19 @@ JOURNEYS += (
                  now="2026-11-07T15:00:00Z",
                  steps=(tool_step(("book.py", "--snapshot", "--fixture-set", "pre_open"), 0, {"status": "ok"},
                                   now=PREV_EOD_NOW),)),
+    # The Aegis Events and Calendar Analyst's Monday routines (roadmap 2.12).
+    tool_journey("routine calendar-build 07:40 Monday -> SOURCED DIVIDENDS (SPY proposed for your tap)",
+                 ("routine.py", "calendar-build", "--slot", "07:40", "--allow-dirty", "--fixture-set", "regular"), 10,
+                 {"status": "fired", "payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix=DEV_HEADER + "\nSOURCED DIVIDENDS | ex-dates 2026-11-02 to "
+                                                                   "2027-01-31",
+                                               contains=("SPY | DIFFERS",))},
+                 now="2026-11-02T12:45:00Z"),
+    tool_journey("routine event-sheet 07:50 Monday -> DECISION CALENDAR of the next two weeks",
+                 ("routine.py", "event-sheet", "--slot", "07:50", "--allow-dirty"), 0,
+                 {"payload.lint.ok": True,
+                  "payload.message": TextMatch(prefix=DEV_HEADER + "\nDECISION CALENDAR | 2026-11-02 to 2026-11-16")},
+                 now="2026-11-02T12:55:00Z"),
 )
 
 

@@ -29,15 +29,16 @@ from aegis_desk import alert_lint, desk_paths, heartbeat, market_clock, routines
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(ROOT, "routines", "manifest.toml")
 AUTOREVIEW = os.path.join(ROOT, "routines", "autoreview.toml")
-MANIFEST_SHA256 = "7658da0154bbffc4f68b1fe6e9273a79514d8ff73d641083c1e7811a4947aa71"
+MANIFEST_SHA256 = "56abb5239997e1210da73b526187105b4092efc3199eab196857b01932d70ebc"
 AUTOREVIEW_SHA256 = "eaa3e05bf0afb15d9343e7b240b9f3b964c501b1b80799e28dc4b75768706cc5"
 STAGE1_IDS = ["preopen", "book-check", "final-call", "eod", "eod-brief", "post-expiry"]
-ROUTINE_IDS = STAGE1_IDS + ["opening-marks", "pre-event-stress", "weekend-stress"]
-LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 52, 72, 560
+ROUTINE_IDS = STAGE1_IDS + ["opening-marks", "pre-event-stress", "weekend-stress", "calendar-build", "event-sheet"]
+LEAN_RUNS, ACTIVE_RUNS, ALLOW_CHARS = 54, 74, 589
 """Every routine of the manifest, in order: Stage 1's six, then the later stages' as each seat lands."""
 OWNERS = {"preopen": "desk-lead", "book-check": "exit-sentinel", "final-call": "position-control", "eod": "exit-sentinel",
           "eod-brief": "desk-lead", "post-expiry": "position-control", "opening-marks": "book-risk-analyst",
-          "pre-event-stress": "book-risk-analyst", "weekend-stress": "book-risk-analyst"}
+          "pre-event-stress": "book-risk-analyst", "weekend-stress": "book-risk-analyst",
+          "calendar-build": "events-calendar-analyst", "event-sheet": "events-calendar-analyst"}
 
 
 def stage1(manifest: routines.Manifest) -> routines.Manifest:
@@ -81,8 +82,9 @@ def order_shaped(text: str) -> List[str]:
 class ConstantsTest(unittest.TestCase):
     def test_step_tools_are_the_eight_chain_tools(self) -> None:
         # O4: no ack and no routine_audit in any chain; roadmap 2.10 adds beta_refresh and scenario.
-        self.assertEqual(("assignment_watch", "beta_refresh", "book", "book_check", "csv_recon", "desk_doctor",
-                          "eod_summary", "expiry_checklist", "scenario", "trigger_levels"), routines.STEP_TOOLS)
+        self.assertEqual(("assignment_watch", "beta_refresh", "book", "book_check", "calendar_check", "csv_recon",
+                          "decision_calendar", "desk_doctor", "dividend_source", "eod_summary", "expiry_checklist",
+                          "scenario", "trigger_levels"), routines.STEP_TOOLS)
         self.assertNotIn("ack", routines.STEP_TOOLS)
         self.assertNotIn("routine_audit", routines.STEP_TOOLS)
         for name in STRUCTURING_TOOLS:
@@ -95,7 +97,8 @@ class ConstantsTest(unittest.TestCase):
             self.assertEqual(STRUCTURING_REFUSAL, routines.REFUSED_STEP_TOOLS[name])
         self.assertEqual([], order_shaped(STRUCTURING_REFUSAL))
         self.assertEqual(frozenset({"book_check", "book", "csv_recon", "expiry_checklist", "assignment_watch",
-                                    "trigger_levels", "beta_refresh", "scenario"}), routines.FIXTURE_SET_TOOLS)
+                                    "trigger_levels", "beta_refresh", "scenario", "dividend_source"}),
+                         routines.FIXTURE_SET_TOOLS)
         self.assertTrue(routines.FIXTURE_SET_TOOLS <= set(routines.STEP_TOOLS))
 
     def test_flag_tables_and_limits(self) -> None:
@@ -222,6 +225,14 @@ class RealManifestTest(unittest.TestCase):
         self.assertEqual((("10:00",), ("Sat",), ("scenario --from-snapshot",), False),
                          (weekend.slots("lean"), weekend.days, weekend.chain, weekend.trading_days_only))
         self.assertEqual({2}, {r.stage for r in (marks, stress, weekend)})
+
+    def test_the_events_and_calendar_routines(self) -> None:
+        # Roadmap 2.12: the Aegis Events and Calendar Analyst's two Monday routines.
+        build, sheet = self.manifest.by_id("calendar-build"), self.manifest.by_id("event-sheet")
+        self.assertEqual((("07:40",), ("Mon",), ("calendar_check", "dividend_source"), "fired"),
+                         (build.slots("lean"), build.days, build.chain, build.posts))
+        self.assertEqual((("07:50",), ("Mon",), ("decision_calendar --days 14",), "always"),
+                         (sheet.slots("lean"), sheet.days, sheet.chain, sheet.posts))
 
     def test_runs_on(self) -> None:
         preopen = self.manifest.by_id("preopen")
@@ -429,7 +440,7 @@ class StructuralRulesTest(unittest.TestCase):
     def test_unknown_tool_and_bad_tokens(self) -> None:
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["positions_check"]'),
                             "routine post-expiry: step 'positions_check': positions_check is not a step tool "
-                            "(assignment_watch, beta_refresh, book, book_check")
+                            "(assignment_watch, beta_refresh, book, book_check, calendar_check")
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["csv_recon;id"]'),
                             "routine post-expiry: step 'csv_recon;id': token 'csv_recon;id' must match")
         self.assert_refused(self.mutate('chain = ["csv_recon"]', 'chain = ["csv_recon | sh"]'),

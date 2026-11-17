@@ -94,11 +94,13 @@ DAYS: Tuple[str, ...] = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 """Day names in ``datetime.date.weekday()`` order."""
 WEEKDAYS: Tuple[str, ...] = DAYS[:5]
 POSTS: Tuple[str, ...] = ("always", "transitions", "fired")
-STEP_TOOLS: Tuple[str, ...] = ("assignment_watch", "beta_refresh", "book", "book_check", "csv_recon", "desk_doctor",
-                               "eod_summary", "expiry_checklist", "scenario", "trigger_levels")
+STEP_TOOLS: Tuple[str, ...] = ("assignment_watch", "beta_refresh", "book", "book_check", "calendar_check", "csv_recon",
+                               "decision_calendar", "desk_doctor", "dividend_source", "eod_summary", "expiry_checklist",
+                               "scenario", "trigger_levels")
 """The tools a chain may run; ``routine.py`` imports exactly these (``STEP_MODULES``)."""
 FIXTURE_SET_TOOLS: FrozenSet[str] = frozenset({"book_check", "book", "csv_recon", "expiry_checklist",
-                                               "assignment_watch", "trigger_levels", "beta_refresh", "scenario"})
+                                               "assignment_watch", "trigger_levels", "beta_refresh", "scenario",
+                                               "dividend_source"})
 """The step tools whose parser declares ``--fixture-set`` (``routine.py`` passes its own through to them)."""
 NO_FIXTURE_SET_FLAGS: Tuple[str, ...] = ("--from-snapshot",)
 """A step carrying one of these reads a saved record, never quotes: ``routine.py`` passes it no ``--fixture-set``

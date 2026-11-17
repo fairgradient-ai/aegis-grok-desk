@@ -1,0 +1,11 @@
+{
+  "corporate_actions": {
+    "cash_dividends": [
+      {"symbol": "WMT", "rate": 0.235, "special": false, "foreign": false, "process_date": "2026-12-08", "ex_date": "2026-11-24", "record_date": "2026-11-24", "payable_date": "2026-12-08"},
+      {"symbol": "NVDA", "rate": 0.01, "special": false, "foreign": false, "process_date": "2026-12-26", "ex_date": "2026-12-03", "record_date": "2026-12-03", "payable_date": "2026-12-26"},
+      {"symbol": "SPY", "rate": 1.9021, "special": false, "foreign": false, "process_date": "2027-01-30", "ex_date": "2026-12-18", "record_date": "2026-12-18", "payable_date": "2027-01-30"},
+      {"symbol": "WMT", "rate": 0.235, "special": false, "foreign": false, "process_date": "2027-01-05"}
+    ]
+  },
+  "next_page_token": null
+}

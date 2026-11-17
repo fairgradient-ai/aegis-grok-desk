@@ -29,10 +29,11 @@ from typing import List, Sequence, Tuple
 import gen_role_skills as gen
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SEATS = ("book-risk-analyst", "desk-lead", "exit-sentinel", "position-control", "structuring-desk")
+SEATS = ("book-risk-analyst", "desk-lead", "events-calendar-analyst", "exit-sentinel", "position-control",
+         "structuring-desk")
 """Every agent file stem, sorted (the generator's own order)."""
-SEAT_KIND = {"book-risk-analyst": "floor", "desk-lead": "floor", "exit-sentinel": "floor", "position-control": "floor",
-             "structuring-desk": "floor"}
+SEAT_KIND = {"book-risk-analyst": "floor", "desk-lead": "floor", "events-calendar-analyst": "floor",
+             "exit-sentinel": "floor", "position-control": "floor", "structuring-desk": "floor"}
 ROLES = ["aegis-role-%s" % seat for seat in SEATS]
 BOUNDARY = ("This desk never places, modifies or cancels orders. An exit alert tells you which of your adopted rules "
             "fired and why; you act in your brokerage account.")

@@ -257,8 +257,11 @@ def step_modules() -> Dict[str, Any]:
         import beta_refresh
         import book
         import book_check
+        import calendar_check
         import csv_recon
+        import decision_calendar
         import desk_doctor
+        import dividend_source
         import eod_summary
         import expiry_checklist
         import scenario
@@ -266,7 +269,8 @@ def step_modules() -> Dict[str, Any]:
 
         STEP_MODULES.update({
             "assignment_watch": assignment_watch, "beta_refresh": beta_refresh, "book": book, "book_check": book_check,
-            "csv_recon": csv_recon, "desk_doctor": desk_doctor, "eod_summary": eod_summary,
+            "calendar_check": calendar_check, "csv_recon": csv_recon, "decision_calendar": decision_calendar,
+            "desk_doctor": desk_doctor, "dividend_source": dividend_source, "eod_summary": eod_summary,
             "expiry_checklist": expiry_checklist, "scenario": scenario, "trigger_levels": trigger_levels,
         })
     return STEP_MODULES

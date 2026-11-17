@@ -34,7 +34,7 @@ TEXT = [
     "WMT | AGREES | ex-date 2026-11-24, 0.235 per share | calendar: 2026-11-24 0.2350 confirmed (owner-entered "
     "(fixture))",
     "proposed for research/calendar.toml, written only on your tap: SPY",
-    "apply: desk_init.py --answers <the answers above, saved as a file> --replace --owner-tapped",
+    "to record them: desk_init.py --answers <the answers above, saved as a file> --replace --owner-tapped",
     "ignored: 1 record(s) without an ex-date",
 ]
 
@@ -95,7 +95,7 @@ class ProposalTest(DeskCopy):
     def test_the_regular_goldens_and_nothing_written(self) -> None:
         before = self.read_calendar()
         code, out = self.offline()
-        self.assertEqual((0, TEXT), (code, out.splitlines()))
+        self.assertEqual((10, TEXT), (code, out.splitlines()), "a proposal is exit 10: the routine posts it")
         self.assertEqual(before, self.read_calendar())
 
     def test_json_answers(self) -> None:
@@ -104,8 +104,9 @@ class ProposalTest(DeskCopy):
         self.assertEqual({"sourced_dividends": {"SPY": {"date": "2026-12-18", "amount": "1.9021",
                                                         "checked_utc": "2026-11-03T19:50:00Z"}}}, payload["answers"])
         self.assertEqual(["AGREES", "DIFFERS", "AGREES"], [row["state"] for row in payload["symbols"]])
-        self.assertEqual((0, "ok", 1, None), (code, payload["verdict"], payload["ignored_without_ex_date"],
-                                              payload["reason"]))
+        self.assertEqual((10, "proposed", 1, None), (code, payload["verdict"], payload["ignored_without_ex_date"],
+                                                     payload["reason"]))
+        self.assertEqual("\n".join(TEXT), payload["message"])
 
     def test_a_symbol_without_a_declaration_is_none_found_and_nothing_is_proposed_for_it(self) -> None:
         path = os.path.join(self.root, "fixtures", "alpaca", "regular", FIXTURE)
@@ -117,7 +118,7 @@ class ProposalTest(DeskCopy):
             json.dump(document, handle)
         code, out = self.offline(json_mode=True)
         payload = json.loads(out)["payload"]
-        self.assertEqual(0, code)
+        self.assertEqual(10, code, "SPY is still proposed")
         self.assertEqual(("NONE FOUND", None), (payload["symbols"][0]["state"], payload["symbols"][0]["ex_date"]))
         self.assertEqual(["SPY"], sorted(payload["answers"]["sourced_dividends"]), "absence is no proof of none")
         code, out = self.offline()
@@ -151,8 +152,9 @@ class TapTest(DeskCopy):
         cal = calendar_events.parse_calendar_text(after)
         self.assertEqual(("owner-entered (fixture)", cal.closures), (cal.sourced_yield("SPY").source,
                                                                      calendar_events.parse_calendar_text(before).closures))
-        _code, out = self.offline()
+        code, out = self.offline()
         self.assertIn("nothing to propose: the calendar agrees with every declaration found", out.splitlines())
+        self.assertEqual(0, code, "nothing to propose is quiet")
 
     def test_a_new_symbol_gets_its_own_table(self) -> None:
         code, out = self.init({"sourced_dividends": {"KO": {"date": "2026-11-28", "amount": "0.51",

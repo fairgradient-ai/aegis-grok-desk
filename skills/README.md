@@ -30,11 +30,12 @@ a readback each. `template/grok-bot.json` records the sha256 of every `SKILL.md`
 | [aegis-protective-put-and-collar-management](aegis-protective-put-and-collar-management/SKILL.md) | how the desk measures hedges: the continuity rules, the put's delta, floor and cover, automatic exercise and the collar's call | Aegis Exit Sentinel, Aegis Structuring Desk, Aegis Book & Risk Analyst |
 | [aegis-vertical-spread-management](aegis-vertical-spread-management/SKILL.md) | vertical spreads on their net credit or debit, the cost to close from both legs, the between-the-strikes rule and the short leg's alerts | Aegis Exit Sentinel |
 | [aegis-positions-csv-book-of-record](aegis-positions-csv-book-of-record/SKILL.md) | your `positions.csv`: who writes it, the columns and money conventions, errors and quarantine, and the exact lines for each event, which you apply | Aegis Position Control |
-| [aegis-expiry-and-assignment-protocol](aegis-expiry-and-assignment-protocol/SKILL.md) | the expiry week: the one-cent rule, the act-by time (a short option's session close, a long option's broker cutoff), settlement styles, the pin and dividend tiers, early closes and the inferred outcomes you confirm with your broker | Aegis Position Control |
+| [aegis-expiry-and-assignment-protocol](aegis-expiry-and-assignment-protocol/SKILL.md) | the expiry week: the one-cent rule, the act-by time (a short option's session close, a long option's broker cutoff), settlement styles, the pin and dividend tiers, early closes and the inferred outcomes you confirm with your broker | Aegis Position Control, Aegis Events and Calendar Analyst |
 | [aegis-overlay-proposals](aegis-overlay-proposals/SKILL.md) | overlays on shares you hold (a covered call, a protective put, a collar), your `structuring.toml` with every key, bound and default, the disclosure and the interview, the objectives in words, the best-candidate framing and how to read a proposal | Aegis Structuring Desk |
 | [aegis-roll-decision-framework](aegis-roll-decision-framework/SKILL.md) | a roll as a close plus an open, the replacement set, the score and its tie-breaks, the FAILS_CRITERION labels and how your tags and criteria accept them, and why no candidate passing is a complete answer | Aegis Structuring Desk |
 | [aegis-exposures-limits-and-stress](aegis-exposures-limits-and-stress/SKILL.md) | the daily beta fit and its UNAVAILABLE cases, the beta-weighted delta and its r2 flag, the limits as adopted exit rules, the scenario grid on the book's own model, the event stress and a hedge's stock and options split | Aegis Book & Risk Analyst |
 | [aegis-vol-context](aegis-vol-context/SKILL.md) | the desk's own implied volatility against its recorded days, information only, never a judgment of cheap or rich | Aegis Book & Risk Analyst |
+| [aegis-event-calendar-sourcing](aegis-event-calendar-sourcing/SKILL.md) | every date as a fact with a source, the declared cash dividends proposed from Alpaca's corporate actions and the owner's tap, earnings dates and yields as reminders, the calendar findings and the decision calendar | Aegis Events and Calendar Analyst |
 | [aegis-ticket-and-unwind-order](aegis-ticket-and-unwind-order/SKILL.md) | the ticket line by line: the fixed leg grammar, the canonical leg order, the approval-level convention, the cash and realized lines, the 30-minute validity, exercise by exception and what follows a fill; you supply the limit | Aegis Structuring Desk |
 
 The skills describe your adopted rules, your criteria and the tools' output. None of them chooses a rule, a threshold
@@ -42,9 +43,6 @@ or a criterion for you.
 
 ## Later stages
 
-- `aegis-event-calendar-sourcing`, the skill for sourced event dates, is planned for Stage 2 (not in this release).
-  Its tools have landed (step 2.11): `dividend_source.py` proposes declared cash dividends, and `decision_calendar.py`
-  lists the dated decision points.
 - `aegis-signal-journal-and-review`, the signal journal and the weekly review, is planned for Stage 3 (not in this release).
 
 ## Role skills
@@ -58,6 +56,7 @@ gets its own role skill as its standing instructions.
 | --- | --- | --- |
 | [aegis-role-book-risk-analyst](aegis-role-book-risk-analyst/SKILL.md) | `agents/book-risk-analyst.md` | floor |
 | [aegis-role-desk-lead](aegis-role-desk-lead/SKILL.md) | `agents/desk-lead.md` | floor |
+| [aegis-role-events-calendar-analyst](aegis-role-events-calendar-analyst/SKILL.md) | `agents/events-calendar-analyst.md` | floor |
 | [aegis-role-exit-sentinel](aegis-role-exit-sentinel/SKILL.md) | `agents/exit-sentinel.md` | floor |
 | [aegis-role-position-control](aegis-role-position-control/SKILL.md) | `agents/position-control.md` | floor |
 | [aegis-role-structuring-desk](aegis-role-structuring-desk/SKILL.md) | `agents/structuring-desk.md` | floor |

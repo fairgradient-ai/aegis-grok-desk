@@ -46,6 +46,8 @@ OUTPUT: Dict[str, Any] = {
                 "earnings", "symbol": "string", "detail": "string", "status": "confirmed | estimated | null",
                 "source": "string | null"}],
     "gaps": [{"symbol": "string", "kind": "ex_dividend | earnings", "reason": "string"}],
+    "message": "string (the text printed, for a routine's post)",
+    "as_of": "RFC 3339 (the run instant)",
 }
 KIND_WORDS = {decision_calendar.KIND_ACT_BY: "act by", decision_calendar.KIND_LAST_TRADING_DAY: "last trading day",
               decision_calendar.KIND_EX_DIVIDEND: "ex-dividend", decision_calendar.KIND_EARNINGS: "earnings"}
@@ -115,21 +117,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     result = decision_calendar.build(positions.rows, cal, now, cfg.owner.broker_exercise_cutoff_et, args.days)
     unavailable = bool(result.gaps)
     exit_code = contract.EXIT_UNAVAILABLE if unavailable else contract.EXIT_QUIET
-    if args.json:
-        payload = {"verdict": "unavailable" if unavailable else "ok", "exit_code": exit_code,
-                   "start": result.start.isoformat(), "end": result.end.isoformat(),
-                   "points": [point.as_dict() for point in result.points],
-                   "gaps": [gap.as_dict() for gap in result.gaps]}
-        print(contract.json_dumps(contract.envelope(TOOL, version, payload, generated_at=now,
-                                                    status=contract.status_for(exit_code) if exit_code
-                                                    else contract.STATUS_OK)))
-        return exit_code
     lines = ["DECISION CALENDAR | %s to %s | your dated decision points" % (result.start.isoformat(),
                                                                              result.end.isoformat())]
     lines.extend(point_line(point) for point in result.points)
     if not result.points:
         lines.append("no dated decision point in the window")
     lines.extend("UNAVAILABLE | %s %s date | %s" % (gap.symbol, KIND_WORDS[gap.kind], gap.reason) for gap in result.gaps)
+    if args.json:
+        payload = {"verdict": "unavailable" if unavailable else "ok", "exit_code": exit_code,
+                   "start": result.start.isoformat(), "end": result.end.isoformat(),
+                   "points": [point.as_dict() for point in result.points],
+                   "gaps": [gap.as_dict() for gap in result.gaps], "message": "\n".join(lines), "as_of": now}
+        print(contract.json_dumps(contract.envelope(TOOL, version, payload, generated_at=now,
+                                                    status=contract.status_for(exit_code) if exit_code
+                                                    else contract.STATUS_OK)))
+        return exit_code
     print("\n".join(lines))
     return exit_code
 
