@@ -166,8 +166,8 @@ does. See the skill
 
 ## Is there a Grok Bot template?
 
-Not a published one. `template/grok-bot.json` is the template contract, and its status is `unpublished` in this
-release. Template import has been reported to drop skills, so the paste prompt in the README is the way in, and the
+Not a published one. `template/grok-bot.json` is the template contract, and its status is `ready-to-publish` in this
+release: the owner shares it once it is published. Template import has been reported to drop skills, so the paste prompt in the README is the way in, and the
 bootstrap reads every skill back against the checkout. When a template is published, its share link appears here and in the
 README. See [GROK_BOT_TEMPLATE.md](GROK_BOT_TEMPLATE.md).
 
