@@ -2,6 +2,20 @@
 
 ## 1.0.0 (unreleased)
 
+- **Stated cash and per-account approval levels** (roadmap step 2.6; the owner's answers to open questions 5 and 7).
+  - **New account keys.** Each `[[owner.accounts]]` entry may state its own `approval_level`, which the structuring
+    tools read before `[owner] approval_level`. It may also state `cash` with `cash_as_of`, the two given together.
+  - **The cash check.** `aegis_desk.cash_check` compares a ticket's or proposal's peak cash out with that stated cash.
+    The peak is taken over the legs in the desk's fixed order and includes the cash a short put opened secures, less
+    what a short put closed releases.
+    - Tickets print it under the cash block and carry `cash.check` in JSON; proposals print it after the approval
+      block.
+    - A shortfall is a failed check item, never a refusal.
+    - It reads UNAVAILABLE when no cash is stated, the figure is dated ahead or older than 5 trading days, or a leg
+      has no quote side.
+  - **Retired values.** `engagement`, `chatty_or_quiet` and `attention_thresholds` are optional and read by nothing.
+    `desk_init.py` no longer requires them but still renders them when given, so an existing desk keeps its hash. It
+    accepts the new account keys.
 - **Weekly expirations** (roadmap step 2.5; the owner's answer to open question 8). Every structure section of
   `structuring.toml` may set `expirations = "weekly"` (schema version 2; default `monthly`). Such a section adds every
   listed week-end expiration (the last trading day of its week: a Friday, or the Thursday when that Friday is a holiday)

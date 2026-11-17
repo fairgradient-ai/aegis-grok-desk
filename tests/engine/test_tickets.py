@@ -540,6 +540,30 @@ class QuietAnswerTest(unittest.TestCase):
         closing = tickets.run_ticket(market, SPY, "MONETIZE_PUT", CRITERIA)
         self.assertEqual("TICKET", closing.verdict)
 
+    def test_each_account_s_own_level_and_stated_cash(self) -> None:
+        # roadmap 2.6: the SPY group sits in the Roth IRA; its own approval_level is read before [owner]'s, and its
+        # stated cash is checked at the ticket's peak
+        market = Desk(self).market()
+        owner = market.cfg.owner
+        roth = [entry for entry in owner.accounts if entry.name == "Roth IRA"][0]
+        accounts = [dataclasses.replace(entry, approval_level=1) if entry is roth else entry for entry in owner.accounts]
+        low = dataclasses.replace(market, cfg=dataclasses.replace(market.cfg, owner=dataclasses.replace(
+            owner, approval_level=5, accounts=accounts)))
+        ticket = tickets.run_ticket(low, SPY, "ROLL", CRITERIA, new_expiration=MAR19, new_strike=D("610"))
+        self.assertEqual(("REFUSED", "approval_level", 1), (ticket.verdict, ticket.refused_code, ticket.owner_level))
+        funded = [dataclasses.replace(entry, cash=D("100.00"), cash_as_of=datetime.date(2026, 11, 2)) if entry is roth
+                  else entry for entry in owner.accounts]
+        rich = dataclasses.replace(market, cfg=dataclasses.replace(market.cfg, owner=dataclasses.replace(
+            owner, accounts=funded)))
+        ticket = tickets.run_ticket(rich, SPY, "ROLL", CRITERIA, new_expiration=MAR19, new_strike=D("610"))
+        self.assertEqual("TICKET", ticket.verdict)
+        check = ticket.cash_check
+        self.assertEqual(("short", ticket.cash.peak_needed, D("100.00"), 1), (check.status, check.need, check.cash,
+                                                                            check.age_trading_days))
+        rendered = tickets.render_ticket(ticket)
+        assert_lints(self, rendered)
+        self.assertIn("- %s **cash check** cash needed at the peak" % structuring_text.STATUS_FAIL, rendered.text)
+
     def test_disabled_roll_section(self) -> None:
         disabled = dataclasses.replace(CRITERIA, roll=dataclasses.replace(CRITERIA.roll, enabled=False))
         ticket = run(self, WMT, "ROLL", expiration=JAN15, strike="115", criteria=disabled)
@@ -593,8 +617,9 @@ class TextTest(unittest.TestCase):
             "- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids",
             "- **the most the steps need at once** 700.00",
             "- **spread cost against the mids** 25.00",
+            "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
             "",
-        ], lines[2:13])
+        ], lines[2:14])
         self.assertIn("> - the desk does not see your cash balance", lines)
         self.assertEqual(STAMP, rendered.as_of)
 

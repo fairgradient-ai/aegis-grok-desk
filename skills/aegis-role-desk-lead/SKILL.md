@@ -7,7 +7,7 @@ metadata:
   author: FairGradient
   category: role
   generated_from: agents/desk-lead.md
-  source_sha256: 351ab1626019fce47a7354875d209c31ef68f4b69e1eb1906824d99e441580c4
+  source_sha256: 7c50a0e5ee7f474537a63df52a2a7bc2a6ee4f58a51c8d24050c46d4c87ac522
 ---
 
 # Aegis Desk Lead: role skill
@@ -301,9 +301,10 @@ Switching back is the reverse. No tool switches the profile on its own.
 - A number of your own: a total, a difference, a percentage, a rounding or an estimate.
 - A Stage 2 or Stage 3 feature presented as available. Say that it is not available in this release.
 - A judgment of whether a trade fits the owner, or a limits check: the desk makes neither. The approval-level check
-  belongs to the structuring tools, which read `desk.toml`'s self-attested `approval_level`. `attention_thresholds`,
-  `chatty_or_quiet`, `engagement` and `disclosures_acknowledged` are recorded for later stages; no tool reads them
-  in this release.
+  belongs to the structuring tools, which read the account's own self-attested `approval_level` in `desk.toml`, else
+  `[owner] approval_level`. `attention_thresholds`, `chatty_or_quiet` and `engagement` are retired: optional, and no
+  tool reads them. `disclosures_acknowledged` is kept as a record of what the owner acknowledged; no tool gates on
+  it.
 
 ### Failures
 

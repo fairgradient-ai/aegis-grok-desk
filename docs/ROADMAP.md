@@ -93,7 +93,7 @@ context, sourced dates) and widens the Structuring Desk's scope.
 | 2.3 | The lattice wired into the book's Greeks and implied volatility, the structuring prices, and an early-exercise line beside the expiry tiers | 2.1; your decisions on the model of record, the boundary band and the dividend schedule (answered) | landed |
 | 2.4 | The Structuring Desk's wider scope: roll analyses and replacements of long puts, short puts, collars and verticals | your decision on a vertical's choices and their approval (answered) | landed |
 | 2.5 | Weekly expirations for the Structuring Desk | your decision on the chain budget (answered) | landed |
-| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | planned |
+| 2.6 | A cash-balance check and per-account approval levels | your decision on stated cash (answered) | landed |
 | 2.7 | Exposures and limits: beta-weighted delta and two limit metrics in the exit rulebook | your decision on the limits (answered) | planned |
 | 2.8 | Scenario and event stress | nothing; after 2.3, by your choice | planned |
 | 2.9 | Volatility context | nothing | landed: the tool; its seat is 2.10 |
@@ -317,10 +317,18 @@ context, sourced dates) and widens the Structuring Desk's scope.
   whose Friday is a holiday, so the weekly falls on Thursday; a listing that would still exceed 4 chains answering
   UNAVAILABLE.
 
-### 2.6 A cash-balance check and per-account approval levels
+### 2.6 A cash-balance check and per-account approval levels (landed)
 
 - **Constraint.** The desk has no brokerage API and does not see your cash. A cash figure can only be one you state,
   per account, in `desk.toml`, with its date, and acknowledged like every other owner value.
+- **What landed.** `desk_config` reads an optional `approval_level`, `cash` and `cash_as_of` on each
+  `[[owner.accounts]]` entry (`OwnerSection.level_for`, `.account`); the structuring tools read the account's own
+  level; `aegis_desk.cash_check` computes the peak cash out over a ticket's or proposal's legs in order (short-put
+  collateral included) and compares it with the stated cash, UNAVAILABLE when it is absent, dated ahead or older than
+  `CASH_MAX_AGE_TRADING_DAYS` (5); tickets print it under the cash block (and carry `cash.check` in JSON), proposals
+  after the approval block; a shortfall is a failed item, never a refusal. `engagement`, `chatty_or_quiet` and
+  `attention_thresholds` are optional and read by nothing; `desk_init.py` no longer requires them and takes the new
+  account keys.
 - **What lands.** An `approval_level` on each `[[owner.accounts]]` entry (each already has a `name` and a `type`),
   read before the desk-wide `[owner] approval_level`, and a cash check on every ticket and proposal.
 - **Stated cash (your answer to open question 5).** Two optional keys per account, given together or not at all:
@@ -524,8 +532,9 @@ Each new routine passes `routine_audit.py --budget` and `--rules-text` and posts
 | `disclosures_acknowledged` | kept as a required record; no stage gates behaviour on it |
 
 Retired means the key becomes optional in `desk_config.py`, so existing files still parse under the strict reader;
-nothing reads it, `desk_init.py` stops asking for it and writing it, and the charter and Desk Lead lines say so. This
-lands with 2.6. Counsel decides whether any later owner-facing text must check `disclosures_acknowledged` first.
+nothing reads it, `desk_init.py` no longer requires it (an answers file that still gives it is rendered as before, so
+an existing desk keeps its hash) and the interview no longer asks for it, and the Desk Lead lines say so. Landed with
+2.6. Counsel decides whether any later owner-facing text must check `disclosures_acknowledged` first.
 
 ## Not on the roadmap
 
@@ -578,7 +587,7 @@ only the files that do.
 | Roll analyses (a long put's, a short put's and a collar's landed; a vertical rolls by ticket) | 2.4 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md`, `skills/aegis-roll-decision-framework/SKILL.md`, `agents/structuring-desk.md`, `skills/aegis-role-structuring-desk/SKILL.md`, `scripts/roll_analysis.py`, `scripts/aegis_desk/structuring.py` |
 | Replacements of a short put, a collar and a vertical (landed) | 2.4 | `docs/STRUCTURING.md`, `tests/engine/test_structuring.py`, `skills/aegis-ticket-and-unwind-order/SKILL.md`, `skills/aegis-covered-call-and-cash-secured-put-management/SKILL.md`, `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-vertical-spread-management/SKILL.md`, `scripts/aegis_desk/structuring.py` (the ROLL refusals, among them the collar refusal whose text is two adjacent literals) |
 | Weekly expirations (landed) | 2.5 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (overview, "Expirations", limits), `skills/aegis-roll-decision-framework/SKILL.md`, `scripts/aegis_desk/quote_cache.py` (`PER_RUN_MAX_CHAINS`) |
-| Cash-balance check, per-account approval levels | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
+| Cash-balance check, per-account approval levels (landed) | 2.6 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` |
 | Beta-weighted delta, exposures, limits and limit messages | 2.7 | `skills/aegis-book-marking-and-greeks-honesty/SKILL.md`, `skills/aegis-desk-charter/SKILL.md` (message table), `skills/README.md` (`aegis-exposures-limits-and-stress`), `scripts/aegis_desk/book.py` (the `beta_weighted_delta` placeholder), `agents/desk-lead.md`, `skills/aegis-role-desk-lead/SKILL.md` |
 | Scenario and event stress, a hedge through an event | 2.8 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`scenario`), `skills/aegis-protective-put-and-collar-management/SKILL.md`, `skills/aegis-desk-charter/SKILL.md`, `skills/README.md` |
 | Volatility context | 2.9 | `docs/ARCHITECTURE.md`, `docs/STRUCTURING.md` (`iv_snapshot`), `skills/README.md` (`aegis-vol-context`), `skills/aegis-book-marking-and-greeks-honesty/SKILL.md` |
@@ -603,9 +612,8 @@ both counts reach zero.
 | --- | --- | --- |
 | `agents/desk-lead.md` | 3 | 3 |
 | `agents/position-control.md` | 1 | 0 |
-| `docs/ARCHITECTURE.md` | 2 | 1 |
+| `docs/ARCHITECTURE.md` | 1 | 1 |
 | `docs/FAQ.md` | 1 | 0 |
-| `docs/STRUCTURING.md` | 1 | 0 |
 | `scripts/aegis_desk/book.py` | 1 | 0 |
 | `scripts/roll_analysis.py` | 1 | 0 |
 | `skills/README.md` | 3 | 1 |

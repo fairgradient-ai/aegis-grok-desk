@@ -438,6 +438,8 @@ def analyse(args: Any, now: datetime.datetime, version: str) -> Outcome:
     owner_level = market.cfg.owner.approval_level
     try:
         target = structuring.load_target(market, trade_id)
+        if target.group is not None:  # roadmap 2.6: the account's own approval level, else the desk-wide one
+            owner_level = market.cfg.owner.level_for(target.group.account)
         checked = precheck(target, structure, criteria, owner_level)
         if checked is not None and (not checked.ok or checked.exposure_step is not None):
             return refused(w, lines, now, paths, changes, structure, criteria, market, target, checked, hashes)

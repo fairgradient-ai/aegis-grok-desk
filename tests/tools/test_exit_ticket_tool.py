@@ -64,6 +64,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **net cash** -700.00 at the conservative prices, -685.00 at the mids",
         "- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids",
         "- **the most the steps need at once** 700.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Approval-level check:** the highest step needs level 0 by the desk's convention, within your "
         "self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -93,6 +94,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **realized on the closing leg** -16.00 at the conservative prices, -1.00 at the mids",
         "- **the most the steps need at once** 700.00",
         "- **spread cost against the mids** 25.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Checks for the new call**",
         "- \U0001F7E2 **net per share** credit 0.05 (10.00 in all) | your criteria: credit only",
@@ -143,6 +145,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **realized on the closing legs** +1,124.00 at the conservative prices, +1,145.00 at the mids",
         "- **the most the steps need at once** 700.00",
         "- **spread cost against the mids** 21.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Approval-level check (leg 1 first):** the highest step needs level 0 by the desk's convention, within "
         "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -205,6 +208,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **realized on the closing leg** -50.00 at the conservative prices, -30.00 at the mids",
         "- **the most the steps need at once** 660.00",
         "- **spread cost against the mids** 30.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Checks for the new call**",
         "- \U0001F534 **net per share** debit 0.05 (10.00 in all) | your criteria: credit only",
@@ -252,6 +256,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **net cash** +980.00 at the conservative prices, +995.00 at the mids",
         "- **realized on the closing leg** -150.00 at the conservative prices, -135.00 at the mids",
         "- **the most the steps need at once** 0.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**The put**",
         "- **the 2026-12-18 620 put** out of the money: the spot mid 648.12 is above its strike, so its bid 9.80 "
@@ -286,6 +291,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **realized on the closing legs** +1,420.00 at the conservative prices, +1,437.00 at the mids",
         "- **the most the steps need at once** 0.00",
         "- **spread cost against the mids** 17.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Approval-level check (leg 1 first):** the highest step needs level 0 by the desk's convention, within "
         "your self-attested level 2 (desk.toml); your broker's own approval for this account decides",
@@ -318,6 +324,7 @@ GOLDEN_TEXTS: Dict[str, Tuple[Tuple[str, ...], int, Tuple[str, ...]]] = {
         "- **realized on the closing leg** -150.00 at the conservative prices, -135.00 at the mids",
         "- **the most the steps need at once** 2,310.00",
         "- **spread cost against the mids** 25.00",
+        "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
         "",
         "**Checks for the new put**",
         "- \U0001F7E2 **floor** 5.88 % below | your criteria: 3 to 10 %",
@@ -375,6 +382,7 @@ EXPIRY_DAY_CLOSE: Tuple[str, ...] = (
     "- **net cash** -32.00 at the conservative prices, -28.00 at the mids",
     "- **realized on the closing leg** +652.00 at the conservative prices, +656.00 at the mids",
     "- **the most the steps need at once** 32.00",
+    "- **cash check** UNAVAILABLE: no cash stated for this account in desk.toml",
     "",
     "**Approval-level check:** the highest step needs level 0 by the desk's convention, within your self-attested "
     "level 2 (desk.toml); your broker's own approval for this account decides",
@@ -537,8 +545,12 @@ class GoldenTextTest(DeskCase):
                          [(leg["conservative_side"], leg["conservative"], leg["cash_conservative"], leg["cash_mid"])
                           for leg in payload["legs"]])
         self.assertEqual(["0.10", "0.10"], [leg["tick"] for leg in payload["legs"]])  # standard class at 3.00 and up
+        # roadmap 2.6: the fixture desk states no cash, so the check against it is UNAVAILABLE; the need is the peak
         self.assertEqual({"net_conservative": "10.00", "net_mid": "35.00", "peak_needed": "700.00",
-                          "prefix": ["-700.00", "10.00"]}, payload["cash"])
+                          "prefix": ["-700.00", "10.00"],
+                          "check": {"status": "unavailable", "reason": "no cash stated for this account in desk.toml",
+                                    "need": "700.00", "after_step": 1, "steps": 2, "cash": None, "as_of": None,
+                                    "age_trading_days": None, "shortfall": None}}, payload["cash"])
         self.assertEqual([{"row_number": 4, "conservative": "-16.00", "mid": "-1.00"}], payload["realized"])
         self.assertEqual((True, 1, 2, None), (payload["approval"]["ok"], payload["approval"]["required_level"],
                                               payload["approval"]["owner_level"], payload["approval"]["exposure_step"]))

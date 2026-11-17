@@ -180,6 +180,33 @@ class RenderTest(TempRoot):
         self.assertEqual(HINT, payload["acknowledge"])
         self.assertEqual([], payload["replaced"])
 
+    def test_an_account_states_its_level_and_cash_and_the_retired_values_are_not_asked(self) -> None:
+        # roadmap 2.6: per-account approval levels and stated cash; engagement, chatty_or_quiet and attention_thresholds
+        # are retired (an answers file that gives them still renders them, so an existing desk keeps its hash)
+        answers = fixture_answers()
+        del answers["desk"]["engagement"], answers["desk"]["chatty_or_quiet"], answers["owner"]["attention_thresholds"]
+        answers["owner"]["accounts"][0].update({"approval_level": 3, "cash": "18500.00", "cash_as_of": "2026-11-13"})
+        code, body = self.run_json(answers)
+        self.assertEqual(0, code, body)
+        text = body["payload"]["desk_toml"]["text"]
+        self.assertIn('[[owner.accounts]]\nname = "Brokerage (margin)"\ntype = "margin"\napproval_level = 3\n'
+                      'cash = 18500.00\ncash_as_of = 2026-11-13\n', text)
+        for retired in ("engagement", "chatty_or_quiet", "attention_thresholds"):
+            self.assertNotIn(retired, text)
+        cfg = desk_config.load_desk_config(os.path.join(self.root, "desk.toml"))
+        self.assertEqual((3, 2), (cfg.owner.level_for("Brokerage (margin)"), cfg.owner.level_for("Roth IRA")))
+
+    def test_cash_without_its_date_is_refused(self) -> None:
+        answers = fixture_answers()
+        answers["owner"]["accounts"][0]["cash"] = "100.00"
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]))
+        self.assertIn("go together", body["error"]["message"])
+        answers["owner"]["accounts"][0].update({"cash_as_of": "2026-11-13", "approval_level": 9})
+        code, body = self.run_json(answers)
+        self.assertEqual((1, "answers_invalid"), (code, body["error"]["code"]))
+        self.assertEqual([], self.files())
+
     def test_the_rendered_file_loads_as_the_fixture_desk(self) -> None:
         self.assertEqual(0, self.invoke()[0])
         rendered = desk_config.load_desk_config(os.path.join(self.root, "desk.toml"))

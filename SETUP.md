@@ -201,10 +201,11 @@ options approval level across them, in the desk's convention shown word for word
 ([docs/STRUCTURING.md](docs/STRUCTURING.md#the-approval-level-check)); (2) the broker's exercise cutoff, ET `HH:MM`;
 (3) the declared equity; (4) the risk-free rate, its source and date (the owner's number, never yours). Propose the
 rest for one "yes": host `paper`, `key_env` `APCA_API_KEY_ID` and `secret_env` `APCA_API_SECRET_KEY` (the names,
-never the values; or `credentials_file`), cadence `lean`, and for the fields no tool
-reads in this release (engagement, `chatty_or_quiet`, attention thresholds) the values in
-`tests/fixtures/init/answers.json`. `disclosures_acknowledged` stays empty unless the owner names one they
-acknowledged. After the tap, the **owner-authority** command writes `desk.toml` (a live host is refused):
+never the values; or `credentials_file`), and cadence `lean`. Ask nothing about engagement, `chatty_or_quiet` or
+attention thresholds: those values are retired and no tool reads them. Per account the owner may also state its own
+approval level and its free cash with the date of that figure (`approval_level`, `cash`, `cash_as_of`); the cash
+check of tickets and proposals reads the cash for 5 trading days, then answers UNAVAILABLE until the owner restates
+it. `disclosures_acknowledged` stays empty unless the owner names one they acknowledged. After the tap, the **owner-authority** command writes `desk.toml` (a live host is refused):
 `python3 /workspace/aegis-grok-desk/scripts/desk_init.py --answers /workspace/aegis-desk/setup/desk-answers.json --desk-root /workspace/aegis-desk`.
 
 **positions.csv.** The owner describes the book in plain words ("I sold 2 NVDA 20-Nov 150 calls at 3.20 against my

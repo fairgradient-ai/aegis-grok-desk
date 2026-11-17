@@ -121,10 +121,18 @@ CONSTANTS: Dict[str, str] = {"timezone": json.dumps(desk_config.TIMEZONE), "vend
 TOP_KEYS: Tuple[str, ...] = ("schema_version", "desk", "owner", "market_data", "rates", "levels", "ex_dividends",
                              "earnings", "structuring")
 DESK_KEYS: Tuple[str, ...] = ("engagement", "cadence_profile", "chatty_or_quiet")
+DESK_REQUIRED: Tuple[str, ...] = ("cadence_profile",)
+"""``engagement`` and ``chatty_or_quiet`` are retired (roadmap 2.6): the interview no longer asks for them, and an
+answers file that still gives them is rendered as before."""
 OWNER_KEYS: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity", "attention_thresholds",
                                "disclosures_acknowledged", "accounts")
+OWNER_REQUIRED: Tuple[str, ...] = ("broker_exercise_cutoff_et", "approval_level", "declared_equity",
+                                   "disclosures_acknowledged", "accounts")
+"""``attention_thresholds`` is retired (roadmap 2.6), as the two ``[desk]`` values are."""
 ATTENTION_KEYS: Tuple[str, ...] = ("pl_day_pct", "pl_trade_abs")
-ACCOUNT_KEYS: Tuple[str, ...] = ("name", "type")
+ACCOUNT_KEYS: Tuple[str, ...] = ("name", "type", "approval_level", "cash", "cash_as_of")
+ACCOUNT_REQUIRED: Tuple[str, ...] = ("name", "type")
+"""An account's ``approval_level`` and its ``cash`` with ``cash_as_of`` are optional (roadmap 2.6)."""
 MARKET_DATA_KEYS: Tuple[str, ...] = ("host", "key_env", "secret_env", "credentials_file")
 RATES_KEYS: Tuple[str, ...] = ("risk_free_rate", "source", "as_of")
 LEVELS_KEYS: Tuple[str, ...] = ("penny_classes", "penny_all_classes")
@@ -220,13 +228,21 @@ no default injected."""
 ANSWERS_SHAPE: Dict[str, Any] = {
     "schema_version": "1 (desk, owner, market_data and rates go together; give them, ex_dividends, earnings, "
                       "structuring, or any of these together)",
-    "desk": {"engagement": "string", "cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
-             "chatty_or_quiet": " | ".join(desk_config.CHATTY_OR_QUIET)},
+    "desk": {"cadence_profile": " | ".join(desk_config.CADENCE_PROFILES),
+             "engagement": "string (optional and retired: nothing reads it)",
+             "chatty_or_quiet": "%s (optional and retired: nothing reads it)" % " | ".join(desk_config.CHATTY_OR_QUIET)},
     "owner": {"broker_exercise_cutoff_et": "HH:MM (America/New_York)", "approval_level": "integer 0-5 (self-attested)",
               "declared_equity": "decimal string, for example \"250000.00\"",
-              "attention_thresholds": {"pl_day_pct": "decimal string", "pl_trade_abs": "decimal string"},
+              "attention_thresholds": {"pl_day_pct": "decimal string (optional and retired: nothing reads it)",
+                                       "pl_trade_abs": "decimal string (optional and retired)"},
               "disclosures_acknowledged": ["string"],
-              "accounts": [{"name": "string", "type": " | ".join(desk_config.ACCOUNT_TYPES)}]},
+              "accounts": [{"name": "string", "type": " | ".join(desk_config.ACCOUNT_TYPES),
+                            "approval_level": "integer 0-5 (optional; read before owner.approval_level for this "
+                                              "account)",
+                            "cash": "decimal string >= 0 (optional; the free cash not securing open short puts; "
+                                    "with cash_as_of)",
+                            "cash_as_of": "YYYY-MM-DD (with cash; older than 5 trading days the check is "
+                                          "UNAVAILABLE)"}]},
     "market_data": {"host": "paper (live is refused: the desk holds an Alpaca paper key pair only)",
                     "key_env": "string (the NAME of the environment variable that holds the paper key ID, for "
                                "example APCA_API_KEY_ID; never the key itself)",
@@ -349,8 +365,8 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     for key in ("owner", "market_data", "rates"):
         if key not in answers:
             raise answers_error("answers with desk also need %s" % key)
-    desk = table(answers["desk"], "desk", DESK_KEYS, DESK_KEYS)
-    owner = table(answers["owner"], "owner", OWNER_KEYS, OWNER_KEYS)
+    desk = table(answers["desk"], "desk", DESK_KEYS, DESK_REQUIRED)
+    owner = table(answers["owner"], "owner", OWNER_KEYS, OWNER_REQUIRED)
     market = table(answers["market_data"], "market_data", MARKET_DATA_KEYS, ("host", "key_env", "secret_env"))
     rates = table(answers["rates"], "rates", RATES_KEYS, RATES_KEYS)
     levels = table(answers.get("levels", {}), "levels", LEVELS_KEYS, ())
@@ -361,7 +377,8 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     low, high = desk_config.APPROVAL_LEVEL_RANGE
     if isinstance(level, bool) or not isinstance(level, int) or not low <= level <= high:
         raise answers_error("owner.approval_level must be an integer %d-%d" % (low, high))
-    attention = table(owner["attention_thresholds"], "owner.attention_thresholds", ATTENTION_KEYS, ATTENTION_KEYS)
+    attention = (table(owner["attention_thresholds"], "owner.attention_thresholds", ATTENTION_KEYS, ATTENTION_KEYS)
+                 if "attention_thresholds" in owner else None)
     disclosures = owner["disclosures_acknowledged"]
     if not isinstance(disclosures, list):
         raise answers_error("owner.disclosures_acknowledged must be a list of strings")
@@ -376,17 +393,21 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     if key_env == secret_env:
         raise answers_error("market_data.key_env and market_data.secret_env must name two different variables")
     lines: List[str] = list(DESK_HEADER)
-    lines += ["[desk]", "timezone = %s" % CONSTANTS["timezone"],
-              "engagement = %s" % text_value(desk["engagement"], "desk.engagement"),
-              "cadence_profile = %s" % choice(desk["cadence_profile"], "desk.cadence_profile",
-                                              desk_config.CADENCE_PROFILES),
-              "chatty_or_quiet = %s" % choice(desk["chatty_or_quiet"], "desk.chatty_or_quiet",
-                                              desk_config.CHATTY_OR_QUIET), ""]
+    lines += ["[desk]", "timezone = %s" % CONSTANTS["timezone"]]
+    if "engagement" in desk:
+        lines.append("engagement = %s" % text_value(desk["engagement"], "desk.engagement"))
+    lines.append("cadence_profile = %s" % choice(desk["cadence_profile"], "desk.cadence_profile",
+                                                 desk_config.CADENCE_PROFILES))
+    if "chatty_or_quiet" in desk:
+        lines.append("chatty_or_quiet = %s" % choice(desk["chatty_or_quiet"], "desk.chatty_or_quiet",
+                                                     desk_config.CHATTY_OR_QUIET))
+    lines.append("")
     lines += ["[owner]", "broker_exercise_cutoff_et = %s:00" % cutoff, "approval_level = %d" % level,
-              "declared_equity = %s" % decimal_value(owner["declared_equity"], "owner.declared_equity"),
-              "attention_thresholds = { pl_day_pct = %s, pl_trade_abs = %s }" % (
-                  decimal_value(attention["pl_day_pct"], "owner.attention_thresholds.pl_day_pct"),
-                  decimal_value(attention["pl_trade_abs"], "owner.attention_thresholds.pl_trade_abs"))]
+              "declared_equity = %s" % decimal_value(owner["declared_equity"], "owner.declared_equity")]
+    if attention is not None:
+        lines.append("attention_thresholds = { pl_day_pct = %s, pl_trade_abs = %s }" % (
+            decimal_value(attention["pl_day_pct"], "owner.attention_thresholds.pl_day_pct"),
+            decimal_value(attention["pl_trade_abs"], "owner.attention_thresholds.pl_trade_abs")))
     if disclosures:
         lines.append("disclosures_acknowledged = [")
         lines += ["  %s," % text_value(item, "owner.disclosures_acknowledged[%d]" % index)
@@ -395,9 +416,20 @@ def render_desk_toml(answers: Mapping[str, Any]) -> str:
     else:
         lines.append("disclosures_acknowledged = []")
     for index, raw in enumerate(accounts):
-        account = table(raw, "owner.accounts[%d]" % index, ACCOUNT_KEYS, ACCOUNT_KEYS)
-        lines += ["", "[[owner.accounts]]", "name = %s" % text_value(account["name"], "owner.accounts[%d].name" % index),
-                  "type = %s" % choice(account["type"], "owner.accounts[%d].type" % index, desk_config.ACCOUNT_TYPES)]
+        account = table(raw, "owner.accounts[%d]" % index, ACCOUNT_KEYS, ACCOUNT_REQUIRED)
+        where = "owner.accounts[%d]" % index
+        lines += ["", "[[owner.accounts]]", "name = %s" % text_value(account["name"], where + ".name"),
+                  "type = %s" % choice(account["type"], where + ".type", desk_config.ACCOUNT_TYPES)]
+        if "approval_level" in account:
+            own = account["approval_level"]
+            if isinstance(own, bool) or not isinstance(own, int) or not low <= own <= high:
+                raise answers_error("%s.approval_level must be an integer %d-%d" % (where, low, high))
+            lines.append("approval_level = %d" % own)
+        if ("cash" in account) != ("cash_as_of" in account):
+            raise answers_error("%s.cash and %s.cash_as_of go together: give both or neither" % (where, where))
+        if "cash" in account:
+            lines += ["cash = %s" % decimal_value(account["cash"], where + ".cash"),
+                      "cash_as_of = %s" % date_value(account["cash_as_of"], where + ".cash_as_of")]
     lines += ["", "[market_data]", "vendor = %s" % CONSTANTS["vendor"],
               "host = %s" % choice(market["host"], "market_data.host", (PAPER,)),
               "key_env = %s" % key_env, "secret_env = %s" % secret_env]

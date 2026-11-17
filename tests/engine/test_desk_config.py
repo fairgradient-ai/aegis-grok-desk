@@ -428,7 +428,7 @@ class RejectionsTest(DeskConfigTestCase):
             else:
                 text = BASE[:start] + BASE[end + 1:]
             self.assert_rejected(text, "missing section", section)
-        self.assert_rejected(self.mutate('engagement = "active-owner"\n', ''), "missing key", "engagement", "[desk]")
+        self.assert_rejected(self.mutate('cadence_profile = "lean"\n', ''), "missing key", "cadence_profile", "[desk]")
         self.assert_rejected(self.mutate("quote_ttl_min = 5\n", ''), "missing key", "quote_ttl_min", "[market_data]")
         self.assert_rejected(self.mutate("as_of = 2026-10-30\n", ''), "missing key", "as_of", "[rates]")
         self.assert_rejected(self.mutate("order_shape_enabled = false\n", ''), "missing key", "order_shape_enabled", "[levels]")
@@ -469,6 +469,45 @@ class HelpersTest(unittest.TestCase):
         with self.assertRaises(desk_config.DeskConfigError) as ctx:
             desk_config.parse_desk_toml_text(BASE.replace('host = "paper"', 'host = "x"'), path="<memory>")
         self.assertTrue(str(ctx.exception).startswith("<memory>: "))
+
+
+class AccountsAndRetiredValuesTest(DeskConfigTestCase):
+    """Roadmap 2.6 (the owner's answers to open questions 5 and 7): per-account approval levels and stated cash, and
+    three recorded values retired (optional, read by nothing)."""
+
+    ACCOUNT = '[[owner.accounts]]\nname = "Brokerage (margin)"\ntype = "margin"\n'
+
+    def test_an_account_may_state_its_level_and_its_cash(self) -> None:
+        text = self.mutate(self.ACCOUNT, self.ACCOUNT + "approval_level = 3\ncash = 18500.00\ncash_as_of = 2026-11-13\n")
+        owner = self.load_text(text).owner
+        entry = owner.accounts[0]
+        self.assertEqual((3, Decimal("18500.00"), datetime.date(2026, 11, 13)),
+                         (entry.approval_level, entry.cash, entry.cash_as_of))
+        self.assertEqual((3, 2), (owner.level_for("Brokerage (margin)"), owner.level_for("Roth IRA")))
+        self.assertIs(entry, owner.account("Brokerage (margin)"))
+        self.assertIsNone(owner.account("Roth IRA"))
+        plain = self.load_text(BASE).owner
+        self.assertEqual((None, None, None, 2), (plain.accounts[0].approval_level, plain.accounts[0].cash,
+                                                 plain.accounts[0].cash_as_of, plain.level_for("Brokerage (margin)")))
+
+    def test_cash_and_its_date_go_together_and_are_checked(self) -> None:
+        self.assert_rejected(self.mutate(self.ACCOUNT, self.ACCOUNT + "cash = 100\n"), "cash and cash_as_of go together")
+        self.assert_rejected(self.mutate(self.ACCOUNT, self.ACCOUNT + "cash_as_of = 2026-11-13\n"), "go together")
+        self.assert_rejected(self.mutate(self.ACCOUNT, self.ACCOUNT + "cash = -1\ncash_as_of = 2026-11-13\n"), "cash", ">= 0")
+        self.assert_rejected(self.mutate(self.ACCOUNT, self.ACCOUNT + 'cash = 1\ncash_as_of = "2026-11-13"\n'),
+                             "cash_as_of", "local date")
+        self.assert_rejected(self.mutate(self.ACCOUNT, self.ACCOUNT + "approval_level = 6\n"), "approval_level")
+
+    def test_the_retired_values_are_optional(self) -> None:
+        text = BASE
+        for line in ('engagement = "active-owner"\n', 'chatty_or_quiet = "quiet"\n',
+                     "attention_thresholds = { pl_day_pct = 1.5, pl_trade_abs = 500.00 }\n"):
+            text = self.mutate(line, "", text)
+        cfg = self.load_text(text)
+        self.assertEqual((None, None, None), (cfg.desk.engagement, cfg.desk.chatty_or_quiet,
+                                              cfg.owner.attention_thresholds))
+        self.assertEqual(Decimal("1.5"), self.load_text(BASE).owner.attention_thresholds.pl_day_pct,
+                         "a file that still states them parses as before")
 
 
 if __name__ == "__main__":

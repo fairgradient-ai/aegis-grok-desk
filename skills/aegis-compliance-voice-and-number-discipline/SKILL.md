@@ -178,10 +178,12 @@ keeping, hedging and adding, and the trade verbs.
 - Describe the AI's role accurately. The Bots are AI assistants that run deterministic tools; the verdicts and the
   numbers come from those tools. Never claim that a person reviewed a message, that the data is real-time, or that
   the desk watches continuously: the data is delayed 15 minutes and the routines run at fixed slots.
-- The approval-level check of the structuring tools is the first reader of `approval_level`: the owner's
-  self-attested level in the desk's convention, and the broker's own approval decides. It is never called anything
-  but the approval-level check, and the desk still makes no determination of whether a trade fits the owner.
-  `attention_thresholds` is recorded for later stages; no tool reads it.
+- The approval-level check of the structuring tools reads `approval_level`: the account's own self-attested level
+  in the desk's convention, else `[owner] approval_level`, and the broker's own approval decides. It is never called
+  anything but the approval-level check, and the desk still makes no determination of whether a trade fits the owner.
+- The cash check compares a ticket's or a proposal's peak cash need with the cash the owner stated for the account,
+  as of its date. It says what the owner stated and when; it never says the cash is there, and a shortfall is a
+  failed check item, never a refusal. `attention_thresholds` is retired; no tool reads it.
 
 ## When the owner asks you to trade
 
